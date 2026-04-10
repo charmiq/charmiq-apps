@@ -5,21 +5,29 @@
   font-family: $font-family;
   padding: $spacing;
   background: $bg-color;
+  color: $primary-color;
+  -webkit-font-smoothing: antialiased;
 
   h1 {
     color: $primary-color;
+    letter-spacing: -0.02em;
+  }
+
+  p {
+    color: $text-secondary;
   }
 
   button {
-    background: $primary-color;
+    background: $accent-color;
     color: white;
     padding: 8px 16px;
     border: none;
-    border-radius: 4px;
+    border-radius: $radius;
     cursor: pointer;
+    font-weight: 500;
 
     &:hover {
-      opacity: 0.8;
+      background: $accent-hover;
     }
   }
 }
