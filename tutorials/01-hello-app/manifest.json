@@ -1,7 +1,7 @@
 {
-  "id": "ai.charmiq.apps.minimal",
-  "name": "Minimal App (ESM)",
-  "description": "Minimal CharmIQ Application with ESM format",
+  "id": "ai.charm.tutorials.hello-app",
+  "name": "Hello App",
+  "description": "A simple React app — file structure, ESM, and SCSS",
   "bundle": {
     "entry": {
       "html": "/index.html",
@@ -16,11 +16,5 @@
         "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
       }
     }
-  },
-  "runtime": {
-    "appContent": {
-      "message": { "type": "text", "description": "Message to display" }
-    },
-    "appState": { "count": 0 }
   }
 }
