@@ -1,0 +1,37 @@
+@import 'variables';
+
+// ********************************************************************************
+.app {
+  font-family: $font-family;
+  padding: $spacing;
+  background: $bg-color;
+  color: $primary-color;
+  text-align: center;
+  -webkit-font-smoothing: antialiased;
+
+  h1 {
+    color: $primary-color;
+    letter-spacing: -0.02em;
+  }
+
+  .editor {
+    width: 100%;
+    min-height: 120px;
+    margin-top: $spacing;
+    padding: $spacing;
+    font-family: $font-family;
+    font-size: 14px;
+    color: $primary-color;
+    background: white;
+    border: 1px solid $border-color;
+    border-radius: $radius;
+    resize: vertical;
+    box-sizing: border-box;
+    text-align: left;
+
+    &:focus {
+      outline: none;
+      border-color: $accent-color;
+    }
+  }
+}

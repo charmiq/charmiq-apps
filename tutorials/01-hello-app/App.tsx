@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 // ********************************************************************************
 export const App = () => {
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState(0/*start at zero*/);
 
   return (
     <div className="app">

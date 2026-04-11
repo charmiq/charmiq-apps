@@ -24,7 +24,7 @@ The module format here is **ESM** — ECMAScript modules, loaded directly in the
 | [`index.html`](charmiq://./index.html) | The HTML shell — just a `<div id="root">` |
 | [`main.tsx`](charmiq://./main.tsx) | Entry point — mounts React into `#root` |
 | [`App.tsx`](charmiq://./App.tsx) | The component — a counter with local state |
-| [`styles.scss`](charmiq://./style.scss) | Main styles — imports the variables partial |
+| [`styles.scss`](charmiq://./styles.scss) | Main styles — imports the variables partial |
 | [`_variables.scss`](charmiq://./_variables.scss) | Design tokens — colors, spacing, typography |
 
 ## What to pay attention to

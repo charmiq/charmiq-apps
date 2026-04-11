@@ -2,15 +2,19 @@ import React, { useEffect, useState } from 'react';
 
 // ********************************************************************************
 export const App = () => {
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState(''/*default to empty*/);
 
+  // == Initialization ============================================================
+  // subscribe to document content; fires immediately with current value then on
+  // every change (from any collaborator or Charm)
   useEffect(() => {
     const sub = window.charmiq.appContent.onChange$().subscribe(change => {
       if(!change.deleted) setContent(change.content);
     });
-    return () => sub.unsubscribe();
-  }, []);
+    return () => sub.unsubscribe()/*cleanup on unmount*/;
+  }, []/*run once on mount*/);
 
+  // == UI ========================================================================
   return (
     <div className="app">
       <h1>Reading Data</h1>

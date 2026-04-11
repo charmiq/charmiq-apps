@@ -6,6 +6,7 @@ import { App } from './App';
 import './styles.scss';
 
 // ********************************************************************************
+// mount React into the #root div from index.html
 const container = document.getElementById('root');
 if(container) {
   const root = createRoot(container);
