@@ -1,0 +1,31 @@
+@import 'variables';
+
+// ********************************************************************************
+.app {
+  font-family: $font-family;
+  padding: $spacing;
+  background: $bg-color;
+  color: $primary-color;
+  text-align: center;
+  -webkit-font-smoothing: antialiased;
+
+  h1 {
+    color: $primary-color;
+    letter-spacing: -0.02em;
+  }
+
+  p {
+    color: $text-secondary;
+  }
+
+  .content {
+    background: white;
+    border: 1px solid $border-color;
+    border-radius: $radius;
+    padding: $spacing;
+    margin-top: $spacing;
+    text-align: left;
+    white-space: pre-wrap;
+    min-height: 40px;
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "id": "ai.charm.tutorials.reading-data",
+  "name": "Reading Data",
+  "description": "Reading document content with appContent.onChange$()",
+  "bundle": {
+    "entry": {
+      "html": "/index.html",
+      "script": "/main.tsx",
+      "style": "/styles.scss"
+    },
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
+      }
+    }
+  },
+  "runtime": {
+    "appContent": {
+      "message": { "type": "text", "description": "Message to display" }
+    }
+  }
+}

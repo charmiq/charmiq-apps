@@ -58,4 +58,4 @@ No underscore. No extension. Standard SCSS partial resolution — the underscore
 
 This Application is self-contained — it holds its own state and doesn't talk to the document. The next example introduces `appContent`: how your Application reads data that lives in the document itself.
 
-→ **Reading Document Data**
+→ [**Reading Data**](charmiq://../02-reading-data/README.md)
