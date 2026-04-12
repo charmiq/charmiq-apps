@@ -1,0 +1,176 @@
+// == Custom Properties ===========================================================
+// all visual properties are exposed as CSS custom properties so consumers can
+// theme the dialog without touching the shadow DOM
+:host {
+  --ays-overlay-bg: rgba(0, 0, 0, 0.5);
+  --ays-overlay-z-index: 1000;
+
+  --ays-dialog-bg: white;
+  --ays-dialog-border: 1px solid rgba(0, 0, 0, 0.1);
+  --ays-dialog-radius: 12px;
+  --ays-dialog-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  --ays-dialog-padding: 24px;
+  --ays-dialog-max-width: 480px;
+  --ays-dialog-z-index: 1001;
+
+  --ays-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --ays-title-size: 1.25rem;
+  --ays-title-weight: 600;
+  --ays-title-color: #1f2937;
+  --ays-title-line-height: 1.5;
+
+  --ays-header-margin: 0 0 12px 0;
+  --ays-header-gap: 10px;
+
+  --ays-message-size: 0.95rem;
+  --ays-message-line-height: 1.5;
+  --ays-message-color: #6b7280;
+  --ays-message-margin: 0 0 24px 0;
+
+  --ays-button-gap: 12px;
+  --ays-button-padding: 10px 20px;
+  --ays-button-radius: 6px;
+  --ays-button-font-size: 0.9rem;
+  --ays-button-font-weight: 500;
+
+  --ays-transition-duration: 200ms;
+  --ays-transition-easing: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+// == Type-Specific Colors ========================================================
+:host([type="warning"]) {
+  --ays-icon-color: #f59e0b;
+  --ays-primary-bg: #f59e0b;
+  --ays-primary-bg-hover: #d97706;
+}
+
+:host([type="info"]) {
+  --ays-icon-color: #3b82f6;
+  --ays-primary-bg: #3b82f6;
+  --ays-primary-bg-hover: #2563eb;
+}
+
+:host([type="error"]) {
+  --ays-icon-color: #dc2626;
+  --ays-primary-bg: #dc2626;
+  --ays-primary-bg-hover: #b91c1c;
+}
+
+// == Slotted Icon ================================================================
+::slotted([slot="icon"]) {
+  width: calc(var(--ays-title-size) * var(--ays-title-line-height));
+  height: calc(var(--ays-title-size) * var(--ays-title-line-height));
+  color: var(--ays-icon-color);
+  display: block;
+}
+
+// == Overlay =====================================================================
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--ays-overlay-bg);
+  z-index: var(--ays-overlay-z-index);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--ays-transition-duration) var(--ays-transition-easing);
+
+  &.show {
+    display: flex;
+  }
+
+  &.visible {
+    opacity: 1;
+  }
+}
+
+// == Dialog ======================================================================
+.dialog {
+  background: var(--ays-dialog-bg);
+  border: var(--ays-dialog-border);
+  border-radius: var(--ays-dialog-radius);
+  box-shadow: var(--ays-dialog-shadow);
+  padding: var(--ays-dialog-padding);
+  max-width: var(--ays-dialog-max-width);
+  width: 90%;
+  font-family: var(--ays-font-family);
+  transform: scale(0.95);
+  transition: transform var(--ays-transition-duration) var(--ays-transition-easing);
+
+  .overlay.visible & {
+    transform: scale(1);
+  }
+}
+
+// == Header ======================================================================
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--ays-header-gap);
+  margin: var(--ays-header-margin);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: var(--ays-title-size);
+  font-weight: var(--ays-title-weight);
+  color: var(--ays-title-color);
+  line-height: var(--ays-title-line-height);
+  flex: 1;
+}
+
+// == Message =====================================================================
+.message {
+  font-size: var(--ays-message-size);
+  line-height: var(--ays-message-line-height);
+  color: var(--ays-message-color);
+  margin: var(--ays-message-margin);
+}
+
+// == Buttons =====================================================================
+.actions {
+  display: flex;
+  gap: var(--ays-button-gap);
+  justify-content: flex-end;
+}
+
+button {
+  padding: var(--ays-button-padding);
+  border-radius: var(--ays-button-radius);
+  font-size: var(--ays-button-font-size);
+  font-weight: var(--ays-button-font-weight);
+  font-family: var(--ays-font-family);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.btn-primary {
+  background: var(--ays-primary-bg);
+  color: white;
+
+  &:hover {
+    background: var(--ays-primary-bg-hover);
+  }
+}
+
+.btn-cancel {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+
+  &:hover {
+    background: #e5e7eb;
+  }
+
+  &.hidden {
+    display: none;
+  }
+}

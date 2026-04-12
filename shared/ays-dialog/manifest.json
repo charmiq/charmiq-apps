@@ -1,0 +1,19 @@
+{
+  "id": "ai.charm.shared.ays-dialog",
+  "name": "AYS Dialog",
+  "description": "A customizable 'Are You Sure' confirmation dialog — Web Component with TSX and SCSS",
+  "bundle": {
+    "entry": {
+      "script": "/ays-dialog.tsx",
+      "style": "/ays-dialog.scss"
+    },
+    "output": "script",
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "preact": "https://esm.sh/preact@10.24.3",
+        "preact/jsx-runtime": "https://esm.sh/preact@10.24.3/jsx-runtime"
+      }
+    }
+  }
+}
