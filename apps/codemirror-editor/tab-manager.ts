@@ -10,8 +10,6 @@ import type { EditorWrapper } from './editor-wrapper';
 // == Constants ===================================================================
 /** display name for the welcome tab created when no content exists */
 export const DEFAULT_TAB_NAME = 'Welcome';
-/** content for the welcome tab */
-export const DEFAULT_TAB_CONTENT = '# Welcome to CodeMirror Editor\n\nStart typing your markdown here...';
 /** fallback display name for tabs with no name */
 export const UNTITLED_TAB_NAME = 'Untitled';
 
@@ -296,13 +294,12 @@ export class TabManager {
   // .. Create Default Tab ........................................................
   /** create a welcome/default tab when no tabs exist after discovery */
   private async createDefaultTab(): Promise<void> {
-    const defaultContent = DEFAULT_TAB_CONTENT;
     const defaultName = DEFAULT_TAB_NAME;
     const uniqueSelector = `file-${Date.now()}`;
 
     try {
       this.locallyCreatedTabNames.add(defaultName);
-      await this.contentBridge.set(defaultContent, `[name='${uniqueSelector}']`, defaultName);
+      await this.contentBridge.set('', `[name='${uniqueSelector}']`, defaultName);
     } catch(error) {
       console.error('failed to create default tab:', error);
       this.locallyCreatedTabNames.delete(defaultName);
