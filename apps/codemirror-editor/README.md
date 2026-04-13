@@ -52,7 +52,7 @@ The original `codemirror.html` (~2,000 lines) has been decomposed into focused m
 
 - **RxJS at the boundary only.** Used for `appContent.onChange$()` discovery (race/debounceTime) and `appState.onChange$()` subscription. No RxJS inside the modules themselves.
 
-- **AYS dialog via `charmiq://../ays-dialog`.** The shared confirmation dialog loads as a Web Component.
+- **AYS dialog via `charmiq://../../shared/ays-dialog`.** The shared confirmation dialog loads as a Web Component.
 
 ### Runtime APIs
 
