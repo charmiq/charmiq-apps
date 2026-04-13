@@ -21,7 +21,7 @@
     .log .confirmed { color: #059669; }
     .log .cancelled { color: #dc2626; }
   </style>
-  <script src="charmiq://."></script>
+  <script type="module" src="charmiq://."></script>
 </head>
 <body>
   <div class="controls">
