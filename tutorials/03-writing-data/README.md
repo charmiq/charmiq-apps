@@ -17,7 +17,7 @@ Type in the textarea above. The text you type is written to the document's `app-
 | File | Change |
 |------|--------|
 | [`manifest.json`](charmiq://./manifest.json) | Unchanged (still declares `runtime.appContent`) |
-| [`App.tsx`](charmiq://./App.tsx) | Added a `<textarea>`, writes back via `appContent.set()`, added the update guard |
+| [`App.tsx`](charmiq://./App.tsx) | Added a `<textarea>`, writes back via `appContent.set()`, added state comparison to avoid redundant re-renders |
 | [`styles.scss`](charmiq://./styles.scss) | Replaced `.content` display with `.editor` textarea styling |
 | [`index.html`](charmiq://./index.html) | Unchanged |
 | [`main.tsx`](charmiq://./main.tsx) | Unchanged |
@@ -30,49 +30,56 @@ The simplest way to write: replace the entire content.
 ```tsx xR7mK2pQnB
 const handleChange = async (e) => {
   const newContent = e.target.value;
+  contentRef.current = newContent;
   setContent(newContent);
 
-  updatingRef.current = true;
   await window.charmiq.appContent.set(newContent);
-  updatingRef.current = false;
 };
 ```
 
 `set()` replaces everything in the `app-content` block. Simple, correct, easy to reason about. For a textarea that holds the full content, this is all you need.
 
-## The update guard
+## Avoiding redundant re-renders
 
-This is the critical pattern this tutorial introduces:
+This is the central pattern this tutorial introduces. When the Application writes to `appContent`, the change comes back through `onChange$()`. Without handling it, every keystroke would trigger a redundant re-render — the app writes, the document echoes, the subscription fires, React re-renders to the value it already has.
+
+The solution is **state comparison**: check whether what arrived is different from what the component already holds.
 
 ```tsx bN4fPm8kWs
-const updatingRef = useRef(false);
+const [content, setContent] = useState('');
+const contentRef = useRef(content);
 
 // Incoming changes from the document
 const sub = window.charmiq.appContent.onChange$().subscribe(change => {
-  if(updatingRef.current) return; // ← skip our own writes
-  if(!change.deleted) setContent(change.content);
+  if(change.deleted) return;
+
+  if(change.content === contentRef.current) return; // ← already matches
+  contentRef.current = change.content;
+  setContent(change.content);
 });
 
 // Outgoing changes to the document
 const handleChange = async (e) => {
-  setContent(e.target.value);
+  const newContent = e.target.value;
+  contentRef.current = newContent;              // ← update ref first
+  setContent(newContent);
 
-  updatingRef.current = true;                   // ← flag on
   await window.charmiq.appContent.set(newContent);
-  updatingRef.current = false;                  // ← flag off
 };
 ```
 
-### Why is this needed?
+### How it works
 
-Without the guard, every `set()` call triggers `onChange$`, which calls `setContent`, which re-renders the textarea, which could trigger another write. The guard breaks the loop:
-
-1. User types → `handleChange` fires → sets `updatingRef.current = true` → calls `set()`
+1. User types → `handleChange` fires → updates `contentRef` and calls `set()`
 2. `set()` writes to the document → document emits a change → `onChange$` fires
-3. The subscription sees `updatingRef.current === true` → skips → no re-render from our own write
-4. `set()` resolves → sets `updatingRef.current = false`
+3. The subscription compares `change.content` to `contentRef.current` → they match → no re-render
+4. Meanwhile, if another user edits the content, `change.content` won't match → it flows through → the component re-renders with the merged result
 
-Other users' edits arrive with `updatingRef.current === false`, so they flow through normally.
+### Why state comparison, not a flag?
+
+It's tempting to use a boolean flag — "I'm writing, so skip the next incoming change." That's wrong in a collaborative system. When a `set()` is in-flight and another user edits concurrently, OT merges both changes. The value that comes back through `onChange$()` may contain *their* edit folded into *yours*. A flag would suppress it, silently dropping the other user's work.
+
+State comparison doesn't care about causality. It asks one question: "does the component already reflect this content?" If yes, skip. If no, update. It doesn't matter who wrote it or when.
 
 ## When to use `applyChanges()` instead
 
@@ -90,9 +97,9 @@ For this tutorial we use `set()` to keep things simple. A real collaborative edi
 
 ## What to pay attention to
 
-**The guard is a `useRef`, not state.** `useRef` gives you a mutable `.current` that persists across renders without triggering re-renders — exactly right for a synchronization flag. Never use a module-level variable for this (it would be shared across component instances) or `useState` (it would cause unnecessary re-renders).
+**The ref tracks current content, not a boolean flag.** `contentRef` holds the most recent content string — updated both on local edits and on incoming changes. The subscription compares against it to decide whether a re-render is needed. This is a `useRef` (not `useState`) because the comparison needs the latest value inside the subscription closure without triggering extra renders.
 
-**`set()` is async.** It returns a Promise that resolves when the write is persisted to the document. The guard wraps the entire async operation.
+**`set()` is async.** It returns a Promise that resolves when the write is persisted to the document. The comparison still works — `contentRef` is updated synchronously before the `set()` call, so by the time the echo arrives, the ref already reflects the value.
 
 **The manifest didn't change.** The `runtime.appContent` declaration from tutorial 02 is the same. Reading and writing use the same manifest — it's the code that decides the direction.
 
