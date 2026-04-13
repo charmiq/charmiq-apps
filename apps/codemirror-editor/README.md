@@ -48,22 +48,18 @@ The Application is folder-based, with each module owning a single concern. This 
 
 Two storage channels — one for content, one for config:
 
-``` nfjCRBBzAk
-┌───────────────┐               ┌─────────────────┐
-│ EditorWrapper │◄──────────────│  TabManager     │
-│  (CodeMirror) │  setValue/    │  (state machine)│
-└──────┬────────┘  replaceRange └───────┬─────────┘
-       │ user edits                     │ content changes
-       ▼                                ▼
-┌──────────────┐              ┌───────────────┐
-│ContentBridge │◄─────────────│  ConfigStore  │
-│  (OT sync)   │  applyChanges│  (appState)   │
-└──────────────┘              └───────────────┘
-       │                               │
-       ▼                               ▼
-   appContent                      appState
-  (collaborative)              (last-write-wins)
-```
+<iframe-app data-sandboxed="true" height="340px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://../mermaid-diagram">
+  <app-content name="data-flow">
+graph TD
+    EW["EditorWrapper\n(CodeMirror)"] <-->|"setValue / replaceRange"| TM["TabManager\n(state machine)"]
+    EW -->|"user edits"| CB["ContentBridge\n(OT sync)"]
+    TM -->|"content changes"| CB
+    CS["ConfigStore\n(appState)"] -->|"applyChanges"| CB
+    CB --> AC["appContent\n(collaborative)"]
+    CS --> AS["appState\n(last-write-wins)"]
+  </app-content>
+  <app-state>{"theme":"neutral"}</app-state>
+</iframe-app>
 
 **`appContent`** holds each tab's text. It uses OT — multiple writers can edit simultaneously without data loss. `ContentBridge` watches `onChange$()` and applies incoming changes to the editor; it sends the editor's local changes back via `applyChanges()`.
 

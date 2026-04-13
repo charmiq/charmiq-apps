@@ -51,10 +51,20 @@ The app is folder-based, with each module owning a single concern.
 
 Two storage channels — one for content, one for config:
 
-```
-appContent (OT)         ← drawing JSON (elements, appState, files, libraryItems)
-appState (last-write)   ← configuration (showMainMenu, viewModeEnabled)
-```
+<iframe-app data-sandboxed="true" height="380px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://../mermaid-diagram">
+  <app-content name="data-flow">
+graph TD
+    EX["Excalidraw\n(React UMD)"] -->|"onChange (debounced)"| CB["ContentBridge\n(OT sync)"]
+    CB -->|"updateScene"| EX
+    CB -->|"fast-diff → applyChanges"| AC["appContent\n(collaborative)"]
+    AC -->|"onChange$"| CB
+    CS["ConfigStore\n(appState)"] -->|"theme / viewMode"| APP["App Component"]
+    APP --> EX
+    CS --> AS["appState\n(last-write-wins)"]
+    LH["LibraryHandler"] -->|"updateLibrary"| EX
+  </app-content>
+  <app-state>{"theme":"neutral"}</app-state>
+</iframe-app>
 
 The content bridge serializes the Excalidraw scene to pretty-printed JSON, diffs it against the last known server state, and sends the minimal OT changes. Inbound, it parses the JSON and pushes it into `updateScene()`.
 
