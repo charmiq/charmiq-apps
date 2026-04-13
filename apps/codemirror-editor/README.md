@@ -13,15 +13,15 @@ The original `codemirror.html` (~2,000 lines) has been decomposed into focused m
 | File | Responsibility |
 |---|---|
 | [`manifest.json`](charmiq://./manifest.json) | Application identity, import map, runtime declarations |
-| [`index.html`](charmiq://./index.html) | Structural shell — tabs, menus, editor container. No inline JS or CSS |
-| [`styles.scss`](charmiq://./styles.scss) | All visual styling (SCSS with custom properties, nesting, responsive breakpoint) |
-| [`editor-wrapper.ts`](charmiq://./editor-wrapper.ts) | Thin facade over CodeMirror 5. If CM is ever upgraded to 6, only this file changes |
-| [`content-bridge.ts`](charmiq://./content-bridge.ts) | OT content sync between editor and `appContent`. Owns the discovery phase |
-| [`config-store.ts`](charmiq://./config-store.ts) | Editor configuration and tab metadata persisted via `appState`. Fetch-merge-set writes |
-| [`tab-manager.ts`](charmiq://./tab-manager.ts) | Tab lifecycle (create, delete, switch, rename, reorder). Coordinates all three data modules |
-| [`toolbar.ts`](charmiq://./toolbar.ts) | All UI chrome: settings menu, mobile menu, toggles, drag-and-drop, import/export, clipboard |
-| [`command.ts`](charmiq://./command.ts) | LLM command surface via `charmiq.advertise` — getText, setText, createTab, etc. |
-| [`main.ts`](charmiq://./main.ts) | Entry point (~30 lines). Creates instances, wires dependencies, starts discovery |
+| [`src/index.html`](charmiq://./src/index.html) | Structural shell — tabs, menus, editor container. No inline JS or CSS |
+| [`src/styles.scss`](charmiq://./src/styles.scss) | All visual styling (SCSS with custom properties, nesting, responsive breakpoint) |
+| [`src/editor-wrapper.ts`](charmiq://./src/editor-wrapper.ts) | Thin facade over CodeMirror 5. If CM is ever upgraded to 6, only this file changes |
+| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | OT content sync between editor and `appContent`. Owns the discovery phase |
+| [`src/config-store.ts`](charmiq://./src/config-store.ts) | Editor configuration and tab metadata persisted via `appState`. Fetch-merge-set writes |
+| [`src/tab-manager.ts`](charmiq://./src/tab-manager.ts) | Tab lifecycle (create, delete, switch, rename, reorder). Coordinates all three data modules |
+| [`src/toolbar.ts`](charmiq://./src/toolbar.ts) | All UI chrome: settings menu, mobile menu, toggles, drag-and-drop, import/export, clipboard |
+| [`src/command.ts`](charmiq://./src/command.ts) | LLM command surface via `charmiq.advertise` — getText, setText, createTab, etc. |
+| [`src/main.ts`](charmiq://./src/main.ts) | Entry point (~30 lines). Creates instances, wires dependencies, starts discovery |
 
 ### Data flow
 
