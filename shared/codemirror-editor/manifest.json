@@ -1,0 +1,24 @@
+{
+  "id": "ai.charm.shared.codemirror-editor",
+  "name": "CodeMirror Editor",
+  "description": "A multi-tab code editor with collaborative editing, OT content sync, and configurable language modes",
+  "bundle": {
+    "entry": {
+      "html": "/index.html",
+      "script": "/main.ts",
+      "style": "/styles.scss"
+    },
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.1",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators",
+        "codemirror": "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"
+      }
+    }
+  },
+  "runtime": {
+    "appContent": true,
+    "appState": true
+  }
+}

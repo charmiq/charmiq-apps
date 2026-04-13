@@ -1,0 +1,588 @@
+// all styles for the editor application component styles (ays-dialog) are handled
+// by the component's own shadow DOM
+
+// ********************************************************************************
+// == Variables ===================================================================
+:root {
+  --primary: #4A90E2;
+  --primary-light: #e7f3ff;
+  --accent: #6c757d;
+  --accent-light: #f8f9fa;
+  --warning: #f59e0b;
+  --warning-light: #fef3c7;
+  --muted: #6c757d;
+  --muted-light: #f8f9fa;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
+
+// == Reset =======================================================================
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--gray-50);
+  color: var(--gray-900);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+// == App Layout ==================================================================
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  margin: 0 auto;
+  background: white;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+// == Header ======================================================================
+.header {
+  padding: 0;
+  height: 40px;
+  border-bottom: 1px solid var(--gray-200);
+  background: white;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.app-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gray-900);
+  display: flex;
+  align-items: center;
+  padding-left: 16px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  height: 100%;
+}
+
+.icon-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+// == Settings / Action Buttons ===================================================
+.settings-container {
+  position: relative;
+}
+
+.settings-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--gray-600);
+  border-radius: 4px;
+
+  &:hover {
+    color: var(--gray-800);
+    background-color: var(--gray-100);
+  }
+
+  &:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+// == Settings Menu ===============================================================
+.settings-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: all 0.2s ease;
+
+  &.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+}
+
+.settings-section {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--gray-200);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.settings-label {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-dropdown {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 4px 14px 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--gray-300);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--gray-700);
+  background: white;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--primary);
+  }
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover {
+    background: var(--gray-50);
+  }
+}
+
+.settings-toggle-label {
+  font-size: 13px;
+  color: var(--gray-700);
+}
+
+// == Toggle Switch (shared by desktop + mobile) ==================================
+.toggle-switch {
+  width: 36px;
+  height: 20px;
+  background: var(--gray-300);
+  border-radius: 10px;
+  position: relative;
+  transition: background-color 0.2s ease;
+
+  &.active {
+    background: var(--primary);
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: white;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s ease;
+  }
+
+  &.active::after {
+    transform: translateX(16px);
+  }
+}
+
+// == File Input (hidden) =========================================================
+.hidden-file-input {
+  display: none;
+}
+
+// == Editor Container ============================================================
+.editor-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transition: opacity 0.15s ease-in;
+
+  &.ready {
+    opacity: 1;
+  }
+}
+
+.CodeMirror {
+  height: 100% !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.CodeMirror-placeholder {
+  color: var(--gray-400) !important;
+}
+
+// == Tab Bar =====================================================================
+.tab-bar {
+  display: flex;
+  align-items: flex-end;
+  flex: 1;
+  overflow-x: auto;
+  margin-right: 16px;
+  gap: 0;
+  padding-left: 0;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  height: 100%;
+  background: transparent;
+  border-right: 1px solid transparent;
+  border-left: 1px solid transparent;
+  border-top: 2px solid transparent;
+  border-bottom: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--gray-600);
+  min-width: 100px;
+  max-width: 200px;
+  position: relative;
+  transition: all 0.2s ease;
+  user-select: none;
+  margin-bottom: -1px;
+
+  &:hover {
+    background: var(--gray-50);
+    color: var(--gray-800);
+  }
+
+  &.active {
+    background: white;
+    color: var(--primary);
+    border-left-color: var(--gray-200);
+    border-right-color: var(--gray-200);
+    border-top-color: var(--primary);
+    font-weight: 500;
+    z-index: 1;
+  }
+
+  &.dragging {
+    opacity: 0.5;
+    cursor: move;
+  }
+
+  &.single-tab {
+    border: none;
+    background: transparent;
+    cursor: default;
+    padding-left: 16px;
+    min-width: auto;
+    max-width: none;
+    margin-bottom: 0;
+    color: var(--gray-900);
+    font-weight: 600;
+
+    &:hover {
+      background: transparent;
+      color: var(--gray-900);
+    }
+
+    .tab-name {
+      cursor: text;
+    }
+  }
+}
+
+.tab-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+  flex: 1;
+}
+
+.tab-name-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  outline: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: var(--gray-400);
+  opacity: 0;
+  transition: all 0.2s;
+
+  .tab:hover &,
+  .tab.active & {
+    opacity: 1;
+  }
+
+  &:hover {
+    background: var(--gray-200);
+    color: var(--gray-800);
+  }
+}
+
+.add-tab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--gray-500);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  margin: auto 8px;
+
+  &:hover {
+    background: var(--gray-100);
+    color: var(--gray-800);
+  }
+}
+
+// == Mobile Hamburger ============================================================
+.hamburger-btn {
+  display: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  color: var(--gray-500);
+  flex-shrink: 0;
+  margin: auto 8px;
+
+  &:hover {
+    background: var(--gray-100);
+    color: var(--gray-800);
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+// == Mobile Menu =================================================================
+.mobile-menu {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  display: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+
+  &.show {
+    display: flex;
+    opacity: 1;
+  }
+}
+
+.mobile-menu-content {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 280px;
+  max-width: 85vw;
+  height: 100%;
+  background: white;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+
+  .mobile-menu.show & {
+    transform: translateX(0);
+  }
+}
+
+.mobile-menu-header {
+  height: 40px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.mobile-menu-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--gray-600);
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--gray-100);
+    color: var(--gray-800);
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+.mobile-menu-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-size: 15px;
+  color: var(--gray-700);
+  min-height: 44px;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  &:not(:disabled):active {
+    background: var(--gray-100);
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+}
+
+.mobile-menu-section {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--gray-200);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.mobile-menu-label {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mobile-menu-dropdown {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 4px 16px 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: 4px;
+  font-size: 15px;
+  color: var(--gray-700);
+  background: white;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.mobile-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  min-height: 44px;
+
+  &:active {
+    background: var(--gray-50);
+  }
+}
+
+.mobile-menu-toggle-label {
+  font-size: 15px;
+  color: var(--gray-700);
+}
+
+// == Responsive ==================================================================
+@media (max-width: 640px) {
+  .header-right {
+    display: none;
+  }
+
+  .hamburger-btn {
+    display: flex;
+  }
+}
