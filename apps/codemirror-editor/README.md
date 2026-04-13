@@ -71,7 +71,7 @@ Two storage channels — one for content, one for config:
 
 ### Design Decisions Worth Noting
 
-**The update loop guard.** When the editor writes to `appContent`, the change comes back through `onChange$()`. Without a guard, you get an infinite loop. `ContentBridge` sets an `updating` flag before writing and checks it before processing incoming changes. This pattern applies to any Application that writes to `appContent`.
+**State comparison, not causality tracking.** When the editor writes to `appContent`, the change comes back through `onChange$()`. It's tempting to set a flag — "I just wrote this, so ignore the next incoming change." That's wrong. OT can merge your edit with a concurrent one, so the change that comes back may contain both your text *and* someone else's. Suppressing it silently drops their work. Instead, compare: read the editor's current text, compare it to what arrived, and apply only the diff. If they already match, do nothing. If they differ, patch the difference. It doesn't matter who caused the change — only whether the editor's state matches the authoritative state. (The narrow `updating` flag in `EditorWrapper` serves a different purpose: it prevents CodeMirror's synchronous `changes` event from re-dispatching a programmatic `replaceRange()` call back to `applyChanges()`. That's a local, synchronous guard — not a suppression of remote changes.)
 
 **CodeMirror 5 via CDN globals.** CM5 isn't an ES module — it attaches to `window.CodeMirror`. Language modes load the same way, as additional `<script>` tags declared in the manifest. The `editor-wrapper.ts` facade means the rest of the Application never touches `window.CodeMirror` directly.
 
