@@ -27,7 +27,7 @@ type RemoteChangeCallback = (change: ContentChange) => void;
 // == Charmiq API (global) ========================================================
 interface CharmiqAppContent {
   onChange$(): Observable<ContentChange>;
-  applyChanges(changes: ReadonlyArray<{ from: number; to: number; insert: string }>, selector: string): Promise<void>;
+  applyChanges(changes: ReadonlyArray<{ from: number; to: number; insert: string; }>, selector: string): Promise<void>;
   set(content: string | undefined, selector: string, name?: string): Promise<void>;
   remove(selector: string): Promise<void>;
 }
