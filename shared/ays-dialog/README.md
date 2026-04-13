@@ -80,24 +80,27 @@ This is a Web Component built with:
 
 - **The pipeline handles everything.** TypeScript compilation, JSX transformation, SCSS compilation — all from a manifest and source files. No bundler config, no build step, no `node_modules`.
 
-- **No indirection.** The manifest points `script` directly at [`ays-dialog.tsx`](charmiq://./ays-dialog.tsx) — no intermediary `main.tsx` that just re-exports. The component registers itself. The `<iframe-app>` fixtures above load it with `<script src="charmiq://."></script>`, which the platform resolves to the compiled entry point.
+- **No indirection.** The manifest sets `output: "script"` and points directly at [`ays-dialog.tsx`](charmiq://./ays-dialog.tsx) — no HTML shell, no intermediary `main.tsx`. The component registers itself. The `<iframe-app>` fixtures above load it with `<script type="module" src="charmiq://."></script>`, which the platform resolves to the compiled entry point.
 
 ## The files
 
 | File | Role |
 |------|------|
-| [`manifest.json`](charmiq://./manifest.json) | declares entry points, ESM format, and the Preact import map |
+| [`manifest.json`](charmiq://./manifest.json) | declares the script entry, `output: "script"`, ESM format, and the Preact import map |
 | [`ays-dialog.tsx`](charmiq://./ays-dialog.tsx) | the Web Component — lifecycle, attributes, shadow DOM, JSX template |
 | [`ays-dialog.scss`](charmiq://./ays-dialog.scss) | component shadow DOM styles — proper SCSS, loaded via `<link>` |
-| [`index.html`](charmiq://./index.html) | HTML shell |
 
 ## How the JSX factory works
 
 The import map in [`manifest.json`](charmiq://./manifest.json) maps `preact` to `esm.sh`:
 
 ```json pK8mR3nQwB
-"importMap": {
-  "preact": "https://esm.sh/preact@10.24.3"
+"output": "script",
+"format": "esm",
+"dependencies": {
+  "importMap": {
+    "preact": "https://esm.sh/preact@10.24.3"
+  }
 }
 ```
 
