@@ -1,3 +1,5 @@
+import type { Observable } from 'rxjs';
+
 // owns editor configuration and tab metadata persisted via appState. All
 // reads/writes go through here — nobody else touches appState directly
 // ********************************************************************************
@@ -34,7 +36,7 @@ type TabOrderChangedCallback = (tabOrder: ReadonlyArray<string>) => void;
 
 // == Charmiq API (global) ========================================================
 interface CharmiqAppState {
-  onChange$(): any;/*rxjs Observable<AppState | null>*/
+  onChange$(): Observable<AppState | null>;
   set(state: AppState): Promise<void>;
   get(): Promise<AppState | null>;
 }

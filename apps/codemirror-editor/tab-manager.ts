@@ -1,3 +1,5 @@
+import { filter, take, timeout } from 'rxjs/operators';
+
 import type { ContentBridge, ContentChange } from './content-bridge';
 import { type ConfigStore, DEFAULT_MODE } from './config-store';
 import type { EditorWrapper } from './editor-wrapper';
@@ -18,9 +20,6 @@ export const UNTITLED_TAB_NAME = 'Untitled';
 const TAB_CREATION_TIMEOUT_MS = 5_000/*ms*/;
 
 // == Types =======================================================================
-declare const rxjs: any;/*loaded via <script> in index.html*/
-
-// --------------------------------------------------------------------------------
 /** a single tab's local state */
 interface Tab {
   name: string;
@@ -106,7 +105,6 @@ export class TabManager {
       await this.contentBridge.set(content, `[name='${uniqueSelector}']`, tabName);
 
       // wait for the tab to appear so its mode can be persisted
-      const { filter, take, timeout } = rxjs.operators;
       (window as any).charmiq.appContent.onChange$().pipe(
         filter((c: any) => !c.deleted && (c.name === tabName)),
         take(1),

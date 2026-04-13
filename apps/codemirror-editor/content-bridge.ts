@@ -1,3 +1,6 @@
+import { race, timer, Observable, Subject } from 'rxjs';
+import { debounceTime, take } from 'rxjs/operators';
+
 // bridges the CodeMirror editor ↔ appContent OT layer. Owns the discovery phase
 // (wait for initial content to settle) and the forward/apply logic for incremental
 // edits
@@ -9,9 +12,6 @@ const DISCOVERY_DEBOUNCE_MS = 200/*ms*/;
 const DISCOVERY_TIMEOUT_MS = 500/*ms*/;
 
 // == Types =======================================================================
-declare const rxjs: any;/*loaded via <script> in index.html*/
-
-// --------------------------------------------------------------------------------
 /** shape of an appContent change event */
 export interface ContentChange {
   readonly id: string;
@@ -26,7 +26,7 @@ type RemoteChangeCallback = (change: ContentChange) => void;
 
 // == Charmiq API (global) ========================================================
 interface CharmiqAppContent {
-  onChange$(): any;/*rxjs Observable<ContentChange>*/
+  onChange$(): Observable<ContentChange>;
   applyChanges(changes: ReadonlyArray<{ from: number; to: number; insert: string }>, selector: string): Promise<void>;
   set(content: string | undefined, selector: string, name?: string): Promise<void>;
   remove(selector: string): Promise<void>;
@@ -53,11 +53,8 @@ export class ContentBridge {
    *  resolves when discovery is complete (content has stopped arriving, or timeout) */
   public discover(): Promise<void> {
     return new Promise((resolve) => {
-      const { timer, race } = rxjs;
-      const { take, debounceTime } = rxjs.operators;
-
       // track whether any content arrived during discovery
-      const contentReceived$ = new rxjs.Subject();
+      const contentReceived$ = new Subject<void>();
 
       // subscribe to all app-content changes (discovery + ongoing updates)
       this.appContent.onChange$().subscribe((change: ContentChange) => {

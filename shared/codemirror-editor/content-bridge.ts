@@ -1,4 +1,4 @@
-import { race, timer, Subject } from 'rxjs';
+import { race, timer, Subject, type Observable } from 'rxjs';
 import { debounceTime, take } from 'rxjs/operators';
 
 // bridges the CodeMirror editor ↔ appContent OT layer. Owns the discovery phase
@@ -26,8 +26,8 @@ type RemoteChangeCallback = (change: ContentChange) => void;
 
 // == Charmiq API (global) ========================================================
 interface CharmiqAppContent {
-  onChange$(): any;/*rxjs Observable<ContentChange>*/
-  applyChanges(changes: ReadonlyArray<{ from: number; to: number; insert: string }>, selector: string): Promise<void>;
+  onChange$(): Observable<ContentChange>;
+  applyChanges(changes: ReadonlyArray<{ from: number; to: number; insert: string; }>, selector: string): Promise<void>;
   set(content: string | undefined, selector: string, name?: string): Promise<void>;
   remove(selector: string): Promise<void>;
 }
