@@ -70,6 +70,12 @@ export class TabManager {
   public getTabs(): ReadonlyMap<string, Readonly<Tab>> { return this.tabs; }
   public getActiveTabId(): string | null { return this.activeTabId; }
 
+  /** true if a new tab can be created (respects maxTabs limit) */
+  public canCreateTab(): boolean {
+    const max = this.configStore.getMaxTabs();
+    return (max < 1) || (this.tabs.size < max);/*0 = unlimited*/
+  }
+
   /** return ordered tab IDs, merging configStore order with any tabs not yet in the order */
   public getOrderedTabIds(): string[] {
     const storeOrder = this.configStore.getTabOrder();
@@ -97,6 +103,8 @@ export class TabManager {
   // -- Create Tab ----------------------------------------------------------------
   /** create a new empty tab */
   public async create(name?: string, content = '', mode = DEFAULT_MODE): Promise<void> {
+    if(!this.canCreateTab()) return/*at maxTabs limit*/;
+
     const tabName = name || `${UNTITLED_TAB_NAME} ${this.tabs.size + 1}`;
     const uniqueSelector = `file-${Date.now()}`;
 

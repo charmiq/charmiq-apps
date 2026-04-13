@@ -54,6 +54,9 @@ export class Toolbar {
   private fileInput!: HTMLInputElement;
   private closeTabDialog!: HTMLElement;
   private closeTabMessage!: HTMLElement;
+  private addTabBtn!: HTMLElement;
+  private maxTabsInput!: HTMLInputElement;
+  private mobileMaxTabsInput!: HTMLInputElement;
   private tabToCloseId: string | null = null;
 
   // == Lifecycle =================================================================
@@ -70,6 +73,7 @@ export class Toolbar {
     this.bindMobileMenu();
     this.bindToggles();
     this.bindModeSelects();
+    this.bindMaxTabsInputs();
     this.bindActionButtons();
     this.bindFileInput();
     this.bindCloseTabDialog();
@@ -87,6 +91,10 @@ export class Toolbar {
     const mode = this.tabManager.getActiveTabMode();
     this.modeSelect.value = mode;
     this.mobileModeSelect.value = mode;
+
+    const maxTabs = String(this.configStore.getMaxTabs());
+    this.maxTabsInput.value = maxTabs;
+    this.mobileMaxTabsInput.value = maxTabs;
   }
 
   // -- Tabs ----------------------------------------------------------------------
@@ -147,6 +155,9 @@ export class Toolbar {
 
       this.tabBar.appendChild(tabElement);
     }
+
+    // show/hide the add-tab button based on the maxTabs limit
+    this.addTabBtn.style.display = this.tabManager.canCreateTab() ? '' : 'none';
   }
 
   // == Private: Element Caching ==================================================
@@ -159,6 +170,9 @@ export class Toolbar {
     this.fileInput = document.getElementById('fileInput')! as HTMLInputElement;
     this.closeTabDialog = document.getElementById('closeTabDialog')!;
     this.closeTabMessage = document.getElementById('closeTabMessage')!;
+    this.addTabBtn = document.getElementById('addTabBtn')!;
+    this.maxTabsInput = document.getElementById('maxTabsInput')! as HTMLInputElement;
+    this.mobileMaxTabsInput = document.getElementById('mobileMaxTabsInput')! as HTMLInputElement;
   }
 
   // == Private: Settings Menu ====================================================
@@ -279,6 +293,26 @@ export class Toolbar {
     // sync both selects
     this.modeSelect.value = newMode;
     this.mobileModeSelect.value = newMode;
+  }
+
+  // == Private: Max Tabs Inputs ==================================================
+  private bindMaxTabsInputs(): void {
+    const handler = (input: HTMLInputElement) => {
+      const value = parseInt(input.value, 10);
+      const clamped = isNaN(value) ? 0 : Math.max(0, value);
+      this.configStore.updateEditorConfig('maxTabs', clamped);
+
+      // sync both inputs
+      const str = String(clamped);
+      this.maxTabsInput.value = str;
+      this.mobileMaxTabsInput.value = str;
+
+      // re-render to show/hide the add-tab button
+      this.renderTabs();
+    };
+
+    this.maxTabsInput.addEventListener('change', () => handler(this.maxTabsInput));
+    this.mobileMaxTabsInput.addEventListener('change', () => handler(this.mobileMaxTabsInput));
   }
 
   // == Private: Action Buttons ===================================================

@@ -14,6 +14,7 @@ export interface EditorConfig {
   lineWrapping: boolean;
   smartIndent: boolean;
   indentWithTabs: boolean;
+  maxTabs: number/*0 = unlimited*/;
 }
 
 // --------------------------------------------------------------------------------
@@ -46,7 +47,8 @@ const DEFAULT_CONFIG: Readonly<EditorConfig> = {
   lineNumbers: true,
   lineWrapping: false,
   smartIndent: true,
-  indentWithTabs: false
+  indentWithTabs: false,
+  maxTabs: 0/*0 = unlimited*/
 };
 
 // == Class =======================================================================
@@ -103,12 +105,13 @@ export class ConfigStore {
 
   // == Getters ===================================================================
   public getConfig(): Readonly<EditorConfig> { return this.config; }
+  public getMaxTabs(): number { return this.config.maxTabs; }
   public getTabMode(tabId: string): string { return this.tabModes[tabId] || DEFAULT_MODE; }
   public getTabOrder(): ReadonlyArray<string> { return this.tabOrder; }
 
   // == Writers (fetch-merge-set) ==================================================
   /** update a single editor config option in appState */
-  public async updateEditorConfig(key: keyof EditorConfig, value: boolean): Promise<void> {
+  public async updateEditorConfig<K extends keyof EditorConfig>(key: K, value: EditorConfig[K]): Promise<void> {
     this.config[key] = value;
 
     try {
@@ -186,16 +189,26 @@ export class ConfigStore {
   // == Internal ==================================================================
   /** apply an incoming appState snapshot to local state and notify callbacks */
   private applyState(state: AppState): void {
-    // config
+    // config (including maxTabs)
     if(state.config) {
       let configChanged = false;
-      const keys: (keyof EditorConfig)[] = ['lineNumbers', 'lineWrapping', 'smartIndent', 'indentWithTabs'];
-      for(const key of keys) {
+      const boolKeys: (keyof EditorConfig)[] = ['lineNumbers', 'lineWrapping', 'smartIndent', 'indentWithTabs'];
+      for(const key of boolKeys) {
         if((typeof state.config[key] === 'boolean') && (state.config[key] !== this.config[key])) {
-          this.config[key] = state.config[key]!;
+          (this.config as any)[key] = state.config[key]!;
           configChanged = true;
         } /* else -- missing or invalid key/value */
       }
+
+      // maxTabs (0 or undefined = unlimited)
+      if(typeof state.config.maxTabs === 'number') {
+        const incoming = Math.max(0, Math.floor(state.config.maxTabs));
+        if(incoming !== this.config.maxTabs) {
+          this.config.maxTabs = incoming;
+          configChanged = true;
+        } /* else -- maxTabs unchanged */
+      } /* else -- maxTabs not in this update */
+
       if(configChanged && this.onConfigChanged) this.onConfigChanged({ ...this.config });
     } /* else -- no config */
 

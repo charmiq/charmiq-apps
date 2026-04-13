@@ -45,6 +45,7 @@ const start = async () => {
     editorWrapper.setOption('smartIndent', cfg.smartIndent);
     editorWrapper.setOption('indentWithTabs', cfg.indentWithTabs);
     toolbar.syncUI();
+    toolbar.renderTabs()/*maxTabs may have changed*/;
   });
 
   configStore.onTabModesChange(() => {

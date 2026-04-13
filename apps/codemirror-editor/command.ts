@@ -43,7 +43,9 @@ export class CommandSurface {
       },
 
       createTab: async (name?: string, content = '', mode = DEFAULT_MODE) => {
+        if(!this.tabManager.canCreateTab()) return false/*at maxTabs limit*/;
         await this.tabManager.create(name, content, mode);
+        return true;
       },
 
       switchTab: (tabId: string) => {
