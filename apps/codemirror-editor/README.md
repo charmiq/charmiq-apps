@@ -6,11 +6,13 @@
   <app-source></app-source>
 </iframe-app>
 
+
 ## What This Is
 
 The CodeMirror Editor is a full code editor embedded directly in your CharmIQ document. Multiple tabs. Syntax highlighting for a dozen languages. Settings that persist across sessions. And because it's built on CharmIQ's data layer, every tab's content is collaboratively editable — two people typing in the same tab merge cleanly, the same way text does anywhere else in the workspace.
 
 It's also a reference implementation. If you're building a complex Application, this one shows the full pattern: OT-backed content, persistent config, a Charm command surface, mobile layout, and multi-module TypeScript — all working together.
+
 
 ## In Practice
 
@@ -44,6 +46,7 @@ The Application is folder-based, with each module owning a single concern. This 
 | [`src/command.ts`](charmiq://./src/command.ts) | Charm command surface via `charmiq.advertise` |
 | [`src/main.ts`](charmiq://./src/main.ts) | Entry point. Creates instances, wires dependencies, starts discovery |
 
+
 ### Data Flow
 
 Two storage channels — one for content, one for config:
@@ -65,6 +68,7 @@ graph TD
 
 **`appState`** holds everything else: which tabs exist, their names, language settings, UI preferences. It uses last-write-wins semantics — appropriate here because one user at a time controls configuration. `ConfigStore` always reads the current state before writing, merging its update rather than clobbering the whole object.
 
+
 ### Design Decisions Worth Noting
 
 **State comparison, not causality tracking.** When the editor writes to `appContent`, the change comes back through `onChange$()`. It's tempting to set a flag — "I just wrote this, so ignore the next incoming change." That's wrong. OT can merge your edit with a concurrent one, so the change that comes back may contain both your text *and* someone else's. Suppressing it silently drops their work. Instead, compare: read the editor's current text, compare it to what arrived, and apply only the diff. If they already match, do nothing. If they differ, patch the difference. It doesn't matter who caused the change — only whether the editor's state matches the authoritative state. (The narrow `updating` flag in `EditorWrapper` serves a different purpose: it prevents CodeMirror's synchronous `changes` event from re-dispatching a programmatic `replaceRange()` call back to `applyChanges()`. That's a local, synchronous guard — not a suppression of remote changes.)
@@ -74,6 +78,7 @@ graph TD
 **The Charm command surface.** `command.ts` calls `charmiq.advertise('charmiq.command', { ... })` to register named operations: `getText`, `setText`, `createTab`, `switchTab`, `removeTab`, `listTabs`. Any Charm working in the same document can discover and call these. This is the pattern for making an Application Charm-controllable without coupling it to any specific Charm.
 
 **RxJS at the boundary only.** `onChange$()` returns an Observable; the Application subscribes to it. But RxJS doesn't appear inside the modules themselves — only at the integration points where the CharmIQ API requires it.
+
 
 ## Next Steps
 
