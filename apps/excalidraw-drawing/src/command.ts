@@ -29,7 +29,6 @@ export class CommandSurface {
       getText: () => {
         return this.contentBridge.getCurrentContent();
       },
-
       setText: async (text: string) => {
         await this.contentBridge.setText(text);
       },
@@ -37,15 +36,13 @@ export class CommandSurface {
       getSceneElements: () => {
         return this.excalidrawAPI?.getSceneElements() ?? [];
       },
-
-      getAppState: () => {
+      getSceneState: () => {
         return this.excalidrawAPI?.getAppState() ?? {};
       },
 
       getConfig: () => {
         return { ...this.configStore.getConfig() };
       },
-
       setConfig: async (partial: Record<string, unknown>) => {
         await this.configStore.setConfig(partial);
       }

@@ -90,6 +90,6 @@ The app advertises these commands via `charmiq.advertise`:
 | `getText()` | Return the current drawing JSON |
 | `setText(text)` | Replace the drawing content |
 | `getSceneElements()` | Return Excalidraw's scene elements array |
-| `getAppState()` | Return Excalidraw's app state |
+| `getSceneState()` | Return Excalidraw's scene state (zoom, cursor, background, etc.) |
 | `getConfig()` | Return the current widget configuration |
 | `setConfig(partial)` | Merge partial config and persist to appState |

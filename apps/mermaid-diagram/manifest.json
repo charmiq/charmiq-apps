@@ -20,5 +20,49 @@
   "runtime": {
     "appContent": true,
     "appState": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "getText",
+        "description": "Return the current Mermaid diagram source from appContent",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "string", "description": "Mermaid diagram source text" }
+      },
+      {
+        "name": "getConfig",
+        "description": "Return the current diagram configuration from appState",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "theme": { "type": "string", "enum": ["default", "neutral", "dark", "forest", "base"] },
+            "flowchart": {
+              "type": "object",
+              "properties": {
+                "curve": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "setConfig",
+        "description": "Merge partial diagram configuration into appState",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "theme": { "type": "string", "enum": ["default", "neutral", "dark", "forest", "base"], "description": "Mermaid theme name" },
+            "flowchart": {
+              "type": "object",
+              "properties": {
+                "curve": { "type": "string", "description": "D3 curve function name for flowchart edges" }
+              },
+              "description": "Flowchart-specific options"
+            }
+          }
+        }
+      }
+    ]
   }
 }

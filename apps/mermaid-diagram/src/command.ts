@@ -27,7 +27,6 @@ export class CommandSurface {
       getConfig: () => {
         return { ...this.configStore.getConfig() };
       },
-
       setConfig: async (partial: Record<string, unknown>) => {
         await this.configStore.setConfig(partial);
       }

@@ -20,5 +20,99 @@
   "runtime": {
     "appContent": true,
     "appState": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "getText",
+        "description": "Return the text content of the specified tab or the active tab",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tabId": { "type": "string", "description": "ID of the tab to read (defaults to active tab)" }
+          }
+        },
+        "outputSchema": {
+          "type": ["string", "null"],
+          "description": "The tab content, or null if the tab was not found"
+        }
+      },
+      {
+        "name": "setText",
+        "description": "Replace the text content of the specified tab or the active tab",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "The new content" },
+            "tabId": { "type": "string", "description": "ID of the tab to write (defaults to active tab)" }
+          },
+          "required": ["text"]
+        }
+      },
+      {
+        "name": "listTabs",
+        "description": "Return metadata for every open tab",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "mode": { "type": "string" },
+              "isActive": { "type": "boolean" }
+            },
+            "required": ["id", "name", "mode", "isActive"]
+          }
+        }
+      },
+      {
+        "name": "switchTab",
+        "description": "Activate an existing tab by ID",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tabId": { "type": "string", "description": "ID of the tab to activate" }
+          },
+          "required": ["tabId"]
+        },
+        "outputSchema": {
+          "type": "boolean",
+          "description": "True if the tab was found and activated, false otherwise"
+        }
+      },
+      {
+        "name": "createTab",
+        "description": "Create a new editor tab with optional name, content, and language mode",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Display name for the tab" },
+            "content": { "type": "string", "description": "Initial text content (defaults to empty)" },
+            "mode": { "type": "string", "description": "CodeMirror language mode (defaults to 'markdown')" }
+          }
+        },
+        "outputSchema": {
+          "type": "boolean",
+          "description": "True if the tab was created, false if at the maximum tab limit"
+        }
+      },
+      {
+        "name": "removeTab",
+        "description": "Close and remove a tab by ID (cannot remove the last remaining tab)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "tabId": { "type": "string", "description": "ID of the tab to remove" }
+          },
+          "required": ["tabId"]
+        },
+        "outputSchema": {
+          "type": "boolean",
+          "description": "True if the tab was removed, false if not found or is the sole tab"
+        }
+      }
+    ]
   }
 }

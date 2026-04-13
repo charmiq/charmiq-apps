@@ -20,5 +20,65 @@
   "runtime": {
     "appContent": true,
     "appState": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "getText",
+        "description": "Return the raw Excalidraw JSON stored in appContent",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "string", "description": "Serialized Excalidraw scene JSON" }
+      },
+      {
+        "name": "setText",
+        "description": "Replace the Excalidraw scene by writing new JSON to appContent",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string", "description": "Serialized Excalidraw scene JSON" }
+          },
+          "required": ["text"]
+        }
+      },
+      {
+        "name": "getSceneElements",
+        "description": "Return the current Excalidraw scene elements array",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Array of Excalidraw element objects"
+        }
+      },
+      {
+        "name": "getSceneState",
+        "description": "Return the current Excalidraw scene state (zoom, cursor, background, etc.)",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "object", "description": "Excalidraw scene state object" }
+      },
+      {
+        "name": "getConfig",
+        "description": "Return the current drawing configuration from appState",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "showMainMenu": { "type": "boolean" },
+            "viewModeEnabled": { "type": "boolean" }
+          }
+        }
+      },
+      {
+        "name": "setConfig",
+        "description": "Merge partial drawing configuration into appState",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "showMainMenu": { "type": "boolean", "description": "Show or hide the Excalidraw main menu" },
+            "viewModeEnabled": { "type": "boolean", "description": "Enable or disable view-only mode" }
+          }
+        }
+      }
+    ]
   }
 }

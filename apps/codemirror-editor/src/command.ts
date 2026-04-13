@@ -30,7 +30,6 @@ export class CommandSurface {
         } /* else -- no tabId provided */
         return this.editorWrapper.getValue();
       },
-
       setText: async (text: string, tabId?: string) => {
         const targetId = tabId || this.tabManager.getActiveTabId();
         if(!targetId) return;
@@ -42,28 +41,6 @@ export class CommandSurface {
         if(contentBridge) await contentBridge.set(text, `[id='${targetId}']`);
       },
 
-      createTab: async (name?: string, content = '', mode = DEFAULT_MODE) => {
-        if(!this.tabManager.canCreateTab()) return false/*at maxTabs limit*/;
-        await this.tabManager.create(name, content, mode);
-        return true;
-      },
-
-      switchTab: (tabId: string) => {
-        if(this.tabManager.getTabs().has(tabId)) {
-          this.tabManager.switchTab(tabId);
-          return true;
-        } /* else -- invalid tabId */
-        return false;
-      },
-
-      removeTab: async (tabId: string) => {
-        const tabs = this.tabManager.getTabs();
-        if(!tabs.has(tabId) || (tabs.size <= 1)) return false;
-
-        await this.tabManager.delete(tabId);
-        return true;
-      },
-
       listTabs: () => {
         const activeTabId = this.tabManager.getActiveTabId();
         return Array.from(this.tabManager.getTabs().entries()).map(([id, tab]) => ({
@@ -72,6 +49,25 @@ export class CommandSurface {
           mode: this.configStore.getTabMode(id),
           isActive: id === activeTabId
         }));
+      },
+      switchTab: (tabId: string) => {
+        if(this.tabManager.getTabs().has(tabId)) {
+          this.tabManager.switchTab(tabId);
+          return true;
+        } /* else -- invalid tabId */
+        return false;
+      },
+      createTab: async (name?: string, content = '', mode = DEFAULT_MODE) => {
+        if(!this.tabManager.canCreateTab()) return false/*at maxTabs limit*/;
+        await this.tabManager.create(name, content, mode);
+        return true;
+      },
+      removeTab: async (tabId: string) => {
+        const tabs = this.tabManager.getTabs();
+        if(!tabs.has(tabId) || (tabs.size <= 1)) return false;
+
+        await this.tabManager.delete(tabId);
+        return true;
       }
     });
   }
