@@ -1,0 +1,39 @@
+// all visual styling for the Mermaid diagram renderer
+// ********************************************************************************
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: auto;
+  background: transparent;
+}
+
+#diagram {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 16px;
+  box-sizing: border-box;
+
+  // mermaid renders SVG into the container — let it size naturally
+  svg {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+// == Error Display ===============================================================
+.error {
+  padding: 16px;
+  margin: 16px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85rem;
+  color: #c41a16;
+  background: #fff0f0;
+  border: 1px solid #ffc0c0;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
