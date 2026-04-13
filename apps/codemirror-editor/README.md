@@ -15,9 +15,13 @@ It's also a reference implementation. If you're building a complex Application, 
 ## In Practice
 
 **Adding a tab** — Use the `+` button in the tab bar. Tabs can be renamed by double-clicking the label.
+
 **Switching languages** — Open the settings menu (gear icon) and select from the available language modes. The setting persists — reloading the Application restores your last configuration.
+
 **Import / Export** — The toolbar exposes file import and export. Importing replaces the active tab's content; exporting downloads it as a file.
+
 **Collaborative editing** — Changes from any connected user merge automatically. You don't need to do anything differently — it just works.
+
 **Charms can drive the editor** — Tag a Charm and ask it to write into a specific tab, create a new tab, or read the current content. The editor advertises a command surface that Charms can call directly.
 
 
@@ -78,6 +82,9 @@ Two storage channels — one for content, one for config:
 ## Next Steps
 
 **→ [App-Content and App-State](https://team.charmiq.ai/docs/application/developer-app-content-and-app-state)** — The two storage channels this Application uses, and when to reach for each.
+
 **→ [Application Discovery](https://team.charmiq.ai/docs/application/developer-application-discovery)** — How Applications advertise capabilities and how Charms (and other Applications) discover them.
+
 **→ [Building Applications](https://team.charmiq.ai/docs/application/building-applications)** — Inline vs. folder-based Applications, and how the build pipeline assembles source files.
+
 **→ [The Bridge API](https://team.charmiq.ai/docs/application/developer-bridge-api)** — Full reference for `window.charmiq`.
