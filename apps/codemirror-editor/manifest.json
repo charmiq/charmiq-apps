@@ -4,9 +4,9 @@
   "description": "A multi-tab code editor with collaborative editing, OT content sync, and configurable language modes",
   "bundle": {
     "entry": {
-      "html": "/index.html",
-      "script": "/main.ts",
-      "style": "/styles.scss"
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
     },
     "format": "esm",
     "dependencies": {
