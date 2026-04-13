@@ -1,5 +1,5 @@
 /** @jsx h */
-import { h } from 'preact';
+import { h, render } from 'preact';
 
 // ********************************************************************************
 // == Types =======================================================================
@@ -29,7 +29,7 @@ class AysDialog extends HTMLElement {
   }
 
   public connectedCallback() {
-    this.render();
+    this.mountTemplate();
     this.setupEventListeners();
   }
 
@@ -46,7 +46,7 @@ class AysDialog extends HTMLElement {
       if(newValue !== null) this.show();
       else this.hide();
     } else if((name === 'type') && (oldValue !== newValue)) {
-      this.render();
+      this.mountTemplate();
     } else if(((name === 'primary-text') || (name === 'cancel-text')) && (oldValue !== newValue)) {
       this.updateButtonText();
     }
@@ -58,15 +58,18 @@ class AysDialog extends HTMLElement {
   public get cancelText(): string | null { return this.getAttribute('cancel-text'); }
 
   // == Rendering =================================================================
-  private render() {
+  private mountTemplate() {
     const shadow = this.shadowRoot!;
-    shadow.innerHTML = ''/*clear previous content*/;
 
-    // inject compiled styles inline — the string was inlined at bundle time
-    shadow.appendChild(<style>{componentStyles}</style>);
-
-    // build the template via JSX → real DOM
-    shadow.appendChild(this.template());
+    // render the full Preact tree (style + template) into the shadow root.
+    // Preact's render() converts VNodes into real DOM nodes
+    render(
+      <div>
+        <style>{componentStyles}</style>
+        {this.template()}
+      </div>,
+      shadow
+    );
   }
 
   private template(): HTMLElement {
