@@ -1,0 +1,24 @@
+{
+  "id": "ai.charm.apps.excalidraw-drawing",
+  "name": "Excalidraw Drawing",
+  "description": "A collaborative drawing canvas powered by Excalidraw with OT content sync, persistent configuration, and an LLM command surface",
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
+    },
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.1",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators",
+        "fast-diff": "https://esm.sh/fast-diff@1.2.0"
+      }
+    }
+  },
+  "runtime": {
+    "appContent": true,
+    "appState": true
+  }
+}
