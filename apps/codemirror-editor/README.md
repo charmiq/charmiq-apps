@@ -2,7 +2,7 @@
 
 *A multi-tab code editor with collaborative editing (OT), configurable language modes, and import/export — built with TypeScript, CodeMirror 5, and zero frameworks.*
 
-<iframe-app data-sandboxed="true" height="400px" width="100%" src="charmiq://.">
+<iframe-app data-sandboxed="true" height="400px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
   <app-source></app-source>
 </iframe-app>
 
