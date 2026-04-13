@@ -4,8 +4,7 @@
   "description": "A customizable 'Are You Sure' confirmation dialog — Web Component with TSX and SCSS",
   "bundle": {
     "entry": {
-      "script": "/ays-dialog.tsx",
-      "style": "/ays-dialog.scss"
+      "script": "/ays-dialog.tsx"
     },
     "output": "script",
     "format": "esm",

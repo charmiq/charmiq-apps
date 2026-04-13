@@ -6,10 +6,9 @@ import { h } from 'preact';
 type DialogType = 'warning' | 'info' | 'error';
 
 // == Stylesheet ==================================================================
-// load the component styles from the separate SCSS file. the pipeline compiles
-// SCSS → CSS automatically. a <link> in the shadow root keeps styles completely
-// separate from component logic — no CSS-in-JS, no string blobs
-const styleHref = new URL('./ays-dialog.scss', import.meta.url).href;
+// import SCSS as a text string — the pipeline compiles SCSS → CSS and inlines
+// the result into the JS bundle (no separate CSS request needed)
+import componentStyles from './ays-dialog.scss';
 
 // == Component ===================================================================
 /**
@@ -63,8 +62,8 @@ class AysDialog extends HTMLElement {
     const shadow = this.shadowRoot!;
     shadow.innerHTML = ''/*clear previous content*/;
 
-    // inject compiled SCSS via <link> — the pipeline serves .scss as CSS
-    shadow.appendChild(<link rel="stylesheet" href={styleHref} />);
+    // inject compiled styles inline — the string was inlined at bundle time
+    shadow.appendChild(<style>{componentStyles}</style>);
 
     // build the template via JSX → real DOM
     shadow.appendChild(this.template());
