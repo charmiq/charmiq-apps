@@ -83,7 +83,7 @@ export class TabManager {
     const missing = Array.from(this.tabs.keys()).filter(id => !ordered.includes(id));
     if(missing.length > 0) {
       const combined = [...ordered, ...missing];
-      this.configStore.updateTabOrder(combined)/*async, fire-and-forget*/;
+      if(this.initialSetupDone) this.configStore.updateTabOrder(combined)/*async, fire-and-forget*/;
       return combined;
     } /* else -- order is up to date */
 
