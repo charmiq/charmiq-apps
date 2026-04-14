@@ -2,7 +2,7 @@
 
 *A read-only Mermaid renderer that turns diagram source in `appContent` into live SVG.*
 
-<iframe-app data-sandboxed="true" height="300px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
+<iframe-app height="300px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
   <app-content name="demo">
 graph LR
     A[appContent] -->|onChange$| B[ContentBridge]

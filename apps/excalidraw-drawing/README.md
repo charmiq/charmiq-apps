@@ -2,8 +2,7 @@
 
 *A collaborative drawing canvas embedded in your workspace — with OT content sync, persistent configuration, and an LLM command surface.*
 
-<iframe-app data-sandboxed="true" height="500px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
-  <app-source></app-source>
+<iframe-app height="500px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
 </iframe-app>
 
 ## What This Is
@@ -51,7 +50,7 @@ The app is folder-based, with each module owning a single concern.
 
 Two storage channels — one for content, one for config:
 
-<iframe-app data-sandboxed="true" height="380px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://../mermaid-diagram">
+<iframe-app height="380px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://../mermaid-diagram">
   <app-content name="data-flow">
 graph TD
     EX["Excalidraw\n(React UMD)"] -->|"onChange (debounced)"| CB["ContentBridge\n(OT sync)"]

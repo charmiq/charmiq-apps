@@ -2,7 +2,7 @@
 
 *A customizable "Are You Sure" confirmation dialog — built as a Web Component with TSX, SCSS, and zero frameworks.*
 
-<iframe-app data-sandboxed="true" height="280px" width="100%">
+<iframe-app height="280px" width="100%">
   <app-source>
 <!DOCTYPE html>
 <html>
