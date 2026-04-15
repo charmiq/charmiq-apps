@@ -12,7 +12,7 @@ The card in front of you is doing two things at once. On one side, a pure-CSS te
 
 Hit **Flip Reality**. The card rotates in 3D — `perspective`, `transform-style: preserve-3d`, `backface-visibility: hidden` — the same trick used in flashcard UIs and product showcases, except here you're flipping between *the thing* and *the source of the thing*.
 
-The editors are live. Try it: flip to the code side, change `Lifestyle` to `Vacation` in the HTML, then flip back. The animation now cycles your word. Change a color in the CSS tab. Swap `Everything` for your name. Every edit sticks — flip as many times as you want.
+**The editors are live**. Try it: flip to the code side, change `Lifestyle` to `Vacation` in the HTML, then flip back. The animation now cycles your word. Change a color in the CSS tab. Swap `Everything` for your name. Every edit sticks — flip as many times as you want.
 
 
 ## The Techniques
