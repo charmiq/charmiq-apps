@@ -1,7 +1,15 @@
 // all styles for the editor application component styles (ays-dialog) are handled
 // by the component's own shadow DOM
-
 // ********************************************************************************
+// == FOUC Prevention =============================================================
+// custom elements are :not(:defined) until their JS loads and calls
+// customElements.define(). Hide them to prevent a flash of unstyled content
+// (e.g. slotted SVGs showing through before the shadow DOM renders)
+// SEE: https://developer.mozilla.org/en-US/docs/Web/CSS/:defined
+:not(:defined) {
+  display: none;
+}
+
 // == Variables ===================================================================
 :root {
   --primary: #4A90E2;
