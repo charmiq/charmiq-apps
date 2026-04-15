@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Flip</title>
+
+  <!-- CodeMirror 5 + language modes -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/css/css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/xml/xml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/htmlmixed/htmlmixed.min.js"></script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css?family=Roboto:700" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* == Variables ============================================================ */
+    :root {
+      --primary: #4A90E2;
+      --bg-color: #f0f2f5;
+    }
+
+    /* == Base ================================================================= */
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg-color);
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* == Stage (3D context) =================================================== */
+    .scene {
+      width: 90%;
+      height: 85%;
+      perspective: 2000px;
+    }
+
+    .card {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      transition: transform 1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      transform-style: preserve-3d;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+    }
+    .card.is-flipped {
+      transform: rotateY(180deg);
+    }
+
+    .card-face {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      border-radius: 12px;
+      overflow: hidden;
+      background: white;
+    }
+
+    /* == Front face: CSS animation demo ======================================= */
+    .face-front {
+      background: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      font-family: 'Roboto', sans-serif;
+      text-align: center;
+    }
+
+    .demo-container {
+      color: #999;
+      text-transform: uppercase;
+      font-size: 36px;
+      font-weight: bold;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+
+    .flip-window {
+      height: 50px;
+      overflow: hidden;
+    }
+    .flip-window > div > div {
+      color: #fff;
+      padding: 4px 12px;
+      height: 45px;
+      margin-bottom: 45px;
+      display: inline-block;
+    }
+    .flip-window div:first-child {
+      animation: show 5s linear infinite;
+    }
+    .flip-window div div { background: #42c58a; }
+    .flip-window div:first-child div { background: #4ec7f3; }
+    .flip-window div:last-child div { background: #DC143C; }
+
+    @keyframes show {
+      0%      { margin-top: -270px; }
+      5%      { margin-top: -180px; }
+      33%     { margin-top: -180px; }
+      38%     { margin-top: -90px; }
+      66%     { margin-top: -90px; }
+      71%     { margin-top: 0px; }
+      99.99%  { margin-top: 0px; }
+      100%    { margin-top: -270px; }
+    }
+
+    /* == Back face: editor ==================================================== */
+    .face-back {
+      transform: rotateY(180deg);
+      background: #f9fafb;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .editor-header {
+      height: 40px;
+      border-bottom: 1px solid #e5e7eb;
+      background: white;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      font-size: 13px;
+      border-top: 2px solid transparent;
+      background: transparent;
+      color: #666;
+      font-weight: 400;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab:hover {
+      background: #f3f4f6;
+      color: #333;
+    }
+    .tab.active {
+      border-top: 2px solid #4A90E2;
+      background: white;
+      color: #4A90E2;
+      font-weight: 500;
+    }
+
+    .editor-content {
+      flex: 1;
+      overflow: auto;
+    }
+
+    .CodeMirror {
+      height: 100% !important;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+    }
+
+    /* == Controls ============================================================= */
+    .toggle-btn {
+      position: absolute;
+      bottom: 30px;
+      padding: 12px 24px;
+      background: #1f2937;
+      color: white;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s, background 0.2s;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .toggle-btn:hover {
+      transform: scale(1.05);
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="scene">
+    <div class="card" id="card">
+      <!-- front: the result -->
+      <div class="card-face face-front">
+        <div class="demo-container">
+          Make
+          <div class="flip-window">
+            <div><div>wOrK</div></div>
+            <div><div>lifeStyle</div></div>
+            <div><div>Everything</div></div>
+          </div>
+          Awesome!
+        </div>
+        <p style="margin-top: 2rem; color: #999; font-size: 12px;">(The Reality)</p>
+      </div>
+
+      <!-- back: the code -->
+      <div class="card-face face-back">
+        <div class="editor-header">
+          <div class="tab active" data-tab="css">style.css</div>
+          <div class="tab" data-tab="html">index.html</div>
+        </div>
+        <div class="editor-content">
+          <textarea id="codeEditor"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="toggle-btn" id="flipBtn">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+    Flip Reality
+  </button>
+
+  <script>
+    // == Tab content =============================================================
+    const tabContents = {
+      css: `#flip {
+  height: 50px;
+  overflow: hidden;
+}
+
+#flip > div > div {
+  color: #fff;
+  padding: 4px 12px;
+  height: 45px;
+  margin-bottom: 45px;
+  display: inline-block;
+}
+
+#flip div:first-child {
+  animation: show 5s linear infinite;
+}
+
+#flip div div {
+  background: #42c58a;
+}
+
+#flip div:first-child div {
+  background: #4ec7f3;
+}
+
+#flip div:last-child div {
+  background: #DC143C;
+}
+
+@keyframes show {
+  0% {margin-top: -270px;}
+  5% {margin-top: -180px;}
+  33% {margin-top: -180px;}
+  38% {margin-top: -90px;}
+  66% {margin-top: -90px;}
+  71% {margin-top: 0px;}
+  99.99% {margin-top: 0px;}
+  100% {margin-top: -270px;}
+}`,
+
+      html: `<div id="container">
+  Make
+  <div class="flip-window">
+    <div><div>wOrK</div></div>
+    <div><div>lifeStyle</div></div>
+    <div><div>Everything</div></div>
+  </div>
+  Awesome!
+</div>
+
+<p>a css3 animation demo</p>`
+    };
+
+    // == Editor setup ============================================================
+    let editor;
+    let currentTab = 'css';
+
+    window.addEventListener('DOMContentLoaded', () => {
+      // temporarily make the back face visible so CodeMirror can measure
+      const backFace = document.querySelector('.face-back');
+      backFace.style.transform = 'rotateY(0deg)';
+      backFace.style.visibility = 'hidden';
+      backFace.style.zIndex = '-1';
+
+      editor = CodeMirror.fromTextArea(document.getElementById('codeEditor'), {
+        lineNumbers: true,
+        mode: 'css',
+        theme: 'default',
+        lineWrapping: true
+      });
+      editor.setValue(tabContents.css);
+
+      // force CodeMirror to render, then restore the back face
+      setTimeout(() => {
+        editor.refresh();
+        backFace.style.transform = '';
+        backFace.style.visibility = '';
+        backFace.style.zIndex = '';
+      }, 200);
+
+      // -- Tab switching ---------------------------------------------------------
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabContents[currentTab] = editor.getValue();
+
+          const newTab = tab.dataset.tab;
+          currentTab = newTab;
+
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+
+          editor.setValue(tabContents[newTab]);
+          editor.setOption('mode', newTab === 'css' ? 'css' : 'htmlmixed');
+        });
+      });
+    });
+
+    // == Flip logic ==============================================================
+    const card = document.getElementById('card');
+    const btn = document.getElementById('flipBtn');
+    const demoContainer = document.querySelector('.demo-container');
+    let isFlipped = false;
+
+    const iconCode = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`;
+    const iconPlay = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>`;
+
+    btn.addEventListener('click', () => {
+      isFlipped = !isFlipped/*flip state*/;
+
+      if(isFlipped) {
+        card.classList.add('is-flipped');
+        btn.innerHTML = `${iconPlay} View Result`;
+      } else {
+        // save current editor content before flipping back
+        tabContents[currentTab] = editor.getValue();
+
+        // update the demo with edited HTML content
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = tabContents['html'];
+        const content = tempDiv.querySelector('#container') || tempDiv.querySelector('#flip')
+                        ? tempDiv.firstElementChild
+                        : tempDiv;
+        if(content && (content.id === 'container')) {
+          demoContainer.innerHTML = content.innerHTML;
+        } else {
+          /* else -- no recognized wrapper */
+          demoContainer.innerHTML = tabContents['html'];
+        }
+
+        card.classList.remove('is-flipped');
+        btn.innerHTML = `${iconCode} Flip Reality`;
+      }
+    });
+  </script>
+</body>
+</html>
