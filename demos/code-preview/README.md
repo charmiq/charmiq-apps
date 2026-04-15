@@ -12,7 +12,7 @@
 ## The Source
 
 <p style="text-align: center;">
-  <iframe-app id="xH7mRtQw2k" height="350px" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
+  <iframe-app id="xH7mRtQw2k" height="350px" width="49%" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
     <app-content id="hTm1Kx9Pqw" name="index.html">
 <div id="container">
   Make
@@ -43,7 +43,7 @@
   ]
 }
     </app-state>
-  </iframe-app> <iframe-app id="pK3nVs8Ljf" height="350px" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
+  </iframe-app> <iframe-app id="pK3nVs8Ljf" height="350px" width="49%" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
     <app-content id="cSs3Nv7Rjd" name="style.css">
 @import url('https://fonts.googleapis.com/css?family=Roboto:700');
 
