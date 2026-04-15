@@ -1,0 +1,22 @@
+{
+  "id": "code-preview",
+  "name": "Code Preview",
+  "description": "A static HTML/CSS preview assembled from document content blocks — edit the source in the editors, reload the preview to see your changes.",
+
+  "bundle": {
+    "format": "html",
+    "entry": {
+      "html": "/index.html",
+      "style": "/style.css"
+    },
+    "files": {
+      "/index.html": "charmiq://./README.md?nodeId=xH7mRtQw2k&selector=app-content[name='index.html']&format=plain",
+      "/style.css": "charmiq://./README.md?nodeId=pK3nVs8Ljf&selector=app-content[name='style.css']&format=plain"
+    }
+  },
+
+  "runtime": {
+    "type": "static",
+    "description": "Static HTML/CSS demonstration"
+  }
+}
