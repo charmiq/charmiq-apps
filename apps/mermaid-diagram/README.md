@@ -13,6 +13,7 @@ graph LR
   <app-source></app-source>
 </iframe-app>
 
+
 ## What This Is
 
 The Mermaid Diagram app renders [Mermaid](https://mermaid.js.org) source text into SVG, live, inside a CharmIQ document. Flowcharts, sequence diagrams, Gantt charts, ER diagrams, pie charts — anything Mermaid supports.
@@ -20,6 +21,7 @@ The Mermaid Diagram app renders [Mermaid](https://mermaid.js.org) source text in
 It's **read-only**. The diagram source lives in `appContent`, and other tools write to it: a CodeMirror editor tab, a Charm, an agent, an MCP tool. This app just renders whatever arrives. When the source changes, the diagram re-renders automatically.
 
 Theme and layout options are persisted in `appState`, so an agent can switch to dark mode or change the flowchart curve without touching the diagram source.
+
 
 ## In Practice
 
@@ -65,6 +67,7 @@ Available themes: `default`, `neutral`, `dark`, `forest`, `base`.
 | [`src/config-store.ts`](charmiq://./src/config-store.ts) | Diagram config persisted via `appState`. Theme, flowchart options |
 | [`src/command.ts`](charmiq://./src/command.ts) | Charm command surface via `charmiq.advertise` |
 
+
 ### Data Flow
 
 ```
@@ -75,6 +78,7 @@ appState (last-write)   ← configuration (theme, flowchart options)
 Content flows **one direction**: `appContent` → `ContentBridge` → `mermaid.render()` → SVG in the DOM. There are no outbound writes. If the source contains a syntax error, the error is displayed inline and the stale diagram is cleared.
 
 A monotonic render counter discards stale renders — if the source changes twice in quick succession, only the latest render is applied.
+
 
 ### Command Surface
 

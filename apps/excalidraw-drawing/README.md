@@ -5,6 +5,7 @@
 <iframe-app height="500px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
 </iframe-app>
 
+
 ## What This Is
 
 The Excalidraw Drawing app puts a full-featured drawing canvas inside a CharmIQ document. Shapes, arrows, text, freehand strokes — the same toolset as [excalidraw.com](https://excalidraw.com), running in a sandboxed iframe.
@@ -12,6 +13,7 @@ The Excalidraw Drawing app puts a full-featured drawing canvas inside a CharmIQ 
 Because it's built on CharmIQ's data layer, the drawing is collaboratively editable. Two people sketching on the same canvas merge cleanly through OT (operational transforms). Configuration — whether the toolbar is visible, whether the canvas starts in view-only mode — persists across sessions via `appState`.
 
 It's also a reference implementation for embedding a complex third-party React library inside the Application platform. If you're wrapping a library that has no ESM CDN build and needs UMD `<script>` tags, load-order hacks, and global state — this is the pattern.
+
 
 ## In Practice
 
@@ -46,6 +48,7 @@ The app is folder-based, with each module owning a single concern.
 | [`src/library-handler.ts`](charmiq://./src/library-handler.ts) | Library install via postMessage + BroadcastChannel from bridge page |
 | [`src/command.ts`](charmiq://./src/command.ts) | Charm command surface via `charmiq.advertise` |
 
+
 ### Data Flow
 
 Two storage channels — one for content, one for config:
@@ -67,6 +70,7 @@ graph TD
 
 The content bridge serializes the Excalidraw scene to pretty-printed JSON, diffs it against the last known server state, and sends the minimal OT changes. Inbound, it parses the JSON and pushes it into `updateScene()`.
 
+
 ### The UMD / Asset-Path Hack
 
 Excalidraw 0.17.6 has no usable ESM CDN build. The UMD bundle is loaded via `<script>` tags in `index.html`, and `EXCALIDRAW_ASSET_PATH` is set **twice**:
@@ -76,9 +80,11 @@ Excalidraw 0.17.6 has no usable ESM CDN build. The UMD bundle is loaded via `<sc
 
 This is a known workaround for Excalidraw's asset resolution. The two-phase set is intentional and must happen in this exact order. When Excalidraw eventually ships an ESM build, the hack can be removed entirely.
 
+
 ### Synchronous Re-entry Guard
 
 Excalidraw fires its `onChange` callback synchronously during `updateScene()`. Without a guard, an inbound remote update would immediately trigger the outbound path, diff the content against itself, and attempt a no-op write. The `updating` flag in `content-bridge.ts` prevents this. It's a narrow, synchronous guard — set before `updateScene()`, cleared after — not a suppression of remote changes. The broader loop protection is **state comparison**: if the incoming JSON matches `lastJSON`, the update is skipped entirely.
+
 
 ### Command Surface
 
