@@ -5,6 +5,7 @@
 <iframe-app height="500px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://./index.html">
 </iframe-app>
 
+
 ## What You're Looking At
 
 The card in front of you is doing two things at once. On one side, a pure-CSS text animation cycles through words endlessly — no JavaScript involved, just keyframes and overflow. On the other side, a live code editor shows the CSS and HTML that produce it.
@@ -12,6 +13,7 @@ The card in front of you is doing two things at once. On one side, a pure-CSS te
 Hit **Flip Reality**. The card rotates in 3D — `perspective`, `transform-style: preserve-3d`, `backface-visibility: hidden` — the same trick used in flashcard UIs and product showcases, except here you're flipping between *the thing* and *the source of the thing*.
 
 Edit the code. Flip back. Your changes are live.
+
 
 ## The Techniques
 
@@ -21,6 +23,12 @@ Edit the code. Flip back. Your changes are live.
 
 **Live editing with CodeMirror** — The back face hosts a CodeMirror instance with tab switching between CSS and HTML. Content persists across flips — edit the HTML, flip to see the result, flip back and your changes are still there.
 
+
 ## Why It Exists
 
 This is a single self-contained HTML file — no build step, no dependencies beyond two CDN scripts. It demonstrates that a polished, interactive demo can live in one file and load instantly. Fork it, swap in your own animation, ship it.
+
+
+## Credit
+
+The front-face text animation is inspired by Nooray Yemon's [Simple CSS Text Animation](https://codepen.io/yemon/pen/pWoROm).
