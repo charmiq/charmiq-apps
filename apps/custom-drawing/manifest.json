@@ -1,0 +1,143 @@
+{
+  "id": "ai.charm.apps.custom-drawing",
+  "name": "Custom Drawing",
+  "description": "An SVG drawing canvas with shape tools, text, images, rotation, grouping, and export — with reactive state sync and an LLM command surface",
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
+    },
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.1",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators"
+      }
+    }
+  },
+  "runtime": {
+    "appContent": false,
+    "appState": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "getElements",
+        "description": "Return a copy of all drawing elements",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Array of drawing element objects"
+        }
+      },
+      {
+        "name": "addElement",
+        "description": "Add a single drawing element and return its generated ID",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "description": "Element type: rectangle, diamond, ellipse, line, text, image" },
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number" },
+            "height": { "type": "number" },
+            "stroke": { "type": "string" },
+            "fill": { "type": "string" },
+            "strokeWidth": { "type": "number" },
+            "text": { "type": "string", "description": "Text content (for text elements)" },
+            "src": { "type": "string", "description": "Image URL (for image elements)" }
+          },
+          "required": ["type", "x", "y"]
+        },
+        "outputSchema": { "type": "string", "description": "The generated element ID" }
+      },
+      {
+        "name": "addElements",
+        "description": "Batch-add multiple drawing elements",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "elements": {
+              "type": "array",
+              "items": { "type": "object" },
+              "description": "Array of element specs"
+            }
+          },
+          "required": ["elements"]
+        },
+        "outputSchema": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Array of generated element IDs"
+        }
+      },
+      {
+        "name": "move",
+        "description": "Move element(s) by a delta",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "targets": { "description": "Element or group ID(s)" },
+            "deltaX": { "type": "number" },
+            "deltaY": { "type": "number" }
+          },
+          "required": ["targets", "deltaX", "deltaY"]
+        }
+      },
+      {
+        "name": "rotate",
+        "description": "Set rotation angle for element(s)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "targets": { "description": "Element or group ID(s)" },
+            "angle": { "type": "number", "description": "Rotation angle in radians" }
+          },
+          "required": ["targets", "angle"]
+        }
+      },
+      {
+        "name": "delete",
+        "description": "Delete element(s)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "targets": { "description": "Element or group ID(s)" }
+          },
+          "required": ["targets"]
+        }
+      },
+      {
+        "name": "group",
+        "description": "Group elements together",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "targets": { "description": "Element ID(s) to group" }
+          },
+          "required": ["targets"]
+        },
+        "outputSchema": { "type": "string", "description": "The generated group ID" }
+      },
+      {
+        "name": "ungroup",
+        "description": "Ungroup elements by group ID",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "groupId": { "type": "string" }
+          },
+          "required": ["groupId"]
+        }
+      },
+      {
+        "name": "clear",
+        "description": "Remove all elements from the canvas",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "boolean" }
+      }
+    ]
+  }
+}

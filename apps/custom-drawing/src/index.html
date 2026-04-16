@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom Drawing</title>
+</head>
+<body>
+  <div class="app">
+    <!-- == Toolbar =========================================================== -->
+    <div class="toolbar">
+      <button class="tool-btn active" data-tool="selection" title="Selection (V)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z"></path></svg>
+      </button>
+      <button class="tool-btn" data-tool="pan" title="Pan (H)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"></path><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"></path><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"></path><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path></svg>
+      </button>
+      <button class="tool-btn" data-tool="square" title="Rectangle (R)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12 3c7.2 0 9 1.8 9 9s-1.8 9-9 9-9-1.8-9-9 1.8-9 9-9"></path></svg>
+      </button>
+      <button class="tool-btn" data-tool="diamond" title="Diamond (D)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M2.7 10.3a2.41 2.41 0 0 0 0 3.41l7.59 7.59a2.41 2.41 0 0 0 3.41 0l7.59-7.59a2.41 2.41 0 0 0 0-3.41l-7.59-7.59a2.41 2.41 0 0 0-3.41 0Z"></path></svg>
+      </button>
+      <button class="tool-btn" data-tool="circle" title="Circle (O)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle></svg>
+      </button>
+      <button class="tool-btn" data-tool="line" title="Line (L)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><circle cx="19" cy="5" r="2"></circle><circle cx="5" cy="19" r="2"></circle><path d="M5 17A12 12 0 0 1 17 5"></path></svg>
+      </button>
+      <button class="tool-btn" data-tool="text" title="Text (T)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" x2="15" y1="20" y2="20"></line><line x1="12" x2="12" y1="4" y2="20"></line></svg>
+      </button>
+      <button class="tool-btn" id="imageBtn" title="Image (I)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+      </button>
+      <button class="tool-btn" data-tool="eraser" title="Eraser (E)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"></path><path d="M22 21H7"></path><path d="m5 11 9 9"></path></svg>
+      </button>
+      <div style="width: 1px; height: 30px; background: #e0e0e0; margin: 0 4px;"></div>
+      <button class="tool-btn" id="generateBtn" title="Generate from Drawing (G)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"></path><path d="m14 7 3 3"></path><path d="M5 6v4"></path><path d="M19 14v4"></path><path d="M10 2v2"></path><path d="M7 8H3"></path><path d="M21 16h-4"></path><path d="M11 3H9"></path></svg>
+      </button>
+      <button class="tool-btn" id="saveBtn" title="Export (S)">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"></path><path d="M7 3v4a1 1 0 0 0 1 1h7"></path></svg>
+      </button>
+    </div>
+
+    <div class="info-text" id="infoText">
+      To move the canvas, press and hold the spacebar while clicking and dragging the canvas or use Pan (H)
+    </div>
+
+    <!-- == Properties Panel ================================================== -->
+    <div class="properties-panel" id="propertiesPanel">
+      <!-- stroke color -->
+      <div class="prop-group" id="strokeColorGroup">
+        <div class="prop-label">Stroke</div>
+        <div class="prop-button" id="strokeColorBtn"><div class="color-swatch" id="strokeColorSwatch" style="background-color: #000000;"></div></div>
+        <div class="dropdown" id="strokeColorDropdown">
+          <div class="dropdown-item" data-color="#000000"><div class="color-swatch" style="background-color: #000000;"></div><span>Black</span></div>
+          <div class="dropdown-item" data-color="#d51a25"><div class="color-swatch" style="background-color: #d51a25;"></div><span>Red</span></div>
+          <div class="dropdown-item" data-color="#299035"><div class="color-swatch" style="background-color: #299035;"></div><span>Green</span></div>
+          <div class="dropdown-item" data-color="#165ab5"><div class="color-swatch" style="background-color: #165ab5;"></div><span>Blue</span></div>
+          <div class="dropdown-item" data-color="#e97909"><div class="color-swatch" style="background-color: #e97909;"></div><span>Orange</span></div>
+          <div class="dropdown-item" data-color="#666666"><div class="color-swatch" style="background-color: #666666;"></div><span>Gray</span></div>
+        </div>
+      </div>
+      <!-- background color -->
+      <div class="prop-group" id="backgroundColorGroup">
+        <div class="prop-label">Bkg</div>
+        <div class="prop-button" id="backgroundColorBtn"><div class="color-swatch" id="backgroundColorSwatch" style="background-color: transparent; border: 1px solid #ccc;"></div></div>
+        <div class="dropdown" id="backgroundColorDropdown">
+          <div class="dropdown-item" data-color="transparent"><div class="color-swatch" style="background-color: transparent; border: 1px solid #ccc;"></div><span>None</span></div>
+          <div class="dropdown-item" data-color="rgba(255,255,255,0.5)"><div class="color-swatch" style="background-color: rgba(255,255,255,0.5); border: 1px solid #ccc;"></div><span>White</span></div>
+          <div class="dropdown-item" data-color="rgba(245,179,183,0.5)"><div class="color-swatch" style="background-color: rgba(245,179,183,0.5);"></div><span>Light Red</span></div>
+          <div class="dropdown-item" data-color="rgba(179,230,186,0.5)"><div class="color-swatch" style="background-color: rgba(179,230,186,0.5);"></div><span>Light Green</span></div>
+          <div class="dropdown-item" data-color="rgba(179,209,240,0.5)"><div class="color-swatch" style="background-color: rgba(179,209,240,0.5);"></div><span>Light Blue</span></div>
+          <div class="dropdown-item" data-color="rgba(245,217,179,0.5)"><div class="color-swatch" style="background-color: rgba(245,217,179,0.5);"></div><span>Light Orange</span></div>
+        </div>
+      </div>
+      <!-- stroke width -->
+      <div class="prop-group" id="strokeWidthGroup">
+        <div class="prop-label">Width</div>
+        <div class="prop-button" id="strokeWidthBtn"><div class="stroke-width-sample" id="strokeWidthSample"></div></div>
+        <div class="dropdown" id="strokeWidthDropdown">
+          <div class="dropdown-item" data-width="1"><div class="stroke-width-sample thin"></div><span>Thin</span></div>
+          <div class="dropdown-item" data-width="2"><div class="stroke-width-sample medium"></div><span>Medium</span></div>
+          <div class="dropdown-item" data-width="4"><div class="stroke-width-sample thick"></div><span>Thick</span></div>
+        </div>
+      </div>
+      <!-- stroke style -->
+      <div class="prop-group" id="strokeStyleGroup">
+        <div class="prop-label">Style</div>
+        <div class="prop-button" id="strokeStyleBtn"><div class="stroke-style-sample" id="strokeStyleSample"></div></div>
+        <div class="dropdown" id="strokeStyleDropdown">
+          <div class="dropdown-item" data-style="solid"><div class="stroke-style-sample solid"></div><span>Solid</span></div>
+          <div class="dropdown-item" data-style="dashed"><div class="stroke-style-sample dashed"></div><span>Dashed</span></div>
+          <div class="dropdown-item" data-style="dotted"><div class="stroke-style-sample dotted"></div><span>Dotted</span></div>
+        </div>
+      </div>
+      <!-- text size -->
+      <div class="prop-group" id="textSizeGroup">
+        <div class="prop-label">Size</div>
+        <div class="prop-button" id="textSizeBtn"><span class="text-size-sample medium" id="textSizeSample">A</span></div>
+        <div class="dropdown" id="textSizeDropdown">
+          <div class="dropdown-item" data-size="12"><span class="text-size-sample small">A</span><span>Small</span></div>
+          <div class="dropdown-item" data-size="16"><span class="text-size-sample medium">A</span><span>Medium</span></div>
+          <div class="dropdown-item" data-size="20"><span class="text-size-sample large">A</span><span>Large</span></div>
+          <div class="dropdown-item" data-size="24"><span class="text-size-sample xlarge">A</span><span>X-Large</span></div>
+        </div>
+      </div>
+      <!-- text color -->
+      <div class="prop-group" id="textColorGroup">
+        <div class="prop-label">Color</div>
+        <div class="prop-button" id="textColorBtn"><div class="color-swatch" id="textColorSwatch" style="background-color: #000000;"></div></div>
+        <div class="dropdown" id="textColorDropdown">
+          <div class="dropdown-item" data-color="#000000"><div class="color-swatch" style="background-color: #000000;"></div><span>Black</span></div>
+          <div class="dropdown-item" data-color="#d51a25"><div class="color-swatch" style="background-color: #d51a25;"></div><span>Red</span></div>
+          <div class="dropdown-item" data-color="#299035"><div class="color-swatch" style="background-color: #299035;"></div><span>Green</span></div>
+          <div class="dropdown-item" data-color="#165ab5"><div class="color-swatch" style="background-color: #165ab5;"></div><span>Blue</span></div>
+          <div class="dropdown-item" data-color="#e97909"><div class="color-swatch" style="background-color: #e97909;"></div><span>Orange</span></div>
+          <div class="dropdown-item" data-color="#666666"><div class="color-swatch" style="background-color: #666666;"></div><span>Gray</span></div>
+        </div>
+      </div>
+      <!-- text align -->
+      <div class="prop-group" id="textAlignGroup">
+        <div class="prop-label">Align</div>
+        <div class="prop-button" id="textAlignBtn"><svg class="text-align-icon" id="textAlignIcon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M21 6H3M15 12H3M17 18H3"/></svg></div>
+        <div class="dropdown" id="textAlignDropdown">
+          <div class="dropdown-item" data-align="left"><svg class="text-align-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M21 6H3M15 12H3M17 18H3"/></svg><span>Left</span></div>
+          <div class="dropdown-item" data-align="center"><svg class="text-align-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6H6M21 12H3M18 18H6"/></svg><span>Center</span></div>
+          <div class="dropdown-item" data-align="right"><svg class="text-align-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M21 6H3M21 12H9M21 18H7"/></svg><span>Right</span></div>
+        </div>
+      </div>
+      <!-- line decorations -->
+      <div class="prop-group" id="decorationGroup">
+        <div class="prop-label">Decoration</div>
+        <div style="display: flex; gap: 2px;">
+          <div class="prop-button" id="startDecorationBtn" title="Start Decoration"><svg class="decoration-icon" id="startDecorationIcon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><g stroke="currentColor" opacity="0.3" stroke-width="2"><path d="M12 12l9 0"></path><path d="M3 9l6 6"></path><path d="M3 15l6 -6"></path></g></svg></div>
+          <div class="prop-button" id="endDecorationBtn" title="End Decoration"><svg class="decoration-icon" id="endDecorationIcon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><g stroke="currentColor" opacity="0.3" stroke-width="2"><path d="M12 12l9 0"></path><path d="M3 9l6 6"></path><path d="M3 15l6 -6"></path></g></svg></div>
+        </div>
+        <div class="dropdown" id="startDecorationDropdown">
+          <div class="dropdown-item" data-decoration="none"><svg class="decoration-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><g stroke="currentColor" opacity="0.3" stroke-width="2"><path d="M12 12l9 0"></path><path d="M3 9l6 6"></path><path d="M3 15l6 -6"></path></g></svg><span>None</span></div>
+          <div class="dropdown-item" data-decoration="arrow"><svg class="decoration-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 40 20"><g stroke="currentColor" stroke-width="2" fill="none"><path d="M34 10H6M34 10L27 5M34 10L27 15"></path><path d="M27.5 5L34.5 10L27.5 15"></path></g></svg><span>Arrow</span></div>
+          <div class="dropdown-item" data-decoration="triangle-filled"><svg class="decoration-icon" stroke="currentColor" fill="currentColor" viewBox="0 0 40 20"><g stroke="currentColor" fill="currentColor"><path d="M32 10L6 10" stroke-width="2"></path><path d="M27.5 5.5L34.5 10L27.5 14.5L27.5 5.5"></path></g></svg><span>Triangle Filled</span></div>
+          <div class="dropdown-item" data-decoration="triangle-outline"><svg class="decoration-icon" stroke="currentColor" fill="none" viewBox="0 0 40 20"><g stroke="currentColor" fill="none" stroke-width="2" stroke-linejoin="round"><path d="M6,9.5H27"></path><path d="M27,5L34,10L27,14Z" fill="none"></path></g></svg><span>Triangle Outline</span></div>
+        </div>
+        <div class="dropdown" id="endDecorationDropdown">
+          <div class="dropdown-item" data-decoration="none"><svg class="decoration-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><g stroke="currentColor" opacity="0.3" stroke-width="2"><path d="M12 12l9 0"></path><path d="M3 9l6 6"></path><path d="M3 15l6 -6"></path></g></svg><span>None</span></div>
+          <div class="dropdown-item" data-decoration="arrow"><svg class="decoration-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 40 20"><g stroke="currentColor" stroke-width="2" fill="none"><path d="M34 10H6M34 10L27 5M34 10L27 15"></path><path d="M27.5 5L34.5 10L27.5 15"></path></g></svg><span>Arrow</span></div>
+          <div class="dropdown-item" data-decoration="triangle-filled"><svg class="decoration-icon" stroke="currentColor" fill="currentColor" viewBox="0 0 40 20"><g stroke="currentColor" fill="currentColor"><path d="M32 10L6 10" stroke-width="2"></path><path d="M27.5 5.5L34.5 10L27.5 14.5L27.5 5.5"></path></g></svg><span>Triangle Filled</span></div>
+          <div class="dropdown-item" data-decoration="triangle-outline"><svg class="decoration-icon" stroke="currentColor" fill="none" viewBox="0 0 40 20"><g stroke="currentColor" fill="none" stroke-width="2" stroke-linejoin="round"><path d="M6,9.5H27"></path><path d="M27,5L34,10L27,14Z" fill="none"></path></g></svg><span>Triangle Outline</span></div>
+        </div>
+      </div>
+      <!-- layer controls -->
+      <div class="prop-group" id="layerGroup">
+        <div class="prop-label">Layer</div>
+        <div style="display: flex; gap: 2px;">
+          <div class="prop-button" id="sendToBackBtn" title="Send to Back"><svg class="layer-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M12 17V3"></path><path d="m6 11 6 6 6-6"></path><path d="M19 21H5"></path></svg></div>
+          <div class="prop-button" id="sendBackwardBtn" title="Send Backward"><svg class="layer-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg></div>
+          <div class="prop-button" id="bringForwardBtn" title="Bring Forward"><svg class="layer-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></div>
+          <div class="prop-button" id="bringToFrontBtn" title="Bring to Front"><svg class="layer-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M5 3h14"></path><path d="m18 13-6-6-6 6"></path><path d="M12 7v14"></path></svg></div>
+        </div>
+      </div>
+      <!-- actions -->
+      <div class="prop-group" id="deleteGroup">
+        <div class="prop-label">Actions</div>
+        <div style="display: flex; gap: 2px;">
+          <div class="group-icon-btn" id="groupBtn" title="Group" style="display: none;"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 7V5c0-1.1.9-2 2-2h2"></path><path d="M17 3h2c1.1 0 2 .9 2 2v2"></path><path d="M21 17v2c0 1.1-.9 2-2 2h-2"></path><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"></path><rect width="7" height="5" x="7" y="7" rx="1"></rect><rect width="7" height="5" x="10" y="12" rx="1"></rect></svg></div>
+          <div class="ungroup-icon-btn" id="ungroupBtn" title="Ungroup" style="display: none;"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="8" height="6" x="5" y="4" rx="1"></rect><rect width="8" height="6" x="11" y="14" rx="1"></rect></svg></div>
+          <div class="copy-icon-btn" id="copyBtn" title="Copy"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2 2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></div>
+          <div class="delete-icon-btn" id="deleteBtn" title="Delete"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><line x1="10" x2="10" y1="11" y2="17"></line><line x1="14" x2="14" y1="11" y2="17"></line></svg></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- == Action Dropdowns ================================================== -->
+    <div class="action-dropdown save-dropdown" id="saveDropdown">
+      <div class="save-section">
+        <div class="save-label">What to export</div>
+        <button class="save-option" id="exportAllBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg><span>Export All</span></button>
+        <button class="save-option" id="exportSelectedBtn" style="display: none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M3 3h4m14 0h-4m0 18h4M3 21h4"/></svg><span>Export Selected</span></button>
+      </div>
+      <div class="save-section">
+        <div class="save-label">Export to</div>
+        <button class="save-option" id="downloadBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Download PNG</span></button>
+        <button class="save-option" id="clipboardBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>Copy to Clipboard</span></button>
+        <button class="save-option" id="saveToFilesBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14,2 14,8 20,8"></polyline><circle cx="10" cy="12" r="2"></circle><path d="m20 17-1.09-1.09a2 2 0 0 0-2.82 0L10 22"></path></svg><span>Save to Files</span></button>
+      </div>
+    </div>
+
+    <div class="action-dropdown generate-dropdown" id="generateDropdown">
+      <div class="save-section">
+        <div class="save-label">What to generate from</div>
+        <button class="save-option" id="generateAllBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg><span>Generate from All</span></button>
+        <button class="save-option" id="generateSelectedBtn" style="display: none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M3 3h4m14 0h-4m0 18h4M3 21h4"/></svg><span>Generate from Selected</span></button>
+      </div>
+    </div>
+
+    <div class="action-dropdown image-dropdown" id="imageDropdown">
+      <div class="save-section">
+        <div class="save-label">Insert Image</div>
+        <button class="save-option" id="imageFromUrlBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>From URL</span></button>
+        <button class="save-option" id="imageFromFilesBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 1 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span>Import from Files</span></button>
+        <button class="save-option" id="imageFromLocalBtn"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" height="16" width="16" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg><span>From Local Computer</span></button>
+        <button class="save-option" id="imageFromClipboardBtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>Insert from Clipboard</span></button>
+      </div>
+    </div>
+
+    <!-- == SVG Canvas ======================================================== -->
+    <div class="canvas-container" id="canvasContainer">
+      <svg class="main-svg" id="mainSvg">
+        <defs>
+          <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#e0e0e0" stroke-width="0.5"/>
+          </pattern>
+          <!-- line decoration markers (static defaults) -->
+          <marker id="arrowStart" markerWidth="10" markerHeight="7" refX="3" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M9 1 L3 3.5 L9 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <marker id="arrowEnd"   markerWidth="10" markerHeight="7" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth"><path d="M1 1 L7 3.5 L1 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <marker id="triangleFilledStart" markerWidth="8" markerHeight="6" refX="3" refY="3" orient="auto" markerUnits="strokeWidth"><polygon points="7 0, 1 3, 7 6" fill="currentColor" stroke="none"/></marker>
+          <marker id="triangleFilledEnd"   markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><polygon points="1 0, 7 3, 1 6" fill="currentColor" stroke="none"/></marker>
+          <marker id="triangleOutlineStart" markerWidth="8" markerHeight="6" refX="3" refY="3" orient="auto" markerUnits="strokeWidth"><polygon points="7 0, 1 3, 7 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></marker>
+          <marker id="triangleOutlineEnd"   markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><polygon points="1 0, 7 3, 1 6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/></marker>
+        </defs>
+        <g id="backgroundLayer" transform="translate(0,0) scale(1)"><rect x="-5000" y="-5000" width="10000" height="10000" fill="url(#grid)"/></g>
+        <g id="drawingLayer" transform="translate(0,0) scale(1)"></g>
+        <g id="selectionLayer"></g>
+      </svg>
+    </div>
+
+    <!-- == Image Modal ======================================================= -->
+    <div class="modal-overlay" id="imageModal">
+      <div class="modal">
+        <div class="modal-title">Insert Image</div>
+        <input type="text" class="modal-input" id="imageUrlInput" placeholder="Enter image URL..." />
+        <div class="modal-error" id="imageModalError"></div>
+        <div class="modal-buttons">
+          <button class="modal-button secondary" id="imageModalCancel">Cancel</button>
+          <button class="modal-button primary" id="imageModalOk">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- hidden file input for local uploads -->
+    <input type="file" id="localImageInput" accept="image/*" multiple style="display: none;" />
+  </div>
+</body>
+</html>

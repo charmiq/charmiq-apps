@@ -1,0 +1,262 @@
+// == Fonts =======================================================================
+@font-face {
+  font-family: 'Excalifont';
+  src: url('https://excalidraw.nyc3.cdn.digitaloceanspaces.com/fonts/Excalifont-Regular.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+}
+
+// == Reset =======================================================================
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Excalifont', system-ui, sans-serif;
+  width: 100vw;
+  height: 800px;
+  overflow: hidden;
+  background: #fafafa;
+  position: relative;
+}
+
+.app {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+// == Toolbar =====================================================================
+.toolbar {
+  position: absolute;
+  top: 20px; left: 20px;
+  display: flex; gap: 8px;
+  z-index: 1000;
+  background: white;
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  pointer-events: auto;
+
+  &.selection-active { pointer-events: none; }
+}
+
+.tool-btn {
+  width: 40px; height: 40px;
+  border: 2px solid #e0e0e0;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease;
+
+  svg { width: 20px; height: 20px; stroke: #666; transition: stroke 0.2s ease; }
+
+  &:hover { border-color: #4285f4; svg { stroke: #4285f4; } }
+  &.active { border-color: #4285f4; background: #e8f0fe; svg { stroke: #4285f4; } }
+}
+
+// == Properties Panel ============================================================
+.properties-panel {
+  position: absolute;
+  top: 20px; left: 580px;
+  display: none; gap: 8px;
+  z-index: 1000;
+  background: white;
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-width: 600px;
+  flex-wrap: wrap;
+  pointer-events: auto;
+
+  &.selection-active { pointer-events: none; }
+  &.visible { display: flex; }
+}
+
+.prop-group {
+  display: flex; flex-direction: column; gap: 4px; position: relative;
+}
+
+.prop-label {
+  font-size: 12px; color: #666; font-weight: 500;
+  user-select: none;
+}
+
+.prop-button {
+  width: 32px; height: 32px;
+  border: 2px solid #e0e0e0;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease;
+  position: relative;
+
+  &:hover { border-color: #4285f4; }
+  &.active { border-color: #4285f4; background: #e8f0fe; }
+}
+
+.color-swatch { width: 20px; height: 20px; border-radius: 3px; border: 1px solid #ccc; }
+
+.stroke-width-sample { width: 20px; height: 2px; background: #333; &.medium { height: 4px; } &.thick { height: 6px; } }
+
+.stroke-style-sample {
+  width: 20px; height: 2px; background: #333;
+  &.dashed { background: repeating-linear-gradient(to right, #333 0px, #333 4px, transparent 4px, transparent 8px); }
+  &.dotted { background: repeating-linear-gradient(to right, #333 0px, #333 2px, transparent 2px, transparent 4px); }
+}
+
+.text-size-sample { font-family: 'Excalifont', system-ui, sans-serif; &.small { font-size: 12px; } &.medium { font-size: 16px; } &.large { font-size: 20px; } &.xlarge { font-size: 24px; } }
+.text-align-icon, .layer-icon, .decoration-icon { width: 16px; height: 16px; }
+
+// action icon buttons (delete, copy, group, ungroup)
+.delete-icon-btn, .copy-icon-btn, .group-icon-btn, .ungroup-icon-btn {
+  width: 32px; height: 32px;
+  border: 2px solid #e0e0e0;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease;
+
+  svg { width: 16px; height: 16px; }
+}
+.delete-icon-btn { &:hover { border-color: #ff4444; background: #ffe6e6; } svg { stroke: #ff4444; } }
+.copy-icon-btn, .group-icon-btn, .ungroup-icon-btn { &:hover { border-color: #666; background: #f5f5f5; } svg { stroke: #666; } }
+
+// == Dropdowns ===================================================================
+.dropdown {
+  position: absolute;
+  top: 100%; left: 0;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 4px;
+  display: none;
+  z-index: 2000;
+  min-width: 120px;
+
+  &.visible { display: block; }
+}
+
+.dropdown-item {
+  padding: 6px 8px; white-space: nowrap; cursor: pointer;
+  border-radius: 4px;
+  display: flex; align-items: center; gap: 8px;
+  transition: background 0.2s ease;
+  &:hover { background: #f5f5f5; }
+}
+
+// == Info Text ===================================================================
+.info-text {
+  position: absolute;
+  top: 75px; left: 20px;
+  padding: 8px 12px;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px; color: #999;
+  max-width: 400px;
+  z-index: 999;
+  user-select: none; pointer-events: none;
+}
+
+// == Canvas ======================================================================
+.canvas-container {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  cursor: default;
+  user-select: none;
+
+  &.pan { cursor: grab; &.panning { cursor: grabbing; } }
+  &.selection { cursor: default; }
+  &.text { cursor: text; }
+  &.eraser { cursor: cell; }
+  &.crosshair { cursor: crosshair; }
+}
+
+.main-svg { width: 100%; height: 100%; background: #fafafa; }
+
+// == Selection ===================================================================
+.selection-box { fill: none; stroke: #4285f4; stroke-width: 1; stroke-dasharray: 5,5; }
+.bounding-box  { fill: none; stroke: #4285f4; stroke-width: 1; }
+.resize-handle { fill: #4285f4; stroke: white; stroke-width: 2; }
+.rotate-handle { fill: #4285f4; stroke: white; stroke-width: 2; cursor: grab; }
+.rotate-handle-line { stroke: #4285f4; stroke-width: 1; stroke-dasharray: 2,2; }
+
+// == Text Input ==================================================================
+.text-input {
+  position: absolute;
+  border: none; background: transparent;
+  font-family: 'Excalifont', system-ui, sans-serif;
+  font-size: 16px; line-height: 1.2; color: #333;
+  outline: none; resize: none; overflow: hidden;
+  z-index: 1500; padding: 0;
+  box-sizing: content-box;
+  -webkit-appearance: none;
+}
+
+// == Modal =======================================================================
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: none; align-items: center; justify-content: center;
+  z-index: 2000;
+  &.visible { display: flex; }
+}
+
+.modal {
+  background: white; border-radius: 8px; padding: 24px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-width: 400px;
+}
+
+.modal-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #333; }
+
+.modal-input {
+  width: 100%; padding: 8px 12px; border: 1px solid #e0e0e0;
+  border-radius: 4px; font-size: 14px; margin-bottom: 16px;
+  &:focus { outline: none; border-color: #4285f4; }
+}
+
+.modal-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+
+.modal-button {
+  padding: 8px 16px; border: none; border-radius: 4px;
+  font-size: 14px; cursor: pointer; transition: background 0.2s ease;
+  &.primary { background: #4285f4; color: white; &:hover { background: #3367d6; } }
+  &.secondary { background: #f5f5f5; color: #666; &:hover { background: #e0e0e0; } }
+}
+
+.modal-error { color: #d51a25; font-size: 13px; margin-bottom: 12px; display: none; &.visible { display: block; } }
+
+// == Action Dropdowns ============================================================
+.action-dropdown {
+  position: absolute;
+  background: white; border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 12px;
+  display: none; z-index: 1000; min-width: 200px;
+  pointer-events: auto;
+
+  &.selection-active { pointer-events: none; }
+  &.visible { display: block; }
+}
+
+.save-dropdown     { top: 70px; left: 530px; }
+.generate-dropdown { top: 70px; left: 470px; }
+.image-dropdown    { top: 70px; left: 360px; }
+
+.save-section { margin-bottom: 12px; &:last-child { margin-bottom: 0; } }
+.save-label { font-size: 12px; color: #666; font-weight: 600; margin-bottom: 6px; padding: 0 4px; }
+
+.save-option {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 8px 12px;
+  border: none; background: none;
+  border-radius: 6px; cursor: pointer;
+  transition: background 0.2s ease;
+  font-size: 14px; color: #333; text-align: left;
+
+  &:hover { background: #f5f5f5; }
+  svg { flex-shrink: 0; }
+}
