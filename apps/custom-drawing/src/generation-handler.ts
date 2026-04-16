@@ -63,7 +63,7 @@ export class GenerationHandler {
     // place generated image on canvas
     for(const assetId of generatedIds) {
       const asset = await assetService.waitForStoredAsset(assetId);
-      if(!asset || asset.store.storeStatus !== 'stored') continue;
+      if(!asset || (asset.store.storeStatus !== 'stored')) continue;
 
       const copies = await commandService.execute({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
       if(!copies?.[0]) continue;
@@ -122,12 +122,12 @@ export class GenerationHandler {
   // ==============================================================================
   public toggleGenerateDropdown(): void {
     const dd = document.getElementById('generateDropdown')!;
-    const was = dd.classList.contains('visible');
+    const visible = dd.classList.contains('visible');
     document.querySelectorAll('.dropdown, .action-dropdown').forEach(d => d.classList.remove('visible'));
-    if(!was) {
+    if(!visible) {
       const selBtn = document.getElementById('generateSelectedBtn')!;
       selBtn.style.display = this.selection.selectedElements.length > 0 ? 'flex' : 'none';
       dd.classList.add('visible');
-    }
+    } /* else -- was visible */
   }
 }
