@@ -55,7 +55,7 @@ export class CanvasViewport {
     const t = `translate(${this.panOffset.x},${this.panOffset.y}) scale(${this.zoomLevel})`;
     this.backgroundLayer.setAttribute('transform', t);
     this.drawingLayer.setAttribute('transform', t);
-    // selection layer stays in screen-space — it computes its own coords
+    this.selectionLayer.setAttribute('transform', t);
   }
 
   // -- Zoom ----------------------------------------------------------------------

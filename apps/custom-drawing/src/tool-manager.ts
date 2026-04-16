@@ -34,6 +34,15 @@ export class ToolManager {
     this.container = container;
     this.infoText = document.getElementById('infoText')!;
     this.applyToolCursor();
+    this.setupToolButtons();
+  }
+
+  // bind click handlers on all .tool-btn[data-tool] buttons
+  private setupToolButtons(): void {
+    document.querySelectorAll<HTMLElement>('.tool-btn').forEach(btn => {
+      const tool = btn.dataset.tool as Tool | undefined;
+      if(tool) btn.addEventListener('click', () => this.selectTool(tool));
+    });
   }
 
   // ------------------------------------------------------------------------------
