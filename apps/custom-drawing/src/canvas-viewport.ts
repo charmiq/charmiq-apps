@@ -27,12 +27,24 @@ export class CanvasViewport {
   }
 
   // -- Coordinate conversion -----------------------------------------------------
-  // screen → canvas (accounting for pan and zoom)
-  public screenToCanvas(screenX: number, screenY: number): Point {
+  // screen (clientX/clientY) → canvas (element-coordinate space)
+  public screenToCanvas(clientX: number, clientY: number): Point {
+    // use the SVG's own coordinate matrix so the conversion is correct regardless
+    // of how the platform embeds the app (iframe offsets, transforms, etc.)
+    const ctm = this.drawingLayer.getScreenCTM();
+    if(ctm) {
+      const inv = ctm.inverse();
+      return {
+        x: inv.a * clientX + inv.c * clientY + inv.e,
+        y: inv.b * clientX + inv.d * clientY + inv.f,
+      };
+    } /* else -- no CTM available */
+
+    // fallback: manual math (matches the original drawing.html approach)
     const rect = this.container.getBoundingClientRect();
     return {
-      x: (screenX - rect.left - this.panOffset.x) / this.zoomLevel,
-      y: (screenY - rect.top - this.panOffset.y) / this.zoomLevel,
+      x: (clientX - rect.left - this.panOffset.x) / this.zoomLevel,
+      y: (clientY - rect.top - this.panOffset.y) / this.zoomLevel,
     };
   }
 
