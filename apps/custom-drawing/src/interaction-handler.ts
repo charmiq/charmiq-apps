@@ -111,14 +111,14 @@ export class InteractionHandler {
       if(this.isMouseOutside) {
         this.isMouseOutside = false;
         if(this.isDrawing && e.buttons === 0) this.endCurrentOperation();
-      }
+      } /* else -- mouse entered but wasn't previously outside */
     });
     document.addEventListener('mouseleave', () => { if(this.isDrawing) this.isMouseOutside = true; });
     document.addEventListener('mouseenter', (e: MouseEvent) => {
       if(this.isMouseOutside) {
         this.isMouseOutside = false;
         if(this.isDrawing && e.buttons === 0) this.endCurrentOperation();
-      }
+      } /* else -- mouse entered but wasn't previously outside */
     });
   }
 
@@ -135,7 +135,7 @@ export class InteractionHandler {
       } /* else -- not spacebar or not selection tool */
 
       // undo/redo propagate to parent
-      if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) return;
+      if((e.ctrlKey || e.metaKey) && ((e.key.toLowerCase() === 'z') || (e.key.toLowerCase() === 'y'))) return;
 
       // copy / cut / paste
       if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c') && (this.selection.selectedElements.length > 0)) { e.preventDefault(); this.onCopy?.(); return; }
@@ -170,10 +170,10 @@ export class InteractionHandler {
     });
 
     document.addEventListener('keyup', (e: KeyboardEvent) => {
-      if(e.key === ' ' && this.tools.currentTool === 'selection') {
+      if((e.key === ' ') && (this.tools.currentTool === 'selection')) {
         this.tools.setSpacebarPan(false);
         if(this.isPanning) this.endPanning();
-      }
+      } /* else -- not spacebar or not selection tool */
       if((e.key === 'Shift') && this.isResizing && this.shiftKeyHeld &&
           (this.selection.selectedElements.length === 1) && (this.selection.selectedElements[0].type === 'image')) {
         this.shiftKeyHeld = false;
@@ -183,8 +183,8 @@ export class InteractionHandler {
             this.lastMousePoint.y - this.resizeStartPoint.y,
           );
           this.selection.showSelectionHandles();
-        }
-      }
+        } /* else -- no last mouse point for resizing */
+      } /* else -- not shift key or not resizing or not single image element */
     });
   }
 
@@ -229,14 +229,14 @@ export class InteractionHandler {
     if(this.isResizing && prevShift && !this.shiftKeyHeld &&
         (this.selection.selectedElements.length === 1) && (this.selection.selectedElements[0].type === 'image')) {
       this.snapBackPending = true;
-    }
+    } /* else -- not resizing with shift key or not single image element */
 
     if(this.tools.spacebarHeld && !this.isDrawing) return;
 
     // cursor updates when idle
     if(!this.isDrawing && (this.tools.currentTool === 'selection') && !this.tools.spacebarHeld) {
       this.updateIdleCursor(point);
-    }
+    } /* else -- not idle for cursor updates */
 
     if(!this.isDrawing) return;
 
@@ -250,8 +250,6 @@ export class InteractionHandler {
 
   // -- Mouse Up ------------------------------------------------------------------
   private handleMouseUp = (e: MouseEvent): void => {
-    const point = this.getCanvasPoint(e);
-
     if(this.isPanning) { this.endPanning(); }
     else if(this.isResizing) { this.endResize(); }
     else if(this.isMoving) { this.endMoving(e); }
@@ -316,7 +314,7 @@ export class InteractionHandler {
     if(type === 'line') {
       el.startDecoration = 'none';
       el.endDecoration = 'none';
-    }
+    } /* else -- not a line type */
     this.currentElement = el;
     this.renderer.renderElement(el);
   }
@@ -326,14 +324,14 @@ export class InteractionHandler {
     if(!this.currentElement) return;
     const el = this.currentElement as any;
 
-    if(shift && el.type !== 'line') {
+    if(shift && (el.type !== 'line')) {
       // constrain to square / circle
       const dx = point.x - el.x,
             dy = point.y - el.y;
       const size = Math.max(Math.abs(dx), Math.abs(dy));
       el.x2 = el.x + Math.sign(dx) * size;
       el.y2 = el.y + Math.sign(dy) * size;
-    } else if(shift && el.type === 'line') {
+    } else if(shift && (el.type === 'line')) {
       // snap to 45° increments
       const dx = point.x - el.x,
             dy = point.y - el.y;
@@ -432,7 +430,7 @@ export class InteractionHandler {
       const dy = point.y - this.moveStartPoint.y;
       if(Math.abs(dx) > 1 || Math.abs(dy) > 1) this.hasMoved = true;
       return;
-    }
+    } /* else -- either no pending shift-click or pending shift-click on already selected element */
 
     let dx = point.x - this.moveStartPoint.x,
         dy = point.y - this.moveStartPoint.y;
@@ -440,7 +438,7 @@ export class InteractionHandler {
     if(shift) {
       if(Math.abs(dx) >= Math.abs(dy)) dy = 0;
       else dx = 0;
-    }
+    } /* else -- not holding shift for axis-constrained movement */
 
     if(Math.abs(dx) > 1 || Math.abs(dy) > 1) this.hasMoved = true;
 
@@ -474,9 +472,8 @@ export class InteractionHandler {
     if(this.pendingShiftClick && !this.hasMoved) {
       if(this.pendingShiftClick.isSelected) {
         this.selection.removeFromSelection(this.pendingShiftClick.element);
-      }
-      /* else -- already added in handleSelectionStart */
-    }
+      } /* else -- was not already selected */
+    } /* else -- no pending shift-click or had already moved */
     this.pendingShiftClick = null;
 
     if(this.hasMoved) this.onSave?.();
@@ -523,7 +520,7 @@ export class InteractionHandler {
       const el = sel[0];
       if(el.type === 'line') this.resizeSingleLine(point, el);
       else if(el.type === 'text') this.resizeSingleText(rawDx, rawDy, el);
-      else if(el.angle && el.angle !== 0) this.resizeRotatedElement(point, rawDx, rawDy);
+      else if(el.angle && (el.angle !== 0)) this.resizeRotatedElement(point, rawDx, rawDy);
       else if(el.type === 'image') {
         if(this.shiftKeyHeld) this.resizeSingleFree(rawDx, rawDy);
         else this.resizeProportionally(rawDx, rawDy);
@@ -545,23 +542,23 @@ export class InteractionHandler {
   // -- Proportional --------------------------------------------------------------
   private resizeProportionally(rawDx: number, rawDy: number): void {
     const ob = this.originalBounds;
-    if(!ob || ob.width === 0 || ob.height === 0) return;
+    if(!ob || (ob.width === 0) || (ob.height === 0)) return;
     const handleType = this.resizeHandle!.type;
 
     // determine dominant axis
     let scale = 1 + Math.max(Math.abs(rawDx), Math.abs(rawDy)) / Math.max(ob.width, ob.height);
-    if(handleType === 'nw' || handleType === 'sw') { if(rawDx > 0) scale = 1 / scale; }
+    if((handleType === 'nw') || (handleType === 'sw')) { if(rawDx > 0) scale = 1 / scale; }
     else { if(rawDx < 0) scale = 1 / scale; }
-    if(handleType === 'nw' || handleType === 'ne') { if(rawDy > 0) scale = 1 / scale; }
+    if((handleType === 'nw') || (handleType === 'ne')) { if(rawDy > 0) scale = 1 / scale; }
     else { if(rawDy < 0) scale = 1 / scale; }
 
-    const newW = ob.width * scale;
-    const newH = ob.height * scale;
+    const newW = ob.width * scale,
+          newH = ob.height * scale;
     if(newW < 10 || newH < 10) return;
 
     // anchor at the opposite corner
-    let anchorX = ob.x;
-    let anchorY = ob.y;
+    let anchorX = ob.x,
+        anchorY = ob.y;
     if(handleType === 'nw') { anchorX = ob.x + ob.width; anchorY = ob.y + ob.height; }
     else if(handleType === 'ne') { anchorX = ob.x; anchorY = ob.y + ob.height; }
     else if(handleType === 'sw') { anchorX = ob.x + ob.width; anchorY = ob.y; }
@@ -845,10 +842,10 @@ export class InteractionHandler {
     };
     this.selectionBox = null;
 
-    if(box.width < 2 && box.height < 2) {
+    if((box.width < 2) && (box.height < 2)) {
       this.selection.deselectAll();
       return;
-    }
+    } /* else -- not a tiny selection box */
 
     // find elements intersecting the box
     const hits: DrawingElement[] = [];
@@ -875,7 +872,7 @@ export class InteractionHandler {
       const svgEl = document.getElementById(el.id);
       if(svgEl) svgEl.remove();
       this.onSave?.();
-    }
+    } /* else -- no element at eraser point */
   }
 
   // == Keyboard move =============================================================
@@ -988,7 +985,7 @@ export class InteractionHandler {
       for(const e of this.elements) {
         if((e.groupId === el.groupId) && (e.id !== el.id)) selected.push(e);
       }
-    }
+    } /* else -- not part of a group */
     this.selection.select(selected);
   }
 
@@ -998,8 +995,8 @@ export class InteractionHandler {
       for(const e of this.elements) {
         if((e.groupId === el.groupId) && !this.selection.selectedElements.some(s => s.id === e.id)) {
           this.selection.addToSelection(e);
-        }
+        } /* else -- either not part of a group or already selected */
       }
-    }
+    } /* else -- not part of a group */
   }
 }
