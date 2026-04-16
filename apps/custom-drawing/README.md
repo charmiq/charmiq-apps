@@ -1,6 +1,10 @@
 # Custom Drawing
 
-An SVG drawing canvas with shape tools, text, images, rotation, grouping, and export — with reactive state sync and an LLM command surface.
+*An SVG drawing canvas with shape tools, text, images, rotation, grouping, and export — with reactive state sync and an LLM command surface.*
+
+<iframe-app height="400px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
+</iframe-app>
+
 
 ## Features
 
@@ -16,6 +20,7 @@ An SVG drawing canvas with shape tools, text, images, rotation, grouping, and ex
 - **AI Generation**: Generate images from drawing content
 - **Reactive state**: Real-time collaborative sync via `appState`
 - **LLM command surface**: `getElements`, `addElement`, `addElements`, `move`, `rotate`, `delete`, `group`, `ungroup`, `clear`
+
 
 ## Architecture
 
@@ -42,6 +47,7 @@ src/
 └── command-surface.ts      # advertised LLM commands
 ```
 
+
 ## Storage Format
 
 State is stored in `appState` as:
@@ -54,6 +60,7 @@ State is stored in `appState` as:
 ```
 
 This format is **fully compatible** with the original `drawing.html` application.
+
 
 ## Dependencies
 
