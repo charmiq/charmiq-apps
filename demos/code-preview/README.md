@@ -13,8 +13,8 @@
 ## The Source
 
 <p style="text-align: center;">
-  <iframe-app id="xH7mRtQw2k" height="350px" width="49%" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
-    <app-content id="hTm1Kx9Pqw" name="index.html">
+  <iframe-app data-name="html-editor" height="350px" width="49%" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
+    <app-content name="index.html">
 <div id="container">
   Make
   <div id="flip">
@@ -44,8 +44,8 @@
   ]
 }
     </app-state>
-  </iframe-app> <iframe-app id="pK3nVs8Ljf" height="350px" width="49%" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
-    <app-content id="cSs3Nv7Rjd" name="style.css">
+  </iframe-app> <iframe-app data-name="css-editor" height="350px" width="49%" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
+    <app-content name="style.css">
 @import url('https://fonts.googleapis.com/css?family=Roboto:700');
 
 body {
@@ -142,8 +142,8 @@ The [`manifest.json`](charmiq://./manifest.json) declares a static `bundle.forma
 
 ```
 "files": {
-  "/index.html": "charmiq://./README.md?nodeId=xH7mRtQw2k&selector=app-content[name='index.html']&format=plain",
-  "/style.css":  "charmiq://./README.md?nodeId=pK3nVs8Ljf&selector=app-content[name='style.css']&format=plain"
+  "/index.html": "charmiq://./README.md?selector=iframe-app[name='html-editor']/app-content[name='index.html']&format=plain",
+  "/style.css":  "charmiq://./README.md?selector=iframe-app[name='css-editor']/app-content[name='style.css']&format=plain"
 }
 ```
 
