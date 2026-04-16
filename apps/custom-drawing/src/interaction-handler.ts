@@ -824,10 +824,7 @@ export class InteractionHandler {
     rect.setAttribute('y', String(y));
     rect.setAttribute('width', String(w));
     rect.setAttribute('height', String(h));
-    rect.style.fill = 'rgba(66,133,244,0.1)';
-    rect.style.stroke = '#4285f4';
-    rect.style.strokeWidth = '1';
-    rect.style.strokeDasharray = '4,4';
+    rect.classList.add('selection-box');
     this.viewport.selectionLayer.appendChild(rect);
   }
 
