@@ -7,7 +7,7 @@ import type { TextMeasurement } from './text-measurement';
 const FONT_FAMILY = 'Excalifont, "Comic Sans MS", cursive, system-ui, sans-serif';
 
 // --------------------------------------------------------------------------------
-interface Services {
+interface CharmIQServices {
   commandService: any;
   assetService: any;
 }
@@ -15,7 +15,7 @@ interface Services {
 // == ExportHandler ===============================================================
 export class ExportHandler {
   private readonly textMeasure: TextMeasurement;
-  private services: Services = { commandService: null, assetService: null };
+  private services: CharmIQServices = { commandService: null, assetService: null };
 
   public elements: DrawingElement[] = [];
   public selectedElements: DrawingElement[] = [];
@@ -25,7 +25,7 @@ export class ExportHandler {
     this.textMeasure = textMeasure;
   }
 
-  public setServices(s: Services): void { this.services = s; }
+  public setServices(s: CharmIQServices): void { this.services = s; }
 
   // ==============================================================================
   public async exportToPNG(target: 'download' | 'clipboard' | 'files'): Promise<void> {

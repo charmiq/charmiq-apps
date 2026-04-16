@@ -6,7 +6,7 @@ import type { ToolManager } from './tool-manager';
 
 // AI image generation from the drawing canvas
 // ********************************************************************************
-interface Services {
+interface CharmIQServices {
   commandService: any;
   assetService: any;
   generationService: any;
@@ -18,7 +18,7 @@ export class GenerationHandler {
   private readonly renderer: SvgRenderer;
   private readonly selection: SelectionManager;
   private readonly tools: ToolManager;
-  private services: Services = { commandService: null, assetService: null, generationService: null };
+  private services: CharmIQServices = { commandService: null, assetService: null, generationService: null };
 
   elements: DrawingElement[] = [];
   generateMode: 'all' | 'selected' = 'all';
@@ -30,7 +30,7 @@ export class GenerationHandler {
     this.tools = tools;
   }
 
-  public setServices(s: Services): void { this.services = s; }
+  public setServices(s: CharmIQServices): void { this.services = s; }
 
   // ==============================================================================
   public async generateFromDrawing(mode: string | null = null): Promise<void> {

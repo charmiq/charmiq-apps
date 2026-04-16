@@ -6,7 +6,7 @@ import type { ToolManager } from './tool-manager';
 
 // image import (URL modal, local files, clipboard, drag-drop, Files)
 // ********************************************************************************
-interface Services {
+interface CharmIQServices {
   commandService: any;
   assetService: any;
 }
@@ -17,7 +17,7 @@ export class ImageHandler {
   private readonly renderer: SvgRenderer;
   private readonly selection: SelectionManager;
   private readonly tools: ToolManager;
-  private services: Services = { commandService: null, assetService: null };
+  private services: CharmIQServices = { commandService: null, assetService: null };
 
   private pendingImagePoint: Point | null = null;
   private editingImageElement: any | null = null;
@@ -32,7 +32,7 @@ export class ImageHandler {
     this.tools = tools;
   }
 
-  public setServices(s: Services): void { this.services = s; }
+  public setServices(s: CharmIQServices): void { this.services = s; }
 
   // -- URL modal -----------------------------------------------------------------
   public setupImageModal(): void {
