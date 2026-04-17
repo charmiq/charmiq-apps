@@ -150,7 +150,7 @@ export class SelectionManager {
     const combined = this.combinedBounds();
     this.appendBoundingBox(layer, combined, undefined, true);
 
-    // corner handles on combined box
+    // corner handles on combined box (combined box isn't rotated, so angle = 0)
     const pad = 5;
     const corners: { x: number; y: number; type: HandleType }[] = [
       { x: combined.x - pad, y: combined.y - pad, type: 'nw' },
@@ -159,7 +159,7 @@ export class SelectionManager {
       { x: combined.x - pad, y: combined.y + combined.height + pad, type: 'sw' },
     ];
     for(const c of corners) {
-      this.appendCircleHandle(layer, c.x, c.y, s2c(4), c.type, 'resize-handle');
+      this.appendCircleHandle(layer, c.x, c.y, s2c(4), c.type, 'resize-handle', cursorForHandle(c.type));
     }
 
     // combined rotate handle
@@ -248,7 +248,7 @@ export class SelectionManager {
         const r = rotatePoint(hx, hy, cx, cy, angle);
         hx = r.x; hy = r.y;
       }
-      this.appendCircleHandle(layer, hx, hy, s2c(4), c.type, 'resize-handle');
+      this.appendCircleHandle(layer, hx, hy, s2c(4), c.type, 'resize-handle', cursorForHandle(c.type, angle));
     }
   }
 
@@ -297,7 +297,7 @@ export class SelectionManager {
   }
 
   // -- Circle Handle -------------------------------------------------------------
-  private appendCircleHandle(layer: SVGGElement, cx: number, cy: number, r: number, type: HandleType, cls: string): void {
+  private appendCircleHandle(layer: SVGGElement, cx: number, cy: number, r: number, type: HandleType, cls: string, cursor: string = 'move'): void {
     const circle = document.createElementNS(SVG_NS, 'circle');
     circle.classList.add(cls);
     circle.setAttribute('cx', String(cx));
@@ -306,8 +306,43 @@ export class SelectionManager {
     circle.style.fill = '#4285f4';
     circle.style.stroke = 'white';
     circle.style.strokeWidth = String(this.viewport.screenSizeToCanvasSize(2));
-    circle.style.cursor = 'move';
+    circle.style.cursor = cursor;
     (circle as any).dataset.handleType = type;
     layer.appendChild(circle);
   }
 }
+
+// == Util ========================================================================
+// map a resize handle (rotated by the element's angle) to the CSS cursor that
+// matches its visual orientation. Browsers only render 4 bidirectional resize
+// cursors, so this buckets the rotated direction into 8 octants and collapse
+// opposite handles onto the same cursor
+export const cursorForHandle = (handle: HandleType, angle = 0): string => {
+  if((handle === 'line-start') || (handle === 'line-end')) return 'move';
+  if(handle === 'rotate') return 'grab';
+
+  // local direction of each handle from element center (0 = east, π/2 = south)
+  const localAngle: Record<string, number> = {
+    e:   0,
+    se:  Math.PI / 4,
+    s:   Math.PI / 2,
+    sw:  3 * Math.PI / 4,
+    w:   Math.PI,
+    nw: -3 * Math.PI / 4,
+    n:  -Math.PI / 2,
+    ne: -Math.PI / 4,
+  };
+  const base = localAngle[handle];
+  if(base === undefined) return 'default';
+
+  const twoPi = 2 * Math.PI;
+  const a = (((base + angle) % twoPi) + twoPi) % twoPi;
+  const octant = Math.round(a / (Math.PI / 4)) % 8;
+  switch(octant) {
+    case 0: case 4: return 'ew-resize';
+    case 1: case 5: return 'nwse-resize';
+    case 2: case 6: return 'ns-resize';
+    case 3: case 7: return 'nesw-resize';
+  }
+  return 'default';
+};

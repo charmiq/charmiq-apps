@@ -1,7 +1,7 @@
 import type { CanvasViewport } from './canvas-viewport';
 import { generateId, getElementBounds, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
 import { distanceToLine, isPointInElement, rotatePoint, snapAngle, getDrawingBounds, isPointNearLine, doRectsIntersect } from './geometry';
-import type { SelectionManager, HandleType } from './selection-manager';
+import { cursorForHandle, type HandleType, type SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
 import type { TextMeasurement } from './text-measurement';
 import type { ToolManager, Tool } from './tool-manager';
@@ -680,8 +680,10 @@ export class InteractionHandler {
     const cos = Math.cos(angle),
           sin = Math.sin(angle);
 
-    // calculate the element center
-    const bounds = getElementBounds({ ...orig } as DrawingElement);
+    // use the snapshot taken at gesture start -- for svg-path/polygon/text-path,
+    // getElementBounds() reads the live DOM via getBBox(), which mid-gesture
+    // reflects the already-mutated element and causes the pivot to drift
+    const bounds = orig.__origBounds || getElementBounds(orig as DrawingElement);
     const cx = bounds.x + bounds.width / 2,
           cy = bounds.y + bounds.height / 2;
 
@@ -1083,13 +1085,19 @@ export class InteractionHandler {
   // -- Update Idle Cursor --------------------------------------------------------
   private updateIdleCursor(point: Point): void {
     const c = this.viewport.container;
-    if(this.selection.selectedElements.length > 0) {
+    const sel = this.selection.selectedElements;
+    if(sel.length > 0) {
       if(this.getRotateHandleAtPoint(point)) { c.style.cursor = 'grab'; return; }
+
+      // rotation only applies to the single-element case -- the combined
+      // multi-selection box is always axis-aligned
+      const angle = (sel.length === 1) ? (sel[0].angle || 0) : 0;
+
       const handle = this.selection.getHandleAtPoint(point);
-      if(handle) { c.style.cursor = handle === 'line-start' || handle === 'line-end' ? 'move' : 'nwse-resize'; return; }
+      if(handle) { c.style.cursor = cursorForHandle(handle, angle); return; }
       const edge = this.getEdgeAtPoint(point);
-      if(edge) { c.style.cursor = 'nwse-resize'; return; }
-    }
+      if(edge) { c.style.cursor = cursorForHandle(edge.type, angle); return; }
+    } /* else -- no selection */
 
     const el = this.getElementAtPoint(point);
     c.style.cursor = el ? 'move' : 'default';
