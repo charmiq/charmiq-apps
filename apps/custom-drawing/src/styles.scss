@@ -70,9 +70,12 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   width: 44px;
   max-height: calc(100vh - 110px);
-  // no overflow clipping here -- the inner scroller handles overflow so the
-  // fly-out dropdowns can escape the panel horizontally
+  overflow-y: auto;
+  // dropdowns are re-parented via position:fixed in JS so they escape the
+  // scrolling container without needing overflow-x: visible (which CSS doesn't
+  // allow alongside overflow-y: auto)
   pointer-events: auto;
+  scrollbar-width: thin;
 
   &.selection-active { pointer-events: none; }
   &.visible { display: flex; }

@@ -247,11 +247,24 @@ export class PropertiesPanel {
   }
 
   // ==============================================================================
+  // dropdowns fly out using position:fixed so they escape the panel's scrolling
+  // container (the panel itself must clip overflow to scroll vertically, which
+  // would otherwise clip horizontally-escaping dropdowns too)
   private toggleDropdown(ddId: string): void {
     const dd = document.getElementById(ddId)!;
     const was = dd.classList.contains('visible');
     this.hideAllDropdowns();
-    if(!was) dd.classList.add('visible');
+    if(!was) {
+      const group = dd.closest('.prop-group') as HTMLElement | null;
+      const anchor = group?.getBoundingClientRect();
+      const panel = document.getElementById('propertiesPanel')?.getBoundingClientRect();
+      if(anchor && panel) {
+        dd.style.position = 'fixed';
+        dd.style.left = `${panel.right + 8}px`;
+        dd.style.top = `${anchor.top}px`;
+      } /* else -- let CSS fallback position it */
+      dd.classList.add('visible');
+    } /* else -- was already open; hideAllDropdowns closed it */
   }
 
   private setVisible(id: string, v: boolean): void { document.getElementById(id)!.style.display = v ? 'flex' : 'none'; }
