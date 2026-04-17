@@ -250,9 +250,20 @@ body {
   font-size: 14px; cursor: pointer; transition: background 0.2s ease;
   &.primary { background: #4285f4; color: white; &:hover { background: #3367d6; } }
   &.secondary { background: #f5f5f5; color: #666; &:hover { background: #e0e0e0; } }
+  &.danger { background: #d51a25; color: white; &:hover { background: #a71520; } }
 }
 
 .modal-error { color: #d51a25; font-size: 13px; margin-bottom: 12px; display: none; &.visible { display: block; } }
+
+// == Confirm Modal ===============================================================
+.confirm-modal { min-width: 320px; max-width: 420px; }
+.confirm-message { font-size: 14px; color: #444; margin-bottom: 16px; line-height: 1.4; }
+
+// == Toolbar: Danger Variant =====================================================
+.tool-btn.danger {
+  svg { stroke: #d51a25; }
+  &:hover { border-color: #d51a25; background: #ffe6e6; svg { stroke: #d51a25; } }
+}
 
 // == Settings Modal ==============================================================
 .settings-modal { min-width: 420px; }

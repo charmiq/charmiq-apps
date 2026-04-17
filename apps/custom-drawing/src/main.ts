@@ -2,6 +2,7 @@ import { CanvasViewport } from './canvas-viewport';
 import { ClipboardHandler } from './clipboard-handler';
 import { CommandSurface } from './command-surface';
 import { ConfigStore, type DrawingConfig } from './config-store';
+import { confirm } from './confirm';
 import { ContentBridge } from './content-bridge';
 import type { DrawingElement } from './element-model';
 import { ExportHandler } from './export-handler';
@@ -104,6 +105,25 @@ document.getElementById('deleteBtn')!.addEventListener('click', () => { clipboar
 document.getElementById('copyBtn')!.addEventListener('click', () => clipboard.copySelected());
 document.getElementById('groupBtn')!.addEventListener('click', () => { clipboard.groupSelected(); elements = clipboard.elements; syncElements(); });
 document.getElementById('ungroupBtn')!.addEventListener('click', () => { clipboard.ungroupSelected(); elements = clipboard.elements; syncElements(); });
+
+// clear all — destructive, gated by an are-you-sure confirmation
+document.getElementById('clearAllBtn')!.addEventListener('click', async () => {
+  if(configStore.getConfig().readOnly) return;/*no-op in read-only*/
+  if(elements.length < 1) return;/*nothing to clear*/
+  const ok = await confirm({
+    title:    'Clear the entire drawing?',
+    message:  `This will permanently remove all ${elements.length} element${elements.length === 1 ? '' : 's'}. This cannot be undone.`,
+    okLabel:  'Clear All',
+  });
+  if(!ok) return;/*user cancelled*/
+
+  // in-place mutation to preserve the shared array reference used across modules
+  elements.splice(0, elements.length);
+  selection.deselectAll();
+  textEditor.cancelIfDeleted();
+  renderer.rerenderAll(elements);
+  syncElements();
+});
 
 // == Content Bridge — incoming updates ===========================================
 contentBridge.onChange((newElements) => {

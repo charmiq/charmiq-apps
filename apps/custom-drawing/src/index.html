@@ -36,6 +36,9 @@
       <button class="tool-btn" data-tool="eraser" title="Eraser (E)">
         <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"></path><path d="M22 21H7"></path><path d="m5 11 9 9"></path></svg>
       </button>
+      <button class="tool-btn danger" id="clearAllBtn" title="Clear All">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" x2="14" y1="14" y2="18"></line><line x1="14" x2="10" y1="14" y2="18"></line></svg>
+      </button>
       <div style="width: 1px; height: 30px; background: #e0e0e0; margin: 0 4px;"></div>
       <button class="tool-btn" id="generateBtn" title="Generate from Drawing (G)">
         <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"></path><path d="m14 7 3 3"></path><path d="M5 6v4"></path><path d="M19 14v4"></path><path d="M10 2v2"></path><path d="M7 8H3"></path><path d="M21 16h-4"></path><path d="M11 3H9"></path></svg>
@@ -295,6 +298,18 @@
           <button class="modal-button secondary" id="settingsReset">Reset Defaults</button>
           <button class="modal-button secondary" id="settingsCancel">Cancel</button>
           <button class="modal-button primary" id="settingsSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- == Confirm Modal (Clear All) ======================================== -->
+    <div class="modal-overlay" id="confirmModal">
+      <div class="modal confirm-modal">
+        <div class="modal-title" id="confirmTitle">Are you sure?</div>
+        <div class="confirm-message" id="confirmMessage"></div>
+        <div class="modal-buttons">
+          <button class="modal-button secondary" id="confirmCancel">Cancel</button>
+          <button class="modal-button danger" id="confirmOk">Clear All</button>
         </div>
       </div>
     </div>
