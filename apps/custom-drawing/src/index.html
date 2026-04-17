@@ -57,7 +57,7 @@
       <!-- stroke color -->
       <div class="prop-group" id="strokeColorGroup">
         <div class="prop-label">Stroke</div>
-        <div class="prop-button" id="strokeColorBtn"><div class="color-swatch" id="strokeColorSwatch" style="background-color: #000000;"></div></div>
+        <div class="prop-button" id="strokeColorBtn" title="Stroke color"><div class="color-swatch" id="strokeColorSwatch" style="background-color: #000000;"></div></div>
         <div class="dropdown" id="strokeColorDropdown">
           <div class="dropdown-item" data-color="#000000"><div class="color-swatch" style="background-color: #000000;"></div><span>Black</span></div>
           <div class="dropdown-item" data-color="#d51a25"><div class="color-swatch" style="background-color: #d51a25;"></div><span>Red</span></div>
@@ -70,7 +70,7 @@
       <!-- background color -->
       <div class="prop-group" id="backgroundColorGroup">
         <div class="prop-label">Bkg</div>
-        <div class="prop-button" id="backgroundColorBtn"><div class="color-swatch" id="backgroundColorSwatch" style="background-color: transparent; border: 1px solid #ccc;"></div></div>
+        <div class="prop-button" id="backgroundColorBtn" title="Background color"><div class="color-swatch" id="backgroundColorSwatch" style="background-color: transparent; border: 1px solid #ccc;"></div></div>
         <div class="dropdown" id="backgroundColorDropdown">
           <div class="dropdown-item" data-color="transparent"><div class="color-swatch" style="background-color: transparent; border: 1px solid #ccc;"></div><span>None</span></div>
           <div class="dropdown-item" data-color="rgba(255,255,255,0.5)"><div class="color-swatch" style="background-color: rgba(255,255,255,0.5); border: 1px solid #ccc;"></div><span>White</span></div>
@@ -83,7 +83,7 @@
       <!-- stroke width -->
       <div class="prop-group" id="strokeWidthGroup">
         <div class="prop-label">Width</div>
-        <div class="prop-button" id="strokeWidthBtn"><div class="stroke-width-sample" id="strokeWidthSample"></div></div>
+        <div class="prop-button" id="strokeWidthBtn" title="Stroke width"><div class="stroke-width-sample" id="strokeWidthSample"></div></div>
         <div class="dropdown" id="strokeWidthDropdown">
           <div class="dropdown-item" data-width="1"><div class="stroke-width-sample thin"></div><span>Thin</span></div>
           <div class="dropdown-item" data-width="2"><div class="stroke-width-sample medium"></div><span>Medium</span></div>
@@ -93,7 +93,7 @@
       <!-- stroke style -->
       <div class="prop-group" id="strokeStyleGroup">
         <div class="prop-label">Style</div>
-        <div class="prop-button" id="strokeStyleBtn"><div class="stroke-style-sample" id="strokeStyleSample"></div></div>
+        <div class="prop-button" id="strokeStyleBtn" title="Stroke style"><div class="stroke-style-sample" id="strokeStyleSample"></div></div>
         <div class="dropdown" id="strokeStyleDropdown">
           <div class="dropdown-item" data-style="solid"><div class="stroke-style-sample solid"></div><span>Solid</span></div>
           <div class="dropdown-item" data-style="dashed"><div class="stroke-style-sample dashed"></div><span>Dashed</span></div>
@@ -103,7 +103,7 @@
       <!-- text size -->
       <div class="prop-group" id="textSizeGroup">
         <div class="prop-label">Size</div>
-        <div class="prop-button" id="textSizeBtn"><span class="text-size-sample medium" id="textSizeSample">A</span></div>
+        <div class="prop-button" id="textSizeBtn" title="Text size"><span class="text-size-sample medium" id="textSizeSample">A</span></div>
         <div class="dropdown" id="textSizeDropdown">
           <div class="dropdown-item" data-size="12"><span class="text-size-sample small">A</span><span>Small</span></div>
           <div class="dropdown-item" data-size="16"><span class="text-size-sample medium">A</span><span>Medium</span></div>
@@ -114,7 +114,7 @@
       <!-- text color -->
       <div class="prop-group" id="textColorGroup">
         <div class="prop-label">Color</div>
-        <div class="prop-button" id="textColorBtn"><div class="color-swatch" id="textColorSwatch" style="background-color: #000000;"></div></div>
+        <div class="prop-button" id="textColorBtn" title="Text color"><div class="color-swatch" id="textColorSwatch" style="background-color: #000000;"></div></div>
         <div class="dropdown" id="textColorDropdown">
           <div class="dropdown-item" data-color="#000000"><div class="color-swatch" style="background-color: #000000;"></div><span>Black</span></div>
           <div class="dropdown-item" data-color="#d51a25"><div class="color-swatch" style="background-color: #d51a25;"></div><span>Red</span></div>
@@ -127,7 +127,7 @@
       <!-- text align -->
       <div class="prop-group" id="textAlignGroup">
         <div class="prop-label">Align</div>
-        <div class="prop-button" id="textAlignBtn"><svg class="text-align-icon" id="textAlignIcon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M21 6H3M15 12H3M17 18H3"/></svg></div>
+        <div class="prop-button" id="textAlignBtn" title="Text alignment"><svg class="text-align-icon" id="textAlignIcon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M21 6H3M15 12H3M17 18H3"/></svg></div>
         <div class="dropdown" id="textAlignDropdown">
           <div class="dropdown-item" data-align="left"><svg class="text-align-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M21 6H3M15 12H3M17 18H3"/></svg><span>Left</span></div>
           <div class="dropdown-item" data-align="center"><svg class="text-align-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6H6M21 12H3M18 18H6"/></svg><span>Center</span></div>
@@ -137,7 +137,7 @@
       <!-- line decorations -->
       <div class="prop-group" id="decorationGroup">
         <div class="prop-label">Decoration</div>
-        <div style="display: flex; gap: 2px;">
+        <div class="prop-button-row">
           <div class="prop-button" id="startDecorationBtn" title="Start Decoration"><svg class="decoration-icon" id="startDecorationIcon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><g stroke="currentColor" opacity="0.3" stroke-width="2"><path d="M12 12l9 0"></path><path d="M3 9l6 6"></path><path d="M3 15l6 -6"></path></g></svg></div>
           <div class="prop-button" id="endDecorationBtn" title="End Decoration"><svg class="decoration-icon" id="endDecorationIcon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><g stroke="currentColor" opacity="0.3" stroke-width="2"><path d="M12 12l9 0"></path><path d="M3 9l6 6"></path><path d="M3 15l6 -6"></path></g></svg></div>
         </div>
@@ -157,7 +157,7 @@
       <!-- layer controls -->
       <div class="prop-group" id="layerGroup">
         <div class="prop-label">Layer</div>
-        <div style="display: flex; gap: 2px;">
+        <div class="prop-button-row">
           <div class="prop-button" id="sendToBackBtn" title="Send to Back"><svg class="layer-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M12 17V3"></path><path d="m6 11 6 6 6-6"></path><path d="M19 21H5"></path></svg></div>
           <div class="prop-button" id="sendBackwardBtn" title="Send Backward"><svg class="layer-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg></div>
           <div class="prop-button" id="bringForwardBtn" title="Bring Forward"><svg class="layer-icon" stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></div>
@@ -167,7 +167,7 @@
       <!-- actions -->
       <div class="prop-group" id="deleteGroup">
         <div class="prop-label">Actions</div>
-        <div style="display: flex; gap: 2px;">
+        <div class="prop-button-row">
           <div class="group-icon-btn" id="groupBtn" title="Group" style="display: none;"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 7V5c0-1.1.9-2 2-2h2"></path><path d="M17 3h2c1.1 0 2 .9 2 2v2"></path><path d="M21 17v2c0 1.1-.9 2-2 2h-2"></path><path d="M7 21H5c-1.1 0-2-.9-2-2v-2"></path><rect width="7" height="5" x="7" y="7" rx="1"></rect><rect width="7" height="5" x="10" y="12" rx="1"></rect></svg></div>
           <div class="ungroup-icon-btn" id="ungroupBtn" title="Ungroup" style="display: none;"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="8" height="6" x="5" y="4" rx="1"></rect><rect width="8" height="6" x="11" y="14" rx="1"></rect></svg></div>
           <div class="copy-icon-btn" id="copyBtn" title="Copy"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2 2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></div>

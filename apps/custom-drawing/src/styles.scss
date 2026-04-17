@@ -56,30 +56,46 @@ body {
 }
 
 // == Properties Panel ============================================================
+// vertical side panel (Excalidraw-style). Sits below the toolbar on the left.
+// Labels live in `title` attributes so the panel stays compact; groups are
+// separated by a hairline divider; dropdowns fly out to the right
 .properties-panel {
   position: absolute;
-  top: 20px; left: 580px;
-  display: none; gap: 8px;
+  top: 90px; left: 20px;
+  display: none; flex-direction: column; gap: 6px;
   z-index: 1000;
   background: white;
-  padding: 8px;
+  padding: 6px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  max-width: 600px;
-  flex-wrap: wrap;
+  width: 44px;
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  overflow-x: visible;/*let dropdowns escape*/
   pointer-events: auto;
+  scrollbar-width: thin;
 
   &.selection-active { pointer-events: none; }
   &.visible { display: flex; }
 }
 
 .prop-group {
-  display: flex; flex-direction: column; gap: 4px; position: relative;
+  display: flex; flex-direction: column; gap: 2px;
+  position: relative;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f0f0f0;
+
+  &:last-child { padding-bottom: 0; border-bottom: none; }
 }
 
-.prop-label {
-  font-size: 12px; color: #666; font-weight: 500;
-  user-select: none;
+// labels are hidden in the Excalidraw-style layout; `title` tooltips replace them
+.prop-label { display: none; }
+
+// horizontal row of buttons (used inside decoration / layer / actions groups).
+// wraps so 3+ buttons use multiple rows within the narrow 44px column
+.prop-button-row {
+  display: flex; flex-wrap: wrap; gap: 2px;
+  justify-content: center;
 }
 
 .prop-button {
@@ -91,6 +107,7 @@ body {
   display: flex; align-items: center; justify-content: center;
   transition: all 0.2s ease;
   position: relative;
+  flex-shrink: 0;
 
   &:hover { border-color: #4285f4; }
   &.active { border-color: #4285f4; background: #e8f0fe; }
@@ -125,9 +142,10 @@ body {
 .copy-icon-btn, .group-icon-btn, .ungroup-icon-btn { &:hover { border-color: #666; background: #f5f5f5; } svg { stroke: #666; } }
 
 // == Dropdowns ===================================================================
+// properties-panel dropdowns fly out to the right of the narrow left column
 .dropdown {
   position: absolute;
-  top: 100%; left: 0;
+  top: 0; left: calc(100% + 10px);
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
@@ -151,7 +169,7 @@ body {
 // == Info Text ===================================================================
 .info-text {
   position: absolute;
-  top: 75px; left: 20px;
+  top: 75px; left: 80px;/*clears the left-side properties panel*/
   padding: 8px 12px;
   background: transparent;
   border-radius: 6px;
@@ -265,6 +283,8 @@ body.hide-info-bar          .info-text         { display: none !important; }
 body.hide-properties-panel  .properties-panel  { display: none !important; }
 // read-only also suppresses action dropdowns
 body.read-only .action-dropdown { display: none !important; }
+// when the toolbar is hidden, the properties panel slides up to the top-left
+body.hide-toolbar .properties-panel { top: 20px; max-height: calc(100vh - 40px); }
 
 // == Action Dropdowns ============================================================
 .action-dropdown {
