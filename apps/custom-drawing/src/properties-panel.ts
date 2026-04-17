@@ -127,7 +127,12 @@ export class PropertiesPanel {
   }
 
   // == Update Property ===========================================================
-  public updateProperty(prop: string, value: any): void {
+  /** apply a property change to every element in the selection. `persist`
+   *  defaults to true for commits / preset clicks. Pass `false` for live-preview
+   *  paths (color-picker drag, slider drag) -- firing save on every mouse-move
+   *  spawns a burst of overlapping contentBridge.save() calls that can race
+   *  with their own echoes and corrupt or clear the elements array */
+  public updateProperty(prop: string, value: any, persist: boolean = true): void {
     for(const el of this.selection.selectedElements) {
       const e = el as any;
       if(el.type === 'text') {
@@ -149,7 +154,7 @@ export class PropertiesPanel {
       if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
       this.renderer.renderElement(el);
     }
-    this.onSave?.();
+    if(persist) this.onSave?.();
   }
 
   // == Layer Ordering ============================================================
@@ -252,14 +257,14 @@ export class PropertiesPanel {
         rect: anchor,
         initial,
         alpha: !!opts.alpha,
-        onChange: (c) => { this.updateProperty(prop, c); this.setSwatchColor(swatchId, c); },
+        onChange: (c) => { this.updateProperty(prop, c, false); this.setSwatchColor(swatchId, c); },
         onCommit: (c) => {
           this.updateProperty(prop, c);
           this.setSwatchColor(swatchId, c);
           void this.configStore.pushRecent(def.recentKey, c as any);
           this.hideAllDropdowns();
         },
-        onCancel: () => { this.updateProperty(prop, initial); this.setSwatchColor(swatchId, initial); },
+        onCancel: () => { this.updateProperty(prop, initial, false); this.setSwatchColor(swatchId, initial); },
       });
     });
     dd.appendChild(custom);
@@ -290,14 +295,14 @@ export class PropertiesPanel {
       openSliderPicker({
         rect: anchor,
         initial, min: 1, max: 24, step: 1, unit: 'px',
-        onChange: (v) => { this.updateProperty('strokeWidth', v); this.setWidthSample(v); },
+        onChange: (v) => { this.updateProperty('strokeWidth', v, false); this.setWidthSample(v); },
         onCommit: (v) => {
           this.updateProperty('strokeWidth', v);
           this.setWidthSample(v);
           void this.configStore.pushRecent('strokeWidths', v);
           this.hideAllDropdowns();
         },
-        onCancel: () => { this.updateProperty('strokeWidth', initial); this.setWidthSample(initial); },
+        onCancel: () => { this.updateProperty('strokeWidth', initial, false); this.setWidthSample(initial); },
       });
     });
     dd.appendChild(custom);
@@ -358,14 +363,14 @@ export class PropertiesPanel {
       openSliderPicker({
         rect: anchor,
         initial, min: 6, max: 144, step: 1, unit: 'pt',
-        onChange: (v) => { this.updateProperty('fontSize', v); this.setTextSizeSample(v); },
+        onChange: (v) => { this.updateProperty('fontSize', v, false); this.setTextSizeSample(v); },
         onCommit: (v) => {
           this.updateProperty('fontSize', v);
           this.setTextSizeSample(v);
           void this.configStore.pushRecent('fontSizes', v);
           this.hideAllDropdowns();
         },
-        onCancel: () => { this.updateProperty('fontSize', initial); this.setTextSizeSample(initial); },
+        onCancel: () => { this.updateProperty('fontSize', initial, false); this.setTextSizeSample(initial); },
       });
     });
     dd.appendChild(custom);
@@ -427,7 +432,7 @@ export class PropertiesPanel {
       openFontPicker({
         rect: anchor,
         initial: initialFamily ? { label: 'Current', family: initialFamily } : null,
-        onChange: (c) => { this.updateProperty('fontFamily', c.family); this.setFontFamilySample(c.family); },
+        onChange: (c) => { this.updateProperty('fontFamily', c.family, false); this.setFontFamilySample(c.family); },
         onCommit: (c) => {
           this.updateProperty('fontFamily', c.family);
           this.setFontFamilySample(c.family);
@@ -436,7 +441,7 @@ export class PropertiesPanel {
         },
         onCancel: () => {
           const revert = initialFamily || DEFAULT_FONT_FAMILY;
-          this.updateProperty('fontFamily', revert);
+          this.updateProperty('fontFamily', revert, false);
           this.setFontFamilySample(revert);
         },
       });
