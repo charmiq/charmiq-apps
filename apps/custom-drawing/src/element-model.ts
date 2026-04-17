@@ -17,7 +17,7 @@ export type LineDecoration = 'none' | 'arrow' | 'triangle-filled' | 'triangle-ou
 export type TextAlign = 'left' | 'center' | 'right';
 export type StrokeStyle = 'solid' | 'dashed' | 'dotted';
 
-// == Element Interfaces ==========================================================
+// == Geometry Types ==============================================================
 export interface Bounds {
   x: number;
   y: number;
@@ -30,6 +30,7 @@ export interface Point {
   y: number;
 }
 
+// == Element Interfaces ==========================================================
 // core identity + styling shared by every element (no position assumption)
 export interface ElementCore {
   id: string;
