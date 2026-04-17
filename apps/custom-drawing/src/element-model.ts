@@ -126,6 +126,11 @@ export type DrawingElement =
   | SvgPolygonElement
   | SvgTextPathElement;
 
+// --------------------------------------------------------------------------------
+/** true for the SVG element types that use offsetX/offsetY rather than x/y for positioning */
+export const isSvgOffsetElement = (el: DrawingElement): el is SvgPathElement | SvgPolygonElement | SvgTextPathElement =>
+  (el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path');
+
 // == Id Generation ===============================================================
 export const generateId = (): string =>
   'el_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
@@ -138,7 +143,7 @@ export const generateGroupId = (): string =>
 export const moveElementBy = (el: DrawingElement, dx: number, dy: number): void => {
   if(el.type === 'svg-circle') {
     el.cx += dx; el.cy += dy;
-  } else if((el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path')) {
+  } else if(isSvgOffsetElement(el)) {
     el.offsetX += dx; el.offsetY += dy;
   } else {
     el.x += dx; el.y += dy;
@@ -154,7 +159,7 @@ export const moveElementBy = (el: DrawingElement, dx: number, dy: number): void 
 export const setElementPositionFromOrig = (el: DrawingElement, orig: any, dx: number, dy: number): void => {
   if(el.type === 'svg-circle') {
     el.cx = orig.cx + dx; el.cy = orig.cy + dy;
-  } else if((el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path')) {
+  } else if(isSvgOffsetElement(el)) {
     el.offsetX = orig.offsetX + dx; el.offsetY = orig.offsetY + dy;
   } else {
     el.x = orig.x + dx; el.y = orig.y + dy;

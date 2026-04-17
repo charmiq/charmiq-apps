@@ -1,4 +1,4 @@
-import { getElementBounds, type DrawingElement, type ImageElement, type LineDecoration, type LineElement, type SvgCircleElement, type SvgPathElement, type SvgPolygonElement, type SvgTextPathElement, type TextAlign, type TextElement } from './element-model';
+import { getElementBounds, isSvgOffsetElement, type DrawingElement, type ImageElement, type LineDecoration, type LineElement, type SvgCircleElement, type SvgPathElement, type SvgPolygonElement, type SvgTextPathElement, type TextAlign, type TextElement } from './element-model';
 import type { TextMeasurement } from './text-measurement';
 
 // SVG element creation, attribute updates, line decoration markers
@@ -18,7 +18,7 @@ export class SvgRenderer {
     this.textMeasurement = textMeasurement;
   }
 
-  // -- public API ----------------------------------------------------------------
+  // == Render ====================================================================
   public renderElement(element: DrawingElement): void {
     // remove stale node (if any) then create fresh
     const existing = document.getElementById(element.id);
@@ -31,7 +31,7 @@ export class SvgRenderer {
 
     // svg-path/polygon/text-path bounds require getBBox(), which needs the element
     // in the DOM; apply rotation here rather than inside the shape builders
-    if((element.type === 'svg-path') || (element.type === 'svg-polygon') || (element.type === 'svg-text-path')) {
+    if(isSvgOffsetElement(element)) {
       this.applyRotation(svgEl, element, getElementBounds(element));
     } /* else -- other types apply rotation inside their shape builders */
   }
@@ -45,7 +45,7 @@ export class SvgRenderer {
     for(const el of elements) this.renderElement(el);
   }
 
-  // -- element factory -----------------------------------------------------------
+  // == Element Factory ===========================================================
   private createElement(el: DrawingElement): SVGElement | null {
     switch(el.type) {
       case 'rectangle': return this.createRect(el);
@@ -62,7 +62,8 @@ export class SvgRenderer {
     }
   }
 
-  // -- individual shape builders -------------------------------------------------
+  // -- Shape builders ------------------------------------------------------------
+  // .. Rectangle .................................................................
   private createRect(el: DrawingElement): SVGRectElement {
     const b = getElementBounds(el);
     const rect = document.createElementNS(SVG_NS, 'rect') as SVGRectElement;
@@ -76,6 +77,7 @@ export class SvgRenderer {
     return rect;
   }
 
+  // .. Diamond ...................................................................
   private createDiamond(el: DrawingElement): SVGPolygonElement {
     const b = getElementBounds(el);
     const cx = b.x + b.width / 2,
@@ -93,6 +95,7 @@ export class SvgRenderer {
     return poly;
   }
 
+  // .. Ellipse ...................................................................
   private createEllipse(el: DrawingElement): SVGEllipseElement {
     const b = getElementBounds(el);
     const ellipse = document.createElementNS(SVG_NS, 'ellipse') as SVGEllipseElement;
@@ -105,6 +108,7 @@ export class SvgRenderer {
     return ellipse;
   }
 
+  // .. Line ......................................................................
   private createLine(el: LineElement): SVGLineElement {
     const line = document.createElementNS(SVG_NS, 'line') as SVGLineElement;
     line.setAttribute('x1', String(el.x));
@@ -116,6 +120,7 @@ export class SvgRenderer {
     return line;
   }
 
+  // .. Text ......................................................................
   private createText(el: TextElement): SVGTextElement {
     const text = document.createElementNS(SVG_NS, 'text') as SVGTextElement;
     const fontSize = el.fontSize || 16;
@@ -161,6 +166,7 @@ export class SvgRenderer {
     return text;
   }
 
+  // .. Image .....................................................................
   private createImage(el: ImageElement): SVGImageElement {
     const b = getElementBounds(el);
     const img = document.createElementNS(SVG_NS, 'image') as SVGImageElement;
@@ -174,6 +180,7 @@ export class SvgRenderer {
     return img;
   }
 
+  // .. SVG Circle ................................................................
   private createSvgCircle(el: SvgCircleElement): SVGCircleElement {
     const c = document.createElementNS(SVG_NS, 'circle') as SVGCircleElement;
     c.setAttribute('cx', String(el.cx));
@@ -184,6 +191,7 @@ export class SvgRenderer {
     return c;
   }
 
+  // .. SVG Path ..................................................................
   private createSvgPath(el: SvgPathElement): SVGPathElement {
     const p = document.createElementNS(SVG_NS, 'path') as SVGPathElement;
     const d = this.translatePath(el.d, el.offsetX, el.offsetY);
@@ -192,6 +200,7 @@ export class SvgRenderer {
     return p;
   }
 
+  // .. SVG Polygon ...............................................................
   private createSvgPolygon(el: SvgPolygonElement): SVGPolygonElement {
     const pg = document.createElementNS(SVG_NS, 'polygon') as SVGPolygonElement;
     const pts = this.translatePolygonPoints(el.points, el.offsetX, el.offsetY);
@@ -200,6 +209,7 @@ export class SvgRenderer {
     return pg;
   }
 
+  // .. SVG Text Path .............................................................
   // text that flows along an SVG path. A self-contained <g> is emitted that owns
   // both the (invisible) path and the <text><textPath> that references it, so
   // getBBox() on the <g> gives accurate glyph bounds in canvas space
@@ -231,7 +241,7 @@ export class SvgRenderer {
     return g;
   }
 
-  // -- attribute updates (for live resizing) ------------------------------------
+  // == Attribute Updates =========================================================
   public updateElementAttributes(element: DrawingElement): void {
     const svgEl = this.drawingLayer.querySelector<SVGElement>(`#${element.id}`);
     if(!svgEl) return;
@@ -313,7 +323,7 @@ export class SvgRenderer {
     }
 
     // common style attributes
-    if(element.type !== 'text' && element.type !== 'image') {
+    if((element.type !== 'text') && (element.type !== 'image')) {
       if(element.stroke) svgEl.setAttribute('stroke', element.stroke);
       if(element.fill) svgEl.setAttribute('fill', element.fill);
       if(element.strokeWidth) svgEl.setAttribute('stroke-width', String(element.strokeWidth));
@@ -349,7 +359,7 @@ export class SvgRenderer {
     }
   }
 
-  // -- line decoration markers ---------------------------------------------------
+  // -- Line decoration markers ---------------------------------------------------
   public applyLineDecorations(svgLine: SVGElement, element: LineElement): void {
     svgLine.removeAttribute('marker-start');
     svgLine.removeAttribute('marker-end');
@@ -427,7 +437,7 @@ export class SvgRenderer {
       `<polygon points="${p(1)} ${p(0)}, ${p(7)} ${p(3)}, ${p(1)} ${p(6)}" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>`));
   }
 
-  // -- private helpers -----------------------------------------------------------
+  // == Util ======================================================================
   private applyCommonAttrs(svgEl: SVGElement, el: DrawingElement): void {
     if(el.stroke) svgEl.setAttribute('stroke', el.stroke);
     if(el.fill) svgEl.setAttribute('fill', el.fill);
@@ -439,6 +449,7 @@ export class SvgRenderer {
     }
   }
 
+  // -- Rotation --------------------------------------------------------------------
   private applyRotation(svgEl: SVGElement, el: DrawingElement, bounds: { x: number; y: number; width: number; height: number }): void {
     if(el.angle && (el.angle !== 0)) {
       const cx = bounds.x + bounds.width / 2;
@@ -479,6 +490,7 @@ export class SvgRenderer {
     return result;
   }
 
+  // ------------------------------------------------------------------------------
   private translatePolygonPoints(pts: string, offsetX: number, offsetY: number): string {
     if((offsetX === 0) && (offsetY === 0)) return pts;
     return pts.replace(/([^,\s]+)[\s,]*([^,\s]+)/g, (_m, x, y) =>
