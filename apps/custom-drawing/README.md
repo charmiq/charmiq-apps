@@ -67,22 +67,54 @@ The Application is folder-based, with each module owning a single concern. This 
 
 ### Data Flow
 
-Two storage channels — one for the drawing's elements, one for its configuration:
+Two storage channels — one for the drawing's elements, one for its configuration. (Yes, the diagram below is itself rendered by Custom Drawing.)
 
-<iframe-app height="340px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://../mermaid-diagram">
-  <app-content name="data-flow">
-graph TD
-    IH["InteractionHandler\n(mouse / keyboard)"] -->|"mutate elements"| EM["elements[]\n(in-memory)"]
-    EM -->|"save()"| CB["ContentBridge\n(JSON serialize)"]
-    CB --> AC["appContent\n(collaborative)"]
-    AC -->|"onChange$"| CB
-    CB -->|"re-render"| SR["SvgRenderer"]
-    SP["SettingsPanel"] --> CS["ConfigStore\n(appState)"]
-    CS --> AS["appState\n(last-write-wins)"]
-    AS -->|"onChange$"| CS
-    CS -->|"applyConfig"| VP["CanvasViewport\nToolManager\nbody classes"]
+<iframe-app height="420px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
+  <app-content name="elements">
+{"type":"text","x":80,"y":0,"text":"Content Flow","fontSize":13,"fill":"#1a1a18","fontWeight":"bold","width":200,"height":16,"id":"ti_c"}
+{"type":"text","x":530,"y":0,"text":"Config Flow","fontSize":13,"fill":"#1a1a18","fontWeight":"bold","width":200,"height":16,"id":"ti_s"}
+{"type":"rectangle","x":60,"y":20,"x2":390,"y2":80,"stroke":"#1a1a18","strokeWidth":2,"fill":"#ebeae5","id":"b_ih"}
+{"type":"text","x":78,"y":30,"text":"InteractionHandler","fontSize":14,"fill":"#1a1a18","fontWeight":"bold","width":280,"height":18,"id":"t_ih1"}
+{"type":"text","x":78,"y":50,"text":"mouse / keyboard","fontSize":11,"fill":"#1a1a18","width":280,"height":14,"id":"t_ih2"}
+{"type":"rectangle","x":30,"y":150,"x2":230,"y2":220,"stroke":"#1a1a18","strokeWidth":2,"fill":"#ebeae5","id":"b_cb"}
+{"type":"text","x":48,"y":160,"text":"ContentBridge","fontSize":13,"fill":"#1a1a18","fontWeight":"bold","width":170,"height":16,"id":"t_cb1"}
+{"type":"text","x":48,"y":180,"text":"JSONL serialize","fontSize":11,"fill":"#1a1a18","width":170,"height":14,"id":"t_cb2"}
+{"type":"rectangle","x":250,"y":150,"x2":420,"y2":220,"stroke":"#1a1a18","strokeWidth":2,"fill":"#ebeae5","id":"b_sr"}
+{"type":"text","x":268,"y":176,"text":"SvgRenderer","fontSize":13,"fill":"#1a1a18","fontWeight":"bold","width":150,"height":16,"id":"t_sr1"}
+{"type":"rectangle","x":60,"y":270,"x2":390,"y2":330,"stroke":"#d94a00","strokeWidth":2,"fill":"#ebeae5","id":"b_ac"}
+{"type":"text","x":78,"y":280,"text":"appContent","fontSize":14,"fill":"#d94a00","fontWeight":"bold","width":280,"height":18,"id":"t_ac1"}
+{"type":"text","x":78,"y":300,"text":"collaborative (OT-backed)","fontSize":11,"fill":"#1a1a18","width":280,"height":14,"id":"t_ac2"}
+{"type":"rectangle","x":490,"y":20,"x2":820,"y2":80,"stroke":"#1a1a18","strokeWidth":2,"fill":"#ebeae5","id":"b_sp"}
+{"type":"text","x":508,"y":30,"text":"SettingsPanel","fontSize":14,"fill":"#1a1a18","fontWeight":"bold","width":280,"height":18,"id":"t_sp1"}
+{"type":"text","x":508,"y":50,"text":"gear icon","fontSize":11,"fill":"#1a1a18","width":280,"height":14,"id":"t_sp2"}
+{"type":"rectangle","x":470,"y":150,"x2":660,"y2":220,"stroke":"#1a1a18","strokeWidth":2,"fill":"#ebeae5","id":"b_cs"}
+{"type":"text","x":488,"y":160,"text":"ConfigStore","fontSize":13,"fill":"#1a1a18","fontWeight":"bold","width":160,"height":16,"id":"t_cs1"}
+{"type":"text","x":488,"y":180,"text":"fetch-merge-set","fontSize":11,"fill":"#1a1a18","width":160,"height":14,"id":"t_cs2"}
+{"type":"rectangle","x":680,"y":150,"x2":850,"y2":220,"stroke":"#1a1a18","strokeWidth":2,"fill":"#ebeae5","id":"b_vp"}
+{"type":"text","x":698,"y":158,"text":"CanvasViewport","fontSize":11,"fill":"#1a1a18","fontWeight":"bold","width":150,"height":14,"id":"t_vp1"}
+{"type":"text","x":698,"y":176,"text":"ToolManager","fontSize":11,"fill":"#1a1a18","fontWeight":"bold","width":150,"height":14,"id":"t_vp2"}
+{"type":"text","x":698,"y":194,"text":"body classes","fontSize":11,"fill":"#1a1a18","fontWeight":"bold","width":150,"height":14,"id":"t_vp3"}
+{"type":"rectangle","x":490,"y":270,"x2":820,"y2":330,"stroke":"#d94a00","strokeWidth":2,"fill":"#ebeae5","id":"b_as"}
+{"type":"text","x":508,"y":280,"text":"appState","fontSize":14,"fill":"#d94a00","fontWeight":"bold","width":280,"height":18,"id":"t_as1"}
+{"type":"text","x":508,"y":300,"text":"last-write-wins","fontSize":11,"fill":"#1a1a18","width":280,"height":14,"id":"t_as2"}
+{"type":"line","x":170,"y":80,"x2":130,"y2":150,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_ih_cb"}
+{"type":"text","x":80,"y":108,"text":"mutate","fontSize":11,"fill":"#1a1a18","width":60,"height":14,"id":"l_ih_cb"}
+{"type":"line","x":230,"y":185,"x2":250,"y2":185,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_cb_sr"}
+{"type":"text","x":232,"y":168,"text":"render","fontSize":11,"fill":"#1a1a18","width":60,"height":14,"id":"l_cb_sr"}
+{"type":"line","x":160,"y":220,"x2":160,"y2":270,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_cb_ac"}
+{"type":"text","x":168,"y":236,"text":"set()","fontSize":11,"fill":"#1a1a18","width":50,"height":14,"id":"l_cb_ac"}
+{"type":"line","x":100,"y":270,"x2":100,"y2":220,"stroke":"#d94a00","strokeWidth":2,"strokeDasharray":"4,4","endDecoration":"arrow","id":"a_ac_cb"}
+{"type":"text","x":20,"y":236,"text":"onChange$","fontSize":11,"fill":"#d94a00","width":80,"height":14,"id":"l_ac_cb"}
+{"type":"line","x":600,"y":80,"x2":565,"y2":150,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_sp_cs"}
+{"type":"text","x":515,"y":108,"text":"update","fontSize":11,"fill":"#1a1a18","width":60,"height":14,"id":"l_sp_cs"}
+{"type":"line","x":660,"y":185,"x2":680,"y2":185,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_cs_vp"}
+{"type":"text","x":660,"y":168,"text":"applyConfig","fontSize":11,"fill":"#1a1a18","width":80,"height":14,"id":"l_cs_vp"}
+{"type":"line","x":600,"y":220,"x2":600,"y2":270,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_cs_as"}
+{"type":"text","x":608,"y":236,"text":"set()","fontSize":11,"fill":"#1a1a18","width":50,"height":14,"id":"l_cs_as"}
+{"type":"line","x":540,"y":270,"x2":540,"y2":220,"stroke":"#d94a00","strokeWidth":2,"strokeDasharray":"4,4","endDecoration":"arrow","id":"a_as_cs"}
+{"type":"text","x":460,"y":236,"text":"onChange$","fontSize":11,"fill":"#d94a00","width":80,"height":14,"id":"l_as_cs"}
   </app-content>
-  <app-state>{"theme":"neutral"}</app-state>
+  <app-state>{"config":{"readOnly":true,"showGrid":false,"showToolbar":false,"showPropertiesPanel":false,"showInfoBar":false,"backgroundColor":"#f7f7f4"}}</app-state>
 </iframe-app>
 
 **`appContent`** holds the drawing's elements, serialized as a JSON array in a single named content block (`[id='elements']`). `ContentBridge` watches `onChange$()`, parses incoming content into `DrawingElement[]`, and hands it to the renderer. Locally-made mutations are flushed back via `set()`.
