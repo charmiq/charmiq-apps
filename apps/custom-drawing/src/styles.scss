@@ -70,10 +70,9 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   width: 44px;
   max-height: calc(100vh - 110px);
-  overflow-y: auto;
-  overflow-x: visible;/*let dropdowns escape*/
+  // no overflow clipping here -- the inner scroller handles overflow so the
+  // fly-out dropdowns can escape the panel horizontally
   pointer-events: auto;
-  scrollbar-width: thin;
 
   &.selection-active { pointer-events: none; }
   &.visible { display: flex; }
@@ -142,10 +141,13 @@ body {
 .copy-icon-btn, .group-icon-btn, .ungroup-icon-btn { &:hover { border-color: #666; background: #f5f5f5; } svg { stroke: #666; } }
 
 // == Dropdowns ===================================================================
-// properties-panel dropdowns fly out to the right of the narrow left column
-.dropdown {
+// properties-panel dropdowns fly out to the right of the narrow left column.
+// anchored to the panel edge (not the 32px button) so they clearly clear the
+// whole panel rather than landing underneath it
+.prop-group .dropdown {
   position: absolute;
-  top: 0; left: calc(100% + 10px);
+  top: 0;
+  left: calc(100% + 14px);/*past the panel's 6px right padding + a 8px gap*/
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 6px;
