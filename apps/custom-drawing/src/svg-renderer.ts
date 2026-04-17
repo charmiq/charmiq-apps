@@ -4,7 +4,10 @@ import type { TextMeasurement } from './text-measurement';
 // SVG element creation, attribute updates, line decoration markers
 // ********************************************************************************
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const FONT_FAMILY = 'Excalifont, "Comic Sans MS", cursive, system-ui, sans-serif';
+
+/** drawing default -- used when a text element carries no explicit fontFamily
+ *  (ie. legacy elements or those created before the font picker was added) */
+export const DEFAULT_FONT_FAMILY = 'Excalifont, "Comic Sans MS", cursive, system-ui, sans-serif';
 
 // == SvgRenderer =================================================================
 export class SvgRenderer {
@@ -129,7 +132,7 @@ export class SvgRenderer {
     const width = el.width || 100;
 
     text.setAttribute('font-size', String(fontSize));
-    text.setAttribute('font-family', FONT_FAMILY);
+    text.setAttribute('font-family', el.fontFamily || DEFAULT_FONT_FAMILY);
     text.setAttribute('fill', fillColor);
 
     // text-anchor from alignment
@@ -227,7 +230,7 @@ export class SvgRenderer {
 
     const text = document.createElementNS(SVG_NS, 'text') as SVGTextElement;
     text.setAttribute('font-size', String(el.fontSize));
-    text.setAttribute('font-family', FONT_FAMILY);
+    text.setAttribute('font-family', DEFAULT_FONT_FAMILY);
     text.setAttribute('fill', el.textColor);
 
     const tp = document.createElementNS(SVG_NS, 'textPath') as SVGTextPathElement;

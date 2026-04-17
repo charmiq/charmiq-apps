@@ -6,6 +6,38 @@ import type { Observable } from 'rxjs';
 // config go through here
 // ********************************************************************************
 // == Types =======================================================================
+/** user-tunable palettes that back the properties-panel dropdowns. Each list
+ *  keeps the "Excalidraw-lite" defaults on first run but can be curated via the
+ *  settings panel. The final "Custom..." row in every dropdown is always
+ *  present and never stored here -- it opens the ad-hoc picker instead */
+export interface DrawingPresets {
+  /** shape outline colors (hex / rgb / rgba) */
+  strokeColors: ReadonlyArray<string>;
+  /** shape fill / background colors (typically rgba with alpha) */
+  backgroundColors: ReadonlyArray<string>;
+  /** text fill colors */
+  textColors: ReadonlyArray<string>;
+  /** stroke widths in pixels */
+  strokeWidths: ReadonlyArray<number>;
+  /** font sizes in points */
+  fontSizes: ReadonlyArray<number>;
+  /** font family presets -- short label + CSS family stack. The first entry is
+   *  the drawing default (used when an element has no fontFamily set) */
+  fontFamilies: ReadonlyArray<{ label: string; family: string; googleFont?: string }>;
+}
+
+/** session-spanning "recently used" lists. These are populated by custom
+ *  picker interactions and trimmed to a short cap so the panel stays compact.
+ *  Entries can be promoted into presets via the pin action */
+export interface DrawingRecents {
+  strokeColors: ReadonlyArray<string>;
+  backgroundColors: ReadonlyArray<string>;
+  textColors: ReadonlyArray<string>;
+  strokeWidths: ReadonlyArray<number>;
+  fontSizes: ReadonlyArray<number>;
+  fontFamilies: ReadonlyArray<{ label: string; family: string; googleFont?: string }>;
+}
+
 export interface DrawingConfig {
   /** whether the background grid is drawn */
   showGrid: boolean;
@@ -27,6 +59,10 @@ export interface DrawingConfig {
   showPropertiesPanel: boolean;
   /** show the info / hint bar under the toolbar */
   showInfoBar: boolean;
+  /** user-curated palettes for every properties-panel dropdown */
+  presets: DrawingPresets;
+  /** most-recent custom picks (per-list, trimmed to RECENTS_MAX) */
+  recents: DrawingRecents;
 }
 
 // --------------------------------------------------------------------------------
@@ -48,6 +84,34 @@ interface CharmiqAppState {
 }
 
 // == Defaults ====================================================================
+/** maximum number of session recents retained per property */
+export const RECENTS_MAX = 6;
+
+/** Excalidraw-lite default palettes -- used on first run and as the "Reset
+ *  Defaults" target. Kept intentionally short so the panel stays calm */
+export const DEFAULT_PRESETS: Readonly<DrawingPresets> = {
+  strokeColors:     ['#000000', '#d51a25', '#299035', '#165ab5', '#e97909', '#666666'],
+  backgroundColors: ['transparent', 'rgba(255,255,255,0.5)', 'rgba(245,179,183,0.5)', 'rgba(179,230,186,0.5)', 'rgba(179,209,240,0.5)', 'rgba(245,217,179,0.5)'],
+  textColors:       ['#000000', '#d51a25', '#299035', '#165ab5', '#e97909', '#666666'],
+  strokeWidths:     [1, 2, 4],
+  fontSizes:        [12, 16, 20, 24],
+  fontFamilies: [
+    { label: 'Hand-drawn', family: 'Excalifont, "Comic Sans MS", cursive, system-ui, sans-serif' },
+    { label: 'Sans',       family: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
+    { label: 'Serif',      family: 'Georgia, "Times New Roman", Times, serif' },
+    { label: 'Mono',       family: '"JetBrains Mono", Menlo, Consolas, monospace' },
+  ],
+};
+
+export const DEFAULT_RECENTS: Readonly<DrawingRecents> = {
+  strokeColors:     [],
+  backgroundColors: [],
+  textColors:       [],
+  strokeWidths:     [],
+  fontSizes:        [],
+  fontFamilies:     [],
+};
+
 export const DEFAULT_CONFIG: Readonly<DrawingConfig> = {
   showGrid: true,
   gridColor: '#e0e0e0',
@@ -59,6 +123,8 @@ export const DEFAULT_CONFIG: Readonly<DrawingConfig> = {
   initialZoom: 1,
   showPropertiesPanel: true,
   showInfoBar: true,
+  presets: DEFAULT_PRESETS,
+  recents: DEFAULT_RECENTS,
 };
 
 // == Class =======================================================================
@@ -126,6 +192,62 @@ export class ConfigStore {
     if(this.onConfigChanged) this.onConfigChanged(this.config);
   }
 
+  // ------------------------------------------------------------------------------
+  /** append a value to the front of a recents list, de-dupe, and trim to
+   *  RECENTS_MAX. Equality is reference for primitives and deep for font-family
+   *  entries (matched by `family`) */
+  public async pushRecent<K extends keyof DrawingRecents>(list: K, value: DrawingRecents[K][number]): Promise<void> {
+    const prior = this.config.recents[list] as ReadonlyArray<unknown>;
+    const matches = (a: unknown, b: unknown): boolean => {
+      if((typeof a === 'object') && (typeof b === 'object') && a && b) return (a as any).family === (b as any).family;
+      return a === b;
+    };
+    const deduped = [value, ...prior.filter(v => !matches(v, value))].slice(0, RECENTS_MAX);
+    const nextRecents: DrawingRecents = { ...this.config.recents, [list]: deduped };
+    await this.update('recents', nextRecents);
+  }
+
+  // ------------------------------------------------------------------------------
+  /** promote a recents entry into the preset list (and remove it from recents).
+   *  used by the pin action on a recents swatch */
+  public async pinToPreset<K extends keyof DrawingPresets>(list: K, value: DrawingPresets[K][number]): Promise<void> {
+    const priorPresets = this.config.presets[list] as ReadonlyArray<unknown>;
+    const priorRecents = this.config.recents[list as keyof DrawingRecents] as ReadonlyArray<unknown>;
+    const matches = (a: unknown, b: unknown): boolean => {
+      if((typeof a === 'object') && (typeof b === 'object') && a && b) return (a as any).family === (b as any).family;
+      return a === b;
+    };
+    if(priorPresets.some(v => matches(v, value))) return;/*already a preset*/
+
+    const nextPresets: DrawingPresets = { ...this.config.presets, [list]: [...priorPresets, value] };
+    const nextRecents: DrawingRecents = { ...this.config.recents, [list]: priorRecents.filter(v => !matches(v, value)) };
+
+    this.config = { ...this.config, presets: nextPresets, recents: nextRecents };
+    try {
+      const state = (await this.appState.get()) || {};
+      const currentConfig = (state as AppState).config || {};
+      await this.appState.set({
+        ...state,
+        config: { ...currentConfig, presets: nextPresets, recents: nextRecents },
+      });
+    } catch(error) {
+      console.error('failed to pin preset:', error);
+    }
+    if(this.onConfigChanged) this.onConfigChanged(this.config);
+  }
+
+  // ------------------------------------------------------------------------------
+  /** remove a value from a preset list */
+  public async removePreset<K extends keyof DrawingPresets>(list: K, value: DrawingPresets[K][number]): Promise<void> {
+    const priorPresets = this.config.presets[list] as ReadonlyArray<unknown>;
+    const matches = (a: unknown, b: unknown): boolean => {
+      if((typeof a === 'object') && (typeof b === 'object') && a && b) return (a as any).family === (b as any).family;
+      return a === b;
+    };
+    const nextPresets: DrawingPresets = { ...this.config.presets, [list]: priorPresets.filter(v => !matches(v, value)) };
+    await this.update('presets', nextPresets);
+  }
+
   // == Internal ==================================================================
   private applyState(state: AppState): void {
     if(!state.config) return;/*nothing to apply*/
@@ -159,6 +281,36 @@ export class ConfigStore {
         changed = true;
       } /* else -- not present or unchanged */
     }
+
+    // presets -- merge per-list; any list not provided keeps the default. This
+    // way a persisted config written before presets existed (or that only
+    // customized a subset) still lights up the remaining lists with sensible
+    // defaults rather than showing an empty dropdown
+    const rawPresets = (state.config as any).presets;
+    if(rawPresets && (typeof rawPresets === 'object')) {
+      const mergedPresets: DrawingPresets = { ...DEFAULT_PRESETS, ...next.presets };
+      if(Array.isArray(rawPresets.strokeColors))     mergedPresets.strokeColors     = rawPresets.strokeColors.filter((v: unknown) => typeof v === 'string');
+      if(Array.isArray(rawPresets.backgroundColors)) mergedPresets.backgroundColors = rawPresets.backgroundColors.filter((v: unknown) => typeof v === 'string');
+      if(Array.isArray(rawPresets.textColors))       mergedPresets.textColors       = rawPresets.textColors.filter((v: unknown) => typeof v === 'string');
+      if(Array.isArray(rawPresets.strokeWidths))     mergedPresets.strokeWidths     = rawPresets.strokeWidths.filter((v: unknown) => (typeof v === 'number') && Number.isFinite(v));
+      if(Array.isArray(rawPresets.fontSizes))        mergedPresets.fontSizes        = rawPresets.fontSizes.filter((v: unknown) => (typeof v === 'number') && Number.isFinite(v));
+      if(Array.isArray(rawPresets.fontFamilies))     mergedPresets.fontFamilies     = rawPresets.fontFamilies.filter((v: any) => v && (typeof v.label === 'string') && (typeof v.family === 'string'));
+      next.presets = mergedPresets;
+      changed = true;
+    } /* else -- no presets persisted; defaults remain */
+
+    const rawRecents = (state.config as any).recents;
+    if(rawRecents && (typeof rawRecents === 'object')) {
+      const mergedRecents: DrawingRecents = { ...DEFAULT_RECENTS, ...next.recents };
+      if(Array.isArray(rawRecents.strokeColors))     mergedRecents.strokeColors     = rawRecents.strokeColors.filter((v: unknown) => typeof v === 'string').slice(0, RECENTS_MAX);
+      if(Array.isArray(rawRecents.backgroundColors)) mergedRecents.backgroundColors = rawRecents.backgroundColors.filter((v: unknown) => typeof v === 'string').slice(0, RECENTS_MAX);
+      if(Array.isArray(rawRecents.textColors))       mergedRecents.textColors       = rawRecents.textColors.filter((v: unknown) => typeof v === 'string').slice(0, RECENTS_MAX);
+      if(Array.isArray(rawRecents.strokeWidths))     mergedRecents.strokeWidths     = rawRecents.strokeWidths.filter((v: unknown) => (typeof v === 'number') && Number.isFinite(v)).slice(0, RECENTS_MAX);
+      if(Array.isArray(rawRecents.fontSizes))        mergedRecents.fontSizes        = rawRecents.fontSizes.filter((v: unknown) => (typeof v === 'number') && Number.isFinite(v)).slice(0, RECENTS_MAX);
+      if(Array.isArray(rawRecents.fontFamilies))     mergedRecents.fontFamilies     = rawRecents.fontFamilies.filter((v: any) => v && (typeof v.label === 'string') && (typeof v.family === 'string')).slice(0, RECENTS_MAX);
+      next.recents = mergedRecents;
+      changed = true;
+    } /* else -- no recents persisted; defaults remain */
 
     if(changed) {
       this.config = next;

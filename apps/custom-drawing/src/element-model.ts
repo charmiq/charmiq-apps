@@ -70,6 +70,11 @@ export interface TextElement extends BaseElement {
   fontSize?: number;
   textColor?: string;
   textAlign?: TextAlign;
+  /** CSS font-family stack. When omitted the renderer falls back to the
+   *  app-wide default (`Excalifont` stack). Google Fonts choices are stored as
+   *  the fully-qualified family stack and the font loader ensures the
+   *  stylesheet is injected before use */
+  fontFamily?: string;
   width?: number;
   height?: number;
   isNew?: boolean;

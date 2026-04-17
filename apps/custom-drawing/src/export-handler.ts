@@ -1,10 +1,11 @@
 import { getElementBounds, type DrawingElement } from './element-model';
 import { getDrawingBounds } from './geometry';
+import { ensureGoogleFontsLoaded } from './google-fonts';
+import { DEFAULT_FONT_FAMILY } from './svg-renderer';
 import type { TextMeasurement } from './text-measurement';
 
 // PNG export — download, clipboard, save to Files
 // ********************************************************************************
-const FONT_FAMILY = 'Excalifont, "Comic Sans MS", cursive, system-ui, sans-serif';
 
 // --------------------------------------------------------------------------------
 interface CharmIQServices {
@@ -98,6 +99,15 @@ export class ExportHandler {
 
   // == Canvas Rendering ==========================================================
   private async exportDrawingToCanvas(elements: DrawingElement[], opts: { whiteBackground?: boolean } = {}): Promise<HTMLCanvasElement> {
+    // ensure any Google-hosted fonts referenced by text elements are loaded
+    // before canvas rendering -- without this, `ctx.fillText` silently falls
+    // back to serif for the frame that happens to export first after a cold
+    // load, even though the on-screen SVG renders correctly
+    const families = elements
+      .filter(el => (el.type === 'text') && (el as any).fontFamily)
+      .map(el => (el as any).fontFamily as string);
+    if(families.length > 0) await ensureGoogleFontsLoaded(families);
+
     const padding = 40;
     const { minX, minY, maxX, maxY } = getDrawingBounds(elements);
     const w = maxX - minX + padding * 2,
@@ -202,7 +212,7 @@ export class ExportHandler {
       case 'text': {
         const te = el as any;
         const fontSize = te.fontSize || 16;
-        ctx.font = `${fontSize}px ${FONT_FAMILY}`;
+        ctx.font = `${fontSize}px ${te.fontFamily || DEFAULT_FONT_FAMILY}`;
         ctx.fillStyle = te.fill || te.textColor || '#000000';
         const lines = this.textMeasure.wrapText(te.text || '', te.width || 100, fontSize);
         const lh = fontSize * 1.2;

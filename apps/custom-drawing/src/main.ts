@@ -32,10 +32,10 @@ const textEditor     = new TextEditor(viewport, textMeasure, renderer, selection
 const imageHandler   = new ImageHandler(viewport, renderer, selection, tools);
 const exportHandler  = new ExportHandler(textMeasure);
 const generation     = new GenerationHandler(exportHandler, renderer, selection, tools);
-const propsPanel     = new PropertiesPanel(renderer, selection);
 const clipboard      = new ClipboardHandler(viewport, renderer, selection, textMeasure);
 const contentBridge  = new ContentBridge(charmiq.appContent);
 const configStore    = new ConfigStore(charmiq.appState);
+const propsPanel     = new PropertiesPanel(renderer, selection, configStore);
 const settingsPanel  = new SettingsPanel(configStore);
 const commandSurface = new CommandSurface(renderer, selection);
 

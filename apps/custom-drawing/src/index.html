@@ -57,43 +57,25 @@
 
     <!-- == Properties Panel ================================================== -->
     <div class="properties-panel" id="propertiesPanel">
-      <!-- stroke color -->
+      <!-- stroke color (rendered dynamically from configStore.presets) -->
       <div class="prop-group" id="strokeColorGroup">
         <div class="prop-label">Stroke</div>
         <div class="prop-button" id="strokeColorBtn" title="Stroke color"><div class="color-swatch" id="strokeColorSwatch" style="background-color: #000000;"></div></div>
-        <div class="dropdown" id="strokeColorDropdown">
-          <div class="dropdown-item" data-color="#000000"><div class="color-swatch" style="background-color: #000000;"></div><span>Black</span></div>
-          <div class="dropdown-item" data-color="#d51a25"><div class="color-swatch" style="background-color: #d51a25;"></div><span>Red</span></div>
-          <div class="dropdown-item" data-color="#299035"><div class="color-swatch" style="background-color: #299035;"></div><span>Green</span></div>
-          <div class="dropdown-item" data-color="#165ab5"><div class="color-swatch" style="background-color: #165ab5;"></div><span>Blue</span></div>
-          <div class="dropdown-item" data-color="#e97909"><div class="color-swatch" style="background-color: #e97909;"></div><span>Orange</span></div>
-          <div class="dropdown-item" data-color="#666666"><div class="color-swatch" style="background-color: #666666;"></div><span>Gray</span></div>
-        </div>
+        <div class="dropdown" id="strokeColorDropdown"></div>
       </div>
-      <!-- background color -->
+      <!-- background color (rendered dynamically) -->
       <div class="prop-group" id="backgroundColorGroup">
         <div class="prop-label">Bkg</div>
         <div class="prop-button" id="backgroundColorBtn" title="Background color"><div class="color-swatch" id="backgroundColorSwatch" style="background-color: transparent; border: 1px solid #ccc;"></div></div>
-        <div class="dropdown" id="backgroundColorDropdown">
-          <div class="dropdown-item" data-color="transparent"><div class="color-swatch" style="background-color: transparent; border: 1px solid #ccc;"></div><span>None</span></div>
-          <div class="dropdown-item" data-color="rgba(255,255,255,0.5)"><div class="color-swatch" style="background-color: rgba(255,255,255,0.5); border: 1px solid #ccc;"></div><span>White</span></div>
-          <div class="dropdown-item" data-color="rgba(245,179,183,0.5)"><div class="color-swatch" style="background-color: rgba(245,179,183,0.5);"></div><span>Light Red</span></div>
-          <div class="dropdown-item" data-color="rgba(179,230,186,0.5)"><div class="color-swatch" style="background-color: rgba(179,230,186,0.5);"></div><span>Light Green</span></div>
-          <div class="dropdown-item" data-color="rgba(179,209,240,0.5)"><div class="color-swatch" style="background-color: rgba(179,209,240,0.5);"></div><span>Light Blue</span></div>
-          <div class="dropdown-item" data-color="rgba(245,217,179,0.5)"><div class="color-swatch" style="background-color: rgba(245,217,179,0.5);"></div><span>Light Orange</span></div>
-        </div>
+        <div class="dropdown" id="backgroundColorDropdown"></div>
       </div>
-      <!-- stroke width -->
+      <!-- stroke width (rendered dynamically) -->
       <div class="prop-group" id="strokeWidthGroup">
         <div class="prop-label">Width</div>
         <div class="prop-button" id="strokeWidthBtn" title="Stroke width"><div class="stroke-width-sample" id="strokeWidthSample"></div></div>
-        <div class="dropdown" id="strokeWidthDropdown">
-          <div class="dropdown-item" data-width="1"><div class="stroke-width-sample thin"></div><span>Thin</span></div>
-          <div class="dropdown-item" data-width="2"><div class="stroke-width-sample medium"></div><span>Medium</span></div>
-          <div class="dropdown-item" data-width="4"><div class="stroke-width-sample thick"></div><span>Thick</span></div>
-        </div>
+        <div class="dropdown" id="strokeWidthDropdown"></div>
       </div>
-      <!-- stroke style -->
+      <!-- stroke style (static presets) -->
       <div class="prop-group" id="strokeStyleGroup">
         <div class="prop-label">Style</div>
         <div class="prop-button" id="strokeStyleBtn" title="Stroke style"><div class="stroke-style-sample" id="strokeStyleSample"></div></div>
@@ -103,29 +85,23 @@
           <div class="dropdown-item" data-style="dotted"><div class="stroke-style-sample dotted"></div><span>Dotted</span></div>
         </div>
       </div>
-      <!-- text size -->
+      <!-- text size (rendered dynamically) -->
       <div class="prop-group" id="textSizeGroup">
         <div class="prop-label">Size</div>
         <div class="prop-button" id="textSizeBtn" title="Text size"><span class="text-size-sample medium" id="textSizeSample">A</span></div>
-        <div class="dropdown" id="textSizeDropdown">
-          <div class="dropdown-item" data-size="12"><span class="text-size-sample small">A</span><span>Small</span></div>
-          <div class="dropdown-item" data-size="16"><span class="text-size-sample medium">A</span><span>Medium</span></div>
-          <div class="dropdown-item" data-size="20"><span class="text-size-sample large">A</span><span>Large</span></div>
-          <div class="dropdown-item" data-size="24"><span class="text-size-sample xlarge">A</span><span>X-Large</span></div>
-        </div>
+        <div class="dropdown" id="textSizeDropdown"></div>
       </div>
-      <!-- text color -->
+      <!-- text color (rendered dynamically) -->
       <div class="prop-group" id="textColorGroup">
         <div class="prop-label">Color</div>
         <div class="prop-button" id="textColorBtn" title="Text color"><div class="color-swatch" id="textColorSwatch" style="background-color: #000000;"></div></div>
-        <div class="dropdown" id="textColorDropdown">
-          <div class="dropdown-item" data-color="#000000"><div class="color-swatch" style="background-color: #000000;"></div><span>Black</span></div>
-          <div class="dropdown-item" data-color="#d51a25"><div class="color-swatch" style="background-color: #d51a25;"></div><span>Red</span></div>
-          <div class="dropdown-item" data-color="#299035"><div class="color-swatch" style="background-color: #299035;"></div><span>Green</span></div>
-          <div class="dropdown-item" data-color="#165ab5"><div class="color-swatch" style="background-color: #165ab5;"></div><span>Blue</span></div>
-          <div class="dropdown-item" data-color="#e97909"><div class="color-swatch" style="background-color: #e97909;"></div><span>Orange</span></div>
-          <div class="dropdown-item" data-color="#666666"><div class="color-swatch" style="background-color: #666666;"></div><span>Gray</span></div>
-        </div>
+        <div class="dropdown" id="textColorDropdown"></div>
+      </div>
+      <!-- font family (rendered dynamically; "Google Fonts..." custom row) -->
+      <div class="prop-group" id="fontFamilyGroup">
+        <div class="prop-label">Font</div>
+        <div class="prop-button" id="fontFamilyBtn" title="Font family"><span class="font-family-sample" id="fontFamilySample">Ag</span></div>
+        <div class="dropdown" id="fontFamilyDropdown"></div>
       </div>
       <!-- text align -->
       <div class="prop-group" id="textAlignGroup">
@@ -292,6 +268,39 @@
             <span>Show info bar</span>
             <input type="checkbox" id="cfgShowInfoBar" />
           </label>
+        </div>
+
+        <!-- == Preset Palettes =============================================== -->
+        <!-- Per-list curation of the dropdown presets. Each row shows the current
+           - values as chips with an 'x' to remove, a '+' to add, and a 'Reset'
+           - link to snap this list back to the Excalidraw-lite defaults -->
+        <div class="settings-section">
+          <div class="settings-section-title">Preset Palettes</div>
+
+          <div class="preset-row">
+            <div class="preset-row-head"><span>Stroke colors</span><button type="button" class="preset-reset" data-list="strokeColors">Reset</button></div>
+            <div class="preset-chips" id="presetStrokeColors"></div>
+          </div>
+          <div class="preset-row">
+            <div class="preset-row-head"><span>Background colors</span><button type="button" class="preset-reset" data-list="backgroundColors">Reset</button></div>
+            <div class="preset-chips" id="presetBackgroundColors"></div>
+          </div>
+          <div class="preset-row">
+            <div class="preset-row-head"><span>Text colors</span><button type="button" class="preset-reset" data-list="textColors">Reset</button></div>
+            <div class="preset-chips" id="presetTextColors"></div>
+          </div>
+          <div class="preset-row">
+            <div class="preset-row-head"><span>Stroke widths (px)</span><button type="button" class="preset-reset" data-list="strokeWidths">Reset</button></div>
+            <div class="preset-chips" id="presetStrokeWidths"></div>
+          </div>
+          <div class="preset-row">
+            <div class="preset-row-head"><span>Font sizes (pt)</span><button type="button" class="preset-reset" data-list="fontSizes">Reset</button></div>
+            <div class="preset-chips" id="presetFontSizes"></div>
+          </div>
+          <div class="preset-row">
+            <div class="preset-row-head"><span>Font families</span><button type="button" class="preset-reset" data-list="fontFamilies">Reset</button></div>
+            <div class="preset-chips preset-chips-fonts" id="presetFontFamilies"></div>
+          </div>
         </div>
 
         <div class="modal-buttons">

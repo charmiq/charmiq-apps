@@ -106,6 +106,7 @@ export class TextEditor {
       x: Number(textElement.x), y: Number(textElement.y),
       text: String(textElement.text || ''),
       fontSize: Number(textElement.fontSize || 16),
+      fontFamily: textElement.fontFamily ? String(textElement.fontFamily) : undefined,
       width: Number(textElement.width || 100),
       height: Number(textElement.height || 20),
       fill: String(textElement.fill || '#000000'),
@@ -138,6 +139,7 @@ export class TextEditor {
     }
 
     this.textInput.style.fontSize = (work.fontSize * this.viewport.zoomLevel) + 'px';
+    if(work.fontFamily) this.textInput.style.fontFamily = work.fontFamily;
     this.textInput.style.minHeight = '24px';
     this.textInput.value = work.text || '';
     this.textInput.placeholder = 'Enter text...';

@@ -1,39 +1,71 @@
+import { ConfigStore, type DrawingPresets, type DrawingRecents } from './config-store';
+import { closeCustomPicker, openColorPicker, openFontPicker, openSliderPicker } from './custom-picker';
 import type { DrawingElement } from './element-model';
 import type { SelectionManager } from './selection-manager';
-import type { SvgRenderer } from './svg-renderer';
+import { DEFAULT_FONT_FAMILY, type SvgRenderer } from './svg-renderer';
 
 // properties panel — dropdowns for stroke, fill, width, style, text, decorations
+// All color / width / font-size / font-family dropdowns are rendered from
+// `configStore.presets` (+ session `recents` + a trailing "Custom..." row)
+// rather than static HTML, so the settings panel can curate palettes and
+// recents / custom picks promote seamlessly into presets via the pin action
 // ********************************************************************************
+// == Types =======================================================================
+/** describes one of the property lists backed by presets. keeps the render code
+ *  generic across color / width / font-size / font-family rows */
+interface ListDef {
+  /** property key used on the element (passed to updateProperty). `fill` for
+   *  backgrounds, `stroke` / `textColor` for colors, etc */
+  readonly elementProp: string;
+  /** which preset list to read from */
+  readonly presetKey: keyof DrawingPresets;
+  /** which recents list to read from / push into */
+  readonly recentKey: keyof DrawingRecents;
+}
+
 // == PropertiesPanel =============================================================
 export class PropertiesPanel {
   private readonly renderer: SvgRenderer;
   private readonly selection: SelectionManager;
+  private readonly configStore: ConfigStore;
 
   elements: DrawingElement[] = [];
   onSave: (() => void) | null = null;
 
-  public constructor(renderer: SvgRenderer, selection: SelectionManager) {
+  public constructor(renderer: SvgRenderer, selection: SelectionManager, configStore: ConfigStore) {
     this.renderer = renderer;
     this.selection = selection;
+    this.configStore = configStore;
   }
 
   // == Setup =====================================================================
   public setup(): void {
-    this.setupColorDropdown('strokeColorBtn', 'strokeColorDropdown', 'strokeColorSwatch', 'stroke');
-    this.setupColorDropdown('backgroundColorBtn', 'backgroundColorDropdown', 'backgroundColorSwatch', 'fill');
-    this.setupColorDropdown('textColorBtn', 'textColorDropdown', 'textColorSwatch', 'textColor');
-    this.setupWidthDropdown();
+    this.renderAllDropdowns();
+
+    // wire the property buttons -- these open their dropdowns. the dropdown
+    // contents themselves are re-rendered whenever config changes
+    document.getElementById('strokeColorBtn')!.addEventListener('click',     () => this.toggleDropdown('strokeColorDropdown'));
+    document.getElementById('backgroundColorBtn')!.addEventListener('click', () => this.toggleDropdown('backgroundColorDropdown'));
+    document.getElementById('textColorBtn')!.addEventListener('click',       () => this.toggleDropdown('textColorDropdown'));
+    document.getElementById('strokeWidthBtn')!.addEventListener('click',     () => this.toggleDropdown('strokeWidthDropdown'));
+    document.getElementById('strokeStyleBtn')!.addEventListener('click',     () => this.toggleDropdown('strokeStyleDropdown'));
+    document.getElementById('textSizeBtn')!.addEventListener('click',        () => this.toggleDropdown('textSizeDropdown'));
+    document.getElementById('fontFamilyBtn')?.addEventListener('click',      () => this.toggleDropdown('fontFamilyDropdown'));
+
     this.setupStyleDropdown();
-    this.setupTextSizeDropdown();
     this.setupTextAlignDropdown();
     this.setupDecorationDropdowns();
     this.setupLayerButtons();
     this.setupActionButtons();
 
+    // re-render preset-driven dropdowns whenever config changes (settings
+    // panel edits, pin-to-preset, etc)
+    this.configStore.onChange(() => this.renderAllDropdowns());
+
     // close dropdowns on outside click
     document.addEventListener('click', (e: MouseEvent) => {
       const t = e.target as HTMLElement;
-      if(!t.closest('.prop-group') && !t.closest('.dropdown, .action-dropdown') && !t.closest('#saveBtn, #generateBtn, #imageBtn')) {
+      if(!t.closest('.prop-group') && !t.closest('.dropdown, .action-dropdown') && !t.closest('.custom-picker') && !t.closest('#saveBtn, #generateBtn, #imageBtn')) {
         this.hideAllDropdowns();
       }
     });
@@ -62,6 +94,7 @@ export class PropertiesPanel {
     this.setVisible('strokeStyleGroup', hasShapes);
     this.setVisible('textSizeGroup', hasText);
     this.setVisible('textColorGroup', hasText);
+    this.setVisible('fontFamilyGroup', hasText);
     this.setVisible('textAlignGroup', hasText);
     this.setVisible('decorationGroup', hasLines);
 
@@ -78,6 +111,7 @@ export class PropertiesPanel {
         this.setTextSizeSample(el.fontSize);
         this.setSwatchColor('textColorSwatch', el.textColor || el.fill || '#000000');
         this.setAlignIcon(el.textAlign || 'left');
+        this.setFontFamilySample(el.fontFamily || DEFAULT_FONT_FAMILY);
       } /* else -- no text */
       if(hasLines) {
         this.updateDecorationIcon('startDecorationIcon', el.startDecoration || 'none');
@@ -101,7 +135,7 @@ export class PropertiesPanel {
         else if((prop === 'fill') || (prop === 'strokeWidth') || (prop === 'strokeDasharray')) continue;
         else e[prop] = value;
       } else {
-        if(prop === 'textColor') continue;
+        if((prop === 'textColor') || (prop === 'fontFamily') || (prop === 'fontSize')) continue;
         e[prop] = value;
       }
 
@@ -140,40 +174,339 @@ export class PropertiesPanel {
 
   public hideAllDropdowns(): void {
     document.querySelectorAll('.dropdown, .action-dropdown').forEach(d => d.classList.remove('visible'));
+    closeCustomPicker();
   }
 
-  // == Util ======================================================================
-  // -- Color Dropdowns -----------------------------------------------------------
-  private setupColorDropdown(btnId: string, ddId: string, swatchId: string, prop: string): void {
-    document.getElementById(btnId)!.addEventListener('click', () => this.toggleDropdown(ddId));
-    document.getElementById(ddId)!.addEventListener('click', (e: MouseEvent) => {
-      const item = (e.target as HTMLElement).closest('.dropdown-item') as HTMLElement | null;
-      if(item) {
-        const color = item.dataset.color!;
-        this.updateProperty(prop, color);
-        this.setSwatchColor(swatchId, color);
-        this.hideAllDropdowns();
+  // == Preset-driven Dropdown Rendering ==========================================
+  private renderAllDropdowns(): void {
+    this.renderColorDropdown('strokeColorDropdown',     'strokeColorSwatch',     'stroke',      { elementProp: 'stroke',    presetKey: 'strokeColors',     recentKey: 'strokeColors' });
+    this.renderColorDropdown('backgroundColorDropdown', 'backgroundColorSwatch', 'fill',        { elementProp: 'fill',      presetKey: 'backgroundColors', recentKey: 'backgroundColors' }, { alpha: true });
+    this.renderColorDropdown('textColorDropdown',       'textColorSwatch',       'textColor',   { elementProp: 'textColor', presetKey: 'textColors',       recentKey: 'textColors' });
+    this.renderWidthDropdown();
+    this.renderFontSizeDropdown();
+    this.renderFontFamilyDropdown();
+  }
+
+  // -- Color Dropdown (preset + recents + custom) --------------------------------
+  private renderColorDropdown(
+    ddId: string,
+    swatchId: string,
+    prop: string,
+    def: ListDef,
+    opts: { alpha?: boolean } = {},
+  ): void {
+    const dd = document.getElementById(ddId);
+    if(!dd) return;/*group not in DOM*/
+    dd.innerHTML = '';
+
+    const cfg = this.configStore.getConfig();
+    const presets = cfg.presets[def.presetKey] as ReadonlyArray<string>;
+    const recents = cfg.recents[def.recentKey] as ReadonlyArray<string>;
+
+    // section: presets
+    const presetSection = document.createElement('div');
+    presetSection.className = 'dropdown-swatch-grid';
+    for(const color of presets) presetSection.appendChild(this.buildColorSwatch(color, () => {
+      this.updateProperty(prop, color);
+      this.setSwatchColor(swatchId, color);
+      this.hideAllDropdowns();
+    }));
+    dd.appendChild(presetSection);
+
+    // section: recents (only when non-empty)
+    if(recents.length > 0) {
+      const divider = document.createElement('div');
+      divider.className = 'dropdown-divider';
+      divider.textContent = 'Recent';
+      dd.appendChild(divider);
+
+      const recentsSection = document.createElement('div');
+      recentsSection.className = 'dropdown-swatch-grid';
+      for(const color of recents) {
+        const item = this.buildColorSwatch(color, () => {
+          this.updateProperty(prop, color);
+          this.setSwatchColor(swatchId, color);
+          this.hideAllDropdowns();
+        });
+        // pin button promotes this recent into the preset list
+        const pin = document.createElement('button');
+        pin.type = 'button';
+        pin.className = 'dropdown-pin';
+        pin.title = 'Pin to presets';
+        pin.textContent = '\u{1F4CC}';/*pushpin emoji*/
+        pin.addEventListener('click', (e) => {
+          e.stopPropagation();/*don't apply the color*/
+          void this.configStore.pinToPreset(def.presetKey, color as any);
+        });
+        item.appendChild(pin);
+        recentsSection.appendChild(item);
       }
+      dd.appendChild(recentsSection);
+    } /* else -- no recents to show */
+
+    // custom row
+    const custom = this.buildCustomRow('Custom…', (anchor) => {
+      const currentEl = this.selection.selectedElements[0] as any;
+      const initial = (currentEl && (prop === 'textColor' ? (currentEl.fill || currentEl.textColor) : currentEl[prop])) || (presets[0] || '#000000');
+      openColorPicker({
+        rect: anchor,
+        initial,
+        alpha: !!opts.alpha,
+        onChange: (c) => { this.updateProperty(prop, c); this.setSwatchColor(swatchId, c); },
+        onCommit: (c) => {
+          this.updateProperty(prop, c);
+          this.setSwatchColor(swatchId, c);
+          void this.configStore.pushRecent(def.recentKey, c as any);
+          this.hideAllDropdowns();
+        },
+        onCancel: () => { this.updateProperty(prop, initial); this.setSwatchColor(swatchId, initial); },
+      });
     });
+    dd.appendChild(custom);
   }
 
-  // -- Stroke Width Dropdown -----------------------------------------------------
-  private setupWidthDropdown(): void {
-    document.getElementById('strokeWidthBtn')!.addEventListener('click', () => this.toggleDropdown('strokeWidthDropdown'));
-    document.getElementById('strokeWidthDropdown')!.addEventListener('click', (e: MouseEvent) => {
-      const item = (e.target as HTMLElement).closest('.dropdown-item') as HTMLElement | null;
-      if(item) {
-        const w = parseInt(item.dataset.width!);
-        this.updateProperty('strokeWidth', w);
-        this.setWidthSample(w);
-        this.hideAllDropdowns();
-      }
+  // -- Width Dropdown ------------------------------------------------------------
+  private renderWidthDropdown(): void {
+    const dd = document.getElementById('strokeWidthDropdown');
+    if(!dd) return;
+    dd.innerHTML = '';
+
+    const cfg = this.configStore.getConfig();
+    const presets = cfg.presets.strokeWidths;
+    const recents = cfg.recents.strokeWidths;
+
+    for(const w of presets) dd.appendChild(this.buildWidthRow(w, false));
+    if(recents.length > 0) {
+      const divider = document.createElement('div');
+      divider.className = 'dropdown-divider';
+      divider.textContent = 'Recent';
+      dd.appendChild(divider);
+      for(const w of recents) dd.appendChild(this.buildWidthRow(w, true));
+    } /* else -- no recents */
+
+    const custom = this.buildCustomRow('Custom…', (anchor) => {
+      const currentEl = this.selection.selectedElements[0] as any;
+      const initial = currentEl?.strokeWidth || presets[0] || 2;
+      openSliderPicker({
+        rect: anchor,
+        initial, min: 1, max: 24, step: 1, unit: 'px',
+        onChange: (v) => { this.updateProperty('strokeWidth', v); this.setWidthSample(v); },
+        onCommit: (v) => {
+          this.updateProperty('strokeWidth', v);
+          this.setWidthSample(v);
+          void this.configStore.pushRecent('strokeWidths', v);
+          this.hideAllDropdowns();
+        },
+        onCancel: () => { this.updateProperty('strokeWidth', initial); this.setWidthSample(initial); },
+      });
     });
+    dd.appendChild(custom);
   }
 
+  private buildWidthRow(w: number, pinnable: boolean): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    const sample = document.createElement('div');
+    sample.className = 'stroke-width-sample';
+    sample.style.height = `${Math.max(1, Math.min(8, w))}px`;
+    const label = document.createElement('span');
+    label.textContent = `${w}px`;
+    item.appendChild(sample);
+    item.appendChild(label);
+    item.addEventListener('click', () => {
+      this.updateProperty('strokeWidth', w);
+      this.setWidthSample(w);
+      this.hideAllDropdowns();
+    });
+    if(pinnable) {
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = 'dropdown-pin';
+      pin.title = 'Pin to presets';
+      pin.textContent = '\u{1F4CC}';
+      pin.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void this.configStore.pinToPreset('strokeWidths', w);
+      });
+      item.appendChild(pin);
+    } /* else -- preset row */
+    return item;
+  }
+
+  // -- Font Size Dropdown --------------------------------------------------------
+  private renderFontSizeDropdown(): void {
+    const dd = document.getElementById('textSizeDropdown');
+    if(!dd) return;
+    dd.innerHTML = '';
+
+    const cfg = this.configStore.getConfig();
+    const presets = cfg.presets.fontSizes;
+    const recents = cfg.recents.fontSizes;
+
+    for(const size of presets) dd.appendChild(this.buildFontSizeRow(size, false));
+    if(recents.length > 0) {
+      const divider = document.createElement('div');
+      divider.className = 'dropdown-divider';
+      divider.textContent = 'Recent';
+      dd.appendChild(divider);
+      for(const size of recents) dd.appendChild(this.buildFontSizeRow(size, true));
+    } /* else -- no recents */
+
+    const custom = this.buildCustomRow('Custom…', (anchor) => {
+      const currentEl = this.selection.selectedElements[0] as any;
+      const initial = currentEl?.fontSize || presets[0] || 16;
+      openSliderPicker({
+        rect: anchor,
+        initial, min: 6, max: 144, step: 1, unit: 'pt',
+        onChange: (v) => { this.updateProperty('fontSize', v); this.setTextSizeSample(v); },
+        onCommit: (v) => {
+          this.updateProperty('fontSize', v);
+          this.setTextSizeSample(v);
+          void this.configStore.pushRecent('fontSizes', v);
+          this.hideAllDropdowns();
+        },
+        onCancel: () => { this.updateProperty('fontSize', initial); this.setTextSizeSample(initial); },
+      });
+    });
+    dd.appendChild(custom);
+  }
+
+  private buildFontSizeRow(size: number, pinnable: boolean): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    const sample = document.createElement('span');
+    sample.className = 'text-size-sample';
+    sample.style.fontSize = `${Math.min(28, size)}px`;
+    sample.textContent = 'A';
+    const label = document.createElement('span');
+    label.textContent = `${size}pt`;
+    item.appendChild(sample);
+    item.appendChild(label);
+    item.addEventListener('click', () => {
+      this.updateProperty('fontSize', size);
+      this.setTextSizeSample(size);
+      this.hideAllDropdowns();
+    });
+    if(pinnable) {
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = 'dropdown-pin';
+      pin.title = 'Pin to presets';
+      pin.textContent = '\u{1F4CC}';
+      pin.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void this.configStore.pinToPreset('fontSizes', size);
+      });
+      item.appendChild(pin);
+    } /* else -- preset row */
+    return item;
+  }
+
+  // -- Font Family Dropdown ------------------------------------------------------
+  private renderFontFamilyDropdown(): void {
+    const dd = document.getElementById('fontFamilyDropdown');
+    if(!dd) return;/*group not in DOM (eg. older HTML)*/
+    dd.innerHTML = '';
+
+    const cfg = this.configStore.getConfig();
+    const presets = cfg.presets.fontFamilies;
+    const recents = cfg.recents.fontFamilies;
+
+    for(const f of presets) dd.appendChild(this.buildFontFamilyRow(f, false));
+    if(recents.length > 0) {
+      const divider = document.createElement('div');
+      divider.className = 'dropdown-divider';
+      divider.textContent = 'Recent';
+      dd.appendChild(divider);
+      for(const f of recents) dd.appendChild(this.buildFontFamilyRow(f, true));
+    } /* else -- no recents */
+
+    const custom = this.buildCustomRow('Google Fonts…', (anchor) => {
+      const currentEl = this.selection.selectedElements[0] as any;
+      const initialFamily = currentEl?.fontFamily || null;
+      openFontPicker({
+        rect: anchor,
+        initial: initialFamily ? { label: 'Current', family: initialFamily } : null,
+        onChange: (c) => { this.updateProperty('fontFamily', c.family); this.setFontFamilySample(c.family); },
+        onCommit: (c) => {
+          this.updateProperty('fontFamily', c.family);
+          this.setFontFamilySample(c.family);
+          void this.configStore.pushRecent('fontFamilies', c);
+          this.hideAllDropdowns();
+        },
+        onCancel: () => {
+          const revert = initialFamily || DEFAULT_FONT_FAMILY;
+          this.updateProperty('fontFamily', revert);
+          this.setFontFamilySample(revert);
+        },
+      });
+    });
+    dd.appendChild(custom);
+  }
+
+  private buildFontFamilyRow(f: { label: string; family: string; googleFont?: string }, pinnable: boolean): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item';
+    const sample = document.createElement('span');
+    sample.style.fontFamily = f.family;
+    sample.style.fontSize = '16px';
+    sample.textContent = f.label;
+    item.appendChild(sample);
+    item.addEventListener('click', () => {
+      this.updateProperty('fontFamily', f.family);
+      this.setFontFamilySample(f.family);
+      this.hideAllDropdowns();
+    });
+    if(pinnable) {
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = 'dropdown-pin';
+      pin.title = 'Pin to presets';
+      pin.textContent = '\u{1F4CC}';
+      pin.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void this.configStore.pinToPreset('fontFamilies', f);
+      });
+      item.appendChild(pin);
+    } /* else -- preset row */
+    return item;
+  }
+
+  // -- Shared Builders -----------------------------------------------------------
+  private buildColorSwatch(color: string, onClick: () => void): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'dropdown-swatch';
+    item.title = color;
+    const sw = document.createElement('div');
+    sw.className = 'color-swatch';
+    sw.style.background = color;
+    if((color === 'transparent') || color.includes('rgba')) sw.style.border = '1px solid #ccc';
+    item.appendChild(sw);
+    item.addEventListener('click', onClick);
+    return item;
+  }
+
+  private buildCustomRow(label: string, onOpen: (anchor: DOMRect) => void): HTMLElement {
+    const item = document.createElement('div');
+    item.className = 'dropdown-item dropdown-item-custom';
+    const icon = document.createElement('span');
+    icon.className = 'dropdown-custom-icon';
+    icon.textContent = '\u{2795}';/*heavy plus sign -- unambiguous without depending on an icon font*/
+    const text = document.createElement('span');
+    text.textContent = label;
+    item.appendChild(icon);
+    item.appendChild(text);
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const rect = (item.getBoundingClientRect as any).call(item) as DOMRect;
+      onOpen(rect);
+    });
+    return item;
+  }
+
+  // == Non-preset Dropdowns (style / align / decoration) =========================
   // -- Stroke Style Dropdown -----------------------------------------------------
   private setupStyleDropdown(): void {
-    document.getElementById('strokeStyleBtn')!.addEventListener('click', () => this.toggleDropdown('strokeStyleDropdown'));
     document.getElementById('strokeStyleDropdown')!.addEventListener('click', (e: MouseEvent) => {
       const item = (e.target as HTMLElement).closest('.dropdown-item') as HTMLElement | null;
       if(item) {
@@ -182,20 +515,6 @@ export class PropertiesPanel {
         this.updateProperty('strokeDasharray', this.dashArray(style, sw));
         const sample = document.getElementById('strokeStyleSample')!;
         sample.className = 'stroke-style-sample ' + style;
-        this.hideAllDropdowns();
-      }
-    });
-  }
-
-  // -- Text Size Dropdown --------------------------------------------------------
-  private setupTextSizeDropdown(): void {
-    document.getElementById('textSizeBtn')!.addEventListener('click', () => this.toggleDropdown('textSizeDropdown'));
-    document.getElementById('textSizeDropdown')!.addEventListener('click', (e: MouseEvent) => {
-      const item = (e.target as HTMLElement).closest('.dropdown-item') as HTMLElement | null;
-      if(item) {
-        const size = parseInt(item.dataset.size!);
-        this.updateProperty('fontSize', size);
-        this.setTextSizeSample(size);
         this.hideAllDropdowns();
       }
     });
@@ -271,37 +590,48 @@ export class PropertiesPanel {
     } /* else -- was already open; hideAllDropdowns closed it */
   }
 
-  private setVisible(id: string, v: boolean): void { document.getElementById(id)!.style.display = v ? 'flex' : 'none'; }
+  // ------------------------------------------------------------------------------
+  private setVisible(id: string, v: boolean): void {
+    const el = document.getElementById(id);
+    if(el) el.style.display = v ? 'flex' : 'none';
+  }
 
+  // ------------------------------------------------------------------------------
   private setSwatchColor(id: string, color: string): void {
     const s = document.getElementById(id)! as HTMLElement;
     s.style.backgroundColor = color;
-    if(color === 'transparent') s.style.border = '1px solid #ccc';
+    if((color === 'transparent') || color.includes('rgba')) s.style.border = '1px solid #ccc';
+    else s.style.border = '';
   }
 
+  // ------------------------------------------------------------------------------
   private setWidthSample(w: number): void {
     const s = document.getElementById('strokeWidthSample')!;
     s.className = 'stroke-width-sample';
-    if(w === 4) s.classList.add('thick');
-    else if(w === 2) s.classList.add('medium');
+    s.style.height = `${Math.max(1, Math.min(8, w))}px`;
   }
 
-  private setStyleSample(dash: string | undefined, sw: number): void {
+  private setStyleSample(dash: string | undefined, _sw: number): void {
     const s = document.getElementById('strokeStyleSample')!;
     s.className = 'stroke-style-sample';
     const style = this.dashStyle(dash);
     if(style !== 'solid') s.classList.add(style);
   }
 
+  // ------------------------------------------------------------------------------
   private setTextSizeSample(size: number): void {
     const s = document.getElementById('textSizeSample')!;
     s.className = 'text-size-sample';
-    if(size <= 12) s.classList.add('small');
-    else if(size <= 16) s.classList.add('medium');
-    else if(size <= 20) s.classList.add('large');
-    else s.classList.add('xlarge');
+    s.style.fontSize = `${Math.min(28, size)}px`;
   }
 
+  private setFontFamilySample(family: string): void {
+    const s = document.getElementById('fontFamilySample');
+    if(!s) return;/*group not in DOM*/
+    s.style.fontFamily = family;
+  }
+
+  // ------------------------------------------------------------------------------
   private setAlignIcon(align: string): void {
     const icon = document.getElementById('textAlignIcon')!;
     if(align === 'left') icon.innerHTML = '<path d="M21 6H3M15 12H3M17 18H3"/>';
@@ -322,6 +652,7 @@ export class PropertiesPanel {
     icon.setAttribute('viewBox', decoration === 'none' ? '0 0 24 24' : '0 0 40 20');
   }
 
+  // ------------------------------------------------------------------------------
   private dashArray(style: string, sw: number): string {
     if(style === 'dashed') return `${6 * sw},${3 * sw}`;
     if(style === 'dotted') return `${2 * sw},${2 * sw}`;
@@ -335,3 +666,4 @@ export class PropertiesPanel {
     return Math.abs(parts[0] - parts[1]) < 0.1 ? 'dotted' : 'dashed';
   }
 }
+
