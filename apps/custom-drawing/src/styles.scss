@@ -487,7 +487,17 @@ body {
   overflow-y: auto;
 }
 
-.modal-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #333; position: sticky; top: 0; background: white; z-index: 1; }
+.modal-title {
+  font-size: 18px; font-weight: 600; color: #333;
+  position: sticky; top: 0; background: white; z-index: 2;
+  // extend the sticky header to the modal's border edges so the 24px of
+  // internal padding above / to the sides doesn't let scroll content bleed
+  // past. negative margins grow the box; matching padding restores the text
+  // position so the title visually sits where it did before
+  margin: -24px -24px 16px;
+  padding: 24px 24px 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
 
 .modal-input {
   width: 100%; padding: 8px 12px; border: 1px solid #e0e0e0;
