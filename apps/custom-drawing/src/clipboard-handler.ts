@@ -2,6 +2,7 @@ import type { CanvasViewport } from './canvas-viewport';
 import { generateId, generateGroupId, getElementBoundsFromData, type DrawingElement, type Point } from './element-model';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
+import type { TextMeasurement } from './text-measurement';
 
 // copy, cut, paste (drawing elements + SVG), group, ungroup
 // ********************************************************************************
@@ -27,14 +28,16 @@ export class ClipboardHandler {
   private readonly viewport: CanvasViewport;
   private readonly renderer: SvgRenderer;
   private readonly selection: SelectionManager;
+  private readonly textMeasure: TextMeasurement;
 
   public elements: DrawingElement[] = [];
   public onSave: (() => void) | null = null;
 
-  public constructor(viewport: CanvasViewport, renderer: SvgRenderer, selection: SelectionManager) {
+  public constructor(viewport: CanvasViewport, renderer: SvgRenderer, selection: SelectionManager, textMeasure: TextMeasurement) {
     this.viewport = viewport;
     this.renderer = renderer;
     this.selection = selection;
+    this.textMeasure = textMeasure;
   }
 
   // == Copy / Cut ================================================================
@@ -301,6 +304,57 @@ export class ClipboardHandler {
         const rx = parseFloat(node.getAttribute('rx') || '0');
         const ry = parseFloat(node.getAttribute('ry') || '0');
         el = { id, type: 'ellipse', x: cx - rx + oX, y: cy - ry + oY, x2: cx + rx + oX, y2: cy + ry + oY, stroke: stroke === 'none' ? '#000' : stroke, fill: fill === 'none' ? 'transparent' : fill, strokeWidth: sw };
+        break;
+      }
+      case 'text': {
+        const text = (node.textContent || '').trim();
+        if(!text) break;/*empty text node, skip*/
+
+        // SVG text attrs inherit from ancestors; walk up to resolve the ones
+        // that can be parsed (font-size, fill, text-anchor) since a common pattern
+        // is to set these on a wrapping <g>
+        const inherit = (attr: string): string | null => {
+          let n: Element | null = node;
+          while(n) {
+            const v = n.getAttribute(attr);
+            if(v) return v;
+            n = n.parentElement;
+          }
+          return null;
+        };
+        const fontSize = parseFloat(inherit('font-size') || '16') || 16;
+        const textFill = inherit('fill') || '#000';
+        const anchor   = inherit('text-anchor') || 'start';
+
+        // SVG text is positioned by the baseline of its first glyph at (x,y),
+        // shifted by optional dx/dy. TextElement positions by top-left, so they
+        // are shifted up by ~fontSize to convert baseline->top (approximation --
+        // exact would require font-metric ascent but this matches what most
+        // users expect visually)
+        const svgX = parseFloat(node.getAttribute('x')  || '0')
+                   + parseFloat(node.getAttribute('dx') || '0');
+        const svgY = parseFloat(node.getAttribute('y')  || '0')
+                   + parseFloat(node.getAttribute('dy') || '0');
+
+        const dims = this.textMeasure.measureTextDimensions(text, fontSize);
+
+        // text-anchor='middle' -> svgX is the horizontal center; 'end' -> right edge
+        let left = svgX;
+        if(anchor === 'middle') left = svgX - dims.width / 2;
+        else if(anchor === 'end') left = svgX - dims.width;
+        /* else start/default -- svgX is already the left edge */
+
+        el = {
+          id, type: 'text',
+          text,
+          x: left + oX,
+          y: svgY - fontSize * 0.85 + oY,/*baseline->top approximation*/
+          width: dims.width,
+          height: dims.height,
+          fontSize,
+          textColor: textFill === 'none' ? '#000' : textFill,
+          textAlign: anchor === 'middle' ? 'center' : anchor === 'end' ? 'right' : 'left',
+        };
         break;
       }
     }
