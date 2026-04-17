@@ -15,8 +15,8 @@ const DISCOVERY_DEBOUNCE_MS = 200/*ms*/;
 const DISCOVERY_TIMEOUT_MS = 500/*ms*/;
 
 /** selector + name for the single content block that holds the elements JSON */
-const ELEMENTS_SELECTOR = "[id='elements']";
-const ELEMENTS_NAME = 'Drawing Elements';
+const ELEMENTS_NAME = 'elements';
+const ELEMENTS_SELECTOR = `[name='${ELEMENTS_NAME}']`;
 
 // == Types =======================================================================
 interface ContentChange {
@@ -107,10 +107,9 @@ export class ContentBridge {
   }
 
   // == Internal ==================================================================
-  /** test whether a content change relates to our elements block.
-   *  the platform may identify blocks by id or by name; be permissive */
+  /** test whether a content change relates to our elements block */
   private isElementsBlock(change: ContentChange): boolean {
-    return (change.id === 'elements') || (change.name === ELEMENTS_NAME);
+    return change.name === ELEMENTS_NAME;
   }
 
   // ------------------------------------------------------------------------------

@@ -117,7 +117,7 @@ Two storage channels — one for the drawing's elements, one for its configurati
   <app-state>{"config":{"readOnly":true,"showGrid":false,"showToolbar":false,"showPropertiesPanel":false,"showInfoBar":false,"backgroundColor":"#f7f7f4"}}</app-state>
 </iframe-app>
 
-**`appContent`** holds the drawing's elements, serialized as a JSON array in a single named content block (`[id='elements']`). `ContentBridge` watches `onChange$()`, parses incoming content into `DrawingElement[]`, and hands it to the renderer. Locally-made mutations are flushed back via `set()`.
+**`appContent`** holds the drawing's elements, serialized as JSON Lines in a single named content block (`[name='elements']`). `ContentBridge` watches `onChange$()`, parses incoming content into `DrawingElement[]`, and hands it to the renderer. Locally-made mutations are flushed back via `set()`.
 
 **`appState`** holds the drawing's configuration — grid visibility and color, background color, read-only flag, and UI chrome toggles. It uses last-write-wins semantics, appropriate for settings that one user at a time controls. `ConfigStore` always reads the current state before writing so partial updates don't clobber unrelated fields.
 
@@ -156,7 +156,7 @@ Users can edit these values through the Settings gear in the toolbar, or Charms 
 
 ### Content Format (`appContent`)
 
-Elements are stored in a single named block (`[id='elements']`) as **JSON Lines** — one element per line:
+Elements are stored in a single named block (`[name='elements']`) as **JSON Lines** — one element per line:
 
 ```jsonl
 { "id": "el_...", "type": "rectangle", "x": 0, "y": 0, "width": 100, "height": 80, "stroke": "#000", ... }
