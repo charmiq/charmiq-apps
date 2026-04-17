@@ -1,4 +1,4 @@
-import { getRotatedBounds, type Bounds, type DrawingElement, type Point } from './element-model';
+import { getElementBounds, getRotatedBounds, type Bounds, type DrawingElement, type Point } from './element-model';
 import { rotatePoint } from './geometry';
 import type { CanvasViewport } from './canvas-viewport';
 
@@ -187,8 +187,11 @@ export class SelectionManager {
           width: Math.abs((el as any).x2 - el.x) + 10,
           height: Math.abs((el as any).y2 - el.y) + 10,
         };
+      // svg-circle / svg-path / svg-polygon / svg-text-path: geometry isn't
+      // expressed as simple corner coords -- defer to getElementBounds, which
+      // reads it straight from the rendered DOM node (via getBBox for paths)
       default:
-        return { x: 0, y: 0, width: 0, height: 0 };
+        return getElementBounds(el);
     }
   }
 
