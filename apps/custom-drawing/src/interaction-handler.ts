@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, getElementBounds, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
+import { generateId, getElementBounds, isSvgBasedElement, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
 import { distanceToLine, isPointInElement, rotatePoint, snapAngle, getDrawingBounds, isPointNearLine, doRectsIntersect } from './geometry';
 import { cursorForHandle, type HandleType, type SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -611,8 +611,7 @@ export class InteractionHandler {
     const ht = this.resizeHandle!.type;
 
     // SVG-based types don't have x/x2/y/y2 — scale their geometry to fit new bounds
-    if((el.type === 'svg-path') || (el.type === 'svg-polygon')
-        || (el.type === 'svg-circle') || (el.type === 'svg-text-path')) {
+    if(isSvgBasedElement(el)) {
       const ob = this.originalBounds;
       let nx1 = ob.x, nx2 = ob.x + ob.width, ny1 = ob.y, ny2 = ob.y + ob.height;
       if((ht === 'nw') || (ht === 'sw') || (ht === 'w')) nx1 += rawDx;
@@ -714,22 +713,31 @@ export class InteractionHandler {
     const worldCx = cx + (newCx - cx) * cos - (newCy - cy) * sin,
           worldCy = cy + (newCx - cx) * sin + (newCy - cy) * cos;
 
-    // update element
-    if(el.type === 'text') {
-      (el as any).x = worldCx - newW / 2;
-      (el as any).y = worldCy - newH / 2;
+    // update element -- SVG-based types delegate to resizeSvgBasedElement since
+    // their geometry lives in d/points/offsetX,offsetY (or cx,cy,r), not x/x2/y/y2
+    const newElBounds = {
+      x: worldCx - newW / 2,
+      y: worldCy - newH / 2,
+      width: newW,
+      height: newH,
+    };
+    if(isSvgBasedElement(el)) {
+      resizeSvgBasedElement(el as DrawingElement, orig, bounds, newElBounds);
+    } else if(el.type === 'text') {
+      (el as any).x = newElBounds.x;
+      (el as any).y = newElBounds.y;
       (el as any).width = newW;
       (el as any).height = newH;
     } else {
-      (el as any).x = worldCx - newW / 2;
-      (el as any).y = worldCy - newH / 2;
+      (el as any).x = newElBounds.x;
+      (el as any).y = newElBounds.y;
       (el as any).x2 = worldCx + newW / 2;
       (el as any).y2 = worldCy + newH / 2;
     }
     if(el.type === 'image') {
       (el as any).width = newW;
       (el as any).height = newH;
-    }
+    } /* else -- non-image types don't carry width/height */
 
     const idx = this.elements.findIndex(e => e.id === el.id);
     if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;

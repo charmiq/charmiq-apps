@@ -131,6 +131,11 @@ export type DrawingElement =
 export const isSvgOffsetElement = (el: DrawingElement): el is SvgPathElement | SvgPolygonElement | SvgTextPathElement =>
   (el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path');
 
+/** true for ANY SVG-derived element (path / polygon / text-path / circle) -- the
+ *  ones that delegate resize to `resizeSvgBasedElement` rather than writing x/x2/y/y2 */
+export const isSvgBasedElement = (el: DrawingElement): el is SvgPathElement | SvgPolygonElement | SvgTextPathElement | SvgCircleElement =>
+  isSvgOffsetElement(el) || (el.type === 'svg-circle');
+
 // == Id Generation ===============================================================
 export const generateId = (): string =>
   'el_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
