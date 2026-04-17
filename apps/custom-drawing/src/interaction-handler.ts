@@ -62,7 +62,6 @@ export class InteractionHandler {
   private shiftKeyHeld = false;
   private snapBackPending = false;
   private lastMousePoint: Point | null = null;
-  private isMouseOutside = false;
   private pendingShiftClick: { element: DrawingElement; isSelected: boolean } | null = null;
 
   public constructor(
@@ -102,27 +101,18 @@ export class InteractionHandler {
   public setupEventListeners(): void {
     const c = this.viewport.container;
 
-    c.addEventListener('mousedown', this.handleMouseDown);
-    c.addEventListener('mousemove', this.handleMouseMove);
-    c.addEventListener('mouseup', this.handleMouseUp);
-    c.addEventListener('dblclick', this.handleDoubleClick);
-    c.addEventListener('wheel', this.handleWheel, { passive: false });
-    c.addEventListener('contextmenu', e => e.preventDefault());
-
-    c.addEventListener('mouseleave', () => { if(this.isDrawing) this.isMouseOutside = true; });
-    c.addEventListener('mouseenter', (e: MouseEvent) => {
-      if(this.isMouseOutside) {
-        this.isMouseOutside = false;
-        if(this.isDrawing && e.buttons === 0) this.endCurrentOperation();
-      } /* else -- mouse entered but wasn't previously outside */
-    });
-    document.addEventListener('mouseleave', () => { if(this.isDrawing) this.isMouseOutside = true; });
-    document.addEventListener('mouseenter', (e: MouseEvent) => {
-      if(this.isMouseOutside) {
-        this.isMouseOutside = false;
-        if(this.isDrawing && e.buttons === 0) this.endCurrentOperation();
-      } /* else -- mouse entered but wasn't previously outside */
-    });
+    // pointer events with setPointerCapture: once we capture on pointerdown,
+    // the browser re-routes every pointermove/up for that pointer id to our
+    // element, even when the pointer leaves the iframe, the window, or the
+    // monitor entirely. this is how excalidraw and figma survive cross-iframe
+    // drags -- the mouse-event equivalent simply doesn't exist.
+    c.addEventListener('pointerdown',   this.handlePointerDown);
+    c.addEventListener('pointermove',   this.handlePointerMove);
+    c.addEventListener('pointerup',     this.handlePointerUp);
+    c.addEventListener('pointercancel', this.handlePointerUp);
+    c.addEventListener('dblclick',      this.handleDoubleClick);
+    c.addEventListener('wheel',         this.handleWheel, { passive: false });
+    c.addEventListener('contextmenu',   e => e.preventDefault());
   }
 
   // ------------------------------------------------------------------------------
@@ -201,9 +191,18 @@ export class InteractionHandler {
     });
   }
 
-  // == Mouse Handlers ============================================================
-  // -- Mouse Down ----------------------------------------------------------------
-  private handleMouseDown = (e: MouseEvent): void => {
+  // == Pointer Handlers ==========================================================
+  // -- Pointer Down --------------------------------------------------------------
+  private handlePointerDown = (e: PointerEvent): void => {
+    // only primary button initiates gestures; right-click / middle-click bail
+    if(e.button !== 0) return;/*not the primary pointer action*/
+
+    // capture the pointer so subsequent move/up events keep flowing to us even
+    // if the user drags outside the iframe. safe to call unconditionally -- the
+    // browser no-ops if already captured, and releases on pointerup/cancel.
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); }
+    catch { /* capture failed (element detached etc.); proceed anyway */ }
+
     const point = this.getCanvasPoint(e);
     this.startPoint = point;
     this.isDrawing = true;
@@ -237,10 +236,18 @@ export class InteractionHandler {
     }
   };
 
-  // -- Mouse Move ----------------------------------------------------------------
-  private handleMouseMove = (e: MouseEvent): void => {
+  // -- Pointer Move --------------------------------------------------------------
+  private handlePointerMove = (e: PointerEvent): void => {
     const point = this.getCanvasPoint(e);
     this.lastMousePoint = point;
+
+    // sanity check: if a gesture might be in progress but no mouse button is down,
+    // the user released outside the iframe (or focus was stolen mid-drag) and there
+    // was no mouseup. Cancel whatever's in flight and fallthrough so this move tick
+    // is treated as a plain hover
+    if((e.buttons === 0) && (this.isDrawing || this.selectionBox || this.currentElement)) {
+      this.cancelActiveGesture();
+    } /* else -- button genuinely down, or nothing in progress */
 
     const prevShift = this.shiftKeyHeld;
     this.shiftKeyHeld = e.shiftKey;
@@ -267,17 +274,21 @@ export class InteractionHandler {
     if(this.selectionBox) { this.updateSelectionBox(point); }
   };
 
-  // -- Mouse Up ------------------------------------------------------------------
-  private handleMouseUp = (e: MouseEvent): void => {
+  // -- Pointer Up ----------------------------------------------------------------
+  // also handles pointercancel (browser giving up on the pointer -- touch↔mouse
+  // transitions, OS gestures, etc.); treat identically to a clean up
+  private handlePointerUp = (e: PointerEvent): void => {
+    try { (e.currentTarget as Element).releasePointerCapture(e.pointerId); }
+    catch { /*already released by the browser which is fine*/ }
+
     if(this.isPanning) { this.endPanning(); }
     else if(this.isResizing) { this.endResize(); }
-    else if(this.isMoving) { this.endMoving(e); }
+    else if(this.isMoving) { this.endMoving(); }
     else if(this.isRotating) { this.endRotation(); }
     else if(this.currentElement) { this.endDrawing(); }
     else if(this.selectionBox) { this.endSelectionBox(); }
 
     this.isDrawing = false;
-    this.isMouseOutside = false;
   };
 
   // -- Double Click --------------------------------------------------------------
@@ -484,7 +495,7 @@ export class InteractionHandler {
   }
 
   // -- End -----------------------------------------------------------------------
-  private endMoving(e: MouseEvent): void {
+  private endMoving(): void {
     this.isMoving = false;
 
     // handle pending shift-click (click without drag)
@@ -1052,16 +1063,6 @@ export class InteractionHandler {
     c.style.cursor = el ? 'move' : 'default';
   }
 
-  // -- End any Active Operation --------------------------------------------------
-  private endCurrentOperation(): void {
-    if(this.isPanning) this.endPanning();
-    else if(this.isResizing) this.endResize();
-    else if(this.isMoving) this.endMoving(new MouseEvent('mouseup'));
-    else if(this.isRotating) this.endRotation();
-    this.isDrawing = false;
-    this.isMouseOutside = false;
-  }
-
   // -- Cancel any Active Gesture (rollback) --------------------------------------
   // called when the iframe loses focus / visibility; the user never completed
   // the gesture so we roll back any in-flight geometry changes to their pre-
@@ -1130,7 +1131,6 @@ export class InteractionHandler {
     this.hasResized        = false;
     this.shiftKeyHeld      = false;
     this.snapBackPending   = false;
-    this.isMouseOutside    = false;
     this.resizeHandle      = null;
     this.pendingShiftClick = null;
     this.originalPositions     = [];

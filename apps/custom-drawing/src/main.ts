@@ -126,12 +126,12 @@ document.getElementById('clearAllBtn')!.addEventListener('click', async () => {
 });
 
 // == Iframe-Focus Recovery =======================================================
-// when the iframe loses focus (user clicks the parent page, alt-tabs, switches
-// tabs, or drags outside the iframe and releases there) the browser stops
-// delivering mouseup/keyup/pointermove to us. without recovery the app ends up
-// stuck mid-gesture: marquee frozen, shift still "held", shape following the
-// cursor on re-entry. we reset transient interaction state at the boundary,
-// but never touch authored state (elements, modals, text editor, tool choice)
+// pointer capture (see interaction-handler) solves the common "drag outside the
+// iframe" case -- pointerup/pointercancel are delivered to us no matter where
+// the pointer is. these listeners cover the residual edge cases capture can't:
+// user hitting alt-tab mid-drag, the OS stealing focus, devtools opening with a
+// modifier held, etc. authored state (elements, modals, text editor, tool
+// choice) is intentionally untouched -- closing them on alt-tab would be hostile.
 const resetTransientState = () => {
   interaction.cancelActiveGesture();
   tools.setSpacebarPan(false);/*clear stuck spacebar-pan*/
@@ -143,9 +143,6 @@ document.addEventListener('visibilitychange', () => {
   if(document.hidden) resetTransientState();
   // NOTE: becoming visible again is fine, nothing to reset
 });
-// pointercancel fires when the browser gives up on a pointer (touch↔mouse
-// transitions, OS gestures). treat it as an implicit gesture cancellation
-viewport.container.addEventListener('pointercancel', resetTransientState);
 
 // == Content Bridge — incoming updates ===========================================
 contentBridge.onChange((newElements) => {

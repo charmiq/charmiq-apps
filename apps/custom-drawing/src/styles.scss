@@ -190,6 +190,7 @@ body {
   top: 0; left: 0; width: 100%; height: 100%;
   cursor: default;
   user-select: none;
+  touch-action: none;/*required for pointer events on touch/trackpad; without this the browser intercepts gestures before the app can see them*/
 
   &.pan { cursor: grab; &.panning { cursor: grabbing; } }
   &.selection { cursor: default; }
