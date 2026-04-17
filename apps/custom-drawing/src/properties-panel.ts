@@ -37,6 +37,10 @@ export class PropertiesPanel {
         this.hideAllDropdowns();
       }
     });
+
+    // close dropdowns when the panel scrolls — the fly-out uses position:fixed
+    // anchored at open-time, so it would otherwise drift from its button
+    document.getElementById('propertiesPanel')?.addEventListener('scroll', () => this.hideAllDropdowns());
   }
 
   // == Show / Hide ===============================================================
