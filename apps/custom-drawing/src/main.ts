@@ -156,12 +156,14 @@ const start = async () => {
   // wait for fonts before initializing anything
   await textMeasure.init();
 
-  // services from CharmIQ Platform (may be null in standalone/dev)
-  const services = {
-    commandService: charmiq.commandService ?? null,
-    assetService: charmiq.assetService ?? null,
-    generationService: charmiq.generationService ?? null,
-  };
+  // services via charmiq.discover; in standalone/dev (no charmiq bridge) they fall back to null
+  const discover = (name: string) => charmiq?.discover?.(name).catch(() => null) ?? Promise.resolve(null);
+  const [commandService, assetService, generationService] = await Promise.all([
+    discover('charmiq.service.command'),
+    discover('charmiq.service.asset'),
+    discover('charmiq.service.generation'),
+  ]);
+  const services = { commandService, assetService, generationService };
   imageHandler.setServices(services);
   exportHandler.setServices(services);
   generation.setServices(services);
