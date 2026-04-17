@@ -177,7 +177,10 @@ export class ClipboardHandler {
   // == Delete / Group / Ungroup ==================================================
   public deleteSelected(): void {
     const ids = new Set(this.selection.selectedElements.map(e => e.id));
-    this.elements = this.elements.filter(e => !ids.has(e.id));
+    // mutate in place so the shared elements array reference stays valid across modules
+    for(let i=this.elements.length - 1; i>=0; i--) {
+      if(ids.has(this.elements[i].id)) this.elements.splice(i, 1);
+    }
     for(const id of ids) { const el = document.getElementById(id); if(el) el.remove(); }
     this.selection.deselectAll();
     this.onSave?.();
