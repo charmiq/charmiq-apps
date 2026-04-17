@@ -17,6 +17,12 @@ export interface DrawingConfig {
   readOnly: boolean;
   /** show the main toolbar (shape tools, generate, export) */
   showToolbar: boolean;
+  /** initial canvas pan offset in screen pixels. The default `{100, 100}`
+   *  leaves room for the top-left toolbar; set both to 0 for a flush viewport */
+  initialPanX: number;
+  initialPanY: number;
+  /** initial canvas zoom level (1 = 100%) */
+  initialZoom: number;
   /** show the properties panel when elements are selected */
   showPropertiesPanel: boolean;
   /** show the info / hint bar under the toolbar */
@@ -48,6 +54,9 @@ export const DEFAULT_CONFIG: Readonly<DrawingConfig> = {
   backgroundColor: '#fafafa',
   readOnly: false,
   showToolbar: true,
+  initialPanX: 100,
+  initialPanY: 100,
+  initialZoom: 1,
   showPropertiesPanel: true,
   showInfoBar: true,
 };
@@ -137,6 +146,15 @@ export class ConfigStore {
     for(const key of strKeys) {
       const v = (state.config as any)[key];
       if((typeof v === 'string') && (v !== (next as any)[key])) {
+        (next as any)[key] = v;
+        changed = true;
+      } /* else -- not present or unchanged */
+    }
+
+    const numKeys: (keyof DrawingConfig)[] = ['initialPanX', 'initialPanY', 'initialZoom'];
+    for(const key of numKeys) {
+      const v = (state.config as any)[key];
+      if((typeof v === 'number') && Number.isFinite(v) && (v !== (next as any)[key])) {
         (next as any)[key] = v;
         changed = true;
       } /* else -- not present or unchanged */

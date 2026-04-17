@@ -81,7 +81,9 @@ export class SettingsPanel {
   }
 
   private async save(): Promise<void> {
+    const current = this.configStore.getConfig();
     const next: DrawingConfig = {
+      ...current,
       showGrid:            this.showGridInput.checked,
       gridColor:           this.gridColorInput.value,
       backgroundColor:     this.backgroundColorInput.value,

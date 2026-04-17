@@ -186,9 +186,11 @@ const start = async () => {
   // advertise LLM commands
   commandSurface.init(charmiq);
 
-  // initial transform -- the default pan offset leaves room for the toolbar;
-  // when the toolbar is hidden, there's nothing to dodge so start flush with the viewport
-  if(!configStore.getConfig().showToolbar) viewport.panOffset = { x: 0, y: 0 };
+  // initial transform -- pan and zoom come from config so embedders can
+  // position the viewport (e.g. flush with top-left, or centered on content)
+  const cfg = configStore.getConfig();
+  viewport.panOffset = { x: cfg.initialPanX, y: cfg.initialPanY };
+  viewport.zoomLevel = cfg.initialZoom;
   viewport.updateTransform();
 
   syncElements();

@@ -114,7 +114,7 @@ Two storage channels — one for the drawing's elements, one for its configurati
 {"type":"line","x":570,"y":290,"x2":570,"y2":230,"stroke":"#d94a00","strokeWidth":2,"strokeDasharray":"4,4","endDecoration":"arrow","id":"a_as_cs"}
 {"type":"text","x":486,"y":252,"text":"onChange$","fontSize":11,"fill":"#d94a00","width":80,"height":14,"id":"l_as_cs"}
   </app-content>
-  <app-state>{"config":{"readOnly":true,"showGrid":false,"showToolbar":false,"showPropertiesPanel":false,"showInfoBar":false,"backgroundColor":"#f7f7f4"}}</app-state>
+  <app-state>{"config":{"readOnly":true,"showGrid":false,"showToolbar":false,"showPropertiesPanel":false,"showInfoBar":false,"backgroundColor":"#f7f7f4","initialPanX":20,"initialPanY":20}}</app-state>
 </iframe-app>
 
 **`appContent`** holds the drawing's elements, serialized as JSON Lines in a single named content block (`[name='elements']`). `ContentBridge` watches `onChange$()`, parses incoming content into `DrawingElement[]`, and hands it to the renderer. Locally-made mutations are flushed back via `set()`.
@@ -135,6 +135,9 @@ All settings live under the `config` key of `appState`. Any field not present fa
 | `showToolbar` | boolean | `true` | Show the main toolbar (shape tools, image, generate, export, settings) |
 | `showPropertiesPanel` | boolean | `true` | Show the properties panel when elements are selected |
 | `showInfoBar` | boolean | `true` | Show the hint bar under the toolbar |
+| `initialPanX` | number | `100` | Initial canvas pan offset (x) in screen pixels. Set to `0` for a flush viewport |
+| `initialPanY` | number | `100` | Initial canvas pan offset (y) in screen pixels |
+| `initialZoom` | number | `1` | Initial canvas zoom (1 = 100%) |
 
 Example — a read-only, display-only embedding with a white canvas and no grid:
 
