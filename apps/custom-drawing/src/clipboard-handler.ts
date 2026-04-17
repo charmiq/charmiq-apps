@@ -335,6 +335,25 @@ export class ClipboardHandler {
         if(pts) el = { id, type: 'svg-polygon', points: pts, offsetX: oX, offsetY: oY, stroke: stroke === 'none' ? '#000' : stroke, fill: fill === 'none' ? 'transparent' : fill, strokeWidth: sw };
         break;
       }
+      case 'polyline': {
+        // polyline is an open polygon. Convert "x1,y1 x2,y2 ..." into an
+        // equivalent svg-path ("M x1 y1 L x2 y2 L x3 y3 ...") so it reuses
+        // the existing path rendering/bounds/move machinery; SVG renders fill
+        // on an open path the same way it would on a polyline
+        const pts = (node.getAttribute('points') || '').trim();
+        if(pts) {
+          const coords = pts.split(/[\s,]+/).filter(s => s.length > 0);
+          if(coords.length >= 4 && (coords.length % 2 === 0)) {
+            const parts: string[] = [];
+            for(let i=0; i<coords.length; i+=2) {
+              parts.push(`${i === 0 ? 'M' : 'L'} ${coords[i]} ${coords[i+1]}`);
+            }
+            const d = parts.join(' ');
+            el = { id, type: 'svg-path', d, offsetX: oX, offsetY: oY, stroke: stroke === 'none' ? '#000' : stroke, fill: fill === 'none' ? 'transparent' : fill, strokeWidth: sw };
+          } /* else -- malformed points */
+        } /* else -- no points */
+        break;
+      }
       case 'line': {
         const x1 = parseFloat(node.getAttribute('x1') || '0');
         const y1 = parseFloat(node.getAttribute('y1') || '0');
