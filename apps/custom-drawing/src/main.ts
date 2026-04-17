@@ -125,6 +125,28 @@ document.getElementById('clearAllBtn')!.addEventListener('click', async () => {
   syncElements();
 });
 
+// == Iframe-Focus Recovery =======================================================
+// when the iframe loses focus (user clicks the parent page, alt-tabs, switches
+// tabs, or drags outside the iframe and releases there) the browser stops
+// delivering mouseup/keyup/pointermove to us. without recovery the app ends up
+// stuck mid-gesture: marquee frozen, shift still "held", shape following the
+// cursor on re-entry. we reset transient interaction state at the boundary,
+// but never touch authored state (elements, modals, text editor, tool choice)
+const resetTransientState = () => {
+  interaction.cancelActiveGesture();
+  tools.setSpacebarPan(false);/*clear stuck spacebar-pan*/
+  propsPanel.hideAllDropdowns();/*close anything anchored to a transient click*/
+};
+window.addEventListener('blur',     resetTransientState);
+window.addEventListener('pagehide', resetTransientState);/*bfcache / cross-origin nav*/
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden) resetTransientState();
+  // NOTE: becoming visible again is fine, nothing to reset
+});
+// pointercancel fires when the browser gives up on a pointer (touch↔mouse
+// transitions, OS gestures). treat it as an implicit gesture cancellation
+viewport.container.addEventListener('pointercancel', resetTransientState);
+
 // == Content Bridge — incoming updates ===========================================
 contentBridge.onChange((newElements) => {
   elements = newElements;

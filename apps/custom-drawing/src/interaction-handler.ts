@@ -1062,6 +1062,91 @@ export class InteractionHandler {
     this.isMouseOutside = false;
   }
 
+  // -- Cancel any Active Gesture (rollback) --------------------------------------
+  // called when the iframe loses focus / visibility; the user never completed
+  // the gesture so we roll back any in-flight geometry changes to their pre-
+  // gesture state and drop transient UI (marquee preview, in-progress shape).
+  // authored state (elements array, selection, tool choice) is NOT touched.
+  public cancelActiveGesture(): void {
+    const anyInProgress = this.isDrawing || this.isPanning || this.isResizing
+                       || this.isMoving   || this.isRotating
+                       || !!this.currentElement || !!this.selectionBox;
+    if(!anyInProgress) return;/*nothing to cancel*/
+
+    // drawing a brand-new shape: discard the preview node, never added to elements
+    if(this.currentElement) {
+      const svgEl = document.getElementById((this.currentElement as any).id);
+      if(svgEl) svgEl.remove();
+      this.currentElement = null;
+    } /* else -- not drawing a new shape */
+
+    // moving: restore original positions onto the live elements
+    if(this.isMoving && (this.originalPositions.length > 0)) {
+      this.selection.selectedElements.forEach((el, i) => {
+        const orig = this.originalPositions[i];
+        if(!orig) return;/*no original snapshot for this element*/
+        Object.assign(el, orig);
+        const idx = this.elements.findIndex(e => e.id === el.id);
+        if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
+      });
+    } /* else -- not moving or no originals captured */
+
+    // resizing: restore original element states
+    if(this.isResizing && (this.originalElementStates.length > 0)) {
+      this.selection.selectedElements.forEach((el, i) => {
+        const orig = this.originalElementStates[i];
+        if(!orig) return;/*no original snapshot for this element*/
+        // wipe any keys the resize may have added, then copy originals back
+        Object.keys(el).forEach(k => { if(!(k in orig)) delete (el as any)[k]; });
+        Object.assign(el, orig);
+        const idx = this.elements.findIndex(e => e.id === el.id);
+        if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
+      });
+    } /* else -- not resizing or no originals captured */
+
+    // rotating: restore original angles and positions
+    if(this.isRotating && this.originalAngles && ((this.originalPositions.length > 0))) {
+      this.selection.selectedElements.forEach((el, i) => {
+        const orig = this.originalPositions[i];
+        if(orig) Object.assign(el, orig);
+        el.angle = this.originalAngles![i];
+        const idx = this.elements.findIndex(e => e.id === el.id);
+        if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
+      });
+    } /* else -- not rotating or no originals captured */
+
+    // marquee selection box — just drop the transient box; selection is
+    // unchanged (marquee only commits on endSelectionBox)
+    this.selectionBox = null;
+    this.viewport.selectionLayer.innerHTML = '';
+
+    // clear all transient flags
+    this.isDrawing         = false;
+    this.isPanning         = false;
+    this.isMoving          = false;
+    this.isResizing        = false;
+    this.isRotating        = false;
+    this.hasMoved          = false;
+    this.hasResized        = false;
+    this.shiftKeyHeld      = false;
+    this.snapBackPending   = false;
+    this.isMouseOutside    = false;
+    this.resizeHandle      = null;
+    this.pendingShiftClick = null;
+    this.originalPositions     = [];
+    this.originalElementStates = [];
+    this.originalBounds        = null;
+    this.originalAngles        = null;
+    this.rotationCenter        = null;
+    this.lastMousePoint        = null;
+
+    // repaint from the (now rolled-back) elements array and re-show selection
+    // handles if there's still a selection
+    this.renderer.rerenderAll(this.elements);
+    if(this.selection.selectedElements.length > 0) this.selection.showSelectionHandles();
+    /* else -- nothing selected, no handles to show */
+  }
+
   // -- Group selection helpers ---------------------------------------------------
   private selectWithGroup(el: DrawingElement): void {
     const selected = [el];
