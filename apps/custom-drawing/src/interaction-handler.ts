@@ -808,34 +808,39 @@ export class InteractionHandler {
   // -- Update --------------------------------------------------------------------
   private updateRotation(point: Point, shift: boolean): void {
     if(!this.isRotating || !this.rotationCenter) return;
-    let angle = Math.atan2(
+    const angle = Math.atan2(
       point.y - this.rotationCenter.y,
       point.x - this.rotationCenter.x,
     );
-    let delta = angle - this.rotationStartAngle;
-    if(shift) delta = snapAngle(delta);
+    const delta = angle - this.rotationStartAngle;
 
     if(this.selection.selectedElements.length === 1) {
       const el = this.selection.selectedElements[0];
-      el.angle = (this.originalAngles![0] + delta) % (2 * Math.PI);
+      const rawAngle = (this.originalAngles![0] + delta) % (2 * Math.PI);
+      // snap the final absolute angle so the snap grid is anchored at 0 -- snapping
+      // the delta instead would leave the element unable to return to 0 unless the
+      // pre-gesture angle was already on the grid
+      el.angle = shift ? snapAngle(rawAngle) : rawAngle;
       const idx = this.elements.findIndex(e => e.id === el.id);
       if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
       this.renderer.renderElement(el);
     } else {
-      // multi-element: rotate positions around center
+      // multi-element: snap the shared delta (elements start at different angles so
+      // snapping per-element final angle would be incoherent for the group)
+      const effectiveDelta = shift ? snapAngle(delta) : delta;
       this.selection.selectedElements.forEach((el, i) => {
         const orig = this.originalPositions[i];
         const ob = getElementBounds({ ...orig } as DrawingElement);
         const eCx = ob.x + ob.width / 2;
         const eCy = ob.y + ob.height / 2;
 
-        const r = rotatePoint(eCx, eCy, this.rotationCenter!.x, this.rotationCenter!.y, delta);
+        const r = rotatePoint(eCx, eCy, this.rotationCenter!.x, this.rotationCenter!.y, effectiveDelta);
         const dx = r.x - eCx;
         const dy = r.y - eCy;
 
         // apply position delta per element type
         setElementPositionFromOrig(el, orig, dx, dy);
-        el.angle = (this.originalAngles![i] + delta) % (2 * Math.PI);
+        el.angle = (this.originalAngles![i] + effectiveDelta) % (2 * Math.PI);
 
         const idx = this.elements.findIndex(e => e.id === el.id);
         if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
