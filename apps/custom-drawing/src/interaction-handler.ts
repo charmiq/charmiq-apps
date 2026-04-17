@@ -950,7 +950,9 @@ export class InteractionHandler {
   private handleEraser(point: Point): void {
     const el = this.getElementAtPoint(point);
     if(el) {
-      this.elements = this.elements.filter(e => e.id !== el.id);
+      // mutate in place so the shared elements array reference stays valid across modules
+      const idx = this.elements.findIndex(e => e.id === el.id);
+      if(idx >= 0) this.elements.splice(idx, 1);
       const svgEl = document.getElementById(el.id);
       if(svgEl) svgEl.remove();
       this.onSave?.();

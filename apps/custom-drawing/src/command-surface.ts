@@ -96,11 +96,14 @@ export class CommandSurface {
 
       delete: (targets: string | string[]) => {
         const els = this.resolveTargets(targets);
-        const ids = els.map(e => e.id);
-        this.elements = this.elements.filter(e => !ids.includes(e.id));
+        const ids = new Set(els.map(e => e.id));
+        // mutate in place so the shared elements array reference stays valid across modules
+        for(let i=this.elements.length - 1; i>=0; i--) {
+          if(ids.has(this.elements[i].id)) this.elements.splice(i, 1);
+        }
         this.renderer.rerenderAll(this.elements);
         this.onSave?.();
-        return ids;
+        return [...ids];
       },
 
       group: (targets: string | string[]) => {
