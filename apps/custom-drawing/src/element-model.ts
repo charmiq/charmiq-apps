@@ -10,7 +10,8 @@ export type ElementType =
   | 'image'
   | 'svg-circle'
   | 'svg-path'
-  | 'svg-polygon';
+  | 'svg-polygon'
+  | 'svg-text-path';
 
 export type LineDecoration = 'none' | 'arrow' | 'triangle-filled' | 'triangle-outline';
 export type TextAlign = 'left' | 'center' | 'right';
@@ -101,6 +102,20 @@ export interface SvgPolygonElement extends ElementCore {
   offsetY: number;
 }
 
+// text that follows along an SVG path (from <text><textPath href="#p">...</textPath></text>).
+// The resolved path `d` is stored directly so the renderer can emit a self-contained
+// <defs><path/></defs><text><textPath/></text> without cross-element references
+export interface SvgTextPathElement extends ElementCore {
+  type: 'svg-text-path';
+  d: string;
+  text: string;
+  offsetX: number;
+  offsetY: number;
+  fontSize: number;
+  textColor: string;
+  startOffset?: string;/*e.g. "80" (px) or "50%"*/
+}
+
 export type DrawingElement =
   | ShapeElement
   | LineElement
@@ -108,7 +123,8 @@ export type DrawingElement =
   | ImageElement
   | SvgCircleElement
   | SvgPathElement
-  | SvgPolygonElement;
+  | SvgPolygonElement
+  | SvgTextPathElement;
 
 // == Id Generation ===============================================================
 export const generateId = (): string =>
@@ -122,7 +138,7 @@ export const generateGroupId = (): string =>
 export const moveElementBy = (el: DrawingElement, dx: number, dy: number): void => {
   if(el.type === 'svg-circle') {
     el.cx += dx; el.cy += dy;
-  } else if(el.type === 'svg-path' || el.type === 'svg-polygon') {
+  } else if((el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path')) {
     el.offsetX += dx; el.offsetY += dy;
   } else {
     el.x += dx; el.y += dy;
@@ -170,11 +186,12 @@ export const getElementBounds = (element: DrawingElement): Bounds => {
       };
 
     case 'svg-path':
-    case 'svg-polygon': {
-      // path/polygon geometry isn't simple -- ask the browser. The rendered
-      // <path>/<polygon> has its translated d/points applied, and getBBox()
-      // returns local (pre-transform) bounds in canvas coord space, which is
-      // exactly what every other element's bounds are in
+    case 'svg-polygon':
+    case 'svg-text-path': {
+      // path/polygon/textPath geometry isn't simple -- ask the browser. The
+      // rendered node has its translated d/points applied, and getBBox() returns
+      // local (pre-transform) bounds in canvas coord space, which is exactly
+      // what every other element's bounds are in
       const node = document.getElementById(element.id) as SVGGraphicsElement | null;
       if(node && typeof node.getBBox === 'function') {
         try {

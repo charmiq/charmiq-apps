@@ -1,4 +1,4 @@
-import { getElementBounds, type DrawingElement, type ImageElement, type LineDecoration, type LineElement, type ShapeElement, type SvgCircleElement, type SvgPathElement, type SvgPolygonElement, type TextAlign, type TextElement } from './element-model';
+import { getElementBounds, type DrawingElement, type ImageElement, type LineDecoration, type LineElement, type ShapeElement, type SvgCircleElement, type SvgPathElement, type SvgPolygonElement, type SvgTextPathElement, type TextAlign, type TextElement } from './element-model';
 import type { TextMeasurement } from './text-measurement';
 
 // SVG element creation, attribute updates, line decoration markers
@@ -49,8 +49,9 @@ export class SvgRenderer {
       case 'text':      return this.createText(el);
       case 'image':     return this.createImage(el);
       case 'svg-circle':  return this.createSvgCircle(el);
-      case 'svg-path':    return this.createSvgPath(el);
-      case 'svg-polygon': return this.createSvgPolygon(el);
+      case 'svg-path':      return this.createSvgPath(el);
+      case 'svg-polygon':   return this.createSvgPolygon(el);
+      case 'svg-text-path': return this.createSvgTextPath(el);
       default: return null;
     }
   }
@@ -192,6 +193,37 @@ export class SvgRenderer {
     return pg;
   }
 
+  // text that flows along an SVG path. A self-contained <g> is emitted that owns
+  // both the (invisible) path and the <text><textPath> that references it, so
+  // getBBox() on the <g> gives accurate glyph bounds in canvas space
+  private createSvgTextPath(el: SvgTextPathElement): SVGGElement {
+    const g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    const path = document.createElementNS(SVG_NS, 'path') as SVGPathElement;
+    const pathId = `${el.id}_p`;
+    path.setAttribute('id', pathId);
+    path.setAttribute('d', this.translatePath(el.d, el.offsetX, el.offsetY));
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'none');
+    defs.appendChild(path);
+    g.appendChild(defs);
+
+    const text = document.createElementNS(SVG_NS, 'text') as SVGTextElement;
+    text.setAttribute('font-size', String(el.fontSize));
+    text.setAttribute('font-family', FONT_FAMILY);
+    text.setAttribute('fill', el.textColor);
+
+    const tp = document.createElementNS(SVG_NS, 'textPath') as SVGTextPathElement;
+    tp.setAttribute('href', `#${pathId}`);
+    // also set the legacy xlink:href for broader interop (some renderers still require it)
+    tp.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${pathId}`);
+    if(el.startOffset) tp.setAttribute('startOffset', el.startOffset);
+    tp.textContent = el.text;
+    text.appendChild(tp);
+    g.appendChild(text);
+    return g;
+  }
+
   // -- attribute updates (for live resizing) ------------------------------------
   public updateElementAttributes(element: DrawingElement): void {
     const svgEl = this.drawingLayer.querySelector<SVGElement>(`#${element.id}`);
@@ -261,6 +293,11 @@ export class SvgRenderer {
       case 'svg-polygon': {
         const polygonPts = this.translatePolygonPoints(element.points, element.offsetX, element.offsetY);
         svgEl.setAttribute('points', polygonPts);
+        break;
+      }
+      case 'svg-text-path': {
+        // re-render: path d, text, font-size, color may all have changed
+        this.renderElement(element);
         break;
       }
     }

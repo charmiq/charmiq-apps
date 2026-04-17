@@ -33,6 +33,10 @@ export class ClipboardHandler {
   public elements: DrawingElement[] = [];
   public onSave: (() => void) | null = null;
 
+  // set for the duration of a pasteSvg() call; maps `<path id="X">` -> d so
+  // <textPath href="#X"> can resolve its curve geometry
+  private currentPathDefs: Map<string, string> | null = null;
+
   public constructor(viewport: CanvasViewport, renderer: SvgRenderer, selection: SelectionManager, textMeasure: TextMeasurement) {
     this.viewport = viewport;
     this.renderer = renderer;
@@ -102,7 +106,7 @@ export class ClipboardHandler {
         // offset position fields based on element shape
         if(el.type === 'svg-circle') {
           el.cx += offsetX; el.cy += offsetY;
-        } else if(el.type === 'svg-path' || el.type === 'svg-polygon') {
+        } else if((el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path')) {
           el.offsetX += offsetX; el.offsetY += offsetY;
         } else {
           el.x += offsetX; el.y += offsetY;
@@ -140,6 +144,16 @@ export class ClipboardHandler {
       const offsetX = center.x - svgBounds.x - svgBounds.width / 2,
             offsetY = center.y - svgBounds.y - svgBounds.height / 2;
 
+      // pre-index all <path id="..."> so <textPath href="#id"> can resolve its
+      // geometry without having to emit the referenced path as its own element
+      const pathDefs = new Map<string, string>();
+      svgRoot.querySelectorAll('path[id]').forEach(p => {
+        const pid = p.getAttribute('id');
+        const d   = p.getAttribute('d');
+        if(pid && d) pathDefs.set(pid, d);
+      });
+      this.currentPathDefs = pathDefs;
+
       const newEls: DrawingElement[] = [];
       const groupStack: (string | null)[] = [null];
 
@@ -175,6 +189,7 @@ export class ClipboardHandler {
       this.selection.select(newEls);
       this.onSave?.();
     } catch(error) { console.error('SVG paste failed:', error); }
+    finally { this.currentPathDefs = null; }
   }
 
   // == Delete / Group / Ungroup ==================================================
@@ -307,24 +322,59 @@ export class ClipboardHandler {
         break;
       }
       case 'text': {
-        const text = (node.textContent || '').trim();
-        if(!text) break;/*empty text node, skip*/
-
-        // SVG text attrs inherit from ancestors; walk up to resolve the ones
-        // that can be parsed (font-size, fill, text-anchor) since a common pattern
-        // is to set these on a wrapping <g>
+        // SVG text attrs inherit from ancestors and can be set either as
+        // XML attributes or via `style="..."`. Walk up the tree checking both
+        const getStyleProp = (n: Element, prop: string): string | null => {
+          const s = n.getAttribute('style');
+          if(!s) return null;
+          const m = s.match(new RegExp('(?:^|;)\\s*' + prop + '\\s*:\\s*([^;]+)'));
+          return m ? m[1].trim() : null;
+        };
         const inherit = (attr: string): string | null => {
           let n: Element | null = node;
           while(n) {
-            const v = n.getAttribute(attr);
+            const v = n.getAttribute(attr) || getStyleProp(n, attr);
             if(v) return v;
             n = n.parentElement;
           }
           return null;
         };
-        const fontSize = parseFloat(inherit('font-size') || '16') || 16;
+        const parseSize = (s: string | null, fallback: number): number => {
+          if(!s) return fallback;
+          const n = parseFloat(s);/*tolerates "25px", "25", etc.*/
+          return isNaN(n) ? fallback : n;
+        };
+        const fontSize = parseSize(inherit('font-size'), 16);
         const textFill = inherit('fill') || '#000';
         const anchor   = inherit('text-anchor') || 'start';
+
+        // <text> with a <textPath> child -> text flowing along a curve. Resolve
+        // the path geometry from the pre-indexed path defs and emit a dedicated
+        // svg-text-path element; the renderer handles the <textPath> plumbing
+        const tp = node.querySelector(':scope > textPath');
+        if(tp) {
+          const href  = tp.getAttribute('href')
+                     || tp.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+                     || '';
+          const refId = href.startsWith('#') ? href.slice(1) : href;
+          const d     = this.currentPathDefs?.get(refId);
+          const tpText = (tp.textContent || '').trim();
+          if(d && tpText) {
+            const startOffset = tp.getAttribute('startOffset') || undefined;
+            el = {
+              id, type: 'svg-text-path',
+              d, text: tpText,
+              offsetX: oX, offsetY: oY,
+              fontSize,
+              textColor: textFill === 'none' ? '#000' : textFill,
+              startOffset,
+            };
+          } /* else -- unresolved reference or empty text, skip */
+          break;
+        } /* else -- plain <text>, fall through to flat-text handling */
+
+        const text = (node.textContent || '').trim();
+        if(!text) break;/*empty text node, skip*/
 
         // SVG text is positioned by the baseline of its first glyph at (x,y),
         // shifted by optional dx/dy. TextElement positions by top-left, so they
@@ -363,7 +413,7 @@ export class ClipboardHandler {
       if(el.type === 'svg-circle') {
         el.cx += transform.translateX;
         el.cy += transform.translateY;
-      } else if((el.type === 'svg-path') || (el.type === 'svg-polygon')) {
+      } else if((el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path')) {
         el.offsetX += transform.translateX;
         el.offsetY += transform.translateY;
       } else {
