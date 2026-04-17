@@ -163,6 +163,142 @@ export const setElementPositionFromOrig = (el: DrawingElement, orig: any, dx: nu
   }
 };
 
+// --------------------------------------------------------------------------------
+// scale an SVG polygon `points` string so that a point originally rendered at
+// (fromBounds) ends up rendered at (newBounds). `offsetX`/`offsetY` are the
+// pre-resize offsets (baked into the result — caller zeroes offsets afterward).
+export const scaleSvgPolygonPoints = (
+  points: string,
+  offsetX: number, offsetY: number,
+  fromBounds: Bounds, newBounds: Bounds,
+): string => {
+  if((fromBounds.width === 0) || (fromBounds.height === 0)) return points;
+  const sx = newBounds.width / fromBounds.width;
+  const sy = newBounds.height / fromBounds.height;
+  return points.replace(/(-?\d+(?:\.\d+)?)[\s,]+(-?\d+(?:\.\d+)?)/g, (_m, xs, ys) => {
+    const rx = parseFloat(xs) + offsetX;
+    const ry = parseFloat(ys) + offsetY;
+    const nx = newBounds.x + (rx - fromBounds.x) * sx;
+    const ny = newBounds.y + (ry - fromBounds.y) * sy;
+    return `${nx},${ny}`;
+  });
+};
+
+// --------------------------------------------------------------------------------
+// scale an SVG path `d` string. Handles absolute M/L/H/V/C/S/Q/T/A and their
+// relative counterparts. `offsetX`/`offsetY` are the pre-resize offsets (baked
+// into absolute coords — caller zeroes offsets afterward).
+export const scaleSvgPathData = (
+  d: string,
+  offsetX: number, offsetY: number,
+  fromBounds: Bounds, newBounds: Bounds,
+): string => {
+  if((fromBounds.width === 0) || (fromBounds.height === 0)) return d;
+  const sx = newBounds.width / fromBounds.width;
+  const sy = newBounds.height / fromBounds.height;
+
+  const absX = (x: number) => newBounds.x + (x + offsetX - fromBounds.x) * sx;
+  const absY = (y: number) => newBounds.y + (y + offsetY - fromBounds.y) * sy;
+
+  const tokens = d.match(/[a-zA-Z]|-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?/g);
+  if(!tokens) return d;
+
+  const out: string[] = [];
+  let cmd = '';
+  let i = 0;
+  const num = () => parseFloat(tokens[i++]);
+  while(i < tokens.length) {
+    const t = tokens[i];
+    if(/[a-zA-Z]/.test(t)) {
+      cmd = t;
+      out.push(cmd);
+      i++;
+      // 'Z'/'z' takes no args
+      continue;
+    }
+    const uc = cmd.toUpperCase();
+    const isRel = cmd !== uc;
+    switch(uc) {
+      case 'M': case 'L': case 'T': {
+        const x = num(), y = num();
+        if(isRel) out.push(`${x * sx} ${y * sy}`);
+        else      out.push(`${absX(x)} ${absY(y)}`);
+        // per spec, subsequent implicit pairs after M/m are L/l
+        if(uc === 'M') cmd = isRel ? 'l' : 'L';
+        break;
+      }
+      case 'H': {
+        const x = num();
+        out.push(isRel ? String(x * sx) : String(absX(x)));
+        break;
+      }
+      case 'V': {
+        const y = num();
+        out.push(isRel ? String(y * sy) : String(absY(y)));
+        break;
+      }
+      case 'C': {
+        const x1 = num(), y1 = num(), x2 = num(), y2 = num(), x = num(), y = num();
+        if(isRel) out.push(`${x1 * sx} ${y1 * sy} ${x2 * sx} ${y2 * sy} ${x * sx} ${y * sy}`);
+        else      out.push(`${absX(x1)} ${absY(y1)} ${absX(x2)} ${absY(y2)} ${absX(x)} ${absY(y)}`);
+        break;
+      }
+      case 'S': case 'Q': {
+        const x1 = num(), y1 = num(), x = num(), y = num();
+        if(isRel) out.push(`${x1 * sx} ${y1 * sy} ${x * sx} ${y * sy}`);
+        else      out.push(`${absX(x1)} ${absY(y1)} ${absX(x)} ${absY(y)}`);
+        break;
+      }
+      case 'A': {
+        // radii scale with sx/sy; x-axis-rotation + flags unchanged; endpoint transforms like M/L
+        const rx = num(), ry = num(), rot = num(), large = num(), sweep = num(), x = num(), y = num();
+        const nx = isRel ? x * sx : absX(x);
+        const ny = isRel ? y * sy : absY(y);
+        out.push(`${rx * sx} ${ry * sy} ${rot} ${large} ${sweep} ${nx} ${ny}`);
+        break;
+      }
+      default:
+        // unknown command — consume one token to avoid infinite loop
+        i++;
+        break;
+    }
+  }
+  return out.join(' ');
+};
+
+// --------------------------------------------------------------------------------
+// resize an SVG-based element (svg-path / svg-polygon / svg-circle / svg-text-path)
+// to fit `newBounds`. `orig` is the pre-resize snapshot; `fromBounds` is its
+// bounds at the start of the resize gesture. Mutates `el` in place.
+export const resizeSvgBasedElement = (
+  el: DrawingElement,
+  orig: any,
+  fromBounds: Bounds, newBounds: Bounds,
+): void => {
+  if((fromBounds.width === 0) || (fromBounds.height === 0)) return;
+  const sx = newBounds.width / fromBounds.width;
+  const sy = newBounds.height / fromBounds.height;
+
+  if(el.type === 'svg-polygon') {
+    el.points = scaleSvgPolygonPoints(orig.points, orig.offsetX, orig.offsetY, fromBounds, newBounds);
+    el.offsetX = 0; el.offsetY = 0;
+  } else if(el.type === 'svg-path') {
+    el.d = scaleSvgPathData(orig.d, orig.offsetX, orig.offsetY, fromBounds, newBounds);
+    el.offsetX = 0; el.offsetY = 0;
+  } else if(el.type === 'svg-text-path') {
+    el.d = scaleSvgPathData(orig.d, orig.offsetX, orig.offsetY, fromBounds, newBounds);
+    el.offsetX = 0; el.offsetY = 0;
+    if(typeof orig.fontSize === 'number') {
+      el.fontSize = orig.fontSize * Math.max(0.01, (sx + sy) / 2);
+    } /* else -- no fontSize to scale */
+  } else if(el.type === 'svg-circle') {
+    // place circle at newBounds center; radius = min(width,height)/2 to stay a circle
+    el.cx = newBounds.x + newBounds.width / 2;
+    el.cy = newBounds.y + newBounds.height / 2;
+    el.r = Math.min(newBounds.width, newBounds.height) / 2;
+  } /* else -- not an SVG-based element */
+};
+
 // == Bounds Helpers ==============================================================
 export const getElementBounds = (element: DrawingElement): Bounds => {
   switch(element.type) {

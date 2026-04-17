@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, getElementBounds, moveElementBy, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
+import { generateId, getElementBounds, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
 import { distanceToLine, isPointInElement, rotatePoint, snapAngle, getDrawingBounds, isPointNearLine, doRectsIntersect } from './geometry';
 import type { SelectionManager, HandleType } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -509,7 +509,10 @@ export class InteractionHandler {
     this.hasResized = false;
     this.resizeHandle = { type: type as HandleType };
     this.resizeStartPoint = point;
-    this.originalElementStates = this.selection.selectedElements.map(el => ({ ...el }));
+    this.originalElementStates = this.selection.selectedElements.map(el => ({
+      ...el,
+      __origBounds: getElementBounds(el),
+    }));
 
     // compute combined original bounds for multi-element resize
     if(this.selection.selectedElements.length > 1) {
@@ -601,6 +604,27 @@ export class InteractionHandler {
     const orig = this.originalElementStates[0];
     const el = this.selection.selectedElements[0] as any;
     const ht = this.resizeHandle!.type;
+
+    // SVG-based types don't have x/x2/y/y2 — scale their geometry to fit new bounds
+    if((el.type === 'svg-path') || (el.type === 'svg-polygon')
+        || (el.type === 'svg-circle') || (el.type === 'svg-text-path')) {
+      const ob = this.originalBounds;
+      let nx1 = ob.x, nx2 = ob.x + ob.width, ny1 = ob.y, ny2 = ob.y + ob.height;
+      if((ht === 'nw') || (ht === 'sw') || (ht === 'w')) nx1 += rawDx;
+      if((ht === 'ne') || (ht === 'se') || (ht === 'e')) nx2 += rawDx;
+      if((ht === 'nw') || (ht === 'ne') || (ht === 'n')) ny1 += rawDy;
+      if((ht === 'sw') || (ht === 'se') || (ht === 's')) ny2 += rawDy;
+      const newBounds = {
+        x: Math.min(nx1, nx2), y: Math.min(ny1, ny2),
+        width: Math.max(1, Math.abs(nx2 - nx1)),
+        height: Math.max(1, Math.abs(ny2 - ny1)),
+      };
+      resizeSvgBasedElement(el as DrawingElement, orig, ob, newBounds);
+      const idx = this.elements.findIndex(e => e.id === el.id);
+      if(idx >= 0) this.elements[idx] = { ...el };
+      this.renderer.renderElement(el);
+      return;
+    } /* else -- rectangular/line/etc types use x/y/x2/y2 directly */
 
     if((ht === 'nw') || (ht === 'sw') || (ht === 'w')) el.x = orig.x + rawDx;
     if((ht === 'ne') || (ht === 'se') || (ht === 'e')) el.x2 = orig.x2 + rawDx;
@@ -745,6 +769,18 @@ export class InteractionHandler {
           (el as any).height = (orig.height || 20) * scaleY;
           (el as any).fontSize = (orig.fontSize || 16) * scaleX;
           break;
+        case 'svg-path': case 'svg-polygon': case 'svg-circle': case 'svg-text-path': {
+          // map each element's original bounds proportionally into newBounds
+          const eb = orig.__origBounds || getElementBounds(el);
+          const newElBounds = {
+            x: newBounds.x + (eb.x - ob.x) * scaleX,
+            y: newBounds.y + (eb.y - ob.y) * scaleY,
+            width: Math.max(1, eb.width * scaleX),
+            height: Math.max(1, eb.height * scaleY),
+          };
+          resizeSvgBasedElement(el, orig, eb, newElBounds);
+          break;
+        }
       }
       const idx = this.elements.findIndex(e => e.id === el.id);
       if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
