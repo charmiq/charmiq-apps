@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, generateGroupId, getElementBoundsFromData, type DrawingElement, type Point } from './element-model';
+import { generateId, generateGroupId, getElementBoundsFromData, moveElementBy, type DrawingElement, type Point } from './element-model';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
 import type { TextMeasurement } from './text-measurement';
@@ -109,15 +109,7 @@ export class ClipboardHandler {
         if(d.groupId) el.groupId = gidMap.get(d.groupId);
 
         // offset position fields based on element shape
-        if(el.type === 'svg-circle') {
-          el.cx += offsetX; el.cy += offsetY;
-        } else if((el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path')) {
-          el.offsetX += offsetX; el.offsetY += offsetY;
-        } else {
-          el.x += offsetX; el.y += offsetY;
-          if('x2' in el) el.x2 += offsetX;
-          if('y2' in el) el.y2 += offsetY;
-        }
+        moveElementBy(el, offsetX, offsetY);
         return el;
       });
 
@@ -432,18 +424,7 @@ export class ClipboardHandler {
     }
 
     if(el && transform) {
-      if(el.type === 'svg-circle') {
-        el.cx += transform.translateX;
-        el.cy += transform.translateY;
-      } else if((el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path')) {
-        el.offsetX += transform.translateX;
-        el.offsetY += transform.translateY;
-      } else {
-        el.x += transform.translateX;
-        el.y += transform.translateY;
-        if('x2' in el) el.x2 += transform.translateX;
-        if('y2' in el) el.y2 += transform.translateY;
-      }
+      moveElementBy(el, transform.translateX, transform.translateY);
       if(Math.abs(transform.rotation) > 0.001) el.angle = (el.angle || 0) + transform.rotation;
     } /* else -- no transform */
 

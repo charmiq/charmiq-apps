@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, getElementBounds, moveElementBy, type DrawingElement, type Point } from './element-model';
+import { generateId, getElementBounds, moveElementBy, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
 import { distanceToLine, isPointInElement, rotatePoint, snapAngle, getDrawingBounds, isPointNearLine, doRectsIntersect } from './geometry';
 import type { SelectionManager, HandleType } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -476,15 +476,7 @@ export class InteractionHandler {
       const orig = this.originalPositions[i];
 
       // restore to original position then apply delta
-      if(el.type === 'svg-circle') {
-        el.cx = orig.cx + dx; el.cy = orig.cy + dy;
-      } else if(el.type === 'svg-path' || el.type === 'svg-polygon') {
-        el.offsetX = orig.offsetX + dx; el.offsetY = orig.offsetY + dy;
-      } else {
-        el.x = orig.x + dx; el.y = orig.y + dy;
-        if('x2' in el) el.x2 = orig.x2 + dx;
-        if('y2' in el) el.y2 = orig.y2 + dy;
-      }
+      setElementPositionFromOrig(el, orig, dx, dy);
 
       const idx = this.elements.findIndex(e => e.id === el.id);
       if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
@@ -806,15 +798,7 @@ export class InteractionHandler {
         const dy = r.y - eCy;
 
         // apply position delta per element type
-        if(el.type === 'svg-circle') {
-          el.cx = orig.cx + dx; el.cy = orig.cy + dy;
-        } else if(el.type === 'svg-path' || el.type === 'svg-polygon') {
-          el.offsetX = orig.offsetX + dx; el.offsetY = orig.offsetY + dy;
-        } else {
-          el.x = orig.x + dx; el.y = orig.y + dy;
-          if('x2' in el) el.x2 = orig.x2 + dx;
-          if('y2' in el) el.y2 = orig.y2 + dy;
-        }
+        setElementPositionFromOrig(el, orig, dx, dy);
         el.angle = (this.originalAngles![i] + delta) % (2 * Math.PI);
 
         const idx = this.elements.findIndex(e => e.id === el.id);

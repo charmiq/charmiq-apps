@@ -147,6 +147,22 @@ export const moveElementBy = (el: DrawingElement, dx: number, dy: number): void 
   }
 };
 
+// --------------------------------------------------------------------------------
+// set an element's position to `orig`'s position plus dx,dy. Used during live
+// drag/rotate: `orig` is the pre-gesture snapshot so each frame recomputes from
+// the original rather than accumulating floating-point drift.
+export const setElementPositionFromOrig = (el: DrawingElement, orig: any, dx: number, dy: number): void => {
+  if(el.type === 'svg-circle') {
+    el.cx = orig.cx + dx; el.cy = orig.cy + dy;
+  } else if((el.type === 'svg-path') || (el.type === 'svg-polygon') || (el.type === 'svg-text-path')) {
+    el.offsetX = orig.offsetX + dx; el.offsetY = orig.offsetY + dy;
+  } else {
+    el.x = orig.x + dx; el.y = orig.y + dy;
+    if('x2' in el) el.x2 = orig.x2 + dx;
+    if('y2' in el) el.y2 = orig.y2 + dy;
+  }
+};
+
 // == Bounds Helpers ==============================================================
 export const getElementBounds = (element: DrawingElement): Bounds => {
   switch(element.type) {
