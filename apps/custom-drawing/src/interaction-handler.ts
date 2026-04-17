@@ -834,17 +834,83 @@ export class InteractionHandler {
 
     // draw the selection rectangle on the selection layer
     this.viewport.selectionLayer.innerHTML = '';
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     const x = Math.min(this.selectionBox.x, point.x),
           y = Math.min(this.selectionBox.y, point.y);
     const w = Math.abs(this.selectionBox.width),
           h = Math.abs(this.selectionBox.height);
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     rect.setAttribute('x', String(x));
     rect.setAttribute('y', String(y));
     rect.setAttribute('width', String(w));
     rect.setAttribute('height', String(h));
     rect.classList.add('selection-box');
     this.viewport.selectionLayer.appendChild(rect);
+
+    // live preview: show bounding boxes for elements that intersect the marquee,
+    // including full groups when any member is touched
+    const box = { x, y, width: w, height: h };
+    const hits: DrawingElement[] = [];
+    for(const el of this.elements) {
+      if(doRectsIntersect(box, getElementBounds(el))) hits.push(el);
+    }
+    const groupIds = new Set<string>();
+    for(const el of hits) if(el.groupId) groupIds.add(el.groupId);
+    const preview = [...hits];
+    if(groupIds.size > 0) {
+      for(const el of this.elements) {
+        if(el.groupId && groupIds.has(el.groupId) && !preview.some(p => p.id === el.id)) preview.push(el);
+      }
+    } /* else -- no groups to expand */
+    this.renderSelectionPreview(preview);
+  }
+
+  // -- Preview -------------------------------------------------------------------
+  private renderSelectionPreview(elements: DrawingElement[]): void {
+    if(elements.length < 1) return;
+
+    // group elements by groupId for group-box rendering
+    const groups = new Map<string, DrawingElement[]>();
+    const ungrouped: DrawingElement[] = [];
+    for(const el of elements) {
+      if(el.groupId) {
+        const list = groups.get(el.groupId);
+        if(list) list.push(el);
+        else groups.set(el.groupId, [el]);
+      } else {
+        ungrouped.push(el);
+      }
+    }
+
+    // individual element preview boxes
+    for(const el of ungrouped) {
+      const b = getElementBounds(el);
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.classList.add('preview-box', 'element-box');
+      r.setAttribute('x',      String(b.x - 5));
+      r.setAttribute('y',      String(b.y - 5));
+      r.setAttribute('width',  String(b.width + 10));
+      r.setAttribute('height', String(b.height + 10));
+      this.viewport.selectionLayer.appendChild(r);
+    }
+
+    // group preview boxes (dashed)
+    for(const groupElements of groups.values()) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for(const el of groupElements) {
+        const b = getElementBounds(el);
+        minX = Math.min(minX, b.x);
+        minY = Math.min(minY, b.y);
+        maxX = Math.max(maxX, b.x + b.width);
+        maxY = Math.max(maxY, b.y + b.height);
+      }
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.classList.add('preview-box', 'group-box');
+      r.setAttribute('x',      String(minX - 8));
+      r.setAttribute('y',      String(minY - 8));
+      r.setAttribute('width',  String(maxX - minX + 16));
+      r.setAttribute('height', String(maxY - minY + 16));
+      this.viewport.selectionLayer.appendChild(r);
+    }
   }
 
   // -- End -----------------------------------------------------------------------
