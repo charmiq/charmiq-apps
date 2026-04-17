@@ -40,6 +40,12 @@ export class ClipboardHandler {
   public elements: DrawingElement[] = [];
   public onSave: (() => void) | null = null;
 
+  // cascade state: successive pastes of the same clipboard content step further
+  // down-right each time. Reset on copy/cut so a new clipboard payload starts
+  // from offset 1 again
+  private lastPasteText: string | null = null;
+  private pasteCount = 0;
+
   // set for the duration of a pasteSvg() call; maps `<path id="X">` -> d so
   // <textPath href="#X"> can resolve its curve geometry
   private currentPathDefs: Map<string, string> | null = null;
@@ -67,6 +73,11 @@ export class ClipboardHandler {
       elements: sel.map(({ id, ...rest }) => rest),
     };
 
+    // new clipboard payload -- reset the paste cascade so the next paste starts
+    // from a single-step offset rather than continuing a prior cascade
+    this.lastPasteText = null;
+    this.pasteCount = 0;
+
     try {
       await navigator.clipboard.writeText(JSON.stringify(data));
     } catch {
@@ -90,8 +101,14 @@ export class ClipboardHandler {
     try {
       const text = await navigator.clipboard.readText();
 
-      // SVG content
-      if(text.trim().startsWith('<svg')) { this.pasteSvg(text); return; }
+      // SVG content -- centers on canvas, not part of the cascade; clear cascade
+      // state so a subsequent drawing-element paste starts fresh
+      if(text.trim().startsWith('<svg')) {
+        this.lastPasteText = null;
+        this.pasteCount = 0;
+        this.pasteSvg(text);
+        return;
+      } /* else -- drawing-element payload */
 
       let data: ClipboardData | null;
       try { data = JSON.parse(text) as ClipboardData; } catch{ return; }
@@ -103,9 +120,14 @@ export class ClipboardHandler {
         if(d.groupId && !gidMap.has(d.groupId)) gidMap.set(d.groupId, generateGroupId() + '_' + Math.random().toString(36).substr(2, 5));
       }
 
-      // nudge the paste slightly lower-right of the original (zoom-adjusted so the
-      // visual offset stays consistent regardless of how zoomed in the user is)
-      const offset = this.viewport.screenSizeToCanvasSize(PASTE_OFFSET_PX);
+      // cascade: nth paste of the same clipboard payload is n steps lower-right of
+      // the original. Switching to a different payload (or a fresh copy/cut) restarts
+      // the cascade
+      if(text === this.lastPasteText) this.pasteCount++;
+      else { this.pasteCount = 1; this.lastPasteText = text; }
+
+      // zoom-adjust so the visual offset stays consistent regardless of zoom level
+      const offset = this.viewport.screenSizeToCanvasSize(PASTE_OFFSET_PX * this.pasteCount);
 
       const newEls: DrawingElement[] = data.elements.map((d) => {
         const el = { ...d, id: generateId() } as DrawingElement;
