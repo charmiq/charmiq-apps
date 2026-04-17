@@ -193,7 +193,7 @@ export const getElementBounds = (element: DrawingElement): Bounds => {
       // local (pre-transform) bounds in canvas coord space, which is exactly
       // what every other element's bounds are in
       const node = document.getElementById(element.id) as SVGGraphicsElement | null;
-      if(node && typeof node.getBBox === 'function') {
+      if(node && (typeof node.getBBox === 'function')) {
         try {
           const bb = node.getBBox();
           if((bb.width > 0) || (bb.height > 0)) {
