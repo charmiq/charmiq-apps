@@ -10,7 +10,10 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Excalifont', system-ui, sans-serif;
+  // UI chrome (toolbar, panels, dialogs, buttons) uses the platform system sans.
+  // Excalifont is reserved for on-canvas content -- the info-text hint overlay
+  // and the in-canvas text-input / SVG <text> nodes assert it explicitly
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   width: 100vw;
   height: 800px;
   overflow: hidden;
@@ -423,6 +426,8 @@ body {
   padding: 8px 12px;
   background: transparent;
   border-radius: 6px;
+  // on-canvas help overlay -- keeps the Excalidraw hand-drawn feel
+  font-family: 'Excalifont', 'Comic Sans MS', cursive, system-ui, sans-serif;
   font-size: 13px; color: #999;
   max-width: 400px;
   z-index: 999;
