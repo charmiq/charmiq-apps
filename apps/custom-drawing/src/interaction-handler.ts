@@ -575,23 +575,25 @@ export class InteractionHandler {
     if(!ob || (ob.width === 0) || (ob.height === 0)) return;
     const handleType = this.resizeHandle!.type;
 
-    // project the mouse delta into a signed "outward" delta per axis -- positive
-    // means growing the side of the box the handle is on. edge handles zero the
-    // perpendicular axis so the dominant-axis pick below naturally lands on the
-    // one that matters; corners let the stronger direction win
-    const eastward  = handleType.includes('e'),
-          westward  = handleType.includes('w'),
-          southward = handleType.includes('s'),
-          northward = handleType.includes('n');
-    const outwardX = eastward  ?  rawDx : westward  ? -rawDx : 0,
-          outwardY = southward ?  rawDy : northward ? -rawDy : 0;
+    // directional bits from the handle type. eastward/southward are +1, their
+    // opposites are -1, edge handles zero the perpendicular axis
+    const dirX = handleType.includes('e') ? 1 : handleType.includes('w') ? -1 : 0;
+    const dirY = handleType.includes('s') ? 1 : handleType.includes('n') ? -1 : 0;
 
-    // uniform scale driven by the dominant axis. the previous implementation
-    // computed an unsigned magnitude and then tried to re-introduce the sign via
-    // handle-type flips, which double-inverted on diagonal-inward drags and made
-    // the box grow when it should shrink
-    const outward = Math.abs(outwardX) >= Math.abs(outwardY) ? outwardX : outwardY;
-    const scale = Math.max(0.01, 1 + outward / Math.max(ob.width, ob.height));
+    // project the mouse delta onto the unit vector from anchor to handle.
+    // Only motion along this diagonal scales the box -- perpendicular motion
+    // (eg. dragging NE while grabbing the NW handle) cancels out, which is the
+    // geometrically correct behavior for uniform scaling
+    const len = Math.hypot(dirX, dirY); // 1 for edges, sqrt(2) for corners
+    const unitX = dirX / len,
+          unitY = dirY / len;
+    const outward = rawDx * unitX + rawDy * unitY;
+
+    // distance from anchor to handle along that unit vector:
+    //   corner  -> full box diagonal
+    //   edge    -> one full side length
+    const handleDist = Math.hypot(dirX * ob.width, dirY * ob.height);
+    const scale = Math.max(0.01, 1 + outward / handleDist);
 
     const newW = ob.width * scale,
           newH = ob.height * scale;
@@ -599,16 +601,16 @@ export class InteractionHandler {
 
     // anchor = the fixed point of the scale. corner handles anchor at the
     // opposite corner; edge handles anchor at the opposite edge's midpoint
-    const anchorX = eastward  ? ob.x
-                  : westward  ? ob.x + ob.width
-                  : ob.x + ob.width / 2;
-    const anchorY = southward ? ob.y
-                  : northward ? ob.y + ob.height
-                  : ob.y + ob.height / 2;
+    const anchorX = (dirX > 0) ? ob.x
+                  : (dirX < 0) ? ob.x + ob.width
+                  :              ob.x + ob.width / 2;
+    const anchorY = (dirY > 0) ? ob.y
+                  : (dirY < 0) ? ob.y + ob.height
+                  :              ob.y + ob.height / 2;
 
     const newBounds = {
-      x: eastward  ? anchorX : westward  ? anchorX - newW : anchorX - newW / 2,
-      y: southward ? anchorY : northward ? anchorY - newH : anchorY - newH / 2,
+      x: (dirX > 0) ? anchorX : (dirX < 0) ? anchorX - newW : anchorX - newW / 2,
+      y: (dirY > 0) ? anchorY : (dirY < 0) ? anchorY - newH : anchorY - newH / 2,
       width: newW,
       height: newH,
     };
