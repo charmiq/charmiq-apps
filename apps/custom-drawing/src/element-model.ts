@@ -170,9 +170,25 @@ export const getElementBounds = (element: DrawingElement): Bounds => {
       };
 
     case 'svg-path':
-    case 'svg-polygon':
-      // path/polygon bounds aren't computable without parsing — return offset as position
+    case 'svg-polygon': {
+      // path/polygon geometry isn't simple -- ask the browser. The rendered
+      // <path>/<polygon> has its translated d/points applied, and getBBox()
+      // returns local (pre-transform) bounds in canvas coord space, which is
+      // exactly what every other element's bounds are in
+      const node = document.getElementById(element.id) as SVGGraphicsElement | null;
+      if(node && typeof node.getBBox === 'function') {
+        try {
+          const bb = node.getBBox();
+          if((bb.width > 0) || (bb.height > 0)) {
+            return { x: bb.x, y: bb.y, width: bb.width, height: bb.height };
+          } /* else -- zero-size bounding-box */
+        } catch { /*not yet rendered / not in a rendered tree -- fall through*/ }
+      } /* else -- element not in DOM yet */
+
+      // fallback for pre-render calls: at least anchor at the known offset so
+      // the first-paint frame doesn't put selection chrome at (0, 0)
       return { x: element.offsetX, y: element.offsetY, width: 0, height: 0 };
+    }
   }
 };
 
