@@ -285,12 +285,28 @@ export class ClipboardHandler {
   }
 
   // ==============================================================================
+  // SVG presentation attributes can be specified either as XML attributes or
+  // via the `style="..."` shorthand. Callers usually don't care which form the
+  // author used -- this helper checks the attribute first then falls back to
+  // the inline style. Unknown style props are silently ignored by the caller
+  private readStyleProp(node: Element, prop: string): string | null {
+    const s = node.getAttribute('style');
+    if(!s) return null;
+    const m = s.match(new RegExp('(?:^|;)\\s*' + prop + '\\s*:\\s*([^;]+)'));
+    return m ? m[1].trim() : null;
+  }
+
+  private readAttrOrStyle(node: Element, prop: string): string | null {
+    return node.getAttribute(prop) || this.readStyleProp(node, prop);
+  }
+
+  // ==============================================================================
   private convertSvgElement(node: Element, transform: SvgTransform | null, oX: number, oY: number): DrawingElement | null {
     const tag = node.tagName.toLowerCase();
     const id = generateId();
-    const stroke = node.getAttribute('stroke') || 'none';
-    const fill = node.getAttribute('fill') || 'none';
-    const sw = parseFloat(node.getAttribute('stroke-width') || '1');
+    const stroke = this.readAttrOrStyle(node, 'stroke') || 'none';
+    const fill   = this.readAttrOrStyle(node, 'fill')   || 'none';
+    const sw     = parseFloat(this.readAttrOrStyle(node, 'stroke-width') || '1');
 
     let el: DrawingElement | null = null;
     switch (tag) {
@@ -338,16 +354,10 @@ export class ClipboardHandler {
       case 'text': {
         // SVG text attrs inherit from ancestors and can be set either as
         // XML attributes or via `style="..."`. Walk up the tree checking both
-        const getStyleProp = (n: Element, prop: string): string | null => {
-          const s = n.getAttribute('style');
-          if(!s) return null;
-          const m = s.match(new RegExp('(?:^|;)\\s*' + prop + '\\s*:\\s*([^;]+)'));
-          return m ? m[1].trim() : null;
-        };
         const inherit = (attr: string): string | null => {
           let n: Element | null = node;
           while(n) {
-            const v = n.getAttribute(attr) || getStyleProp(n, attr);
+            const v = this.readAttrOrStyle(n, attr);
             if(v) return v;
             n = n.parentElement;
           }
