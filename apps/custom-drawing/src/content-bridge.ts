@@ -92,12 +92,15 @@ export class ContentBridge {
   }
 
   // == Outbound (app → appContent) ===============================================
-  /** write the current elements array as JSON to app-content */
+  /** write the current elements as JSON Lines (one element per line) to
+   *  app-content. JSONL is used instead of a single JSON array so that
+   *  incremental edits on a single element produce a localized diff rather
+   *  than rewriting the entire document */
   public async save(elements: DrawingElement[]): Promise<void> {
-    const json = JSON.stringify(elements);
-    this.lastWrittenJson = json;
+    const jsonl = this.serialize(elements);
+    this.lastWrittenJson = jsonl;
     try {
-      await this.appContent.set(json, ELEMENTS_SELECTOR, ELEMENTS_NAME);
+      await this.appContent.set(jsonl, ELEMENTS_SELECTOR, ELEMENTS_NAME);
     } catch(error) {
       console.error('failed to save elements to app-content:', error);
     }
@@ -111,15 +114,44 @@ export class ContentBridge {
   }
 
   // ------------------------------------------------------------------------------
+  /** serialize elements as JSON Lines (one element per line) */
+  private serialize(elements: DrawingElement[]): string {
+    return elements.map(el => JSON.stringify(el)).join('\n');
+  }
+
+  // ------------------------------------------------------------------------------
+  /** parse elements from app-content. Accepts JSON Lines (one element per
+   *  line, current format) and, for backward compatibility, a single JSON
+   *  array on one line (legacy format) */
   private parse(content: string): DrawingElement[] {
     if(!content) return [];
-    try {
-      const parsed = JSON.parse(content);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch(error) {
-      console.error('failed to parse elements JSON from app-content:', error);
-      return [];
+
+    const trimmed = content.trim();
+    if(!trimmed) return [];
+
+    // legacy: a single JSON array
+    if(trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch(error) {
+        console.error('failed to parse elements JSON array from app-content:', error);
+        return [];
+      }
+    } /* else -- treat as JSON Lines */
+
+    const out: DrawingElement[] = [];
+    const lines = trimmed.split('\n');
+    for(const line of lines) {
+      const s = line.trim();
+      if(!s) continue;/*skip blank lines*/
+      try {
+        out.push(JSON.parse(s));
+      } catch(error) {
+        console.error('failed to parse element line from app-content:', s, error);
+      }
     }
+    return out;
   }
 
   // ------------------------------------------------------------------------------

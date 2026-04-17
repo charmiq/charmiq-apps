@@ -124,16 +124,14 @@ Users can edit these values through the Settings gear in the toolbar, or Charms 
 
 ### Content Format (`appContent`)
 
-Elements are stored as a JSON array in a single named block:
+Elements are stored in a single named block (`[id='elements']`) as **JSON Lines** — one element per line:
 
-```json
-[
-  { "id": "el_...", "type": "rectangle", "x": 0, "y": 0, "width": 100, "height": 80, "stroke": "#000", ... },
-  { "id": "el_...", "type": "line", "x": 10, "y": 10, "x2": 100, "y2": 100, ... }
-]
+```jsonl
+{ "id": "el_...", "type": "rectangle", "x": 0, "y": 0, "width": 100, "height": 80, "stroke": "#000", ... }
+{ "id": "el_...", "type": "line", "x": 10, "y": 10, "x2": 100, "y2": 100, ... }
 ```
 
-The element schema matches the original `drawing.html` format, so drawings migrated from that source continue to work.
+JSONL is used instead of a single JSON array so that edits to one element produce a localized diff, rather than rewriting the entire document on every change. The content bridge also accepts a legacy single-array format on read for backward compatibility. The element schema matches the original `drawing.html` format, so drawings migrated from that source continue to work.
 
 
 ### Design Decisions Worth Noting
