@@ -37,6 +37,11 @@ export class ClipboardHandler {
   // <textPath href="#X"> can resolve its curve geometry
   private currentPathDefs: Map<string, string> | null = null;
 
+  // set for the duration of a pasteSvg() call; maps referenced-path-id -> groupId
+  // so a standalone <path> and the <text><textPath> that references it end up
+  // in the same group and move together
+  private currentTextPathGroups: Map<string, string> | null = null;
+
   public constructor(viewport: CanvasViewport, renderer: SvgRenderer, selection: SelectionManager, textMeasure: TextMeasurement) {
     this.viewport = viewport;
     this.renderer = renderer;
@@ -154,6 +159,23 @@ export class ClipboardHandler {
       });
       this.currentPathDefs = pathDefs;
 
+      // also remember which source <path> ids are referenced by a <textPath>.
+      // When both the standalone visible <path> and the <text><textPath> end up
+      // emitted as separate elements, the user expects them to move as one
+      // unit (they were logically linked in the source) -- so they are bound
+      // with a shared groupId keyed off the referenced path id
+      const textPathRefs = new Map<string/*ref'd-path-id*/, string/*groupId*/>();
+      svgRoot.querySelectorAll('textPath').forEach(tp => {
+        const href = tp.getAttribute('href')
+                  || tp.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+                  || '';
+        const refId = href.startsWith('#') ? href.slice(1) : href;
+        if(refId && !textPathRefs.has(refId)) {
+          textPathRefs.set(refId, generateGroupId() + '_tp_' + Math.random().toString(36).substr(2, 5));
+        } /* else -- no href or already seen */
+      });
+      this.currentTextPathGroups = textPathRefs;
+
       const newEls: DrawingElement[] = [];
       const groupStack: (string | null)[] = [null];
 
@@ -189,7 +211,7 @@ export class ClipboardHandler {
       this.selection.select(newEls);
       this.onSave?.();
     } catch(error) { console.error('SVG paste failed:', error); }
-    finally { this.currentPathDefs = null; }
+    finally { this.currentPathDefs = null; this.currentTextPathGroups = null; }
   }
 
   // == Delete / Group / Ungroup ==================================================
@@ -424,6 +446,29 @@ export class ClipboardHandler {
       }
       if(Math.abs(transform.rotation) > 0.001) el.angle = (el.angle || 0) + transform.rotation;
     } /* else -- no transform */
+
+    // bind <path id="X"> and its referencing <text><textPath href="#X"> into a
+    // shared group so they move as one unit (outer group from <g> wins if set)
+    if(el && !el.groupId && this.currentTextPathGroups) {
+      let refId: string | null = null;
+      if(el.type === 'svg-path') {
+        const srcId = node.getAttribute('id');
+        if(srcId && this.currentTextPathGroups.has(srcId)) refId = srcId;
+      } else if(el.type === 'svg-text-path') {
+        // find the source ref id by scanning the map for any textPath-href match;
+        // need to know which path this textPath referenced so look at node
+        const tpChild = node.querySelector(':scope > textPath');
+        if(tpChild) {
+          const href = tpChild.getAttribute('href')
+                    || tpChild.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+                    || '';
+          const id2 = href.startsWith('#') ? href.slice(1) : href;
+          if(id2 && this.currentTextPathGroups.has(id2)) refId = id2;
+        } /* else -- no textPath child (shouldn't happen for svg-text-path) */
+      } /* else -- not a type that participates in textPath binding */
+      if(refId) el.groupId = this.currentTextPathGroups.get(refId);
+    } /* else -- already grouped or no pending bindings */
+
     return el;
   }
 }
