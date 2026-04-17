@@ -59,6 +59,11 @@ export class InteractionHandler {
   private rotationStartAngle = 0;
   private rotationCenter: Point | null = null;
   private originalAngles: number[] | null = null;
+  // per-element pre-gesture centers (in canvas space), captured at startRotation
+  // so updateRotation never has to re-derive them from the mid-gesture DOM -- for
+  // svg-path/polygon/text-path, getElementBounds() reads the *live* bounding box
+  // via getBBox(), which reflects the already-mutated element, not its origin
+  private originalElementCenters: Point[] | null = null;
   private shiftKeyHeld = false;
   private snapBackPending = false;
   private lastMousePoint: Point | null = null;
@@ -803,6 +808,10 @@ export class InteractionHandler {
     );
     this.originalAngles = this.selection.selectedElements.map(el => el.angle || 0);
     this.originalPositions = this.selection.selectedElements.map(el => ({ ...el }));
+    this.originalElementCenters = this.selection.selectedElements.map(el => {
+      const b = getElementBounds(el);
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    });
   }
 
   // -- Update --------------------------------------------------------------------
@@ -824,19 +833,17 @@ export class InteractionHandler {
       const idx = this.elements.findIndex(e => e.id === el.id);
       if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
       this.renderer.renderElement(el);
-    } else {
-      // multi-element: snap the shared delta (elements start at different angles so
-      // snapping per-element final angle would be incoherent for the group)
+    } else { /*multi-element*/
+      // snap the shared delta (elements start at different angles so snapping
+      // per-element final angle would be incoherent for the group)
       const effectiveDelta = shift ? snapAngle(delta) : delta;
       this.selection.selectedElements.forEach((el, i) => {
         const orig = this.originalPositions[i];
-        const ob = getElementBounds({ ...orig } as DrawingElement);
-        const eCx = ob.x + ob.width / 2;
-        const eCy = ob.y + ob.height / 2;
+        const c = this.originalElementCenters![i];
 
-        const r = rotatePoint(eCx, eCy, this.rotationCenter!.x, this.rotationCenter!.y, effectiveDelta);
-        const dx = r.x - eCx;
-        const dy = r.y - eCy;
+        const r = rotatePoint(c.x, c.y, this.rotationCenter!.x, this.rotationCenter!.y, effectiveDelta);
+        const dx = r.x - c.x,
+              dy = r.y - c.y;
 
         // apply position delta per element type
         setElementPositionFromOrig(el, orig, dx, dy);
@@ -1147,23 +1154,24 @@ export class InteractionHandler {
     this.viewport.selectionLayer.innerHTML = '';
 
     // clear all transient flags
-    this.isDrawing         = false;
-    this.isPanning         = false;
-    this.isMoving          = false;
-    this.isResizing        = false;
-    this.isRotating        = false;
-    this.hasMoved          = false;
-    this.hasResized        = false;
-    this.shiftKeyHeld      = false;
-    this.snapBackPending   = false;
-    this.resizeHandle      = null;
-    this.pendingShiftClick = null;
-    this.originalPositions     = [];
-    this.originalElementStates = [];
-    this.originalBounds        = null;
-    this.originalAngles        = null;
-    this.rotationCenter        = null;
-    this.lastMousePoint        = null;
+    this.isDrawing              = false;
+    this.isPanning              = false;
+    this.isMoving               = false;
+    this.isResizing             = false;
+    this.isRotating             = false;
+    this.hasMoved               = false;
+    this.hasResized             = false;
+    this.shiftKeyHeld           = false;
+    this.snapBackPending        = false;
+    this.resizeHandle           = null;
+    this.pendingShiftClick      = null;
+    this.originalPositions      = [];
+    this.originalElementStates  = [];
+    this.originalBounds         = null;
+    this.originalAngles         = null;
+    this.originalElementCenters = null;
+    this.rotationCenter         = null;
+    this.lastMousePoint         = null;
 
     // repaint from the (now rolled-back) elements array and re-show selection
     // handles if there's still a selection
