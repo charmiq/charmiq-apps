@@ -1,4 +1,4 @@
-import { getElementBounds, type DrawingElement, type ImageElement, type LineDecoration, type LineElement, type ShapeElement, type SvgCircleElement, type SvgPathElement, type SvgPolygonElement, type SvgTextPathElement, type TextAlign, type TextElement } from './element-model';
+import { getElementBounds, type DrawingElement, type ImageElement, type LineDecoration, type LineElement, type SvgCircleElement, type SvgPathElement, type SvgPolygonElement, type SvgTextPathElement, type TextAlign, type TextElement } from './element-model';
 import type { TextMeasurement } from './text-measurement';
 
 // SVG element creation, attribute updates, line decoration markers
@@ -28,6 +28,12 @@ export class SvgRenderer {
     if(!svgEl) return;
     svgEl.id = element.id;
     this.drawingLayer.appendChild(svgEl);
+
+    // svg-path/polygon/text-path bounds require getBBox(), which needs the element
+    // in the DOM; apply rotation here rather than inside the shape builders
+    if((element.type === 'svg-path') || (element.type === 'svg-polygon') || (element.type === 'svg-text-path')) {
+      this.applyRotation(svgEl, element, getElementBounds(element));
+    } /* else -- other types apply rotation inside their shape builders */
   }
 
   public clearAll(): void {
@@ -174,6 +180,7 @@ export class SvgRenderer {
     c.setAttribute('cy', String(el.cy));
     c.setAttribute('r', String(el.r));
     this.applyCommonAttrs(c, el);
+    this.applyRotation(c, el, { x: el.cx - el.r, y: el.cy - el.r, width: el.r * 2, height: el.r * 2 });
     return c;
   }
 
@@ -283,16 +290,19 @@ export class SvgRenderer {
         svgEl.setAttribute('cx', String(element.cx));
         svgEl.setAttribute('cy', String(element.cy));
         svgEl.setAttribute('r', String(element.r));
+        this.applyRotation(svgEl, element, { x: element.cx - element.r, y: element.cy - element.r, width: element.r * 2, height: element.r * 2 });
         break;
       }
       case 'svg-path': {
         const pathData = this.translatePath(element.d, element.offsetX, element.offsetY);
         svgEl.setAttribute('d', pathData);
+        this.applyRotation(svgEl, element, getElementBounds(element));
         break;
       }
       case 'svg-polygon': {
         const polygonPts = this.translatePolygonPoints(element.points, element.offsetX, element.offsetY);
         svgEl.setAttribute('points', polygonPts);
+        this.applyRotation(svgEl, element, getElementBounds(element));
         break;
       }
       case 'svg-text-path': {
