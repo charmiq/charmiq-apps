@@ -1,11 +1,18 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, generateGroupId, getElementBoundsFromData, moveElementBy, type DrawingElement, type Point } from './element-model';
+import { generateId, generateGroupId, moveElementBy, type DrawingElement, type Point } from './element-model';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
 import type { TextMeasurement } from './text-measurement';
 
 // copy, cut, paste (drawing elements + SVG), group, ungroup
 // ********************************************************************************
+// == Constants ===================================================================
+// screen-space offset applied to an internal paste so it is visually nudged
+// lower-right of the original rather than landing on top of it. Converted to
+// canvas-space at paste time so the visual nudge is constant across zoom levels
+const PASTE_OFFSET_PX = 20;
+
+// == Types =======================================================================
 // serialization format written to / read from the system clipboard
 interface ClipboardData {
   type: 'drawing-elements';
@@ -90,26 +97,22 @@ export class ClipboardHandler {
       try { data = JSON.parse(text) as ClipboardData; } catch{ return; }
       if(!data || data.type !== 'drawing-elements' || !Array.isArray(data.elements)) return;
 
-      const center = this.canvasCenter();
-      const { minX, minY, maxX, maxY } = this.boundsOfData(data.elements);
-      const copyCx = (minX + maxX) / 2,
-            copyCy = (minY + maxY) / 2;
-
       // remap group ids
       const gidMap = new Map<string, string>();
       for(const d of data.elements) {
         if(d.groupId && !gidMap.has(d.groupId)) gidMap.set(d.groupId, generateGroupId() + '_' + Math.random().toString(36).substr(2, 5));
       }
 
-      const offsetX = center.x - copyCx,
-            offsetY = center.y - copyCy;
+      // nudge the paste slightly lower-right of the original (zoom-adjusted so the
+      // visual offset stays consistent regardless of how zoomed in the user is)
+      const offset = this.viewport.screenSizeToCanvasSize(PASTE_OFFSET_PX);
 
       const newEls: DrawingElement[] = data.elements.map((d) => {
         const el = { ...d, id: generateId() } as DrawingElement;
         if(d.groupId) el.groupId = gidMap.get(d.groupId);
 
         // offset position fields based on element shape
-        moveElementBy(el, offsetX, offsetY);
+        moveElementBy(el, offset, offset);
         return el;
       });
 
@@ -249,19 +252,6 @@ export class ClipboardHandler {
   private canvasCenter(): Point {
     const r = this.viewport.container.getBoundingClientRect();
     return this.viewport.screenToCanvas(r.left + r.width / 2, r.top + r.height / 2);
-  }
-
-  // ------------------------------------------------------------------------------
-  private boundsOfData(elements: Omit<DrawingElement, 'id'>[]): { minX: number; minY: number; maxX: number; maxY: number } {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for(const d of elements) {
-      const b = getElementBoundsFromData(d);
-      minX = Math.min(minX, b.x);
-      minY = Math.min(minY, b.y);
-      maxX = Math.max(maxX, b.x + b.width);
-      maxY = Math.max(maxY, b.y + b.height);
-    }
-    return { minX, minY, maxX, maxY };
   }
 
   // ------------------------------------------------------------------------------
