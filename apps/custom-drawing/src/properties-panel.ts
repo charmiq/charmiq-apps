@@ -32,6 +32,13 @@ export class PropertiesPanel {
   elements: DrawingElement[] = [];
   onSave: (() => void) | null = null;
 
+  /** called when a live-edit picker opens on the current selection so the
+   *  content bridge can protect the (ids, property) pairs from inbound OT
+   *  remote changes (local wins) */
+  onEditBegin: ((ids: ReadonlyArray<string>, property: string) => void) | null = null;
+  /** mirror of onEditBegin; fired on picker commit / cancel */
+  onEditEnd:   ((ids: ReadonlyArray<string>, property: string) => void) | null = null;
+
   public constructor(renderer: SvgRenderer, selection: SelectionManager, configStore: ConfigStore) {
     this.renderer = renderer;
     this.selection = selection;
@@ -157,6 +164,42 @@ export class PropertiesPanel {
     if(persist) this.onSave?.();
   }
 
+  // == Live-Edit Tracking ========================================================
+  /** map a picker-level property name (eg. 'stroke', 'textColor') through
+   *  the element-type rewrite that updateProperty applies so activeEdits
+   *  registers the actual key written on the element. returns null for
+   *  (prop, element) pairs updateProperty skips (eg. fill on text) */
+  private effectiveKey(prop: string, el: DrawingElement): string | null {
+    if(el.type === 'text') {
+      if((prop === 'stroke') || (prop === 'textColor')) return 'fill';
+      if((prop === 'fill') || (prop === 'strokeWidth') || (prop === 'strokeDasharray')) return null;/*text ignores these*/
+      return prop;
+    } /* else -- non-text element */
+    if((prop === 'textColor') || (prop === 'fontFamily') || (prop === 'fontSize')) return null;/*non-text ignores these*/
+    return prop;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** declare every (id, key) pair in the current selection as under live
+   *  local modification. returns the pairs so the caller can pass them to
+   *  endLiveEdit() on picker commit / cancel */
+  private beginLiveEdit(prop: string): ReadonlyArray<readonly [string, string]> {
+    const pairs: [string, string][] = [];
+    for(const el of this.selection.selectedElements) {
+      const key = this.effectiveKey(prop, el);
+      if(!key) continue;
+      pairs.push([el.id, key]);
+      this.onEditBegin?.([el.id], key);
+    }
+    return pairs;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** release the pairs declared via beginLiveEdit() */
+  private endLiveEdit(pairs: ReadonlyArray<readonly [string, string]>): void {
+    for(const [id, key] of pairs) this.onEditEnd?.([id], key);
+  }
+
   // == Layer Ordering ============================================================
   public moveLayer(dir: 'toBack' | 'backward' | 'forward' | 'toFront'): void {
     for(const el of this.selection.selectedElements) {
@@ -253,6 +296,7 @@ export class PropertiesPanel {
     const custom = this.buildCustomRow('Custom…', (anchor) => {
       const currentEl = this.selection.selectedElements[0] as any;
       const initial = (currentEl && (prop === 'textColor' ? (currentEl.fill || currentEl.textColor) : currentEl[prop])) || (presets[0] || '#000000');
+      const editPairs = this.beginLiveEdit(prop);
       openColorPicker({
         rect: anchor,
         initial,
@@ -262,9 +306,14 @@ export class PropertiesPanel {
           this.updateProperty(prop, c);
           this.setSwatchColor(swatchId, c);
           void this.configStore.pushRecent(def.recentKey, c as any);
+          this.endLiveEdit(editPairs);
           this.hideAllDropdowns();
         },
-        onCancel: () => { this.updateProperty(prop, initial, false); this.setSwatchColor(swatchId, initial); },
+        onCancel: () => {
+          this.updateProperty(prop, initial, false);
+          this.setSwatchColor(swatchId, initial);
+          this.endLiveEdit(editPairs);
+        },
       });
     });
     dd.appendChild(custom);
@@ -292,6 +341,7 @@ export class PropertiesPanel {
     const custom = this.buildCustomRow('Custom…', (anchor) => {
       const currentEl = this.selection.selectedElements[0] as any;
       const initial = currentEl?.strokeWidth || presets[0] || 2;
+      const editPairs = this.beginLiveEdit('strokeWidth');
       openSliderPicker({
         rect: anchor,
         initial, min: 1, max: 24, step: 1, unit: 'px',
@@ -300,9 +350,14 @@ export class PropertiesPanel {
           this.updateProperty('strokeWidth', v);
           this.setWidthSample(v);
           void this.configStore.pushRecent('strokeWidths', v);
+          this.endLiveEdit(editPairs);
           this.hideAllDropdowns();
         },
-        onCancel: () => { this.updateProperty('strokeWidth', initial, false); this.setWidthSample(initial); },
+        onCancel: () => {
+          this.updateProperty('strokeWidth', initial, false);
+          this.setWidthSample(initial);
+          this.endLiveEdit(editPairs);
+        },
       });
     });
     dd.appendChild(custom);
@@ -360,6 +415,7 @@ export class PropertiesPanel {
     const custom = this.buildCustomRow('Custom…', (anchor) => {
       const currentEl = this.selection.selectedElements[0] as any;
       const initial = currentEl?.fontSize || presets[0] || 16;
+      const editPairs = this.beginLiveEdit('fontSize');
       openSliderPicker({
         rect: anchor,
         initial, min: 6, max: 144, step: 1, unit: 'pt',
@@ -368,9 +424,14 @@ export class PropertiesPanel {
           this.updateProperty('fontSize', v);
           this.setTextSizeSample(v);
           void this.configStore.pushRecent('fontSizes', v);
+          this.endLiveEdit(editPairs);
           this.hideAllDropdowns();
         },
-        onCancel: () => { this.updateProperty('fontSize', initial, false); this.setTextSizeSample(initial); },
+        onCancel: () => {
+          this.updateProperty('fontSize', initial, false);
+          this.setTextSizeSample(initial);
+          this.endLiveEdit(editPairs);
+        },
       });
     });
     dd.appendChild(custom);
@@ -429,6 +490,7 @@ export class PropertiesPanel {
     const custom = this.buildCustomRow('Google Fonts…', (anchor) => {
       const currentEl = this.selection.selectedElements[0] as any;
       const initialFamily = currentEl?.fontFamily || null;
+      const editPairs = this.beginLiveEdit('fontFamily');
       openFontPicker({
         rect: anchor,
         initial: initialFamily ? { label: 'Current', family: initialFamily } : null,
@@ -437,12 +499,14 @@ export class PropertiesPanel {
           this.updateProperty('fontFamily', c.family);
           this.setFontFamilySample(c.family);
           void this.configStore.pushRecent('fontFamilies', c);
+          this.endLiveEdit(editPairs);
           this.hideAllDropdowns();
         },
         onCancel: () => {
           const revert = initialFamily || DEFAULT_FONT_FAMILY;
           this.updateProperty('fontFamily', revert, false);
           this.setFontFamilySample(revert);
+          this.endLiveEdit(editPairs);
         },
       });
     });

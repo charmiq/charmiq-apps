@@ -31,6 +31,11 @@ export class InteractionHandler {
   private onCut: (() => void) | null = null;
   private onPaste: (() => void) | null = null;
   private onDeleteSelected: (() => void) | null = null;
+  /** declare (id, property) pairs under live local modification so the
+   *  content bridge can suppress concurrent remote writes to those same
+   *  pairs (see content-bridge.ts top-of-file doc) */
+  private onEditBegin: ((ids: ReadonlyArray<string>, property: string) => void) | null = null;
+  private onEditEnd:   ((ids: ReadonlyArray<string>, property: string) => void) | null = null;
 
   // -- State references (shared with DrawingApp) ---------------------------------
   elements: DrawingElement[] = [];
@@ -69,6 +74,13 @@ export class InteractionHandler {
   private lastMousePoint: Point | null = null;
   private pendingShiftClick: { element: DrawingElement; isSelected: boolean } | null = null;
 
+  /** (id, property) pairs currently declared to the content bridge for the
+   *  active move / resize / rotate gesture. populated by declareGestureEdits()
+   *  at gesture start and drained by releaseGestureEdits() at gesture end /
+   *  cancel so the bridge stops suppressing inbound remote changes to those
+   *  properties */
+  private gestureEditPairs: ReadonlyArray<readonly [string, string]> = [];
+
   public constructor(
     viewport: CanvasViewport,
     renderer: SvgRenderer,
@@ -98,6 +110,8 @@ export class InteractionHandler {
     onCut: () => void;
     onPaste: () => void;
     onDeleteSelected: () => void;
+    onEditBegin: (ids: ReadonlyArray<string>, property: string) => void;
+    onEditEnd:   (ids: ReadonlyArray<string>, property: string) => void;
   }): void {
     Object.assign(this, cbs);
   }
@@ -446,6 +460,47 @@ export class InteractionHandler {
     }
   }
 
+  // == Gesture-Edit Declaration ==================================================
+  /** properties mutated when this element is moved. moveElementBy /
+   *  setElementPositionFromOrig shift these on drag */
+  private positionProps(el: DrawingElement): ReadonlyArray<string> {
+    if(el.type === 'svg-circle') return ['cx', 'cy'];
+    if((el.type === 'svg-polygon') || (el.type === 'svg-path') || (el.type === 'svg-text-path')) return ['offsetX', 'offsetY'];
+    const props: string[] = ['x', 'y'];
+    if('x2' in el) props.push('x2');
+    if('y2' in el) props.push('y2');
+    return props;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** additional shape-defining properties mutated when this element is
+   *  resized (beyond the position keys already covered by positionProps) */
+  private resizeShapeProps(el: DrawingElement): ReadonlyArray<string> {
+    if(el.type === 'svg-circle')    return ['r'];
+    if(el.type === 'svg-polygon')   return ['points'];
+    if(el.type === 'svg-path')      return ['d'];
+    if(el.type === 'svg-text-path') return ['d', 'fontSize'];
+    if(el.type === 'text')          return ['width', 'height'];
+    return [];/*rect/diamond/ellipse/image/line size via x2/y2 -- already in positionProps*/
+  }
+
+  // ------------------------------------------------------------------------------
+  /** declare the given (id, property) pairs to the bridge and remember
+   *  them so the matching release fires the same pairs even if the
+   *  selection changes mid-gesture */
+  private declareGestureEdits(pairs: ReadonlyArray<readonly [string, string]>): void {
+    for(const [id, prop] of pairs) this.onEditBegin?.([id], prop);
+    this.gestureEditPairs = pairs;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** release any pairs declared by declareGestureEdits(). safe to call
+   *  when no gesture is active -- the pair list is empty then */
+  private releaseGestureEdits(): void {
+    for(const [id, prop] of this.gestureEditPairs) this.onEditEnd?.([id], prop);
+    this.gestureEditPairs = [];
+  }
+
   // == Moving ====================================================================
   // -- Start ---------------------------------------------------------------------
   private startMoving(point: Point): void {
@@ -453,6 +508,15 @@ export class InteractionHandler {
     this.hasMoved = false;
     this.moveStartPoint = point;
     this.originalPositions = this.selection.selectedElements.map(el => ({ ...el }));
+
+    // declare position keys as in-flight so concurrent remote writes to
+    // the same (id, x/y/x2/y2/cx/cy/offsetX/offsetY) pairs lose to this
+    // client's drag
+    const pairs: [string, string][] = [];
+    for(const el of this.selection.selectedElements) {
+      for(const p of this.positionProps(el)) pairs.push([el.id, p]);
+    }
+    this.declareGestureEdits(pairs);
   }
 
   // -- Update --------------------------------------------------------------------
@@ -494,6 +558,7 @@ export class InteractionHandler {
   // -- End -----------------------------------------------------------------------
   private endMoving(): void {
     this.isMoving = false;
+    this.releaseGestureEdits();
 
     // handle pending shift-click (click without drag)
     if(this.pendingShiftClick && !this.hasMoved) {
@@ -527,6 +592,15 @@ export class InteractionHandler {
       const b = getElementBounds(this.selection.selectedElements[0]);
       this.originalBounds = b;
     }
+
+    // declare position + shape-defining keys as in-flight so remote writes
+    // to the same (id, property) pairs lose to this client's resize
+    const pairs: [string, string][] = [];
+    for(const el of this.selection.selectedElements) {
+      for(const p of this.positionProps(el))    pairs.push([el.id, p]);
+      for(const p of this.resizeShapeProps(el)) pairs.push([el.id, p]);
+    }
+    this.declareGestureEdits(pairs);
   }
 
   // -- Update --------------------------------------------------------------------
@@ -565,6 +639,7 @@ export class InteractionHandler {
   private endResize(): void {
     this.isResizing = false;
     this.resizeHandle = null;
+    this.releaseGestureEdits();
     if(this.hasResized) this.onSave?.();
   }
 
@@ -836,6 +911,16 @@ export class InteractionHandler {
       const b = getElementBounds(el);
       return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
     });
+
+    // angle is always mutated; multi-element rotation also translates each
+    // element around the group center, so position keys are declared too
+    const multi = this.selection.selectedElements.length > 1;
+    const pairs: [string, string][] = [];
+    for(const el of this.selection.selectedElements) {
+      pairs.push([el.id, 'angle']);
+      if(multi) for(const p of this.positionProps(el)) pairs.push([el.id, p]);
+    }
+    this.declareGestureEdits(pairs);
   }
 
   // -- Update --------------------------------------------------------------------
@@ -884,6 +969,7 @@ export class InteractionHandler {
   // -- End -----------------------------------------------------------------------
   private endRotation(): void {
     this.isRotating = false;
+    this.releaseGestureEdits();
     this.onSave?.();
   }
 
@@ -1135,6 +1221,11 @@ export class InteractionHandler {
                        || this.isMoving   || this.isRotating
                        || !!this.currentElement || !!this.selectionBox;
     if(!anyInProgress) return;/*nothing to cancel*/
+
+    // release any (id, property) pairs the active gesture declared to the
+    // bridge before rolling back; subsequent saves (re-opened gesture,
+    // another user's write) must diff cleanly without stale locks
+    this.releaseGestureEdits();
 
     // drawing a brand-new shape: discard the preview node, never added to elements
     if(this.currentElement) {

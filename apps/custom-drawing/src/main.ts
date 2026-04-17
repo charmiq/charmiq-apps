@@ -44,6 +44,12 @@ const commandSurface = new CommandSurface(renderer, selection);
 let elements: DrawingElement[] = [];
 
 // ................................................................................
+// expose the current elements to the content bridge so it can overlay
+// active-edit property values (picker in flight) onto inbound remote
+// changes and avoid clobbering in-flight local edits
+contentBridge.setCurrentStateGetter(() => elements);
+
+// ................................................................................
 // helper: sync the shared elements array to all modules
 const syncElements = () => {
   interaction.elements = elements;
@@ -81,6 +87,8 @@ interaction.setCallbacks({
   onCut: () => { clipboard.cutSelected(); elements = clipboard.elements; syncElements(); },
   onPaste: () => { clipboard.paste().then(() => { elements = clipboard.elements; syncElements(); }); },
   onDeleteSelected: () => { clipboard.deleteSelected(); elements = clipboard.elements; syncElements(); },
+  onEditBegin: (ids, prop) => contentBridge.beginEdit(ids, prop),
+  onEditEnd:   (ids, prop) => contentBridge.endEdit(ids, prop),
 });
 
 textEditor.onSave = save;
@@ -88,6 +96,12 @@ imageHandler.onSave = save;
 propsPanel.onSave = save;
 clipboard.onSave = save;
 commandSurface.onSave = save;
+
+// live-edit declarations: while a picker is open the app calls onEditBegin
+// with the (selection, property) under modification, and the bridge
+// suppresses inbound remote changes for exactly those pairs (local wins)
+propsPanel.onEditBegin = (ids, prop) => contentBridge.beginEdit(ids, prop);
+propsPanel.onEditEnd   = (ids, prop) => contentBridge.endEdit(ids, prop);
 
 selection.setOnShowProperties(() => {
   const cfg = configStore.getConfig();
