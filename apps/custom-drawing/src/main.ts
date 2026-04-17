@@ -1,6 +1,8 @@
 import { CanvasViewport } from './canvas-viewport';
 import { ClipboardHandler } from './clipboard-handler';
 import { CommandSurface } from './command-surface';
+import { ConfigStore, type DrawingConfig } from './config-store';
+import { ContentBridge } from './content-bridge';
 import type { DrawingElement } from './element-model';
 import { ExportHandler } from './export-handler';
 import { GenerationHandler } from './generation-handler';
@@ -8,7 +10,7 @@ import { ImageHandler } from './image-handler';
 import { InteractionHandler } from './interaction-handler';
 import { PropertiesPanel } from './properties-panel';
 import { SelectionManager } from './selection-manager';
-import { StateBridge } from './state-bridge';
+import { SettingsPanel } from './settings-panel';
 import { SvgRenderer } from './svg-renderer';
 import { TextEditor } from './text-editor';
 import { TextMeasurement } from './text-measurement';
@@ -31,7 +33,9 @@ const exportHandler  = new ExportHandler(textMeasure);
 const generation     = new GenerationHandler(exportHandler, renderer, selection, tools);
 const propsPanel     = new PropertiesPanel(renderer, selection);
 const clipboard      = new ClipboardHandler(viewport, renderer, selection);
-const stateBridge    = new StateBridge(charmiq.appState);
+const contentBridge  = new ContentBridge(charmiq.appContent);
+const configStore    = new ConfigStore(charmiq.appState);
+const settingsPanel  = new SettingsPanel(configStore);
 const commandSurface = new CommandSurface(renderer, selection);
 
 // --------------------------------------------------------------------------------
@@ -53,12 +57,12 @@ const syncElements = () => {
 };
 
 // --------------------------------------------------------------------------------
-// helper: save current elements to state bridge
+// helper: save current elements via the content bridge
 const save = () => {
-  // after any module mutates elements, re-sync references and persist
-  elements = interaction.elements; // interaction is the most common mutator
+  // read back from interaction (the most common mutator), resync, then persist
+  elements = interaction.elements;
   syncElements();
-  stateBridge.save(elements);
+  contentBridge.save(elements).catch(err => console.error('save failed:', err));
 };
 
 // == Wire Callbacks ==============================================================
@@ -84,7 +88,12 @@ propsPanel.onSave = save;
 clipboard.onSave = save;
 commandSurface.onSave = save;
 
-selection.setOnShowProperties(() => propsPanel.show());
+selection.setOnShowProperties(() => {
+  const cfg = configStore.getConfig();
+  if(!cfg.showPropertiesPanel) return;/*chrome hidden*/
+  if(cfg.readOnly) return;/*nothing to edit*/
+  propsPanel.show();
+});
 
 tools.setOnToolChange((tool) => {
   if(tool !== 'selection') selection.deselectAll();
@@ -96,8 +105,8 @@ document.getElementById('copyBtn')!.addEventListener('click', () => clipboard.co
 document.getElementById('groupBtn')!.addEventListener('click', () => { clipboard.groupSelected(); elements = clipboard.elements; syncElements(); });
 document.getElementById('ungroupBtn')!.addEventListener('click', () => { clipboard.ungroupSelected(); elements = clipboard.elements; syncElements(); });
 
-// == State Bridge — incoming updates =============================================
-stateBridge.onElementsChanged = (newElements) => {
+// == Content Bridge — incoming updates ===========================================
+contentBridge.onChange((newElements) => {
   elements = newElements;
   syncElements();
 
@@ -110,13 +119,37 @@ stateBridge.onElementsChanged = (newElements) => {
   // re-render
   renderer.rerenderAll(elements);
 
+  const cfg = configStore.getConfig();
   if(selection.selectedElements.length > 0) {
     selection.showSelectionHandles();
-    propsPanel.show();
+    if(cfg.showPropertiesPanel && !cfg.readOnly) propsPanel.show();
   } else {
     selection.clearSelection();
   }
+});
+
+// == Config Bridge — apply config to the DOM / modules ===========================
+const applyConfig = (cfg: Readonly<DrawingConfig>) => {
+  // canvas visuals
+  viewport.setGridVisible(cfg.showGrid);
+  viewport.setGridColor(cfg.gridColor);
+  viewport.setBackgroundColor(cfg.backgroundColor);
+
+  // read-only propagation
+  interaction.readOnly = cfg.readOnly;
+  tools.readOnly = cfg.readOnly;
+  if(cfg.readOnly && (tools.currentTool !== 'selection') && (tools.currentTool !== 'pan')) {
+    tools.selectTool('selection');
+  } /* else -- tool already compatible with read-only */
+
+  // UI chrome (body classes drive CSS visibility)
+  document.body.classList.toggle('hide-toolbar',          !cfg.showToolbar);
+  document.body.classList.toggle('hide-info-bar',         !cfg.showInfoBar);
+  document.body.classList.toggle('hide-properties-panel', !cfg.showPropertiesPanel || cfg.readOnly);
+  document.body.classList.toggle('read-only',             cfg.readOnly);
 };
+
+configStore.onChange(applyConfig);
 
 // == Init ========================================================================
 const start = async () => {
@@ -142,9 +175,11 @@ const start = async () => {
   imageHandler.setupDragDrop();
   exportHandler.setupSaveDropdown(() => propsPanel.hideAllDropdowns());
   generation.setupGenerateDropdown();
+  settingsPanel.init();
 
-  // start reactive state sync
-  stateBridge.init();
+  // load config first so initial visuals and read-only flag are correct
+  await configStore.init();
+  applyConfig(configStore.getConfig());
 
   // advertise LLM commands
   commandSurface.init(charmiq);
@@ -153,6 +188,9 @@ const start = async () => {
   viewport.updateTransform();
 
   syncElements();
+
+  // discover initial elements content (onChange callback registered above)
+  await contentBridge.discover();
 };
 
 start().catch(err => console.error('Initialization error:', err));

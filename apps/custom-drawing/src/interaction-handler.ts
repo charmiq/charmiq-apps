@@ -35,6 +35,9 @@ export class InteractionHandler {
   // -- State references (shared with DrawingApp) ---------------------------------
   elements: DrawingElement[] = [];
 
+  /** when true, only selection / pan / zoom are allowed (no mutations) */
+  readOnly = false;
+
   // -- Internal state ------------------------------------------------------------
   private isDrawing = false;
   private startPoint: Point = { x: 0, y: 0 };
@@ -139,8 +142,18 @@ export class InteractionHandler {
 
       // copy / cut / paste
       if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c') && (this.selection.selectedElements.length > 0)) { e.preventDefault(); this.onCopy?.(); return; }
-      if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'x') && (this.selection.selectedElements.length > 0)) { e.preventDefault(); this.onCut?.(); return; }
-      if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v')) { e.preventDefault(); this.onPaste?.(); return; }
+      if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'x') && (this.selection.selectedElements.length > 0) && !this.readOnly) { e.preventDefault(); this.onCut?.(); return; }
+      if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'v') && !this.readOnly) { e.preventDefault(); this.onPaste?.(); return; }
+
+      // in read-only mode, only allow selection / pan tool shortcuts and non-mutating actions
+      if(this.readOnly) {
+        switch(e.key.toLowerCase()) {
+          case '1': case 'v': this.tools.selectTool('selection'); break;
+          case 'h':           this.tools.selectTool('pan'); break;
+          case 's':           this.onToggleSaveDropdown?.(); break;
+        }
+        return;
+      } /* else -- full keyboard shortcuts below */
 
       switch (e.key.toLowerCase()) {
         case '1': case 'v': this.tools.selectTool('selection'); break;
@@ -195,7 +208,13 @@ export class InteractionHandler {
     this.startPoint = point;
     this.isDrawing = true;
 
-    switch (this.tools.currentTool) {
+    // in read-only mode coerce any mutating tool into the selection tool (pan
+    // remains pan so users can still navigate the canvas)
+    const tool: Tool = this.readOnly && (this.tools.currentTool !== 'pan')
+      ? 'selection'
+      : this.tools.currentTool;
+
+    switch (tool) {
       case 'pan':
         this.startPanning(e);
         break;
@@ -370,7 +389,7 @@ export class InteractionHandler {
   // == Selection =================================================================
   private handleSelectionStart(e: MouseEvent, point: Point): void {
     // check rotate handle
-    if(this.selection.selectedElements.length > 0) {
+    if(!this.readOnly && (this.selection.selectedElements.length > 0)) {
       const rh = this.getRotateHandleAtPoint(point);
       if(rh) { this.startRotation(point); return; }
 
@@ -381,7 +400,7 @@ export class InteractionHandler {
       // check edge handles (edge resize for single non-line elements)
       const edge = this.getEdgeAtPoint(point);
       if(edge) { this.startResize(point, edge); return; }
-    } /* else -- no rotate/resize handle */
+    } /* else -- read-only or no selection */
 
     // check if clicking on an element
     const clickedEl = this.getElementAtPoint(point);
@@ -403,7 +422,7 @@ export class InteractionHandler {
           this.selectWithGroup(clickedEl);
         }
       }
-      this.startMoving(point);
+      if(!this.readOnly) this.startMoving(point);
     } else {
       // clicked on empty canvas → start marquee
       if(!e.shiftKey) this.selection.deselectAll();

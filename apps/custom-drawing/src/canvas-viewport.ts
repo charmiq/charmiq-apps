@@ -26,6 +26,23 @@ export class CanvasViewport {
     this.selectionLayer = document.getElementById('selectionLayer') as unknown as SVGGElement;
   }
 
+  // -- Config application --------------------------------------------------------
+  /** show / hide the grid (background layer) */
+  public setGridVisible(visible: boolean): void {
+    this.backgroundLayer.style.display = visible ? '' : 'none';
+  }
+
+  /** update the stroke color of the grid pattern */
+  public setGridColor(color: string): void {
+    const path = document.querySelector<SVGPathElement>('#grid path');
+    if(path) path.setAttribute('stroke', color);
+  }
+
+  /** update the SVG canvas background color */
+  public setBackgroundColor(color: string): void {
+    this.svg.style.background = color;
+  }
+
   // -- Coordinate conversion -----------------------------------------------------
   // screen (clientX/clientY) → canvas (element-coordinate space)
   public screenToCanvas(clientX: number, clientY: number): Point {

@@ -26,6 +26,9 @@ export class ToolManager {
   currentTool: Tool = 'selection';
   spacebarHeld = false;
 
+  /** when true, all tools except 'selection' and 'pan' are blocked */
+  readOnly = false;
+
   private readonly container: HTMLElement;
   private readonly infoText: HTMLElement;
   private onToolChange: ((tool: Tool) => void) | null = null;
@@ -53,6 +56,9 @@ export class ToolManager {
 
   // ==============================================================================
   public selectTool(tool: Tool): void {
+    // in read-only mode, only selection and pan are permitted
+    if(this.readOnly && (tool !== 'selection') && (tool !== 'pan')) return;
+
     this.currentTool = tool;
 
     // update toolbar button highlights

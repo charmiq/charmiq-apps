@@ -17,7 +17,7 @@
     }
   },
   "runtime": {
-    "appContent": false,
+    "appContent": true,
     "appState": true
   },
   "advertise": {

@@ -43,6 +43,9 @@
       <button class="tool-btn" id="saveBtn" title="Export (S)">
         <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"></path><path d="M7 3v4a1 1 0 0 0 1 1h7"></path></svg>
       </button>
+      <button class="tool-btn" id="settingsBtn" title="Settings">
+        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </button>
     </div>
 
     <div class="info-text" id="infoText">
@@ -242,6 +245,59 @@
 
     <!-- hidden file input for local uploads -->
     <input type="file" id="localImageInput" accept="image/*" multiple style="display: none;" />
+
+    <!-- == Settings Modal ==================================================== -->
+    <div class="modal-overlay" id="settingsModal">
+      <div class="modal settings-modal">
+        <div class="modal-title">Drawing Settings</div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">Canvas</div>
+          <label class="settings-row">
+            <span>Show grid</span>
+            <input type="checkbox" id="cfgShowGrid" />
+          </label>
+          <label class="settings-row">
+            <span>Grid color</span>
+            <input type="color" id="cfgGridColor" />
+          </label>
+          <label class="settings-row">
+            <span>Background color</span>
+            <input type="color" id="cfgBackgroundColor" />
+          </label>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">Mode</div>
+          <label class="settings-row">
+            <span>Read-only (no editing)</span>
+            <input type="checkbox" id="cfgReadOnly" />
+          </label>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">UI Chrome</div>
+          <label class="settings-row">
+            <span>Show toolbar</span>
+            <input type="checkbox" id="cfgShowToolbar" />
+          </label>
+          <label class="settings-row">
+            <span>Show properties panel</span>
+            <input type="checkbox" id="cfgShowPropertiesPanel" />
+          </label>
+          <label class="settings-row">
+            <span>Show info bar</span>
+            <input type="checkbox" id="cfgShowInfoBar" />
+          </label>
+        </div>
+
+        <div class="modal-buttons">
+          <button class="modal-button secondary" id="settingsReset">Reset Defaults</button>
+          <button class="modal-button secondary" id="settingsCancel">Cancel</button>
+          <button class="modal-button primary" id="settingsSave">Save</button>
+        </div>
+      </div>
+    </div>
   </div>
 </body>
 </html>

@@ -229,6 +229,41 @@ body {
 
 .modal-error { color: #d51a25; font-size: 13px; margin-bottom: 12px; display: none; &.visible { display: block; } }
 
+// == Settings Modal ==============================================================
+.settings-modal { min-width: 420px; }
+
+.settings-section {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+  &:last-of-type { border-bottom: none; }
+}
+
+.settings-section-title {
+  font-size: 12px; font-weight: 600; color: #666;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0;
+  font-size: 14px; color: #333;
+  cursor: pointer;
+
+  input[type='checkbox'] { width: 18px; height: 18px; cursor: pointer; }
+  input[type='color']    { width: 48px; height: 28px; padding: 0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; }
+}
+
+// == Chrome Visibility ===========================================================
+// when the corresponding config flag is off, these body-scoped classes hide
+// UI chrome without affecting the canvas itself
+body.hide-toolbar           .toolbar           { display: none !important; }
+body.hide-info-bar          .info-text         { display: none !important; }
+body.hide-properties-panel  .properties-panel  { display: none !important; }
+// read-only also suppresses action dropdowns
+body.read-only .action-dropdown { display: none !important; }
+
 // == Action Dropdowns ============================================================
 .action-dropdown {
   position: absolute;
