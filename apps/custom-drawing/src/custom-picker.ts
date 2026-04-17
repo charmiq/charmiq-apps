@@ -87,15 +87,31 @@ const positionPopover = (popover: HTMLElement, anchor: DOMRect): void => {
   popover.style.visibility = 'hidden';
   popover.style.left = '0';
   popover.style.top  = '0';
+  popover.style.maxHeight = '';/*reset so the measurement reflects natural size*/
   document.body.appendChild(popover);
 
   const pw = popover.offsetWidth;
-  const ph = popover.offsetHeight;
+  let ph = popover.offsetHeight;
   const gap = 8;
+  const margin = 8;
+
+  // horizontal: prefer right of anchor; flip left if no room
   let left = anchor.right + gap;
-  if(left + pw > window.innerWidth - 8) left = Math.max(8, anchor.left - gap - pw);
+  if(left + pw > window.innerWidth - margin) left = Math.max(margin, anchor.left - gap - pw);
+
+  // vertical: prefer aligned-with-anchor; shift up as needed; cap height if
+  // still too tall. The popover itself scrolls via a flex-column layout so the
+  // inner list shrinks gracefully when capped rather than being clipped
   let top = anchor.top;
-  if(top + ph > window.innerHeight - 8) top = Math.max(8, window.innerHeight - ph - 8);
+  const overflow = (top + ph) - (window.innerHeight - margin);
+  if(overflow > 0) {
+    top = Math.max(margin, top - overflow);
+    const avail = window.innerHeight - top - margin;
+    if(ph > avail) {
+      popover.style.maxHeight = `${avail}px`;
+      ph = avail;
+    } /* else -- shift was enough */
+  } /* else -- fits as-is */
 
   popover.style.left = `${left}px`;
   popover.style.top  = `${top}px`;

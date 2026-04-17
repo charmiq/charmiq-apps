@@ -281,6 +281,12 @@ body {
   min-width: 220px;
   font-size: 13px;
   color: #333;
+  // flex-column so a height-cap applied by positionPopover translates into the
+  // inner font list (the one growable child) shrinking -- rather than clipping
+  // content like the button row off the bottom
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 // large preview swatch at the top of color pickers. the checker background
@@ -371,6 +377,11 @@ body {
   border-radius: 4px;
   margin-bottom: 10px;
   scrollbar-width: thin;
+  // allow the list to shrink below its content size when the popover is
+  // height-capped; min-height:0 is required for a flex child to shrink below
+  // its intrinsic content height
+  flex: 1 1 auto;
+  min-height: 60px;
 }
 
 .custom-picker-font-row {
@@ -468,9 +479,15 @@ body {
 .modal {
   background: white; border-radius: 8px; padding: 24px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.2); min-width: 400px;
+  // cap at the viewport so tall bodies (eg. the settings modal's preset
+  // palettes) scroll instead of running off-screen. modal-buttons uses
+  // position:sticky so the Save / Cancel row stays parked at the bottom while
+  // the body scrolls
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
 }
 
-.modal-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #333; }
+.modal-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #333; position: sticky; top: 0; background: white; z-index: 1; }
 
 .modal-input {
   width: 100%; padding: 8px 12px; border: 1px solid #e0e0e0;
@@ -478,7 +495,18 @@ body {
   &:focus { outline: none; border-color: #4285f4; }
 }
 
-.modal-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+.modal-buttons {
+  display: flex; gap: 8px; justify-content: flex-end;
+  // sticks to the bottom of the scrolling modal so Cancel / Save stay reachable
+  position: sticky;
+  bottom: -24px;/*cancel the modal's own 24px padding*/
+  background: white;
+  padding-top: 12px;
+  margin-top: 8px;
+  margin-bottom: -24px;/*extend into the modal's bottom padding for a clean edge*/
+  padding-bottom: 24px;
+  border-top: 1px solid #f0f0f0;
+}
 
 .modal-button {
   padding: 8px 16px; border: none; border-radius: 4px;
@@ -501,7 +529,13 @@ body {
 }
 
 // == Settings Modal ==============================================================
-.settings-modal { min-width: 420px; }
+.settings-modal {
+  min-width: 420px;
+  // keep the modal from stretching across a wide viewport; the preset chips
+  // section has many values that would otherwise push the dialog ultra-wide
+  width: 560px;
+  max-width: calc(100vw - 40px);
+}
 
 .settings-section {
   margin-bottom: 16px;
@@ -582,6 +616,12 @@ body {
   font-family: 'JetBrains Mono', Menlo, Consolas, monospace;
   font-size: 11px;
   color: #666;
+  // long rgba() strings would otherwise stretch the chip across the modal;
+  // ellipsis + tooltip (title) on the chip keeps the layout compact
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .preset-chip-x {

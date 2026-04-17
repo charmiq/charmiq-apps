@@ -192,6 +192,7 @@ export class SettingsPanel {
       const label = document.createElement('span');
       label.className = 'preset-chip-label';
       label.textContent = value as string;
+      chip.title = value as string;/*full value reachable via hover -- the label itself ellipses*/
       chip.appendChild(label);
     } else if(list === 'strokeWidths') {
       const sample = document.createElement('div');
