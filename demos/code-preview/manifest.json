@@ -10,8 +10,8 @@
       "style": "/style.css"
     },
     "files": {
-      "/index.html": "charmiq://./README.md?selector=iframe-app[name='html-editor']/app-content[name='index.html']&format=plain",
-      "/style.css": "charmiq://./README.md?selector=iframe-app[name='css-editor']/app-content[name='style.css']&format=plain"
+      "/index.html": "charmiq://./README.md?selector=iframe-app[name='html-editor']/app-content[name='html:index.html']&format=plain",
+      "/style.css": "charmiq://./README.md?selector=iframe-app[name='css-editor']/app-content[name='css:style.css']&format=plain"
     }
   },
 
