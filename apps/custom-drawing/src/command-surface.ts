@@ -3,7 +3,7 @@ import { getDrawingBounds, rotatePoint } from './geometry';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
 
-// advertise drawing API to LLMs and other widgets
+// advertise drawing API to LLMs and other Applications
 // ********************************************************************************
 interface Charmiq {
   advertise?: (channel: string, handlers: Record<string, (...args: any[]) => any>) => void;
