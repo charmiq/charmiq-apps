@@ -72,6 +72,10 @@ body {
   line-height: 1;
   text-transform: uppercase;
   color: var(--text-main);
+
+  // horizontal default: stack the two words on separate lines (block spans).
+  // Vertical orientation flips them inline — see .orientation-vertical
+  .title-word { display: block; }
 }
 
 .meta {
@@ -465,6 +469,10 @@ body {
 
   .title {
     font-size: 16px;
+
+    // collapse to a single line in the vertical layout — the header is
+    // already tight on vertical space and "Image Gallery" fits easily
+    .title-word { display: inline; }
   }
 
   .meta {
