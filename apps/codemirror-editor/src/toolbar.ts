@@ -27,7 +27,12 @@ const EXTENSION_TO_MODE: Readonly<Record<string, string>> = {
   '.css': 'css',
   '.scss': 'text/x-scss',
   '.sass': 'text/x-scss',
-  '.xml': 'xml'
+  '.xml': 'xml',
+  '.frag': 'x-shader/x-fragment',
+  '.fs':   'x-shader/x-fragment',
+  '.vert': 'x-shader/x-vertex',
+  '.vs':   'x-shader/x-vertex',
+  '.glsl': 'x-shader/x-fragment'/*ambiguous; fragment is the common case*/
 };
 
 /** mode → export config */
@@ -41,6 +46,8 @@ const MODE_EXPORT: Readonly<Record<string, { ext: string; mime: string }>> = {
   'text/x-scss': { ext: 'scss', mime: 'text/x-scss' },
   'text/typescript': { ext: 'ts', mime: 'text/typescript' },
   'text/typescript-jsx': { ext: 'tsx', mime: 'text/typescript-jsx' },
+  'x-shader/x-fragment': { ext: 'frag', mime: 'x-shader/x-fragment' },
+  'x-shader/x-vertex':   { ext: 'vert', mime: 'x-shader/x-vertex'   },
   'xml': { ext: 'xml', mime: 'application/xml' }
 };
 

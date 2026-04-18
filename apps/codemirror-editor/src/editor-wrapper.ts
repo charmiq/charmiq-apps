@@ -22,6 +22,8 @@ const PLACEHOLDERS: Readonly<Record<string, string>> = {
   'text/x-scss': 'Start typing your Sass/SCSS here...',
   'text/typescript': 'Start typing your TypeScript here...',
   'text/typescript-jsx': 'Start typing your TSX here...',
+  'x-shader/x-fragment': 'Start typing your fragment shader here...',
+  'x-shader/x-vertex': 'Start typing your vertex shader here...',
   'xml': 'Start typing your XML here...'
 };
 

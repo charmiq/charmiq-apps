@@ -18,6 +18,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/sass/sass.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/markdown/markdown.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/jsx/jsx.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/mode/clike/clike.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/addon/display/placeholder.js"></script>
 
   <!-- Google Fonts for the editor UI -->
@@ -66,6 +67,8 @@
                   <option value="text/x-scss">Sass/SCSS</option>
                   <option value="text/typescript">TypeScript</option>
                   <option value="text/typescript-jsx">TSX</option>
+                  <option value="x-shader/x-fragment">GLSL (Fragment)</option>
+                  <option value="x-shader/x-vertex">GLSL (Vertex)</option>
                   <option value="xml">XML</option>
                 </select>
               </div>
@@ -101,7 +104,7 @@
       </div>
     </div>
 
-    <input type="file" accept=".md,.markdown,.txt,.html,.js,.jsx,.ts,.tsx,.json,.css,.scss,.sass,.xml" class="hidden-file-input" id="fileInput">
+    <input type="file" accept=".md,.markdown,.txt,.html,.js,.jsx,.ts,.tsx,.json,.css,.scss,.sass,.xml,.frag,.fs,.vert,.vs,.glsl" class="hidden-file-input" id="fileInput">
 
     <!-- == AYS Dialog (close tab confirmation) =============================== -->
     <ays-dialog id="closeTabDialog" type="error" primary-text="Delete" cancel-text="Cancel">
@@ -151,6 +154,8 @@
               <option value="text/x-scss">Sass/SCSS</option>
               <option value="text/typescript">TypeScript</option>
               <option value="text/typescript-jsx">TSX</option>
+              <option value="x-shader/x-fragment">GLSL (Fragment)</option>
+              <option value="x-shader/x-vertex">GLSL (Vertex)</option>
               <option value="xml">XML</option>
             </select>
           </div>
