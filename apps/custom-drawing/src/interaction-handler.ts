@@ -139,6 +139,17 @@ export class InteractionHandler {
   // ------------------------------------------------------------------------------
   public setupKeyboardShortcuts(): void {
     document.addEventListener('keydown', (e: KeyboardEvent) => {
+      // Escape closes any open toolbar dropdowns/menus regardless of focus
+      // (modals have their own Escape handlers that dismiss themselves first)
+      if(e.key === 'Escape') {
+        const open = document.querySelectorAll('.dropdown.visible, .action-dropdown.visible');
+        if(open.length > 0) {
+          e.preventDefault();
+          open.forEach(d => d.classList.remove('visible'));
+          return;
+        } /* else -- no open menu; let other Escape handlers / default run */
+      } /* else -- non-Escape */
+
       if(((e.target as HTMLElement).tagName === 'INPUT') || ((e.target as HTMLElement).tagName === 'TEXTAREA')) return;
 
       // spacebar → temporary pan
