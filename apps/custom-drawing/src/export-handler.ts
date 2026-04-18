@@ -98,7 +98,7 @@ export class ExportHandler {
   }
 
   // == Canvas Rendering ==========================================================
-  private async exportDrawingToCanvas(elements: DrawingElement[], opts: { whiteBackground?: boolean } = {}): Promise<HTMLCanvasElement> {
+  public async exportDrawingToCanvas(elements: DrawingElement[], opts: { whiteBackground?: boolean } = {}): Promise<HTMLCanvasElement> {
     // ensure any Google-hosted fonts referenced by text elements are loaded
     // before canvas rendering -- without this, `ctx.fillText` silently falls
     // back to serif for the frame that happens to export first after a cold

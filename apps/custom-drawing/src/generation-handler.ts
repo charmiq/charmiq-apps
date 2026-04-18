@@ -33,14 +33,14 @@ export class GenerationHandler {
   public setServices(s: CharmIQServices): void { this.services = s; }
 
   // ==============================================================================
-  public async generateFromDrawing(mode: string | null = null): Promise<void> {
+  public async generateFromDrawing(mode: 'all' | 'selected' | null = null): Promise<void> {
     const { commandService, assetService, generationService } = this.services;
     if(!commandService || !assetService || !generationService) throw new Error('Required services not available');
     if(this.elements.length < 1) { alert('Please create some drawing elements first.'); return; }
 
     // export the canvas to a data URL
-    this.exportHandler.exportMode = (mode || this.generateMode) as any;
-    const canvas = await (this.exportHandler as any).exportDrawingToCanvas?.(
+    this.exportHandler.exportMode = mode || this.generateMode;
+    const canvas = await this.exportHandler.exportDrawingToCanvas(
       (this.exportHandler.exportMode === 'selected') && (this.selection.selectedElements.length > 0)
         ? this.selection.selectedElements
         : this.elements,
