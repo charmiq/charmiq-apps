@@ -6,8 +6,6 @@ import type { TextMeasurement } from './text-measurement';
 
 // PNG export — download, clipboard, save to Files
 // ********************************************************************************
-
-// --------------------------------------------------------------------------------
 interface CharmIQServices {
   commandService: any;
   assetService: any;
