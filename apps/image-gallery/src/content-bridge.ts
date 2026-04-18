@@ -237,7 +237,7 @@ const parseBindings = (content: string): ReadonlyArray<BindingRecord> => {
   const records = parseJsonl(content);
   const out: BindingRecord[] = [];
   for(const r of records) {
-    if(!r || (typeof r !== 'object')) continue;/*skip malformed*/
+    if(!r || (typeof r !== 'object')) continue/*skip malformed*/;
     const v = r as Partial<BindingRecord>;
     if((typeof v.slotId !== 'string') || (v.slotId.length < 1)) continue;
     const itemId = (typeof v.itemId === 'string') ? v.itemId : null;
