@@ -33,8 +33,11 @@ export class CommandSurface {
     const charmiq = (window as any).charmiq;
     if(!charmiq?.advertise) return/*not running inside CharmIQ — skip*/;
 
+    console.log('[codemirror-editor] CommandSurface.init: about to advertise charmiq.command');
     this.advertiseCommands(charmiq);
+    console.log('[codemirror-editor] CommandSurface.init: about to advertise ai.charm.shared.codemirror-editor');
     this.advertiseCapability(charmiq);
+    console.log('[codemirror-editor] CommandSurface.init: both advertises returned');
   }
 
   // == Internal ==================================================================
