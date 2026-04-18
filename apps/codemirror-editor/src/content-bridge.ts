@@ -1,9 +1,12 @@
 import { race, timer, Observable, Subject } from 'rxjs';
 import { debounceTime, take } from 'rxjs/operators';
 
+import { parseName, type TabId, type TabSlug } from './tab-types';
+
 // bridges the CodeMirror editor ↔ appContent OT layer. Owns the discovery phase
 // (wait for initial content to settle) and the forward/apply logic for incremental
-// edits
+// edits. Parses raw `name` into `{ slug, displayName }` so nothing downstream
+// has to know about the tuple form
 // ********************************************************************************
 // == Constants ===================================================================
 /** ms to debounce content emissions before declaring discovery complete */
@@ -12,10 +15,13 @@ const DISCOVERY_DEBOUNCE_MS = 200/*ms*/;
 const DISCOVERY_TIMEOUT_MS = 500/*ms*/;
 
 // == Types =======================================================================
-/** shape of an appContent change event */
+/** shape of an appContent change event with the raw name pre-parsed into its
+ *  identity tuple. `slug` is null only for legacy slug-less content awaiting
+ *  migration — see TabManager for that flow */
 export interface ContentChange {
-  readonly id: string;
-  readonly name: string;
+  readonly id: TabId;
+  readonly slug: TabSlug | null;
+  readonly displayName: string;
   readonly content: string;
   readonly deleted: boolean;
 }
@@ -25,8 +31,17 @@ export interface ContentChange {
 type RemoteChangeCallback = (change: ContentChange) => void;
 
 // == Charmiq API (global) ========================================================
+/** the raw shape emitted by the platform stream; ContentBridge translates it
+ *  into the parsed `ContentChange` above before forwarding */
+interface RawContentChange {
+  readonly id: TabId;
+  readonly name: string;
+  readonly content: string;
+  readonly deleted: boolean;
+}
+
 interface CharmiqAppContent {
-  onChange$(): Observable<ContentChange>;
+  onChange$(): Observable<RawContentChange>;
   applyChanges(changes: ReadonlyArray<{ from: number; to: number; insert: string; }>, selector: string): Promise<void>;
   set(content: string | undefined, selector: string, name?: string): Promise<void>;
   remove(selector: string): Promise<void>;
@@ -56,11 +71,22 @@ export class ContentBridge {
       // track whether any content arrived during discovery
       const contentReceived$ = new Subject<void>();
 
-      // subscribe to all app-content changes (discovery + ongoing updates)
-      this.appContent.onChange$().subscribe((change: ContentChange) => {
+      // subscribe to all app-content changes (discovery + ongoing updates).
+      // The platform stream carries the raw name; parse into the identity
+      // tuple before anyone downstream sees it
+      this.appContent.onChange$().subscribe((raw: RawContentChange) => {
         contentReceived$.next();/*signal that content arrived*/
 
-        if(this.onRemoteChange) this.onRemoteChange(change);
+        if(this.onRemoteChange) {
+          const { slug, displayName } = parseName(raw.name);
+          this.onRemoteChange({
+            id: raw.id,
+            slug,
+            displayName,
+            content: raw.content,
+            deleted: raw.deleted
+          });
+        } /* else -- no listener registered */
       });
 
       // discovery is complete when either:
@@ -78,7 +104,7 @@ export class ContentBridge {
 
   // == Outbound (editor → appContent) ============================================
   /** forward a user edit to appContent as an OT change */
-  public forwardChange(tabId: string, from: number, to: number, insertedText: string): void {
+  public forwardChange(tabId: TabId, from: number, to: number, insertedText: string): void {
     if(!this.discoveryDone) return;/*ignore edits during discovery*/
 
     this.appContent.applyChanges(

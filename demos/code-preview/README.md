@@ -14,7 +14,7 @@
 
 <p style="text-align: center;">
   <iframe-app data-name="html-editor" height="350px" width="49%" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
-    <app-content name="index.html">
+    <app-content name="html:index.html">
 <div id="container">
   Make
   <div id="flip">
@@ -37,15 +37,15 @@
     "maxTabs": 1
   },
   "tabModes": {
-    "hTm1Kx9Pqw": "htmlmixed"
+    "html": "htmlmixed"
   },
   "tabOrder": [
-    "hTm1Kx9Pqw"
+    "html"
   ]
 }
     </app-state>
   </iframe-app> <iframe-app data-name="css-editor" height="350px" width="49%" src="charmiq://../../apps/codemirror-editor" style="border: 1px solid lightgrey;">
-    <app-content name="style.css">
+    <app-content name="css:style.css">
 @import url('https://fonts.googleapis.com/css?family=Roboto:700');
 
 body {
@@ -123,10 +123,10 @@ p {
     "maxTabs": 1
   },
   "tabModes": {
-    "cSs3Nv7Rjd": "css"
+    "css": "css"
   },
   "tabOrder": [
-    "cSs3Nv7Rjd"
+    "css"
   ]
 }
     </app-state>
@@ -142,8 +142,8 @@ The [`manifest.json`](charmiq://./manifest.json) declares a static `bundle.forma
 
 ```
 "files": {
-  "/index.html": "charmiq://./README.md?selector=iframe-app[name='html-editor']/app-content[name='index.html']&format=plain",
-  "/style.css":  "charmiq://./README.md?selector=iframe-app[name='css-editor']/app-content[name='style.css']&format=plain"
+  "/index.html": "charmiq://./README.md?selector=iframe-app[name='html-editor']/app-content[name='html:index.html']&format=plain",
+  "/style.css":  "charmiq://./README.md?selector=iframe-app[name='css-editor']/app-content[name='css:style.css']&format=plain"
 }
 ```
 

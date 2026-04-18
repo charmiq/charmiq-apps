@@ -1,12 +1,18 @@
-import { type ConfigStore, DEFAULT_MODE } from './config-store';
+import { type ConfigStore, type EditorConfig, DEFAULT_MODE } from './config-store';
 import type { EditorWrapper } from './editor-wrapper';
 import { type TabManager, UNTITLED_TAB_NAME } from './tab-manager';
+import type { TabId } from './tab-types';
 
 // owns all UI chrome: settings menu, mobile menu, toggle switches, mode selects,
 // tab bar rendering, drag-and-drop, import/export, clipboard. Desktop and mobile
 // menus are separate DOM trees driven by the same ConfigStore callbacks
 // ********************************************************************************
 // == Types =======================================================================
+/** the subset of EditorConfig keys driven by `[data-option]` toggle switches.
+ *  Excludes non-bool config keys like `maxTabs` (which has its own number input) */
+type BoolOption = 'lineNumbers' | 'lineWrapping' | 'smartIndent' | 'indentWithTabs';
+
+
 /** file extension → CodeMirror mode mapping for import */
 const EXTENSION_TO_MODE: Readonly<Record<string, string>> = {
   '.md': 'markdown',
@@ -57,7 +63,7 @@ export class Toolbar {
   private addTabBtn!: HTMLElement;
   private maxTabsInput!: HTMLInputElement;
   private mobileMaxTabsInput!: HTMLInputElement;
-  private tabToCloseId: string | null = null;
+  private tabToCloseId: TabId | null = null;
 
   // == Lifecycle =================================================================
   public constructor(tabManager: TabManager, configStore: ConfigStore, editorWrapper: EditorWrapper) {
@@ -120,8 +126,8 @@ export class Toolbar {
       // name
       const nameElement = document.createElement('span');
             nameElement.className = 'tab-name';
-            nameElement.textContent = tab.name || UNTITLED_TAB_NAME;
-            nameElement.title = tab.name || UNTITLED_TAB_NAME;
+            nameElement.textContent = tab.displayName || UNTITLED_TAB_NAME;
+            nameElement.title = tab.displayName || UNTITLED_TAB_NAME;
 
       // rename on double-click
       tabElement.addEventListener('dblclick', (e) => {
@@ -246,7 +252,7 @@ export class Toolbar {
   /** handle a toggle click from either desktop or mobile — updates config and syncs
    *  all toggles */
   private handleToggleClick(el: HTMLElement): void {
-    const option = el.dataset.option as 'lineNumbers' | 'lineWrapping' | 'smartIndent' | 'indentWithTabs';
+    const option = el.dataset.option as BoolOption;
     if(!option) return;
 
     const toggle = el.querySelector('.toggle-switch')!;
@@ -260,11 +266,13 @@ export class Toolbar {
     this.updateAllToggles({ ...this.configStore.getConfig(), [option]: newValue });
   }
 
-  /** update every toggle switch in both desktop and mobile menus */
-  private updateAllToggles(config: Readonly<Record<string, boolean>>): void {
+  /** update every toggle switch in both desktop and mobile menus. Accepts the
+   *  full EditorConfig so callers can pass it without narrowing — only the
+   *  bool-keyed `[data-option]` entries are read */
+  private updateAllToggles(config: Readonly<EditorConfig>): void {
     const allToggles = document.querySelectorAll<HTMLElement>('[data-option]');
     for(const el of allToggles) {
-      const option = el.dataset.option!;
+      const option = el.dataset.option as BoolOption;
       const toggle = el.querySelector('.toggle-switch');
       if(!toggle) continue;
 
@@ -287,8 +295,9 @@ export class Toolbar {
   private changeMode(newMode: string): void {
     this.editorWrapper.setMode(newMode);
 
-    const activeTabId = this.tabManager.getActiveTabId();
-    if(activeTabId) this.configStore.updateTabMode(activeTabId, newMode);
+    // appState mode is keyed by slug; mid-migration tabs have none yet
+    const slug = this.tabManager.getActiveTabSlug();
+    if(slug) this.configStore.updateTabMode(slug, newMode);
 
     // sync both selects
     this.modeSelect.value = newMode;
@@ -384,20 +393,20 @@ export class Toolbar {
     });
   }
 
-  private requestCloseTab(tabId: string): void {
+  private requestCloseTab(tabId: TabId): void {
     const tabs = this.tabManager.getTabs();
     if(tabs.size <= 1) return;
 
     this.tabToCloseId = tabId;
     const tab = tabs.get(tabId);
-    this.closeTabMessage.textContent = `Are you sure you want to delete "${tab?.name || UNTITLED_TAB_NAME}"? This will permanently delete the content.`;
+    this.closeTabMessage.textContent = `Are you sure you want to delete "${tab?.displayName || UNTITLED_TAB_NAME}"? This will permanently delete the content.`;
     (this.closeTabDialog as any).show();
   }
 
   // == Private: Tab Rename =======================================================
-  private startRenaming(tabId: string, nameEl: HTMLElement): void {
+  private startRenaming(tabId: TabId, nameEl: HTMLElement): void {
     const tabs = this.tabManager.getTabs();
-    const currentName = tabs.get(tabId)?.name || UNTITLED_TAB_NAME;
+    const currentName = tabs.get(tabId)?.displayName || UNTITLED_TAB_NAME;
 
     const input = document.createElement('input');
           input.type = 'text';
@@ -421,7 +430,7 @@ export class Toolbar {
   }
 
   // == Private: Tab Drag & Drop ==================================================
-  private bindTabDrag(tabElement: HTMLElement, tabId: string): void {
+  private bindTabDrag(tabElement: HTMLElement, tabId: TabId): void {
     tabElement.addEventListener('dragstart', (e) => {
       e.dataTransfer!.effectAllowed = 'move';
       e.dataTransfer!.setData('text/plain', tabId);
@@ -481,7 +490,7 @@ export class Toolbar {
     const content = this.editorWrapper.getValue();
     const tabs = this.tabManager.getTabs();
     const activeTabId = this.tabManager.getActiveTabId();
-    const tabName = (tabs.get(activeTabId!)?.name || 'file').replace(/\s+/g, '-');
+    const tabName = (tabs.get(activeTabId!)?.displayName || 'file').replace(/\s+/g, '-');
     const mode = this.tabManager.getActiveTabMode();
     const config = MODE_EXPORT[mode] || { ext: 'txt', mime: 'text/plain' };
 

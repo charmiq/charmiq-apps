@@ -49,13 +49,14 @@ const start = async () => {
   });
 
   configStore.onTabModesChange(() => {
-    // if the active tab's mode changed remotely, apply it
-    const activeTabId = tabManager.getActiveTabId();
-    if(activeTabId) {
-      const mode = configStore.getTabMode(activeTabId);
+    // if the active tab's mode changed remotely, apply it (slug-keyed lookup;
+    // tabs mid-migration have no slug yet so they fall back to default)
+    const activeSlug = tabManager.getActiveTabSlug();
+    if(activeSlug) {
+      const mode = configStore.getTabMode(activeSlug);
       editorWrapper.setMode(mode);
       toolbar.syncUI();
-    } /* else -- no active tab */
+    } /* else -- no active tab or active tab is mid-migration */
   });
 
   configStore.onTabOrderChange(() => {

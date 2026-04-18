@@ -27,7 +27,7 @@
 
 <p style="text-align: center;">
   <iframe-app data-name="editor" height="360px" width="99%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://../../apps/codemirror-editor">
-    <app-content name="shader.frag">
+    <app-content name="shader:shader.frag">
 // A tiny greeting — edit and hit Compile (or Cmd/Ctrl+Enter).
 //
 //   iResolution -- viewport size in px (vec3)
@@ -59,10 +59,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     "maxTabs": 1
   },
   "tabModes": {
-    "sHdr1Frg01": "x-shader/x-fragment"
+    "shader": "x-shader/x-fragment"
   },
   "tabOrder": [
-    "sHdr1Frg01"
+    "shader"
   ]
 }
     </app-state>

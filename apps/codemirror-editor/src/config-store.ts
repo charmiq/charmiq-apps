@@ -1,7 +1,11 @@
 import type { Observable } from 'rxjs';
 
+import type { TabSlug } from './tab-types';
+
 // owns editor configuration and tab metadata persisted via appState. All
-// reads/writes go through here — nobody else touches appState directly
+// reads/writes go through here — nobody else touches appState directly. Tab
+// metadata (`tabModes`, `tabOrder`) is keyed by `TabSlug`, never by the
+// platform-minted `TabId`, so authored documents can seed it declaratively
 // ********************************************************************************
 // == Constants ===================================================================
 /** the fallback language mode when none is specified */
@@ -18,11 +22,12 @@ export interface EditorConfig {
 }
 
 // --------------------------------------------------------------------------------
-/** shape of the full appState object */
+/** shape of the full appState object. Tab maps are slug-keyed — see the
+ *  module header for the rationale */
 interface AppState {
   readonly config?: Readonly<Partial<EditorConfig>>;
-  readonly tabModes?: Readonly<Record<string, string>>;
-  readonly tabOrder?: ReadonlyArray<string>;
+  readonly tabModes?: Readonly<Record<TabSlug, string>>;
+  readonly tabOrder?: ReadonlyArray<TabSlug>;
 }
 
 // --------------------------------------------------------------------------------
@@ -30,10 +35,10 @@ interface AppState {
 type ConfigChangedCallback = (config: Readonly<EditorConfig>) => void;
 
 /** callback when tab modes change (from a remote appState update) */
-type TabModesChangedCallback = (tabModes: Readonly<Record<string, string>>) => void;
+type TabModesChangedCallback = (tabModes: Readonly<Record<TabSlug, string>>) => void;
 
 /** callback when tab order changes (from a remote appState update) */
-type TabOrderChangedCallback = (tabOrder: ReadonlyArray<string>) => void;
+type TabOrderChangedCallback = (tabOrder: ReadonlyArray<TabSlug>) => void;
 
 // == Charmiq API (global) ========================================================
 interface CharmiqAppState {
@@ -57,8 +62,8 @@ export class ConfigStore {
   private readonly appState: CharmiqAppState;
 
   private config: EditorConfig = { ...DEFAULT_CONFIG };
-  private tabModes: Record<string, string> = {};
-  private tabOrder: string[] = [];
+  private tabModes: Record<TabSlug, string> = {};
+  private tabOrder: TabSlug[] = [];
 
   private onConfigChanged: ConfigChangedCallback | null = null;
   private onTabModesChanged: TabModesChangedCallback | null = null;
@@ -106,8 +111,8 @@ export class ConfigStore {
   // == Getters ===================================================================
   public getConfig(): Readonly<EditorConfig> { return this.config; }
   public getMaxTabs(): number { return this.config.maxTabs; }
-  public getTabMode(tabId: string): string { return this.tabModes[tabId] || DEFAULT_MODE; }
-  public getTabOrder(): ReadonlyArray<string> { return this.tabOrder; }
+  public getTabMode(slug: TabSlug): string { return this.tabModes[slug] || DEFAULT_MODE; }
+  public getTabOrder(): ReadonlyArray<TabSlug> { return this.tabOrder; }
 
   // == Writers (fetch-merge-set) ==================================================
   /** update a single editor config option in appState */
@@ -130,17 +135,17 @@ export class ConfigStore {
 
   // ------------------------------------------------------------------------------
   /** update a tab's language mode in appState */
-  public async updateTabMode(tabId: string, mode: string): Promise<void> {
-    this.tabModes[tabId] = mode;
+  public async updateTabMode(slug: TabSlug, mode: string): Promise<void> {
+    this.tabModes[slug] = mode;
 
     try {
       const state = await this.appState.get() || {};
       const currentModes = (state as AppState).tabModes || {};
-      if((currentModes as any)[tabId] === mode) return;/*already matches*/
+      if((currentModes as any)[slug] === mode) return;/*already matches*/
 
       await this.appState.set({
         ...state,
-        tabModes: { ...currentModes, [tabId]: mode }
+        tabModes: { ...currentModes, [slug]: mode }
       });
     } catch(error) {
       console.error('failed to update tab mode:', error);
@@ -148,7 +153,7 @@ export class ConfigStore {
   }
 
   /** update the tab display order in appState */
-  public async updateTabOrder(newOrder: string[]): Promise<void> {
+  public async updateTabOrder(newOrder: TabSlug[]): Promise<void> {
     this.tabOrder = newOrder;
 
     try {
@@ -165,16 +170,16 @@ export class ConfigStore {
   }
 
   /** remove a tab's mode and order entry from appState (cleanup on delete) */
-  public async removeTab(tabId: string): Promise<void> {
-    delete this.tabModes[tabId];
-    this.tabOrder = this.tabOrder.filter(id => id !== tabId);
+  public async removeTab(slug: TabSlug): Promise<void> {
+    delete this.tabModes[slug];
+    this.tabOrder = this.tabOrder.filter(s => s !== slug);
 
     try {
       const state = await this.appState.get() || {};
       const newModes = { ...(state as AppState).tabModes || {} };
-      delete (newModes as any)[tabId];
+      delete (newModes as any)[slug];
 
-      const newOrder = ((state as AppState).tabOrder || []).filter(id => id !== tabId);
+      const newOrder = ((state as AppState).tabOrder || []).filter(s => s !== slug);
 
       await this.appState.set({
         ...state,
@@ -214,14 +219,14 @@ export class ConfigStore {
 
     // tab modes
     if(state.tabModes) {
-      this.tabModes = { ...state.tabModes } as Record<string, string>;
+      this.tabModes = { ...state.tabModes } as Record<TabSlug, string>;
       if(this.onTabModesChanged) this.onTabModesChanged(this.tabModes);
     } /* else -- no tab modes */
 
     // tab order
     if(state.tabOrder && Array.isArray(state.tabOrder)) {
       if(JSON.stringify(this.tabOrder) !== JSON.stringify(state.tabOrder)) {
-        this.tabOrder = [...state.tabOrder] as string[];
+        this.tabOrder = [...state.tabOrder] as TabSlug[];
         if(this.onTabOrderChanged) this.onTabOrderChanged(this.tabOrder);
       } /* else -- tab order matches, no update needed */
     } /* else -- no tab order */

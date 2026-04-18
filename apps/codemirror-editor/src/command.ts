@@ -1,9 +1,12 @@
 import { type ConfigStore, DEFAULT_MODE } from './config-store';
 import type { EditorWrapper } from './editor-wrapper';
 import type { TabManager } from './tab-manager';
+import type { TabId } from './tab-types';
 
 // registers LLM-facing commands via window.charmiq.advertise so that agents can
-// read/write content, manage tabs, etc.
+// read/write content, manage tabs, etc. The tuple form of the raw app-content
+// name is an editor-internal convention — the LLM-facing `listTabs` exposes
+// only the display half so callers never see slugs
 // ********************************************************************************
 /** exposes the command surface for LLM / agent interaction */
 export class CommandSurface {
@@ -23,14 +26,14 @@ export class CommandSurface {
     if(!charmiq?.advertise) return/*not running inside CharmIQ — skip*/;
 
     charmiq.advertise('charmiq.command', {
-      getText: (tabId?: string) => {
+      getText: (tabId?: TabId) => {
         if(tabId) {
           const tab = this.tabManager.getTabs().get(tabId);
           return tab ? tab.content : null;
         } /* else -- no tabId provided */
         return this.editorWrapper.getValue();
       },
-      setText: async (text: string, tabId?: string) => {
+      setText: async (text: string, tabId?: TabId) => {
         const targetId = tabId || this.tabManager.getActiveTabId();
         if(!targetId) return;
 
@@ -45,12 +48,12 @@ export class CommandSurface {
         const activeTabId = this.tabManager.getActiveTabId();
         return Array.from(this.tabManager.getTabs().entries()).map(([id, tab]) => ({
           id,
-          name: tab.name,
-          mode: this.configStore.getTabMode(id),
+          name: tab.displayName/*slug is intentionally hidden from external callers*/,
+          mode: tab.slug !== null ? this.configStore.getTabMode(tab.slug) : DEFAULT_MODE,
           isActive: id === activeTabId
         }));
       },
-      switchTab: (tabId: string) => {
+      switchTab: (tabId: TabId) => {
         if(this.tabManager.getTabs().has(tabId)) {
           this.tabManager.switchTab(tabId);
           return true;
@@ -62,7 +65,7 @@ export class CommandSurface {
         await this.tabManager.create(name, content, mode);
         return true;
       },
-      removeTab: async (tabId: string) => {
+      removeTab: async (tabId: TabId) => {
         const tabs = this.tabManager.getTabs();
         if(!tabs.has(tabId) || (tabs.size <= 1)) return false;
 
