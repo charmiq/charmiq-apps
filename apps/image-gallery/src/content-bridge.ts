@@ -178,13 +178,12 @@ export class ContentBridge {
   }
 
   // ------------------------------------------------------------------------------
-  // block-level `deleted=true` events are treated as non-authoritative and
-  // skipped. The platform fires them as bookkeeping during first-save block
-  // creation (and potentially whenever the client has pending messages flushed
-  // across the postMessage bridge), which would otherwise look like a spurious
-  // "clear". For clears that are actually legit (clearBindings), the local model
-  // and shadow are updated proactively, so this doesn't need the Platform flag to
-  // drive state
+  // block-level `deleted=true` events are treated as non-authoritative and skipped.
+  // The Platform fires them as bookkeeping during first-save block creation (and
+  // potentially whenever the client has pending messages flushed across the
+  // postMessage bridge), which would otherwise look like a spurious "clear". For
+  // clears that are actually legit (clearBindings), the local model and shadow are
+  // updated proactively, so this doesn't need the Platform flag to drive state
   private handleItemsInbound(change: ContentChange): void {
     if(change.deleted) return/*bookkeeping — this never never calls remove() on items*/;
     const raw = change.content;
