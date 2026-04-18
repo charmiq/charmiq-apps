@@ -1,4 +1,4 @@
-import { generateId, generateGroupId, getElementBounds, moveElementBy, type DrawingElement } from './element-model';
+import { generateElementId, generateGroupId, getElementBounds, moveElementBy, type DrawingElement } from './element-model';
 import { getDrawingBounds, rotatePoint } from './geometry';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -33,7 +33,7 @@ export class CommandSurface {
       getElements: () => [...this.elements],
 
       addElement: (spec: any) => {
-        const el: any = { id: generateId(), ...spec };
+        const el: any = { id: generateElementId(), ...spec };
         if((el.width !== undefined) && (el.height !== undefined)) {
           el.x2 = el.x + el.width;
           el.y2 = el.y + el.height;
@@ -46,7 +46,7 @@ export class CommandSurface {
 
       addElements: (specs: any[]) => {
         const newEls = specs.map((s: any) => {
-          const el: any = { id: generateId(), ...s };
+          const el: any = { id: generateElementId(), ...s };
           if((el.width !== undefined) && (el.height !== undefined)) { el.x2 = el.x + el.width; el.y2 = el.y + el.height; }
           return el;
         });

@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, getElementBounds, isSvgBasedElement, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
+import { generateElementId, getElementBounds, isSvgBasedElement, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
 import { distanceToLine, isPointInElement, rotatePoint, snapAngle, getDrawingBounds, isPointNearLine, doRectsIntersect } from './geometry';
 import { cursorForHandle, type HandleType, type SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -26,7 +26,7 @@ export class InteractionHandler {
   private onToggleImageDropdown: (() => void) | null = null;
   private onToggleSaveDropdown: (() => void) | null = null;
   private onToggleGenerateDropdown: (() => void) | null = null;
-  private onGenerate: ((mode: string) => void) | null = null;
+  private onGenerate: ((mode: 'all' | 'selected') => void) | null = null;
   private onCopy: (() => void) | null = null;
   private onCut: (() => void) | null = null;
   private onPaste: (() => void) | null = null;
@@ -105,7 +105,7 @@ export class InteractionHandler {
     onToggleImageDropdown: () => void;
     onToggleSaveDropdown: () => void;
     onToggleGenerateDropdown: () => void;
-    onGenerate: (mode: string) => void;
+    onGenerate: (mode: 'all' | 'selected') => void;
     onCopy: () => void;
     onCut: () => void;
     onPaste: () => void;
@@ -351,7 +351,7 @@ export class InteractionHandler {
       : this.tools.currentTool === 'diamond' ? 'diamond'
       : 'line';
 
-    const id = generateId();
+    const id = generateElementId();
     const el: any = {
       id, type,
       x: point.x, y: point.y,

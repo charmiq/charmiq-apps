@@ -1,5 +1,6 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, type DrawingElement, type Point } from './element-model';
+import { closeOnClickOutside } from './dom-utils';
+import { generateElementId, type DrawingElement, type Point } from './element-model';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
 import type { ToolManager } from './tool-manager';
@@ -122,7 +123,7 @@ export class ImageHandler {
     const dropdown = document.getElementById('imageDropdown')!;
     const localInput = document.getElementById('localImageInput') as HTMLInputElement;
 
-    imageBtn.addEventListener('click', () => { this.toggleImageDropdown(); setTimeout(() => imageBtn.classList.remove('active'), 0); });
+    imageBtn.addEventListener('click', () => this.toggleImageDropdown());
 
     document.getElementById('imageFromUrlBtn')!.addEventListener('click', () => { dropdown.classList.remove('visible'); this.showImageModal(); });
     document.getElementById('imageFromFilesBtn')!.addEventListener('click', () => { dropdown.classList.remove('visible'); this.importFromFiles(); });
@@ -134,12 +135,7 @@ export class ImageHandler {
       if(files && (files.length > 0)) { this.processLocalFiles(files); (e.target as HTMLInputElement).value = ''; }
     });
 
-    document.addEventListener('click', (e: MouseEvent) => {
-      if(!imageBtn.contains(e.target as Node) && !dropdown.contains(e.target as Node)) {
-        dropdown.classList.remove('visible');
-        imageBtn.classList.remove('active');
-      }
-    });
+    closeOnClickOutside(imageBtn, dropdown);
   }
 
   // ..............................................................................
@@ -278,7 +274,7 @@ export class ImageHandler {
   // ..............................................................................
   private createImageElement(src: string, center: Point, w: number, h: number): any {
     return {
-      id: generateId(), type: 'image',
+      id: generateElementId(), type: 'image',
       x: center.x - w / 2, y: center.y - h / 2,
       x2: center.x + w / 2, y2: center.y + h / 2,
       width: w, height: h, src,

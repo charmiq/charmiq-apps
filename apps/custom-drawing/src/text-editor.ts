@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, type DrawingElement, type Point } from './element-model';
+import { generateElementId, type DrawingElement, type Point } from './element-model';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
 import type { TextMeasurement } from './text-measurement';
@@ -45,7 +45,7 @@ export class TextEditor {
   public startTextInput(point: Point): void {
     if(this.textInput || this.isFinishingTextEdit || this.currentTextElement) return;
 
-    const id = generateId();
+    const id = generateElementId();
     const textElement: any = {
       id, type: 'text',
       x: point.x, y: point.y,

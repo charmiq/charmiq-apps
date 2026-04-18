@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateId, generateGroupId, moveElementBy, type DrawingElement, type Point } from './element-model';
+import { generateElementId, generateGroupId, moveElementBy, type DrawingElement, type Point } from './element-model';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
 import type { TextMeasurement } from './text-measurement';
@@ -130,7 +130,7 @@ export class ClipboardHandler {
       const offset = this.viewport.screenSizeToCanvasSize(PASTE_OFFSET_PX * this.pasteCount);
 
       const newEls: DrawingElement[] = data.elements.map((d) => {
-        const el = { ...d, id: generateId() } as DrawingElement;
+        const el = { ...d, id: generateElementId() } as DrawingElement;
         if(d.groupId) el.groupId = gidMap.get(d.groupId);
 
         // offset position fields based on element shape
@@ -315,7 +315,7 @@ export class ClipboardHandler {
   // ==============================================================================
   private convertSvgElement(node: Element, transform: SvgTransform | null, oX: number, oY: number): DrawingElement | null {
     const tag = node.tagName.toLowerCase();
-    const id = generateId();
+    const id = generateElementId();
     const stroke = this.readAttrOrStyle(node, 'stroke') || 'none';
     const fill   = this.readAttrOrStyle(node, 'fill')   || 'none';
     const sw     = parseFloat(this.readAttrOrStyle(node, 'stroke-width') || '1');

@@ -1,3 +1,4 @@
+import { closeOnClickOutside } from './dom-utils';
 import { getElementBounds, type DrawingElement } from './element-model';
 import { getDrawingBounds } from './geometry';
 import { ensureGoogleFontsLoaded } from './google-fonts';
@@ -68,7 +69,7 @@ export class ExportHandler {
     const saveBtn = document.getElementById('saveBtn')!;
     const dropdown = document.getElementById('saveDropdown')!;
 
-    saveBtn.addEventListener('click', () => { this.toggleSaveDropdown(); setTimeout(() => saveBtn.classList.remove('active'), 0); });
+    saveBtn.addEventListener('click', () => this.toggleSaveDropdown());
 
     document.getElementById('exportAllBtn')!.addEventListener('click', () => { this.exportMode = 'all'; this.exportToPNG('download'); dropdown.classList.remove('visible'); });
     document.getElementById('exportSelectedBtn')!.addEventListener('click', () => { this.exportMode = 'selected'; this.exportToPNG('download'); dropdown.classList.remove('visible'); });
@@ -76,12 +77,7 @@ export class ExportHandler {
     document.getElementById('clipboardBtn')!.addEventListener('click', () => { this.exportToPNG('clipboard'); dropdown.classList.remove('visible'); });
     document.getElementById('saveToFilesBtn')!.addEventListener('click', () => { this.exportToPNG('files'); dropdown.classList.remove('visible'); });
 
-    document.addEventListener('click', (e: MouseEvent) => {
-      if(!saveBtn.contains(e.target as Node) && !dropdown.contains(e.target as Node)) {
-        dropdown.classList.remove('visible');
-        saveBtn.classList.remove('active');
-      } /* else -- click was inside dropdown or button */
-    });
+    closeOnClickOutside(saveBtn, dropdown);
   }
 
   public toggleSaveDropdown(): void {

@@ -143,11 +143,14 @@ export const isSvgBasedElement = (el: DrawingElement): el is SvgPathElement | Sv
   isSvgOffsetElement(el) || (el.type === 'svg-circle');
 
 // == Id Generation ===============================================================
-export const generateId = (): string =>
-  'el_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+// IDs include a base36 timestamp for rough creation ordering plus a random
+// suffix to avoid collisions when several are generated in the same
+// millisecond (batch paste, multi-image generation, etc)
+export const generateElementId = (): string =>
+  'el_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
 
 export const generateGroupId = (): string =>
-  'group_' + Date.now();
+  'group_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
 
 // == Position Helpers ============================================================
 // translate an element's position by dx,dy (handles all element shapes)

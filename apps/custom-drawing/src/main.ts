@@ -31,7 +31,7 @@ const interaction    = new InteractionHandler(viewport, renderer, selection, too
 const textEditor     = new TextEditor(viewport, textMeasure, renderer, selection, tools);
 const imageHandler   = new ImageHandler(viewport, renderer, selection, tools);
 const exportHandler  = new ExportHandler(textMeasure);
-const generation     = new GenerationHandler(exportHandler, renderer, selection, tools);
+const generation     = new GenerationHandler(exportHandler, renderer, selection);
 const clipboard      = new ClipboardHandler(viewport, renderer, selection, textMeasure);
 const contentBridge  = new ContentBridge(charmiq.appContent);
 const configStore    = new ConfigStore(charmiq.appState);
@@ -82,7 +82,7 @@ interaction.setCallbacks({
   onToggleImageDropdown: () => imageHandler.toggleImageDropdown(),
   onToggleSaveDropdown: () => exportHandler.toggleSaveDropdown(),
   onToggleGenerateDropdown: () => generation.toggleGenerateDropdown(),
-  onGenerate: (mode) => generation.generateFromDrawing(mode).catch(err => console.error('Generation failed:', err)),
+  onGenerate: (mode) => { void generation.generateFromDrawing(mode); },
   onCopy: () => clipboard.copySelected(),
   onCut: () => { clipboard.cutSelected(); elements = clipboard.elements; syncElements(); },
   onPaste: () => { clipboard.paste().then(() => { elements = clipboard.elements; syncElements(); }); },
