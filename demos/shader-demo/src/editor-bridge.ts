@@ -17,7 +17,6 @@ import { dbg } from './debug';
 /** minimal structural type for a CodeMirror editor command provider. The real
  *  shape is richer (import/export, etc.) but only these are required */
 interface EditorCommandProvider {
-  readonly nodeId?: string;
   listTabs():                                                  Promise<ReadonlyArray<TabInfo>>;
   getText(args?: { tabId?: string; }):                         Promise<string | null>;
   createTab(args: { name?: string; content?: string; mode?: string; }): Promise<boolean>;
@@ -72,7 +71,7 @@ export class EditorBridge {
         const p = providers[i];
         if((typeof p.listTabs === 'function') && (typeof p.getText === 'function') && (typeof p.createTab === 'function')) {
           this.provider = p;
-          dbg('editor', `discover: matched provider #${i}`, { nodeId: p.nodeId ?? '(none)' });
+          dbg('editor', `discover: matched provider #${i}`);
           break;
         } /* else -- not the editor; keep looking */
       }
