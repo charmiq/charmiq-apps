@@ -1,4 +1,5 @@
-import { Subject, Subscription, type Observable } from 'rxjs';
+import { timer, type Observable, Subject, Subscription } from 'rxjs';
+import { retry } from 'rxjs/operators';
 
 import { dbg } from './debug';
 
@@ -44,6 +45,17 @@ const SHADER_TAB_NAME = 'shader.frag';
 /** capability advertised by the codemirror-editor app — same string as its
  *  manifest id */
 const EDITOR_CAPABILITY = 'ai.charm.shared.codemirror-editor';
+
+// --------------------------------------------------------------------------------
+// retry policy for `changes$()` subscription — covers the brief window during
+// sibling-iframe startup / HMR reload where the editor's nodeId is in the parent
+// registry but its widgetCapabilities map hasn't been populated yet
+/** total retry attempts before giving up */
+const CHANGES_RETRY_COUNT     = 20;
+/** per-attempt delay multiplier. attempt N waits min(N * STEP, MAX) ms */
+const CHANGES_RETRY_STEP_MS   = 100/*ms*/;
+/** ceiling on the per-attempt delay */
+const CHANGES_RETRY_MAX_MS    = 1000/*ms*/;
 
 // == Class =======================================================================
 /** subscribes to every advertised editor in the Document, filters their change
@@ -121,9 +133,18 @@ export class EditorBridge {
     dbg('editor', `discover$: ${providers.length} editor(s); subscribing to changes$`);
     for(let i=0; i<providers.length; i++) {
       const provider = providers[i];
-      const sub = provider.changes$().subscribe({
+      // retry with backoff — covers the transient "capability not found" window
+      // during sibling-iframe startup / HMR reload, and the "Provider disconnected"
+      // error when the editor iframe restarts. Each retry recreates the subscription
+      // via the proxy, so once the advertise message lands we pick up cleanly
+      const sub = provider.changes$().pipe(
+        retry({
+          count: CHANGES_RETRY_COUNT,
+          delay: (_err: unknown, attempt: number) => timer(Math.min(CHANGES_RETRY_STEP_MS * attempt, CHANGES_RETRY_MAX_MS))
+        })
+      ).subscribe({
         next:  (change: TabContentChange) => this.handleChange(i, change),
-        error: (error: unknown)           => console.error(`shader-demo: editor #${i} changes$ errored:`, error)
+        error: (error: unknown)           => console.error(`shader-demo: editor #${i} changes$ errored after retries:`, error)
       });
       this.providerSubscriptions.push(sub);
     }
