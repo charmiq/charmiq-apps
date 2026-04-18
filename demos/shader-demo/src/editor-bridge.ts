@@ -1,21 +1,27 @@
+import { Subscription, type Observable } from 'rxjs';
+
 import { dbg } from './debug';
 
 // pulls the fragment shader source from the sibling CodeMirror editor App.
 // The editor doesn't advertise a dedicated capability for its content -- it
 // only surfaces the generic `charmiq.command` block the Platform multiplexes
 // across every advertising widget. So the bridge:
-//   1. discovers all `charmiq.command` providers in the Document
-//   2. functionally probes each by calling listTabs(); the editor replies with
-//      an array of TabInfo records. Anything that rejects (method not found),
-//      returns a non-array, or returns an array of the wrong shape isn't the
-//      editor. A structural `typeof p.method === 'function'` check can't be
-//      used because the Platform's discovery proxy returns a method wrapper
-//      for EVERY property access -- any provider would satisfy it
+//   1. subscribes to `discover$('charmiq.command')` -- the Observable variant that
+//      emits the real array of WidgetProxy instances. (The Promise-based
+//      `discover()` resolves to a single self-healing proxy for the first advertiser)
+//   2. on every emission, functionally probes each proxy by calling listTabs();
+//      the editor replies with an array of TabInfo records. Anything that
+//      rejects (method not found), returns a non-array, or returns an array of
+//      the wrong shape isn't the editor. A structural `typeof p.method ===
+//      'function'` check can't be used because the Platform's discovery proxy
+//      returns a method wrapper for EVERY property access -- any provider would
+//      satisfy it
 //   3. locates the 'shader.frag' tab and reads its text on demand
 //
-// No subscription / streaming -- shader recompiles are driven by explicit
-// Compile clicks or (optional) debounced auto-compile triggered from the Platform
-// side, so a polling strategy isn't needed here
+// The subscription is kept alive so a late-joining or reloaded editor is picked
+// up without a page reload. Shader recompiles themselves are still driven by
+// explicit Compile clicks or debounced auto-compile polling -- the subscription
+// here only tracks provider identity, not text
 // ********************************************************************************
 // == Types =======================================================================
 /** minimal structural type for a CodeMirror editor command provider. The real
@@ -42,50 +48,74 @@ const SHADER_TAB_NAME = 'shader.frag';
 
 // == Class =======================================================================
 /** one-way bridge from the sibling CodeMirror editor to this demo. The provider
- *  reference is cached on first discovery; getShader() is cheap after that (single
- *  listTabs + getText round-trip across postMessage) */
+ *  reference is cached on every discover$ emission; getShader() is cheap after
+ *  that (single listTabs + getText round-trip across postMessage) */
 export class EditorBridge {
   private provider: EditorCommandProvider | null = null;
+  private subscription: Subscription | null = null;
 
   /** last source returned by getShader() -- used only for dbg delta logging */
   private lastLoggedLength: number | null = null;
 
   // == Public =====================================================================
-  /** discover + cache the editor provider. Safe to call with no CharmIQ bridge
-   *  (standalone preview) -- getShader() will then always return null */
+  /** subscribe to the editor's advertiser set. Safe to call with no CharmIQ bridge
+   *  (standalone preview) -- getShader() then always returns null. Returns as soon
+   *  as the subscription is set up; the initial match happens asynchronously on
+   *  the first emission */
   public async init(charmiq: any): Promise<void> {
-    if(!charmiq?.discover) {
+    if(!charmiq?.discover$) {
       dbg('editor', 'discover skipped (standalone — no charmiq bridge)');
       return;
     } /* else -- platform bridge is present */
 
     try {
-      const providers = await charmiq.discover('charmiq.command') as ReadonlyArray<EditorCommandProvider> | null;
-      if(!providers || (providers.length < 1)) {
-        dbg('editor', 'discover: no charmiq.command providers yet');
-        return;
-      } /* else -- at least one provider to inspect */
-
-      dbg('editor', `discover: ${providers.length} charmiq.command provider(s); probing each with listTabs()`);
-
-      // functional probe: call listTabs() on every provider in parallel. The editor
-      // replies with an array of tabs; other providers reject with 'method not found'.
-      // probeListTabs() swallows the reject into a tagged result so Promise.all never throws
-      const probes = await Promise.all(providers.map(p => probeListTabs(p)));
-      for(let i=0; i<probes.length; i++) {
-        const probe = probes[i];
-        if(probe.kind !== 'editor') {
-          dbg('editor', `discover: provider #${i} ${probe.reason}`);
-          continue;
-        } /* else -- looks like the editor */
-        this.provider = providers[i];
-        dbg('editor', `discover: matched provider #${i} (${probe.tabCount} tab(s))`);
-        break;
-      }
-      if(!this.provider) dbg('editor', 'discover: no provider matched the editor shape');
+      const providers$ = charmiq.discover$('charmiq.command') as Observable<ReadonlyArray<EditorCommandProvider>>;
+      this.subscription = providers$.subscribe((providers: ReadonlyArray<EditorCommandProvider>) => {
+        void this.matchEditorProvider(providers);
+      });
     } catch(error) {
-      console.error('shader-demo: failed to discover codemirror-editor:', error);
+      console.error('shader-demo: failed to subscribe to charmiq.command:', error);
     }
+  }
+
+  // ------------------------------------------------------------------------------
+  /** release the discovery subscription. Safe to call if init() was never run */
+  public destroy(): void {
+    if(this.subscription) this.subscription.unsubscribe();
+    this.subscription = null;
+    this.provider = null;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** probe every provider in the current snapshot and update `this.provider` to
+   *  the first one that replies with an editor-shaped tab list. Called on every
+   *  discover$ emission so a reloaded editor (new proxy identity) is picked up */
+  private async matchEditorProvider(providers: ReadonlyArray<EditorCommandProvider>): Promise<void> {
+    if(providers.length < 1) {
+      if(this.provider) dbg('editor', 'discover$: all providers gone; clearing cached editor');
+      else              dbg('editor', 'discover$: 0 provider(s)');
+      this.provider = null;
+      return;
+    } /* else -- at least one provider to probe */
+
+    dbg('editor', `discover$: ${providers.length} provider(s); probing each with listTabs()`);
+
+    // functional probe: call listTabs() on every provider in parallel. The editor
+    // replies with an array of tabs; other providers reject with 'method not found'.
+    // probeListTabs() swallows the reject into a tagged result so Promise.all never throws
+    const probes = await Promise.all(providers.map(p => probeListTabs(p)));
+    for(let i=0; i<probes.length; i++) {
+      const probe = probes[i];
+      if(probe.kind !== 'editor') {
+        dbg('editor', `discover$: provider #${i} ${probe.reason}`);
+        continue;
+      } /* else -- looks like the editor */
+      this.provider = providers[i];
+      dbg('editor', `discover$: matched provider #${i} (${probe.tabCount} tab(s))`);
+      return;
+    }
+    dbg('editor', 'discover$: no provider matched the editor shape');
+    this.provider = null;
   }
 
   // ------------------------------------------------------------------------------
