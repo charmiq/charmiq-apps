@@ -22,6 +22,11 @@ type AddCallback          = () => void;
  *  which browsers sometimes add automatically */
 export const DRAG_ITEM_MIME = 'application/x-charmiq-gallery-item';
 
+// == Constants ===================================================================
+/** debounce applied to slider commits so held arrow keys / rapid jogs collapse
+ *  into a single appState write instead of one write per step */
+const ZOOM_COMMIT_DEBOUNCE_MS = 180/*ms*/;
+
 // == Class =======================================================================
 /** manages the grid + lightbox DOM. Stateless wrt items — main.ts owns the
  *  item list and calls render() on every change */
@@ -54,6 +59,19 @@ export class GridView {
   private lightboxIndex: number = 0;
   private lightboxOn:    boolean = false;
 
+  // zoom interaction state:
+  //   isAdjustingZoom  true while the User is actively moving the slider
+  //                    (pointer down, key held, or last input within
+  //                    ZOOM_COMMIT_DEBOUNCE_MS). Guards external applyZoom
+  //                    from clobbering the thumb mid-drag
+  //   zoomCommitTimer  timer handle for the debounced commit — a single
+  //                    write is scheduled on release (or after the last
+  //                    keyboard step) rather than per-step
+  //   pendingZoomValue the value we'll commit when the debounce fires
+  private isAdjustingZoom:  boolean                     = false;
+  private zoomCommitTimer:  ReturnType<typeof setTimeout> | null = null;
+  private pendingZoomValue: number                      = 0;
+
   // == Lifecycle =================================================================
   public constructor() {
     this.appEl        = document.getElementById('app')!;
@@ -78,9 +96,17 @@ export class GridView {
     this.addBtn.addEventListener('click', () => this.onAdd?.());
     this.emptyAddBtn.addEventListener('click', () => this.onAdd?.());
 
-    // zoom slider live-updates the CSS var; a commit (change event) persists
-    this.zoomSlider.addEventListener('input', () => this.applyZoomFromSlider(false));
-    this.zoomSlider.addEventListener('change', () => this.applyZoomFromSlider(true));
+    // zoom slider: input events live-update the CSS var and schedule a
+    // debounced commit. pointer/key interactions bracket the "isAdjusting"
+    // window so external applyZoom doesn't yank the thumb mid-interaction
+    this.zoomSlider.addEventListener('pointerdown', () => { this.isAdjustingZoom = true; });
+    this.zoomSlider.addEventListener('keydown',     () => { this.isAdjustingZoom = true; });
+    this.zoomSlider.addEventListener('input',       () => this.onSliderInput());
+    // pointerup/keyup/blur just flush the debounce immediately if one's pending
+    this.zoomSlider.addEventListener('pointerup',     () => this.flushZoomCommit());
+    this.zoomSlider.addEventListener('pointercancel', () => this.flushZoomCommit());
+    this.zoomSlider.addEventListener('keyup',         () => this.flushZoomCommit());
+    this.zoomSlider.addEventListener('blur',          () => this.flushZoomCommit());
 
     // lightbox controls
     this.lbCloseBtn.addEventListener('click', () => this.closeLightbox());
@@ -135,8 +161,10 @@ export class GridView {
 
   // ------------------------------------------------------------------------------
   /** apply the given zoom size directly (used when config store publishes a
-   *  change from a remote update) */
+   *  change from a remote update). No-ops while the User is actively
+   *  interacting with the slider so a remote echo can't yank the thumb */
   public applyZoom(zoomSize: number): void {
+    if(this.isAdjustingZoom) return;/*User is mid-interaction — defer to their next commit*/
     this.zoomSlider.value = String(zoomSize);
     document.documentElement.style.setProperty('--grid-min', `${zoomSize}px`);
   }
@@ -204,12 +232,33 @@ export class GridView {
       : `${n} item${n === 1 ? '' : 's'}`;
   }
 
-  // ------------------------------------------------------------------------------
-  /** read the current slider value and either apply it live or commit it */
-  private applyZoomFromSlider(commit: boolean): void {
+  // == Zoom slider ===============================================================
+  /** called on each slider `input` event. Applies the visual preview, marks
+   *  the slider as actively adjusting, and (re)schedules a debounced commit */
+  private onSliderInput(): void {
     const z = parseInt(this.zoomSlider.value, 10);
     document.documentElement.style.setProperty('--grid-min', `${z}px`);
-    if(commit) this.onZoomCommit?.(z);
+
+    this.isAdjustingZoom  = true;
+    this.pendingZoomValue = z;
+
+    if(this.zoomCommitTimer !== null) clearTimeout(this.zoomCommitTimer);
+    this.zoomCommitTimer = setTimeout(() => this.flushZoomCommit(), ZOOM_COMMIT_DEBOUNCE_MS);
+  }
+
+  // ------------------------------------------------------------------------------
+  /** emit the pending commit right now (if any) and clear the interaction
+   *  window. Called on pointerup/keyup/blur and by the debounce timer */
+  private flushZoomCommit(): void {
+    if(this.zoomCommitTimer !== null) {
+      clearTimeout(this.zoomCommitTimer);
+      this.zoomCommitTimer = null;
+    } /* else -- no timer to clear */
+
+    if(this.isAdjustingZoom) {
+      this.isAdjustingZoom = false;
+      this.onZoomCommit?.(this.pendingZoomValue);
+    } /* else -- nothing pending */
   }
 
   // == Lightbox ==================================================================

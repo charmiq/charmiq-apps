@@ -1,7 +1,7 @@
 import type { CharmIQServices } from '../../../shared/charmiq-services';
 import { AssetResolver } from './asset-resolver';
 import { CommandSurface, type GalleryActions } from './command-surface';
-import { ConfigStore, type GalleryConfig, type OrientationMode } from './config-store';
+import { ConfigStore, type ConfigField, type GalleryConfig, type OrientationMode } from './config-store';
 import { ContentBridge, type BindingRecord, type GalleryItem } from './content-bridge';
 import { GalleryModel } from './gallery-model';
 import { GridView } from './grid-view';
@@ -248,10 +248,14 @@ document.getElementById('app')!.addEventListener('gallery:escape', () => {
 });
 
 // == Config Bridge — apply config to DOM / modules ===============================
-const applyConfig = (cfg: Readonly<GalleryConfig>): void => {
-  applyOrientation(cfg.orientation);
-  gridView.applyZoom(cfg.zoomSize);
-  syncSlotStrip()/*slot definitions may have changed*/;
+// `changedFields` lets us only re-run the side-effect for fields that actually
+// moved; pass `null` to force a full apply (e.g. initial load)
+const applyConfig = (cfg: Readonly<GalleryConfig>, changedFields: ReadonlySet<ConfigField> | null): void => {
+  const touched = (f: ConfigField) => (changedFields === null) || changedFields.has(f);
+
+  if(touched('orientation')) applyOrientation(cfg.orientation);
+  if(touched('zoomSize'))    gridView.applyZoom(cfg.zoomSize);
+  if(touched('slots'))       syncSlotStrip()/*slot set changed — rebuild strip*/;
 };
 
 // == Content Bridge — incoming updates ===========================================
@@ -281,9 +285,13 @@ const start = async (): Promise<void> => {
   const services = { commandService, assetService, generationService } as CharmIQServices;
   assetResolver.setServices(services);
 
-  // load config first so initial orientation + zoom are correct
+  // load config first so initial orientation + zoom are correct.
+  // initial apply forces every field through (null => no change filter);
+  // subsequent callbacks supply the changedFields set so unrelated fields
+  // don't re-run their side effects (e.g. a remote orientation flip won't
+  // also re-apply zoom and yank the slider)
   await configStore.init();
-  applyConfig(configStore.getConfig());
+  applyConfig(configStore.getConfig(), null);
   configStore.onConfigChange(applyConfig);
 
   // auto-orientation via ResizeObserver (no-op when explicit mode is set)

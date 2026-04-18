@@ -47,8 +47,13 @@ interface AppState {
 }
 
 // --------------------------------------------------------------------------------
-/** callback when gallery config changes (from a remote appState update) */
-type ConfigChangedCallback = (config: Readonly<GalleryConfig>) => void;
+/** fields that may report changes — lets consumers apply only what moved */
+export type ConfigField = keyof GalleryConfig;
+
+/** callback when gallery config changes. `changedFields` is the set of fields
+ *  whose value actually differs from the previous snapshot — consumers use
+ *  it to avoid re-running side effects for every unrelated update */
+type ConfigChangedCallback = (config: Readonly<GalleryConfig>, changedFields: ReadonlySet<ConfigField>) => void;
 
 // == Charmiq API (global) ========================================================
 interface CharmiqAppState {
@@ -134,20 +139,25 @@ export class ConfigStore {
   }
 
   // == Internal ==================================================================
-  /** apply an incoming appState snapshot to local state and notify callback */
+  /** apply an incoming appState snapshot to local state and notify the
+   *  callback. Each field is merged individually — a field absent from the
+   *  incoming payload keeps its current value, so partial updates from other
+   *  collaborators don't clobber unrelated fields. The callback receives the
+   *  set of fields whose value actually changed (empty => no callback) */
   private applyState(state: AppState): void {
     if(!state.config) return;/*nothing to merge*/
 
     const incoming = state.config;
     const next: GalleryConfig = { ...this.config };
-    let changed = false;
+    const changedFields = new Set<ConfigField>();
 
-    // slots (readonly array of definitions; undefined disables slot mode)
+    // slots (readonly array of definitions; undefined disables slot mode).
+    // presence check (not type check) — explicit undefined is meaningful here
     if('slots' in incoming) {
       const nextSlots = this.normalizeSlots(incoming.slots);
       if(!slotsEqual(nextSlots, next.slots)) {
         next.slots = nextSlots;
-        changed = true;
+        changedFields.add('slots');
       } /* else -- slots unchanged */
     } /* else -- slots not in this update */
 
@@ -156,7 +166,7 @@ export class ConfigStore {
       const clamped = Math.max(0, Math.floor(incoming.maxItems));
       if(clamped !== next.maxItems) {
         next.maxItems = clamped;
-        changed = true;
+        changedFields.add('maxItems');
       } /* else -- maxItems unchanged */
     } /* else -- maxItems not in this update */
 
@@ -165,7 +175,7 @@ export class ConfigStore {
       const cat = incoming.assetCategory as AssetCategory;
       if(cat !== next.assetCategory) {
         next.assetCategory = cat;
-        changed = true;
+        changedFields.add('assetCategory');
       } /* else -- assetCategory unchanged */
     } /* else -- assetCategory not in this update */
 
@@ -173,7 +183,7 @@ export class ConfigStore {
     if(typeof incoming.showLightbox === 'boolean') {
       if(incoming.showLightbox !== next.showLightbox) {
         next.showLightbox = incoming.showLightbox;
-        changed = true;
+        changedFields.add('showLightbox');
       } /* else -- showLightbox unchanged */
     } /* else -- showLightbox not in this update */
 
@@ -182,7 +192,7 @@ export class ConfigStore {
       const orient = normalizeOrientation(incoming.orientation);
       if(orient !== next.orientation) {
         next.orientation = orient;
-        changed = true;
+        changedFields.add('orientation');
       } /* else -- orientation unchanged */
     } /* else -- orientation not in this update */
 
@@ -191,12 +201,14 @@ export class ConfigStore {
       const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(incoming.zoomSize)));
       if(z !== next.zoomSize) {
         next.zoomSize = z;
-        changed = true;
+        changedFields.add('zoomSize');
       } /* else -- zoomSize unchanged */
     } /* else -- zoomSize not in this update */
 
     this.config = next;
-    if(changed && this.onConfigChanged) this.onConfigChanged({ ...this.config });
+    if((changedFields.size > 0) && this.onConfigChanged) {
+      this.onConfigChanged({ ...this.config }, changedFields);
+    } /* else -- no-op: nothing actually changed */
   }
 
   // ------------------------------------------------------------------------------
