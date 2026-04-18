@@ -76,13 +76,27 @@ export class ExportHandler {
     closeOnClickOutside(saveBtn, dropdown);
   }
 
+  // opens the save dropdown, showing the "Export Selected" option only when
+  // there's an active selection. When selection exists we also flip the default
+  // exportMode to 'selected' and highlight that option so the user's next
+  // action targets the selection rather than the whole drawing
   public toggleSaveDropdown(): void {
     const dd = document.getElementById('saveDropdown')!;
     const visible = dd.classList.contains('visible');
     document.querySelectorAll('.dropdown, .action-dropdown').forEach(d => d.classList.remove('visible'));
     if(!visible) {
       const selBtn = document.getElementById('exportSelectedBtn')!;
-      selBtn.style.display = this.selectedElements.length > 0 ? 'flex' : 'none';
+      const allBtn = document.getElementById('exportAllBtn')!;
+      if(this.selectedElements.length > 0) {
+        selBtn.style.display = 'flex';
+        this.exportMode = 'selected';
+        selBtn.style.background = '#e8f0fe';
+        allBtn.style.background = 'none';
+      } else {
+        selBtn.style.display = 'none';
+        this.exportMode = 'all';
+        allBtn.style.background = '#e8f0fe';
+      }
       dd.classList.add('visible');
     } /* else -- was visible */
   }
