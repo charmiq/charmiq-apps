@@ -1,3 +1,4 @@
+import type { CharmIQServices } from '../../../shared/charmiq-services';
 import { closeOnClickOutside } from './dom-utils';
 import { getElementBounds, type DrawingElement } from './element-model';
 import { getDrawingBounds } from './geometry';
@@ -7,15 +8,10 @@ import type { TextMeasurement } from './text-measurement';
 
 // PNG export — download, clipboard, save to Files
 // ********************************************************************************
-interface CharmIQServices {
-  commandService: any;
-  assetService: any;
-}
-
 // == ExportHandler ===============================================================
 export class ExportHandler {
   private readonly textMeasure: TextMeasurement;
-  private services: CharmIQServices = { commandService: null, assetService: null };
+  private services: CharmIQServices | null = null;
 
   public elements: DrawingElement[] = [];
   public selectedElements: DrawingElement[] = [];
@@ -269,11 +265,12 @@ export class ExportHandler {
 
   // ------------------------------------------------------------------------------
   private async saveToFiles(blob: Blob): Promise<void> {
-    const { assetService, commandService } = this.services;
-    if(!assetService) throw new Error('Asset service not available');
+    if(!this.services) throw new Error('Services not available');
+    const { assetService } = this.services;
     const name = `drawing-export-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
     const upload = await assetService.uploadLocalFolderAsset(undefined, 'image/png', blob, name, 'Drawing export');
     const assetId = await assetService.getUploadAssetId(upload);
+    if(!assetId) throw new Error('Upload did not produce an asset id');
     await assetService.waitForStoredAsset(assetId);
   }
 }

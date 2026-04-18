@@ -1,24 +1,21 @@
+import type { CharmIQServices } from '../../../shared/charmiq-services';
 import type { CanvasViewport } from './canvas-viewport';
 import { closeOnClickOutside } from './dom-utils';
 import { generateElementId, type DrawingElement, type Point } from './element-model';
+import { notifyError } from './notifications';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
 import type { ToolManager } from './tool-manager';
 
 // image import (URL modal, local files, clipboard, drag-drop, Files)
 // ********************************************************************************
-interface CharmIQServices {
-  commandService: any;
-  assetService: any;
-}
-
 // == ImageHandler ================================================================
 export class ImageHandler {
   private readonly viewport: CanvasViewport;
   private readonly renderer: SvgRenderer;
   private readonly selection: SelectionManager;
   private readonly tools: ToolManager;
-  private services: CharmIQServices = { commandService: null, assetService: null };
+  private services: CharmIQServices | null = null;
 
   private pendingImagePoint: Point | null = null;
   private editingImageElement: any | null = null;
@@ -164,20 +161,20 @@ export class ImageHandler {
 
   // -- private import helpers ----------------------------------------------------
   private async importFromFiles(): Promise<void> {
-    const { commandService, assetService } = this.services;
-    if(!commandService || !assetService) return;
+    if(!this.services) return;
+    const { assetService, commandService } = this.services;
 
     try {
-      const assetIds = await commandService.execute({ id: 'modal.mediaImport.openAndResolve', args: { assetCategory: 'image' } });
+      const assetIds = await commandService.execute<string[] | null>({ id: 'modal.mediaImport.openAndResolve', args: { assetCategory: 'image' } });
       if(!assetIds || (assetIds.length < 1)) return;
 
-      const copyResults = await commandService.execute({ id: 'asset.copy.toRichtextAsset', args: { assetIds } });
+      const copyResults = await commandService.execute<Array<{ assetId: string; downloadUrl: string }>>({ id: 'asset.copy.toRichtextAsset', args: { assetIds } });
       const center = this.canvasCenter();
       const newEls: DrawingElement[] = [];
       let offsetX = 0;
 
       for (const assetId of assetIds) {
-        const copy = copyResults.find((c: any) => c.assetId === assetId);
+        const copy = copyResults.find(c => c.assetId === assetId);
         if(!copy) continue;
         await assetService.waitForStoredAsset(assetId);
         try {
@@ -193,8 +190,7 @@ export class ImageHandler {
 
   // ..............................................................................
   private async importFromClipboard(): Promise<void> {
-    const { assetService, commandService } = this.services;
-    if(!assetService) return;
+    if(!this.services) return;
 
     try {
       const items = await navigator.clipboard.read();
@@ -206,7 +202,7 @@ export class ImageHandler {
         }
         if(blob) break;
       }
-      if(!blob || !mime) { alert('No image found in clipboard.'); return; }
+      if(!blob || !mime) { notifyError(this.services.commandService, 'Clipboard import', 'No image found in clipboard.'); return; }
 
       const ext = mime.split('/')[1] || 'png';
       const name = `clipboard-image-${Date.now()}.${ext}`;
@@ -216,7 +212,7 @@ export class ImageHandler {
       this.commitNewElements([el]);
     } catch(error) {
       console.error('Clipboard import failed:', error);
-      if((error as any).name === 'NotAllowedError') alert('Clipboard access denied.');
+      if((error as Error)?.name === 'NotAllowedError') notifyError(this.services.commandService, 'Clipboard import', 'Clipboard access denied.');
     }
   }
 
@@ -250,11 +246,13 @@ export class ImageHandler {
 
   // ..............................................................................
   private async uploadBlob(blob: Blob, name: string, mime: string): Promise<string> {
+    if(!this.services) throw new Error('Services not available');
     const { assetService, commandService } = this.services;
     const uploadResult = await assetService.uploadLocalFolderAsset(undefined, mime, blob, name, `Uploaded ${new Date().toLocaleString()}`);
     const assetId = await assetService.getUploadAssetId(uploadResult);
+    if(!assetId) throw new Error('Upload did not produce an asset id');
     await assetService.waitForStoredAsset(assetId);
-    const copies = await commandService.execute({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
+    const copies = await commandService.execute<Array<{ downloadUrl: string }>>({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
     return copies[0].downloadUrl;
   }
 

@@ -1,3 +1,4 @@
+import type { CharmIQServices } from '../../../shared/charmiq-services';
 import { closeOnClickOutside } from './dom-utils';
 import { generateElementId, type DrawingElement, type ImageElement } from './element-model';
 import type { ExportHandler } from './export-handler';
@@ -7,18 +8,12 @@ import type { SvgRenderer } from './svg-renderer';
 
 // AI image generation from the drawing canvas
 // ********************************************************************************
-interface CharmIQServices {
-  commandService: any;
-  assetService: any;
-  generationService: any;
-}
-
 // == GenerationHandler ===========================================================
 export class GenerationHandler {
   private readonly exportHandler: ExportHandler;
   private readonly renderer: SvgRenderer;
   private readonly selection: SelectionManager;
-  private services: CharmIQServices = { commandService: null, assetService: null, generationService: null };
+  private services: CharmIQServices | null = null;
 
   elements: DrawingElement[] = [];
   generateMode: 'all' | 'selected' = 'all';
@@ -33,8 +28,8 @@ export class GenerationHandler {
 
   // ==============================================================================
   public async generateFromDrawing(mode: 'all' | 'selected' | null = null): Promise<void> {
-    const { commandService, assetService, generationService } = this.services;
-    if(!commandService || !assetService || !generationService) { this.notifyGenerationFailed('Required services not available'); return/*nothing more to do*/; }
+    if(!this.services) { this.notifyGenerationFailed('Required services not available'); return/*nothing more to do*/; }
+    const { assetService, commandService, generationService } = this.services;
     if(this.elements.length < 1) { notifyError(commandService, 'Nothing to generate', 'Please create some drawing elements first.'); return/*nothing more to do*/; }
 
     try {
@@ -51,7 +46,7 @@ export class GenerationHandler {
       const dataUrl = canvas.toDataURL('image/png');
 
       // open generation modal
-      const result = await commandService.execute({
+      const result = await commandService.execute<{ prompt: string; generationProvider: string; generationConfiguration: unknown } | null>({
         id: 'modal.generation.image.editor.openAndResolve',
         args: { parentFolderId: undefined, imageUrls: [dataUrl] },
       });
@@ -65,7 +60,7 @@ export class GenerationHandler {
         const asset = await assetService.waitForStoredAsset(assetId);
         if(!asset || (asset.store.storeStatus !== 'stored')) continue;
 
-        const copies = await commandService.execute({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
+        const copies = await commandService.execute<Array<{ downloadUrl: string }>>({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
         if(!copies?.[0]) continue;
 
         const img = new Image();
@@ -130,7 +125,7 @@ export class GenerationHandler {
 
   // ==============================================================================
   private notifyGenerationFailed(description: string): void {
-    const cmd = this.services.commandService;
+    const cmd = this.services?.commandService;
     if(cmd) notifyError(cmd, 'Image generation failed', description);
     else console.error('Generation failed:', description);
   }
