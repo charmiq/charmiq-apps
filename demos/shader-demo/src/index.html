@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shader Demo</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Helvetica+Neue:wght@400;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- == Canvas stage ====================================================== -->
+    <main class="stage" id="stage">
+      <canvas class="canvas" id="canvas"></canvas>
+      <div class="status-overlay" id="statusOverlay" hidden>
+        <span class="status-text" id="statusText">Waiting for shader…</span>
+      </div>
+    </main>
+
+    <!-- == Error strip (shown only when compilation fails) =================== -->
+    <section class="error-strip" id="errorStrip" hidden>
+      <pre class="error-log" id="errorLog"></pre>
+    </section>
+
+    <!-- == Control bar ======================================================= -->
+    <footer class="controls">
+      <div class="controls-group transport">
+        <button class="icon-btn" id="playPauseBtn" title="Play / Pause" aria-label="Play / Pause">
+          <svg class="icon-play"  xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+          <svg class="icon-pause" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" hidden><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+        </button>
+        <button class="icon-btn" id="resetBtn" title="Reset time" aria-label="Reset time">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        </button>
+      </div>
+
+      <div class="controls-group telemetry">
+        <span class="mono" id="timeDisplay">0:00.00</span>
+        <span class="dot">·</span>
+        <span class="mono" id="fpsDisplay">— fps</span>
+        <span class="dot">·</span>
+        <span class="mono" id="resolutionDisplay">— × —</span>
+      </div>
+
+      <div class="controls-group actions">
+        <button class="text-btn" id="samplersBtn" title="Channel sampler settings">Samplers</button>
+        <label class="auto-toggle" title="Recompile automatically as the shader text changes">
+          <input type="checkbox" id="autoCompileCheckbox">
+          <span>Auto</span>
+        </label>
+        <button class="text-btn primary" id="compileBtn" title="Compile shader (⌘/Ctrl+Enter)">Compile</button>
+        <button class="icon-btn" id="fullscreenBtn" title="Fullscreen" aria-label="Fullscreen">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        </button>
+      </div>
+    </footer>
+
+    <!-- == Samplers popover ================================================== -->
+    <div class="samplers-popover" id="samplersPopover" hidden>
+      <div class="samplers-title">Channel Samplers</div>
+      <div class="samplers-list" id="samplersList"></div>
+    </div>
+  </div>
+</body>
+</html>

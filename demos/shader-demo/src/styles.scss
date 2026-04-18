@@ -1,0 +1,289 @@
+// Swiss-typography shader player. Black/white, Helvetica + JetBrains Mono,
+// thin lines, no ornament. Matches image-gallery / codemirror-editor so the
+// three surfaces read as one family in a document
+// ********************************************************************************
+// == Variables ===================================================================
+:root {
+  --bg:            #ffffff;
+  --text-main:    #000000;
+  --text-sub:     #757575;
+  --text-muted:   #9a9a9a;
+  --rule:         #000000;
+  --rule-soft:    #e0e0e0;
+  --surface-soft: #f6f6f6;
+  --error:        #b91c1c;
+  --error-bg:     #fdf2f2;
+  --accent:       #000000;
+}
+
+// == Reset =======================================================================
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: 'Helvetica Neue', 'Inter', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+[hidden] { display: none !important; }
+
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-sub);
+  letter-spacing: 0.01em;
+}
+
+// == App shell ===================================================================
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg);
+  position: relative;
+}
+
+// == Stage =======================================================================
+.stage {
+  flex: 1;
+  position: relative;
+  background: #000/*canvas fallback before first render*/;
+  overflow: hidden;
+  min-height: 0/*allow flex shrink so the controls stay visible*/;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated/*keep shader output crisp at low DPRs*/;
+}
+
+.status-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.status-text {
+  color: #ffffff;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+// == Error strip =================================================================
+.error-strip {
+  border-top: 1px solid var(--rule-soft);
+  background: var(--error-bg);
+  padding: 8px 12px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.error-log {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: var(--error);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+// == Controls ====================================================================
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--rule);
+  background: var(--bg);
+  height: 44px;
+  flex-shrink: 0;
+}
+
+.controls-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.telemetry {
+  flex: 1;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+
+  .dot { color: var(--text-muted); }
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background-color 80ms linear;
+
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover  { background: var(--surface-soft); }
+  &:active { background: #ececec; }
+
+  &:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    background: transparent;
+  }
+}
+
+.text-btn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background-color 80ms linear, border-color 80ms linear;
+
+  &:hover  { border-color: var(--rule); background: var(--surface-soft); }
+  &:active { background: #ececec; }
+
+  &.primary {
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+
+    &:hover  { background: #1a1a1a; }
+    &:active { background: #333333; }
+  }
+
+  &:disabled {
+    color: var(--text-muted);
+    border-color: var(--rule-soft);
+    cursor: not-allowed;
+    background: transparent;
+  }
+}
+
+.auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-sub);
+  user-select: none;
+  cursor: pointer;
+
+  input[type="checkbox"] {
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  &:hover { color: var(--text-main); }
+}
+
+// == Samplers popover ============================================================
+.samplers-popover {
+  position: absolute;
+  right: 12px;
+  bottom: 52px/*sit above the controls row*/;
+  z-index: 20;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 12px;
+  min-width: 260px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.samplers-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-sub);
+  margin-bottom: 10px;
+}
+
+.samplers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sampler-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+
+  .sampler-label {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-main);
+  }
+
+  select {
+    font-family: inherit;
+    font-size: 11px;
+    height: 22px;
+    padding: 0 4px;
+    background: var(--bg);
+    color: var(--text-main);
+    border: 1px solid var(--rule-soft);
+    border-radius: 2px;
+    cursor: pointer;
+
+    &:hover  { border-color: var(--rule); }
+    &:focus  { outline: none; border-color: var(--rule); }
+  }
+
+  &.unbound {
+    opacity: 0.4;
+
+    select { cursor: not-allowed; }
+  }
+}
+
+// == Compact (narrow iframe) =====================================================
+@media (max-width: 520px) {
+  .controls        { gap: 8px; padding: 6px 8px; }
+  .telemetry       { display: none; }
+  .auto-toggle     { display: none; }
+  .samplers-popover { right: 4px; left: 4px; min-width: 0; }
+}

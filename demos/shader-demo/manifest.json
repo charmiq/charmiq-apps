@@ -1,0 +1,69 @@
+{
+  "id": "ai.charm.demos.shader-demo",
+  "name": "Shader Demo",
+  "description": "A minimal Shadertoy-style live GLSL player — pulls its fragment shader from a sibling CodeMirror editor and its iChannel textures from a sibling Image Gallery",
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
+    },
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.1",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators"
+      }
+    }
+  },
+  "runtime": {
+    "appState": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "play",
+        "description": "Start playback (no-op if already playing)",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "pause",
+        "description": "Pause playback (no-op if already paused)",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "reset",
+        "description": "Reset iTime to zero and iFrame to 0 (playback state preserved)",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "compile",
+        "description": "Pull the shader source from the sibling CodeMirror editor and (re)compile. Returns { ok, infoLog }",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "ok":      { "type": "boolean" },
+            "infoLog": { "type": "string" }
+          },
+          "required": ["ok", "infoLog"]
+        }
+      },
+      {
+        "name": "setAutoCompile",
+        "description": "Toggle auto-compile on shader text change (debounced)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        },
+        "outputSchema": { "type": "boolean" }
+      }
+    ]
+  }
+}
