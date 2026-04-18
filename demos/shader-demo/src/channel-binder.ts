@@ -1,5 +1,6 @@
 import { BehaviorSubject, Subscription, type Observable } from 'rxjs';
 
+import { dbg } from './debug';
 import type { ChannelState } from './renderer';
 
 // discovers the sibling Image Gallery's `ai.charm.shared.imageGallery`
@@ -107,14 +108,25 @@ export class ChannelBinder {
    *  bridge (standalone preview) -- the binder just stays idle and publishes a
    *  4-slot array of empties */
   public async init(charmiq: any): Promise<void> {
-    if(!charmiq?.discover) return/*standalone/dev mode -- nothing to attach to*/;
+    if(!charmiq?.discover) {
+      dbg('gallery', 'discover skipped (standalone — no charmiq bridge)');
+      return;
+    } /* else -- platform bridge is present */
 
     try {
       const cap = await charmiq.discover('ai.charm.shared.imageGallery') as GalleryCapability | null;
-      if(!cap) return/*gallery not present in this document*/;
+      if(!cap) {
+        dbg('gallery', 'discover: no ai.charm.shared.imageGallery provider in this Document');
+        return;
+      } /* else -- gallery found */
       this.gallery = cap;
+      dbg('gallery', 'discover: attached to gallery capability');
 
       this.subscription = cap.state$().subscribe((state: Readonly<PublicState>) => {
+        dbg('gallery', 'state$', {
+          items: state.items.length,
+          slots: state.slots.map(s => ({ id: s.id, itemId: s.itemId, meta: s.meta }))
+        });
         this.reconcile(state);
       });
     } catch(error) {
@@ -176,11 +188,14 @@ export class ChannelBinder {
 
     if(this.gallery?.setSlotMeta) {
       try {
+        dbg('gallery', `setSlotMeta ${slotId} ->`, meta);
         await this.gallery.setSlotMeta(slotId, meta);
       } catch(error) {
         console.error('shader-demo: failed to persist sampler meta:', error);
       }
-    } /* else -- no gallery / no setter; change is local-only */
+    } else {
+      dbg('gallery', `setSlotMeta ${slotId}: no persist target (local-only)`, meta);
+    }
   }
 
   // == Internal ===================================================================
@@ -204,6 +219,7 @@ export class ChannelBinder {
       // slot cleared -- release texture
       if(!item) {
         if(current) {
+          dbg('gallery', `reconcile ${slotId}: cleared (was ${current.url})`);
           this.gl.deleteTexture(current.texture);
           this.slots[i] = null;
           anyChanged = true;
@@ -214,6 +230,7 @@ export class ChannelBinder {
       // same image -- only meta may have changed
       if(current && (current.url === item.downloadUrl)) {
         if(!metaEqual(current.meta, meta)) {
+          dbg('gallery', `reconcile ${slotId}: meta changed`, { from: current.meta, to: meta });
           current.meta = meta;
           this.applySamplerParams(current);
           anyChanged = true;
@@ -223,9 +240,12 @@ export class ChannelBinder {
 
       // release the outgoing texture now; the incoming one loads async
       if(current) {
+        dbg('gallery', `reconcile ${slotId}: swap (${current.url} -> ${item.downloadUrl})`);
         this.gl.deleteTexture(current.texture);
         this.slots[i] = null;
-      } /* else -- nothing to release */
+      } else {
+        dbg('gallery', `reconcile ${slotId}: new binding -> ${item.downloadUrl}`, { meta });
+      }
 
       void this.loadTexture(i, item, meta);
       anyChanged = true;
@@ -263,9 +283,11 @@ export class ChannelBinder {
     this.publish();
 
     try {
+      const started = performance.now();
       const bitmap = await decodeImage(item.downloadUrl);
       // bail if the User changed the binding while the image was loading
       if(this.slots[index] !== slot) {
+        dbg('gallery', `loadTexture iChannel${index}: superseded during load (${item.downloadUrl})`);
         bitmap.close?.();
         return;
       } /* else -- still the active binding for this channel */
@@ -277,13 +299,18 @@ export class ChannelBinder {
 
       slot.width  = bitmap.width;
       slot.height = bitmap.height;
-      if(needsMipmap(slot.meta.wrap, bitmap.width, bitmap.height)) {
-        gl.generateMipmap(gl.TEXTURE_2D);
-      } /* else -- non-POT or clamped; mipmaps skipped */
+      const mipmapped = needsMipmap(slot.meta.wrap, bitmap.width, bitmap.height);
+      if(mipmapped) gl.generateMipmap(gl.TEXTURE_2D);
       this.applySamplerParams(slot);
       gl.bindTexture(gl.TEXTURE_2D, null);
 
       bitmap.close?.();
+      dbg('gallery', `loadTexture iChannel${index}: ready`, {
+        url: item.downloadUrl,
+        size: `${bitmap.width}x${bitmap.height}`,
+        ms: Math.round(performance.now() - started),
+        mipmapped
+      });
       this.publish();
     } catch(error) {
       console.error('shader-demo: failed to load image for channel', index, error);

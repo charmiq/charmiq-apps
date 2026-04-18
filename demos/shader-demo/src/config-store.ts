@@ -3,6 +3,9 @@ import type { Observable } from 'rxjs';
 // owns the small amount of configuration this demo persists via appState:
 //   * autoCompile          -- recompile automatically after debounced edits
 //   * autoCompileDebounceMs -- how long to wait after the last edit
+//   * debug                -- `[shader-demo:*]` console logging toggle. Lives
+//                             here because sandboxed App iframes have no
+//                             localStorage, so the flag rides on appState
 //
 // Shader source itself is NOT stored here -- it lives in the sibling editor
 // App's appContent. Channel bindings and sampler meta live on the sibling gallery
@@ -14,6 +17,7 @@ import type { Observable } from 'rxjs';
 export interface ShaderDemoConfig {
   readonly autoCompile:           boolean;
   readonly autoCompileDebounceMs: number;
+  readonly debug:                 boolean;
 }
 
 // --------------------------------------------------------------------------------
@@ -37,7 +41,8 @@ interface CharmiqAppState {
 // == Defaults ====================================================================
 const DEFAULT_CONFIG: Readonly<ShaderDemoConfig> = {
   autoCompile:           false/*Compile button by default*/,
-  autoCompileDebounceMs: 800
+  autoCompileDebounceMs: 800,
+  debug:                 true/*on by default while the tool is new*/
 };
 
 /** clamp bounds for debounce -- too low spams the GPU, too high feels broken */
@@ -111,6 +116,7 @@ export class ConfigStore {
 
     let autoCompile           = current.autoCompile;
     let autoCompileDebounceMs = current.autoCompileDebounceMs;
+    let debug                 = current.debug;
 
     if(typeof incoming.autoCompile === 'boolean') {
       if(incoming.autoCompile !== autoCompile) {
@@ -127,7 +133,14 @@ export class ConfigStore {
       } /* else -- debounce unchanged */
     } /* else -- debounce not in this update */
 
-    this.config = { autoCompile, autoCompileDebounceMs };
+    if(typeof incoming.debug === 'boolean') {
+      if(incoming.debug !== debug) {
+        debug = incoming.debug;
+        changedFields.add('debug');
+      } /* else -- debug unchanged */
+    } /* else -- debug not in this update */
+
+    this.config = { autoCompile, autoCompileDebounceMs, debug };
     if((changedFields.size > 0) && this.onConfigChanged) {
       this.onConfigChanged({ ...this.config }, changedFields);
     } /* else -- nothing actually changed */

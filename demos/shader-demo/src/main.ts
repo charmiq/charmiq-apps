@@ -1,5 +1,6 @@
 import { ChannelBinder, CHANNEL_SLOT_IDS, type SamplerMeta } from './channel-binder';
 import { ConfigStore } from './config-store';
+import { dbg, setDbgEnabled } from './debug';
 import { EditorBridge } from './editor-bridge';
 import { Playback, type PlaybackTelemetry } from './playback';
 import { Renderer } from './renderer';
@@ -63,15 +64,29 @@ let compileInFlight = false;
 /** pull the shader from the editor + compile it. Shows the infoLog in the error
  *  strip on failure; hides the strip on success */
 const compile = async (): Promise<{ ok: boolean; infoLog: string; }> => {
-  if(compileInFlight) return { ok: false, infoLog: 'compile already in flight' };
+  if(compileInFlight) {
+    dbg('compile', 'skipped — already in flight');
+    return { ok: false, infoLog: 'compile already in flight' };
+  } /* else -- not already running */
   compileInFlight = true;
   toolbar.setCompiling(true);
 
+  const started = performance.now();
   try {
-    const source = await editorBridge.getShader() ?? FALLBACK_SHADER;
+    const fromEditor = await editorBridge.getShader();
+    const source = fromEditor ?? FALLBACK_SHADER;
+    const usingFallback = (fromEditor === null);
     lastCompiledSource = source;
 
     const result = renderer.setShader(source);
+    dbg('compile', result.ok ? 'ok' : 'FAILED', {
+      sourceChars:   source.length,
+      usingFallback,
+      ms:            Math.round(performance.now() - started),
+      infoLogChars:  result.infoLog.length
+    });
+    if(!result.ok) dbg('compile', 'infoLog:\n' + result.infoLog);
+
     if(result.ok) {
       hideError();
       hideStatus();
@@ -101,13 +116,19 @@ const pollAndScheduleAutoCompile = async (): Promise<void> => {
   if(source === null) return;/*editor unreachable; try again next tick*/
 
   if(source !== lastObservedSource) {
+    const debounceMs = configStore.getConfig().autoCompileDebounceMs;
+    dbg('compile', `autoCompile: source changed (${source.length} chars); (re)scheduling debounce ${debounceMs}ms`);
     lastObservedSource = source;
     if(autoCompileTimer) clearTimeout(autoCompileTimer);
     autoCompileTimer = setTimeout(() => {
       autoCompileTimer = null;
-      if(lastObservedSource === lastCompiledSource) return/*nothing new to compile*/;
+      if(lastObservedSource === lastCompiledSource) {
+        dbg('compile', 'autoCompile: debounce fired but source matches last compile; skipping');
+        return;
+      } /* else -- something new to compile */
+      dbg('compile', 'autoCompile: debounce fired -> compile()');
       void compile();
-    }, configStore.getConfig().autoCompileDebounceMs);
+    }, debounceMs);
   } /* else -- no change since last poll; leave any pending timer alone */
 };
 
@@ -211,6 +232,7 @@ toolbar.setOnCompile(()   => { void compile(); });
 toolbar.setOnFullscreen(toggleFullscreen);
 toolbar.setOnAutoCompile(async (enabled: boolean) => {
   if(!configStore) return;
+  dbg('compile', `autoCompile: user toggled -> ${enabled}`);
   await configStore.updateAutoCompile(enabled);
   // if just turned on, start polling immediately so the User sees fast feedback
   // rather than waiting for the next scheduled tick
@@ -247,9 +269,12 @@ const start = async (): Promise<void> => {
   // config first so the toolbar reflects the persisted autoCompile state
   if(configStore) {
     await configStore.init();
-    toolbar.setAutoCompile(configStore.getConfig().autoCompile);
+    const initial = configStore.getConfig();
+    setDbgEnabled(initial.debug);
+    toolbar.setAutoCompile(initial.autoCompile);
     configStore.onConfigChange((cfg, changed) => {
       if(changed.has('autoCompile')) toolbar.setAutoCompile(cfg.autoCompile);
+      if(changed.has('debug'))       setDbgEnabled(cfg.debug);
     });
   } /* else -- no appState; the Auto checkbox is a local-only toggle */
 

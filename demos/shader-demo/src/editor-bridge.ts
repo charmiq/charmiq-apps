@@ -1,3 +1,5 @@
+import { dbg } from './debug';
+
 // pulls the fragment shader source from the sibling CodeMirror editor App.
 // The editor doesn't advertise a dedicated capability for its content -- it
 // only surfaces the generic `charmiq.command` block the Platform multiplexes
@@ -42,15 +44,26 @@ const SHADER_TAB_NAME = 'shader.frag';
 export class EditorBridge {
   private provider: EditorCommandProvider | null = null;
 
+  /** last source returned by getShader() -- used only for dbg delta logging */
+  private lastLoggedLength: number | null = null;
+
   // == Public =====================================================================
   /** discover + cache the editor provider. Safe to call with no CharmIQ bridge
    *  (standalone preview) -- getShader() will then always return null */
   public async init(charmiq: any): Promise<void> {
-    if(!charmiq?.discover) return;/*standalone -- no providers to inspect*/
+    if(!charmiq?.discover) {
+      dbg('editor', 'discover skipped (standalone — no charmiq bridge)');
+      return;
+    } /* else -- platform bridge is present */
 
     try {
       const providers = await charmiq.discover('charmiq.command') as ReadonlyArray<EditorCommandProvider> | null;
-      if(!providers || (providers.length < 1)) return;/*no command providers yet*/
+      if(!providers || (providers.length < 1)) {
+        dbg('editor', 'discover: no charmiq.command providers yet');
+        return;
+      } /* else -- at least one provider to inspect */
+
+      dbg('editor', `discover: ${providers.length} charmiq.command provider(s); shape-checking for editor`);
 
       // duck-type: the editor is the one with tab-oriented methods. Using typeof
       // checks (not `in` operator) because discovered providers are proxies and
@@ -59,9 +72,11 @@ export class EditorBridge {
         const p = providers[i];
         if((typeof p.listTabs === 'function') && (typeof p.getText === 'function') && (typeof p.createTab === 'function')) {
           this.provider = p;
+          dbg('editor', `discover: matched provider #${i}`, { nodeId: p.nodeId ?? '(none)' });
           break;
         } /* else -- not the editor; keep looking */
       }
+      if(!this.provider) dbg('editor', 'discover: no provider matched the editor shape');
     } catch(error) {
       console.error('shader-demo: failed to discover codemirror-editor:', error);
     }
@@ -79,12 +94,27 @@ export class EditorBridge {
   public async getShader(): Promise<string | null> {
     if(!this.provider) return null;
 
+    const started = performance.now();
     try {
       const tabs = await this.provider.listTabs();
       const tab = pickShaderTab(tabs);
-      if(!tab) return null;/*editor exists but hasn't been seeded with the tab*/
+      if(!tab) {
+        dbg('editor', 'getShader: no matching tab', { tabs: tabs.map(t => ({ name: t.name, mode: t.mode })) });
+        return null;
+      } /* else -- found a tab */
 
       const text = await this.provider.getText({ tabId: tab.id });
+      const length = text?.length ?? 0;
+      // only log when the returned length changes -- the poller calls this twice
+      // a second and an unchanged readout is noise
+      if(length !== this.lastLoggedLength) {
+        dbg('editor', `getShader: ${length} chars from '${tab.name}' [${tab.mode}]`, {
+          tabId: tab.id,
+          ms: Math.round(performance.now() - started),
+          previousLength: this.lastLoggedLength
+        });
+        this.lastLoggedLength = length;
+      } /* else -- same length; skip the log */
       return text ?? null;
     } catch(error) {
       console.error('shader-demo: failed to read shader text from editor:', error);
