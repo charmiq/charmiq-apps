@@ -5,8 +5,12 @@ import { dbg } from './debug';
 // only surfaces the generic `charmiq.command` block the Platform multiplexes
 // across every advertising widget. So the bridge:
 //   1. discovers all `charmiq.command` providers in the Document
-//   2. filters for one that looks like a CodeMirror editor (shape-check on
-//      listTabs / getText / createTab -- the tab-oriented method trio)
+//   2. functionally probes each by calling listTabs(); the editor replies with
+//      an array of TabInfo records. Anything that rejects (method not found),
+//      returns a non-array, or returns an array of the wrong shape isn't the
+//      editor. A structural `typeof p.method === 'function'` check can't be
+//      used because the Platform's discovery proxy returns a method wrapper
+//      for EVERY property access -- any provider would satisfy it
 //   3. locates the 'shader.frag' tab and reads its text on demand
 //
 // No subscription / streaming -- shader recompiles are driven by explicit
@@ -62,18 +66,21 @@ export class EditorBridge {
         return;
       } /* else -- at least one provider to inspect */
 
-      dbg('editor', `discover: ${providers.length} charmiq.command provider(s); shape-checking for editor`);
+      dbg('editor', `discover: ${providers.length} charmiq.command provider(s); probing each with listTabs()`);
 
-      // duck-type: the editor is the one with tab-oriented methods. Using typeof
-      // checks (not `in` operator) because discovered providers are proxies and
-      // Reflect.has is cheaper than method probing
-      for(let i=0; i<providers.length; i++) {
-        const p = providers[i];
-        if((typeof p.listTabs === 'function') && (typeof p.getText === 'function') && (typeof p.createTab === 'function')) {
-          this.provider = p;
-          dbg('editor', `discover: matched provider #${i}`);
-          break;
-        } /* else -- not the editor; keep looking */
+      // functional probe: call listTabs() on every provider in parallel. The editor
+      // replies with an array of tabs; other providers reject with 'method not found'.
+      // probeListTabs() swallows the reject into a tagged result so Promise.all never throws
+      const probes = await Promise.all(providers.map(p => probeListTabs(p)));
+      for(let i=0; i<probes.length; i++) {
+        const probe = probes[i];
+        if(probe.kind !== 'editor') {
+          dbg('editor', `discover: provider #${i} ${probe.reason}`);
+          continue;
+        } /* else -- looks like the editor */
+        this.provider = providers[i];
+        dbg('editor', `discover: matched provider #${i} (${probe.tabCount} tab(s))`);
+        break;
       }
       if(!this.provider) dbg('editor', 'discover: no provider matched the editor shape');
     } catch(error) {
@@ -87,9 +94,9 @@ export class EditorBridge {
 
   // ------------------------------------------------------------------------------
   /** read the current shader source from the editor. Returns null if the bridge isn't
-   *  connected, if no tab named 'shader.frag' exists, or if the editor threw.
-   *  Callers treat null as "keep the previous program running and show the connection
-   *  status in the error strip" */
+   *  connected, if no tab named 'shader.frag' exists, or if the editor threw. Callers
+   *  treat null as "keep the previous program running and show the connection status
+   *  in the error strip" */
   public async getShader(): Promise<string | null> {
     if(!this.provider) return null;
 
@@ -104,8 +111,8 @@ export class EditorBridge {
 
       const text = await this.provider.getText({ tabId: tab.id });
       const length = text?.length ?? 0;
-      // only log when the returned length changes -- the poller calls this twice
-      // a second and an unchanged readout is noise
+      // only log when the returned length changes -- the poller calls this twice a
+      // second and an unchanged readout is noise
       if(length !== this.lastLoggedLength) {
         dbg('editor', `getShader: ${length} chars from '${tab.name}' [${tab.mode}]`, {
           tabId: tab.id,
@@ -122,7 +129,38 @@ export class EditorBridge {
   }
 }
 
-// == Helpers =====================================================================
+// == Util ========================================================================
+/** result of probing a single provider with listTabs(). `editor` means the provider
+ *  replied with a valid tabs array; `reject` captures 'method not found' and other
+ *  errors; `shape` captures non-array / wrong-shape returns */
+type ProbeResult =
+  | { kind: 'editor'; tabCount: number; }
+  | { kind: 'reject'; reason: string; }
+  | { kind: 'shape';  reason: string; };
+
+// ................................................................................
+/** probe a discovered charmiq.command provider to decide whether it's the editor.
+ *  Returns a tagged result so the caller can log why a provider was rejected. An
+ *  empty array is accepted as "editor present but not yet seeded" -- getShader()
+ *  will return null and the caller falls back to the starter shader */
+const probeListTabs = async (p: EditorCommandProvider): Promise<ProbeResult> => {
+  try {
+    const value = await p.listTabs();
+    if(!Array.isArray(value)) return { kind: 'shape', reason: 'listTabs() returned non-array' };
+    if(value.length < 1)      return { kind: 'editor', tabCount: 0 }/*empty editor -- still a match*/;
+
+    const first = value[0] as Partial<TabInfo>;
+    if((typeof first.id !== 'string') || (typeof first.name !== 'string') || (typeof first.mode !== 'string')) {
+      return { kind: 'shape', reason: 'listTabs() returned array with wrong tab shape' };
+    } /* else -- at least the first tab has the editor's shape */
+    return { kind: 'editor', tabCount: value.length };
+  } catch(error) {
+    const message = (error instanceof Error) ? error.message : String(error);
+    return { kind: 'reject', reason: `listTabs() rejected: ${message}` };
+  }
+};
+
+// --------------------------------------------------------------------------------
 /** pick the tab the demo expects to find. Prefers an exact name match on
  *  'shader.frag'; falls back to the first tab whose mode is a GLSL variant; falls
  *  back to the active tab as a last resort so the User isn't stuck when a tab was
