@@ -652,8 +652,8 @@ export class InteractionHandler {
 
     // directional bits from the handle type. eastward/southward are +1, their
     // opposites are -1, edge handles zero the perpendicular axis
-    const dirX = handleType.includes('e') ? 1 : handleType.includes('w') ? -1 : 0;
-    const dirY = handleType.includes('s') ? 1 : handleType.includes('n') ? -1 : 0;
+    const dirX = handleType.includes('e') ? 1 : handleType.includes('w') ? -1 : 0,
+          dirY = handleType.includes('s') ? 1 : handleType.includes('n') ? -1 : 0;
 
     // project the mouse delta onto the unit vector from anchor to handle.
     // Only motion along this diagonal scales the box -- perpendicular motion
