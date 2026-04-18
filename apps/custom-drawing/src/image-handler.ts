@@ -1,7 +1,7 @@
 import type { CharmIQServices } from '../../../shared/charmiq-services';
 import type { CanvasViewport } from './canvas-viewport';
 import { closeOnClickOutside } from './dom-utils';
-import { generateElementId, type DrawingElement, type Point } from './element-model';
+import { generateElementId, type DrawingElement, type ImageElement, type Point } from './element-model';
 import { notifyError } from './notifications';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -18,7 +18,7 @@ export class ImageHandler {
   private services: CharmIQServices | null = null;
 
   private pendingImagePoint: Point | null = null;
-  private editingImageElement: any | null = null;
+  private editingImageElement: ImageElement | null = null;
 
   elements: DrawingElement[] = [];
   onSave: (() => void) | null = null;
@@ -66,12 +66,19 @@ export class ImageHandler {
         if((w > max) || (h > max)) { const s = Math.min(max / w, max / h); w *= s; h *= s; }
 
         if(this.editingImageElement) {
-          this.editingImageElement.src = url;
-          this.editingImageElement.width = w;
-          this.editingImageElement.height = h;
-          const idx = this.elements.findIndex(el => el.id === this.editingImageElement.id);
-          if(idx >= 0) this.elements[idx] = { ...this.editingImageElement };
-          this.renderer.renderElement(this.editingImageElement);
+          const editing = this.editingImageElement;
+          // re-anchor around existing center so the new image keeps its natural
+          // aspect ratio instead of stretching to the old bounding box
+          const cx = (editing.x + editing.x2) / 2,
+                cy = (editing.y + editing.y2) / 2;
+          editing.src = url;
+          editing.width = w;
+          editing.height = h;
+          editing.x = cx - w / 2; editing.y = cy - h / 2;
+          editing.x2 = cx + w / 2; editing.y2 = cy + h / 2;
+          const idx = this.elements.findIndex(el => el.id === editing.id);
+          if(idx >= 0) this.elements[idx] = { ...editing };
+          this.renderer.renderElement(editing);
           this.selection.showSelectionHandles();
           this.onSave?.();
         } else if(this.pendingImagePoint) {
@@ -103,13 +110,13 @@ export class ImageHandler {
   }
 
   // ..............................................................................
-  public editImageElement(el: DrawingElement): void {
+  public editImageElement(el: ImageElement): void {
     this.editingImageElement = el;
     this.pendingImagePoint = null;
 
     const modal = document.getElementById('imageModal')!;
     const input = document.getElementById('imageUrlInput') as HTMLInputElement;
-    input.value = (el as any).src || '';
+    input.value = el.src || '';
     modal.classList.add('visible');
     setTimeout(() => { input.focus(); input.select(); }, 100);
   }
@@ -270,7 +277,7 @@ export class ImageHandler {
   }
 
   // ..............................................................................
-  private createImageElement(src: string, center: Point, w: number, h: number): any {
+  private createImageElement(src: string, center: Point, w: number, h: number): ImageElement {
     return {
       id: generateElementId(), type: 'image',
       x: center.x - w / 2, y: center.y - h / 2,

@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateElementId, getElementBounds, isSvgBasedElement, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type LineElement, type Point, type ShapeElement, type TextElement } from './element-model';
+import { generateElementId, getElementBounds, isSvgBasedElement, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type ImageElement, type LineElement, type Point, type ShapeElement, type TextElement } from './element-model';
 import { distanceToLine, isPointInElement, rotatePoint, snapAngle, getDrawingBounds, isPointNearLine, doRectsIntersect } from './geometry';
 import { cursorForHandle, type HandleType, type SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -21,7 +21,7 @@ export class InteractionHandler {
   private onSave: (() => void) | null = null;
   private onStartTextInput: ((point: Point) => void) | null = null;
   private onEditTextElement: ((el: DrawingElement) => void) | null = null;
-  private onEditImageElement: ((el: DrawingElement) => void) | null = null;
+  private onEditImageElement: ((el: ImageElement) => void) | null = null;
   private onShowImageModal: (() => void) | null = null;
   private onToggleImageDropdown: (() => void) | null = null;
   private onToggleSaveDropdown: (() => void) | null = null;
@@ -102,7 +102,7 @@ export class InteractionHandler {
     onSave: () => void;
     onStartTextInput: (point: Point) => void;
     onEditTextElement: (el: DrawingElement) => void;
-    onEditImageElement: (el: DrawingElement) => void;
+    onEditImageElement: (el: ImageElement) => void;
     onShowImageModal: () => void;
     onToggleImageDropdown: () => void;
     onToggleSaveDropdown: () => void;
@@ -627,10 +627,13 @@ export class InteractionHandler {
       else if(el.type === 'text') this.resizeSingleText(rawDx, rawDy, el);
       else if(el.angle && (el.angle !== 0)) this.resizeRotatedElement(point, rawDx, rawDy);
       else if(el.type === 'image') {
+        // images default to aspect-preserving; shift for free resize
         if(this.shiftKeyHeld) this.resizeSingleFree(rawDx, rawDy);
         else this.resizeProportionally(rawDx, rawDy);
       } else {
-        this.resizeSingleFree(rawDx, rawDy);
+        // shapes default to free; shift preserves aspect (Figma-style)
+        if(this.shiftKeyHeld) this.resizeProportionally(rawDx, rawDy);
+        else this.resizeSingleFree(rawDx, rawDy);
       }
     }
     this.selection.showSelectionHandles();
