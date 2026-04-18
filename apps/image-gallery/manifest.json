@@ -1,0 +1,92 @@
+{
+  "id": "ai.charm.apps.image-gallery",
+  "name": "Image Gallery",
+  "description": "A minimal image gallery backed by platform Assets, with optional labelled slots that other apps can discover and subscribe to",
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
+    },
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.1",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators"
+      }
+    }
+  },
+  "runtime": {
+    "appContent": true,
+    "appState": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "addItems",
+        "description": "Open the platform media picker and append chosen images to the gallery; returns the new itemIds",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      {
+        "name": "removeItem",
+        "description": "Remove an item from the gallery by itemId (and unbinds it from any slots)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "itemId": { "type": "string" }
+          },
+          "required": ["itemId"]
+        },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "getItems",
+        "description": "Return the current items in the gallery (assetId, downloadUrl, mime, size)",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "array", "items": { "type": "object" } }
+      },
+      {
+        "name": "getSlots",
+        "description": "Return the current slot definitions and their bindings (empty array when no slots are configured)",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "array", "items": { "type": "object" } }
+      },
+      {
+        "name": "bindSlot",
+        "description": "Bind an itemId to a slot, or pass itemId=null to clear the slot",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "slotId": { "type": "string" },
+            "itemId": { "type": ["string", "null"] }
+          },
+          "required": ["slotId"]
+        },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "setSlotMeta",
+        "description": "Attach consumer-defined metadata to a slot (opaque to the gallery, round-tripped to subscribers)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "slotId": { "type": "string" },
+            "meta": {}
+          },
+          "required": ["slotId"]
+        },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "clearAllSlots",
+        "description": "Unbind every slot without touching the items collection",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "boolean" }
+      }
+    ]
+  }
+}

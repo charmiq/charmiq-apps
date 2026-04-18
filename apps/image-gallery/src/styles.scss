@@ -1,0 +1,490 @@
+// Swiss-typography image gallery. Black/white, Helvetica, tight grid, minimal
+// chrome. The layout adapts to container aspect ratio: when the gallery is
+// horizontal (default) the slot strip sits across the top and the grid flows
+// below; when vertical the same structure simply reflows via the CSS grid
+// auto-fill to fewer columns. Styling hooks for `.orientation-vertical` and
+// `.orientation-horizontal` are set by main.ts via a ResizeObserver
+// ********************************************************************************
+// == Variables ===================================================================
+:root {
+  --bg:            #ffffff;
+  --text-main:    #000000;
+  --text-sub:     #757575;
+  --text-muted:   #9a9a9a;
+  --rule:         #000000;
+  --rule-soft:    #e0e0e0;
+  --tile-bg:      #f0f0f0;
+  --tile-dash:    #b8b8b8;
+  --accent:       #000000;
+  --active:       #000000;
+  --overlay:      rgba(255, 255, 255, 0.98);
+  --gap:          4px;
+  --grid-min:     200px;
+  --slot-size:    96px;
+}
+
+// == Reset =======================================================================
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: 'Helvetica Neue', 'Inter', Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+[hidden] { display: none !important; }
+
+// == App Shell ===================================================================
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg);
+}
+
+// == Header ======================================================================
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 16px 20px 14px 20px;
+  border-bottom: 2px solid var(--rule);
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--text-main);
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-sub);
+}
+
+.zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.zoom-slider {
+  width: 80px;
+  height: 2px;
+  background: var(--rule-soft);
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--text-main);
+    cursor: pointer;
+    border-radius: 50%;
+  }
+
+  &::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: var(--text-main);
+    cursor: pointer;
+    border-radius: 50%;
+    border: none;
+  }
+}
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-sub);
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+  color: var(--text-main);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover { opacity: 1; }
+  &:disabled { opacity: 0.2; cursor: not-allowed; }
+
+  svg { width: 18px; height: 18px; display: block; }
+}
+
+// == Slot Strip ==================================================================
+.slot-strip {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--rule-soft);
+  flex-shrink: 0;
+}
+
+.slot-strip-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-sub);
+  margin-bottom: 8px;
+}
+
+.slot-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--slot-size), 1fr));
+  gap: var(--gap);
+}
+
+.slot-tile {
+  position: relative;
+  aspect-ratio: 1;
+  background: var(--bg);
+  border: 1px dashed var(--tile-dash);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    border-color: var(--text-main);
+  }
+
+  &.bound {
+    border: 1px solid var(--rule);
+    background: var(--tile-bg);
+  }
+
+  &.active {
+    border: 2px solid var(--active);
+    background: var(--bg);
+  }
+
+  &.drag-over {
+    border: 2px solid var(--active);
+    background: var(--tile-bg);
+  }
+}
+
+.slot-tile-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.slot-tile-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-main);
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  pointer-events: none;
+}
+
+.slot-tile.bound .slot-tile-label {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.slot-tile-placeholder {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0 6px;
+  pointer-events: none;
+}
+
+.slot-tile-unbind {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+
+  .slot-tile.bound:hover & { opacity: 1; }
+
+  svg { width: 10px; height: 10px; }
+}
+
+// == Grid ========================================================================
+.grid-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  position: relative;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--grid-min), 1fr));
+  gap: var(--gap);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+
+  &.loaded { opacity: 1; }
+}
+
+.grid-item {
+  position: relative;
+  aspect-ratio: 1;
+  background: var(--tile-bg);
+  cursor: zoom-in;
+  overflow: hidden;
+  transition: transform 0.15s ease;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: filter 0.2s ease;
+    user-select: none;
+    -webkit-user-drag: element;
+  }
+
+  &:hover img {
+    filter: brightness(0.9);
+  }
+
+  &.dragging {
+    opacity: 0.4;
+  }
+}
+
+.grid-item-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 1;
+
+  .grid-item:hover & { opacity: 1; }
+
+  svg { width: 12px; height: 12px; }
+
+  &:hover { background: var(--text-main); color: var(--bg); }
+}
+
+// ................................................................................
+// when a slot is active, grid items show a subtle "bindable" affordance
+.app.slot-selecting {
+  .grid-item {
+    cursor: pointer;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border: 2px solid transparent;
+      transition: border-color 0.15s ease;
+      pointer-events: none;
+    }
+
+    &:hover::after {
+      border-color: var(--active);
+    }
+  }
+}
+
+// == Empty State =================================================================
+.empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-sub);
+}
+
+.empty-text {
+  font-size: 13px;
+}
+
+.text-btn {
+  background: var(--text-main);
+  color: var(--bg);
+  border: none;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  &:hover { background: #333; }
+}
+
+// == Lightbox ====================================================================
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+
+  &.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.lb-image-wrap {
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lb-image {
+  max-width: 90vw;
+  max-height: 80vh;
+  display: block;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
+
+.lb-btn {
+  position: absolute;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 16px;
+  color: var(--text-main);
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
+
+  &:hover { opacity: 1; }
+
+  svg { width: 28px; height: 28px; display: block; }
+}
+
+.lb-close { top: 16px; right: 16px; }
+.lb-prev  { left: 16px; top: 50%; transform: translateY(-50%); }
+.lb-next  { right: 16px; top: 50%; transform: translateY(-50%); }
+
+.lb-counter {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+// == Orientation Adaptations =====================================================
+// vertical: narrower container — tighter padding, smaller title, smaller grid
+// minimums. Slot tiles shrink so 2-up remains readable in a tall narrow iframe
+.app.orientation-vertical {
+  --grid-min:  140px;
+  --slot-size: 72px;
+
+  .header {
+    padding: 12px 14px 10px 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .title {
+    font-size: 16px;
+  }
+
+  .meta {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .slot-strip {
+    padding: 10px 14px;
+  }
+
+  .grid-container {
+    padding: 10px 14px;
+  }
+}
+
+// == Scrollbar (subtle) ==========================================================
+.grid-container {
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-thumb { background: var(--rule-soft); }
+  &::-webkit-scrollbar-thumb:hover { background: var(--tile-dash); }
+}

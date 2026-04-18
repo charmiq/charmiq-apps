@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Gallery</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Helvetica+Neue:wght@400;700&family=Inter:wght@400;500;600;700&display=swap">
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- == Header ============================================================ -->
+    <header class="header">
+      <h1 class="title">Image<br>Gallery</h1>
+      <div class="meta">
+        <div class="zoom-control">
+          <span class="zoom-label">Zoom</span>
+          <input type="range" class="zoom-slider" id="zoomSlider" min="80" max="400" value="200" step="20">
+        </div>
+        <div class="action-row">
+          <span class="status" id="status">Idle</span>
+          <button class="icon-btn add-btn" id="addBtn" title="Add images">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- == Slot Strip (only visible when slots are configured) =============== -->
+    <section class="slot-strip" id="slotStrip" hidden>
+      <div class="slot-strip-label">Slots</div>
+      <div class="slot-tiles" id="slotTiles"></div>
+    </section>
+
+    <!-- == Grid ============================================================== -->
+    <main class="grid-container">
+      <div class="grid" id="grid"></div>
+      <div class="empty-state" id="emptyState" hidden>
+        <p class="empty-text">No images yet.</p>
+        <button class="text-btn" id="emptyAddBtn">Add images</button>
+      </div>
+    </main>
+
+    <!-- == Lightbox ========================================================== -->
+    <div class="lightbox" id="lightbox" hidden>
+      <button class="lb-btn lb-close" id="lbClose" title="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+      </button>
+      <button class="lb-btn lb-prev" id="lbPrev" title="Previous">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="lb-image-wrap">
+        <img class="lb-image" id="lbImage" src="" alt="">
+      </div>
+      <button class="lb-btn lb-next" id="lbNext" title="Next">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <div class="lb-counter" id="lbCounter">01 / 01</div>
+    </div>
+  </div>
+</body>
+</html>
