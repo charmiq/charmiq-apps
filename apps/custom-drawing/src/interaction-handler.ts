@@ -1,5 +1,5 @@
 import type { CanvasViewport } from './canvas-viewport';
-import { generateElementId, getElementBounds, isSvgBasedElement, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type Point } from './element-model';
+import { generateElementId, getElementBounds, isSvgBasedElement, moveElementBy, resizeSvgBasedElement, setElementPositionFromOrig, type DrawingElement, type LineElement, type Point, type ShapeElement, type TextElement } from './element-model';
 import { distanceToLine, isPointInElement, rotatePoint, snapAngle, getDrawingBounds, isPointNearLine, doRectsIntersect } from './geometry';
 import { cursorForHandle, type HandleType, type SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -46,7 +46,9 @@ export class InteractionHandler {
   // -- Internal state ------------------------------------------------------------
   private isDrawing = false;
   private startPoint: Point = { x: 0, y: 0 };
-  private currentElement: DrawingElement | null = null;
+  // only set while drawing a brand-new shape -- the tools that create via
+  // startDrawing can only produce a ShapeElement or LineElement
+  private currentElement: ShapeElement | LineElement | null = null;
   private selectionBox: { x: number; y: number; width: number; height: number } | null = null;
   private hasMoved = false;
   private hasResized = false;
@@ -352,18 +354,17 @@ export class InteractionHandler {
       : 'line';
 
     const id = generateElementId();
-    const el: any = {
-      id, type,
+    const base = {
+      id,
       x: point.x, y: point.y,
       x2: point.x, y2: point.y,
       stroke: '#000000',
       strokeWidth: 2,
       fill: 'transparent',
     };
-    if(type === 'line') {
-      el.startDecoration = 'none';
-      el.endDecoration = 'none';
-    } /* else -- not a line type */
+    const el: ShapeElement | LineElement = (type === 'line')
+      ? { ...base, type, startDecoration: 'none', endDecoration: 'none' }
+      : { ...base, type };
     this.currentElement = el;
     this.renderer.renderElement(el);
   }
@@ -371,7 +372,7 @@ export class InteractionHandler {
   // ------------------------------------------------------------------------------
   private updateDrawing(point: Point, shift: boolean): void {
     if(!this.currentElement) return;
-    const el = this.currentElement as any;
+    const el = this.currentElement;
 
     if(shift && (el.type !== 'line')) {
       // constrain to square / circle
@@ -399,7 +400,7 @@ export class InteractionHandler {
 
   private endDrawing(): void {
     if(!this.currentElement) return;
-    const el = this.currentElement as any;
+    const el = this.currentElement;
 
     // discard tiny shapes
     const w = Math.abs(el.x2 - el.x),
@@ -696,7 +697,7 @@ export class InteractionHandler {
   // -- Freeform (non-proportional) -----------------------------------------------
   private resizeSingleFree(rawDx: number, rawDy: number): void {
     const orig = this.originalElementStates[0];
-    const el = this.selection.selectedElements[0] as any;
+    const el = this.selection.selectedElements[0];
     const ht = this.resizeHandle!.type;
 
     // SVG-based types don't have x/x2/y/y2 — scale their geometry to fit new bounds
@@ -712,17 +713,21 @@ export class InteractionHandler {
         width: Math.max(1, Math.abs(nx2 - nx1)),
         height: Math.max(1, Math.abs(ny2 - ny1)),
       };
-      resizeSvgBasedElement(el as DrawingElement, orig, ob, newBounds);
+      resizeSvgBasedElement(el, orig, ob, newBounds);
       const idx = this.elements.findIndex(e => e.id === el.id);
       if(idx >= 0) this.elements[idx] = { ...el };
       this.renderer.renderElement(el);
       return;
     } /* else -- rectangular/line/etc types use x/y/x2/y2 directly */
 
-    if((ht === 'nw') || (ht === 'sw') || (ht === 'w')) el.x = orig.x + rawDx;
-    if((ht === 'ne') || (ht === 'se') || (ht === 'e')) el.x2 = orig.x2 + rawDx;
-    if((ht === 'nw') || (ht === 'ne') || (ht === 'n')) el.y = orig.y + rawDy;
-    if((ht === 'sw') || (ht === 'se') || (ht === 's')) el.y2 = orig.y2 + rawDy;
+    // the caller dispatches text/line/svg to other paths, so `el` here is always
+    // a ShapeElement or ImageElement (both carry x/y/x2/y2)
+    if((el.type !== 'text')) {
+      if((ht === 'nw') || (ht === 'sw') || (ht === 'w')) el.x = orig.x + rawDx;
+      if((ht === 'ne') || (ht === 'se') || (ht === 'e')) el.x2 = orig.x2 + rawDx;
+      if((ht === 'nw') || (ht === 'ne') || (ht === 'n')) el.y = orig.y + rawDy;
+      if((ht === 'sw') || (ht === 'se') || (ht === 's')) el.y2 = orig.y2 + rawDy;
+    } /* else -- a text element */
 
     // keep x < x2 and y < y2 if needed? original doesn't enforce this
     const idx = this.elements.findIndex(e => e.id === el.id);
@@ -730,7 +735,7 @@ export class InteractionHandler {
     this.renderer.updateElementAttributes(el);
   }
 
-  private resizeSingleLine(point: Point, el: any): void {
+  private resizeSingleLine(point: Point, el: LineElement): void {
     const ht = this.resizeHandle!.type;
     if(ht === 'line-start') { el.x = point.x; el.y = point.y; }
     else if(ht === 'line-end') { el.x2 = point.x; el.y2 = point.y; }
@@ -739,7 +744,7 @@ export class InteractionHandler {
     this.renderer.updateElementAttributes(el);
   }
 
-  private resizeSingleText(rawDx: number, rawDy: number, el: any): void {
+  private resizeSingleText(rawDx: number, rawDy: number, el: TextElement): void {
     const orig = this.originalElementStates[0];
     const ht = this.resizeHandle!.type;
 
@@ -811,22 +816,22 @@ export class InteractionHandler {
       height: newH,
     };
     if(isSvgBasedElement(el)) {
-      resizeSvgBasedElement(el as DrawingElement, orig, bounds, newElBounds);
+      resizeSvgBasedElement(el, orig, bounds, newElBounds);
     } else if(el.type === 'text') {
-      (el as any).x = newElBounds.x;
-      (el as any).y = newElBounds.y;
-      (el as any).width = newW;
-      (el as any).height = newH;
+      el.x = newElBounds.x;
+      el.y = newElBounds.y;
+      el.width = newW;
+      el.height = newH;
     } else {
-      (el as any).x = newElBounds.x;
-      (el as any).y = newElBounds.y;
-      (el as any).x2 = worldCx + newW / 2;
-      (el as any).y2 = worldCy + newH / 2;
+      el.x = newElBounds.x;
+      el.y = newElBounds.y;
+      el.x2 = worldCx + newW / 2;
+      el.y2 = worldCy + newH / 2;
+      if(el.type === 'image') {
+        el.width = newW;
+        el.height = newH;
+      } /* else -- non-image types don't carry width/height */
     }
-    if(el.type === 'image') {
-      (el as any).width = newW;
-      (el as any).height = newH;
-    } /* else -- non-image types don't carry width/height */
 
     const idx = this.elements.findIndex(e => e.id === el.id);
     if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;
@@ -850,28 +855,28 @@ export class InteractionHandler {
         case 'rectangle': case 'diamond': case 'ellipse': case 'image': {
           const oX2 = orig.x2 - ob.x,
                 oY2 = orig.y2 - ob.y;
-          (el as any).x = newX; (el as any).y = newY;
-          (el as any).x2 = newBounds.x + oX2 * scaleX;
-          (el as any).y2 = newBounds.y + oY2 * scaleY;
+          el.x = newX; el.y = newY;
+          el.x2 = newBounds.x + oX2 * scaleX;
+          el.y2 = newBounds.y + oY2 * scaleY;
           if(el.type === 'image') {
-            (el as any).width = Math.abs((el as any).x2 - (el as any).x);
-            (el as any).height = Math.abs((el as any).y2 - (el as any).y);
-          }
+            el.width = Math.abs(el.x2 - el.x);
+            el.height = Math.abs(el.y2 - el.y);
+          } /* else -- not an image */
           break;
         }
         case 'line': {
           const lX2 = orig.x2 - ob.x,
                 lY2 = orig.y2 - ob.y;
-          (el as any).x = newX; (el as any).y = newY;
-          (el as any).x2 = newBounds.x + lX2 * scaleX;
-          (el as any).y2 = newBounds.y + lY2 * scaleY;
+          el.x = newX; el.y = newY;
+          el.x2 = newBounds.x + lX2 * scaleX;
+          el.y2 = newBounds.y + lY2 * scaleY;
           break;
         }
         case 'text':
-          (el as any).x = newX; (el as any).y = newY;
-          (el as any).width = (orig.width || 100) * scaleX;
-          (el as any).height = (orig.height || 20) * scaleY;
-          (el as any).fontSize = (orig.fontSize || 16) * scaleX;
+          el.x = newX; el.y = newY;
+          el.width = (orig.width || 100) * scaleX;
+          el.height = (orig.height || 20) * scaleY;
+          el.fontSize = (orig.fontSize || 16) * scaleX;
           break;
         case 'svg-path': case 'svg-polygon': case 'svg-circle': case 'svg-text-path': {
           // map each element's original bounds proportionally into newBounds
@@ -1229,7 +1234,7 @@ export class InteractionHandler {
 
     // drawing a brand-new shape: discard the preview node, never added to elements
     if(this.currentElement) {
-      const svgEl = document.getElementById((this.currentElement as any).id);
+      const svgEl = document.getElementById(this.currentElement.id);
       if(svgEl) svgEl.remove();
       this.currentElement = null;
     } /* else -- not drawing a new shape */
@@ -1251,7 +1256,7 @@ export class InteractionHandler {
         const orig = this.originalElementStates[i];
         if(!orig) return;/*no original snapshot for this element*/
         // wipe any keys the resize may have added, then copy originals back
-        Object.keys(el).forEach(k => { if(!(k in orig)) delete (el as any)[k]; });
+        Object.keys(el).forEach(k => { if(!(k in orig)) delete (el as unknown as Record<string, unknown>)[k]; });
         Object.assign(el, orig);
         const idx = this.elements.findIndex(e => e.id === el.id);
         if(idx >= 0) this.elements[idx] = { ...el } as DrawingElement;

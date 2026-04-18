@@ -85,6 +85,10 @@ export interface ImageElement extends BaseElement {
   x2: number;
   y2: number;
   src?: string;
+  // cached natural (or last-resized) pixel dimensions -- kept in sync with x/x2/y/y2
+  // by the resize paths so rendering doesn't have to recompute every frame
+  width?: number;
+  height?: number;
 }
 
 export interface SvgCircleElement extends ElementCore {
