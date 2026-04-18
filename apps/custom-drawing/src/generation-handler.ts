@@ -2,6 +2,7 @@ import type { CharmIQServices } from '../../../shared/charmiq-services';
 import { closeOnClickOutside } from './dom-utils';
 import { generateElementId, type DrawingElement, type ImageElement } from './element-model';
 import type { ExportHandler } from './export-handler';
+import { showLoadingOverlay, type LoadingOverlay } from './loading-overlay';
 import { notifyError } from './notifications';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -32,7 +33,10 @@ export class GenerationHandler {
     const { assetService, commandService, generationService } = this.services;
     if(this.elements.length < 1) { notifyError(commandService, 'Nothing to generate', 'Please create some drawing elements first.'); return/*nothing more to do*/; }
 
+    let overlay: LoadingOverlay | null = null;
     try {
+      overlay = showLoadingOverlay('Preparing drawing for generation...');
+
       // export the canvas to a data URL
       this.exportHandler.exportMode = mode || this.generateMode;
       const canvas = await this.exportHandler.exportDrawingToCanvas(
@@ -43,26 +47,34 @@ export class GenerationHandler {
       );
       if(!canvas) return;
 
+      overlay.setMessage('Converting drawing to image...');
       const dataUrl = canvas.toDataURL('image/png');
 
-      // open generation modal
+      // dismiss overlay while the user interacts with the generation modal
+      overlay.dismiss(); overlay = null;
+
       const result = await commandService.execute<{ prompt: string; generationProvider: string; generationConfiguration: unknown } | null>({
         id: 'modal.generation.image.editor.openAndResolve',
         args: { parentFolderId: undefined, imageUrls: [dataUrl] },
       });
       if(!result) return;
 
+      overlay = showLoadingOverlay('Uploading reference image...');
+
       const generatedIds = await generationService.generateImage(result.prompt, result.generationProvider, result.generationConfiguration);
       if(!generatedIds || generatedIds.length < 1) throw new Error('No images were generated');
 
       // place generated images on canvas
+      overlay.setMessage('Generating image...');
       for(const assetId of generatedIds) {
         const asset = await assetService.waitForStoredAsset(assetId);
         if(!asset || (asset.store.storeStatus !== 'stored')) continue;
 
+        overlay.setMessage('Preparing generated image...');
         const copies = await commandService.execute<Array<{ downloadUrl: string }>>({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
         if(!copies?.[0]) continue;
 
+        overlay.setMessage('Adding generated image to canvas...');
         const img = new Image();
         img.crossOrigin = 'anonymous';
         await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = reject; img.src = copies[0].downloadUrl; });
@@ -83,6 +95,8 @@ export class GenerationHandler {
       }
     } catch(error) {
       this.notifyGenerationFailed((error as Error)?.message ?? String(error));
+    } finally {
+      overlay?.dismiss();
     }
   }
 
@@ -112,13 +126,27 @@ export class GenerationHandler {
   }
 
   // ==============================================================================
+  // opens the generate dropdown, showing the "Generate from Selected" option
+  // only when there's an active selection. When selection exists we also flip
+  // the default mode to 'selected' and highlight that option so the user's next
+  // Enter / click matches their intent
   public toggleGenerateDropdown(): void {
     const dd = document.getElementById('generateDropdown')!;
     const visible = dd.classList.contains('visible');
     document.querySelectorAll('.dropdown, .action-dropdown').forEach(d => d.classList.remove('visible'));
     if(!visible) {
       const selBtn = document.getElementById('generateSelectedBtn')!;
-      selBtn.style.display = this.selection.selectedElements.length > 0 ? 'flex' : 'none';
+      const allBtn = document.getElementById('generateAllBtn')!;
+      if(this.selection.selectedElements.length > 0) {
+        selBtn.style.display = 'flex';
+        this.generateMode = 'selected';
+        selBtn.style.background = '#e8f0fe';
+        allBtn.style.background = 'none';
+      } else {
+        selBtn.style.display = 'none';
+        this.generateMode = 'all';
+        allBtn.style.background = '#e8f0fe';
+      }
       dd.classList.add('visible');
     } /* else -- was visible */
   }
