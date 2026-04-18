@@ -6,8 +6,17 @@ import { parseName, type TabId, type TabSlug } from './tab-types';
 // bridges the CodeMirror editor ↔ appContent OT layer. Owns the discovery phase
 // (wait for initial content to settle) and the forward/apply logic for incremental
 // edits. Parses raw `name` into `{ slug, displayName }` so nothing downstream
-// has to know about the tuple form
+// has to know about the tuple form.
 // ********************************************************************************
+
+// NOTE: `deleted=true` events are NON-AUTHORITATIVE — the Platform fires them as
+//       bookkeeping (e.g. during first-save block creation, or whenever pending
+//       postMessage events drain after an unrelated `appState.set`). Honoring them
+//       literally will blow up the local tab set. The bridge filters them out
+//       entirely; TabManager drives local removals proactively before calling
+//       `remove()` so we never need the flag anyway. See the referenced memory
+//       note and apps/custom-drawing/src/content-bridge.ts for the same pattern
+
 // == Constants ===================================================================
 /** ms to debounce content emissions before declaring discovery complete */
 const DISCOVERY_DEBOUNCE_MS = 200/*ms*/;
@@ -17,13 +26,13 @@ const DISCOVERY_TIMEOUT_MS = 500/*ms*/;
 // == Types =======================================================================
 /** shape of an appContent change event with the raw name pre-parsed into its
  *  identity tuple. `slug` is null only for legacy slug-less content awaiting
- *  migration — see TabManager for that flow */
+ *  migration — see TabManager for that flow. There is no `deleted` field:
+ *  the bridge filters bookkeeping deletions before they reach a listener */
 export interface ContentChange {
   readonly id: TabId;
   readonly slug: TabSlug | null;
   readonly displayName: string;
   readonly content: string;
-  readonly deleted: boolean;
 }
 
 // ................................................................................
@@ -71,11 +80,16 @@ export class ContentBridge {
       // track whether any content arrived during discovery
       const contentReceived$ = new Subject<void>();
 
-      // subscribe to all app-content changes (discovery + ongoing updates).
-      // The platform stream carries the raw name; parse into the identity
-      // tuple before anyone downstream sees it
+      // subscribe to all app-content changes (discovery + ongoing updates). The
+      // platform stream carries the raw name; parse into the identity tuple before
+      // anyone downstream sees it
       this.appContent.onChange$().subscribe((raw: RawContentChange) => {
-        contentReceived$.next();/*signal that content arrived*/
+        contentReceived$.next();/*signal that content arrived (incl. bookkeeping)*/
+
+        // filter out platform bookkeeping deletions — see module header. Local
+        // removals are driven proactively by TabManager, so we genuinely have
+        // no use for these events
+        if(raw.deleted) return;
 
         if(this.onRemoteChange) {
           const { slug, displayName } = parseName(raw.name);
@@ -83,8 +97,7 @@ export class ContentBridge {
             id: raw.id,
             slug,
             displayName,
-            content: raw.content,
-            deleted: raw.deleted
+            content: raw.content
           });
         } /* else -- no listener registered */
       });

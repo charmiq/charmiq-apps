@@ -13,7 +13,13 @@ import { composeName, mintSlug, type TabId, type TabSlug } from './tab-types';
 // tab carries its `slug` as a property. AppState writes always go through the
 // slug. Slug-less legacy content is migrated by minting a slug locally and
 // rewriting the name; we wait for the OT-converged echo before any appState
-// write so concurrent migrations resolve without cross-talk
+// write so concurrent migrations resolve without cross-talk.
+//
+// Deletion: ContentBridge filters out platform `deleted=true` events (those are
+// bookkeeping and fire spuriously during first-save). We therefore drive local
+// removal *proactively* in `delete()` — update `tabs`, switch active tab, and
+// clean up appState BEFORE asking the bridge to remove the content block. The
+// tradeoff: a remote client deleting a tab is invisible to us until reload
 // ********************************************************************************
 // == Constants ===================================================================
 /** display name for the welcome tab created when no content exists */
@@ -47,8 +53,6 @@ export class TabManager {
 
   /** tracks slugs minted locally so only the creator auto-switches */
   private readonly locallyCreatedSlugs = new Set<TabSlug>();
-  /** tracks tab IDs deleted locally so only the deleter cleans up appState */
-  private readonly locallyDeletedTabs = new Set<TabId>();
   /** tracks tab IDs whose slug-less names we've already submitted a rewrite for,
    *  so concurrent ingest events don't trigger a second migration */
   private readonly migrationsInFlight = new Set<TabId>();
@@ -165,17 +169,35 @@ export class TabManager {
   }
 
   // -- Delete Tab ----------------------------------------------------------------
-  /** delete a tab (shows confirmation first — see toolbar.ts for dialog flow) */
+  /** delete a tab (shows confirmation first — see toolbar.ts for dialog flow).
+   *  Updates local state + appState first, THEN tells the bridge to remove the
+   *  content block — see module header on why we don't react to bridge events */
   public async delete(tabId: TabId): Promise<void> {
-    if(!this.tabs.has(tabId) || this.tabs.size <= 1) return;
+    const removed = this.tabs.get(tabId);
+    if(!removed || (this.tabs.size <= 1)) return;
 
-    try {
-      this.locallyDeletedTabs.add(tabId);
-      await this.contentBridge.remove(`[id='${tabId}']`);
-    } catch(error) {
-      console.error('failed to delete tab:', error);
-      this.locallyDeletedTabs.delete(tabId);
+    // pick the next active tab (if removing the active one) before mutating
+    let newActiveTabId: TabId | null = null;
+    if(this.activeTabId === tabId) {
+      const orderedIds = this.getOrderedTabIds();
+      const idx = orderedIds.indexOf(tabId);
+      if(idx > 0) {
+        newActiveTabId = orderedIds[idx - 1];
+      } else if(orderedIds.length > 1) {
+        newActiveTabId = orderedIds[1];
+      } /* else -- no other tabs */
     }
+
+    // proactive local removal — tabs map, migration tracking, appState
+    this.tabs.delete(tabId);
+    this.migrationsInFlight.delete(tabId);
+    if(removed.slug !== null) this.configStore.removeTab(removed.slug)/*async*/;
+
+    if(newActiveTabId) this.switchTab(newActiveTabId);
+    else this.notify();
+
+    try { await this.contentBridge.remove(`[id='${tabId}']`); }
+    catch(error) { console.error('failed to remove app-content for deleted tab:', error); }
   }
 
   // -- Switch Tab ----------------------------------------------------------------
@@ -227,13 +249,9 @@ export class TabManager {
   // == Internal ==================================================================
   // -- Content -------------------------------------------------------------------
   // .. Content Change ............................................................
-  /** handle a content change from the content bridge */
+  /** handle a content change from the content bridge — only create/update
+   *  events arrive here; deletions are filtered by the bridge */
   private handleContentChange(change: ContentChange): void {
-    if(change.deleted) {
-      this.handleDeletion(change.id);
-      return;
-    } /* else -- content was created or updated */
-
     // legacy migration: slug-less name → mint a slug, rewrite, wait for echo
     if(change.slug === null) {
       this.handleSlugLessChange(change);
@@ -383,49 +401,6 @@ export class TabManager {
   }
 
   // -- Tabs ----------------------------------------------------------------------
-  // .. Tab Deletion ..............................................................
-  /** handle a tab deletion event from the content bridge */
-  private handleDeletion(tabId: TabId): void {
-    const removed = this.tabs.get(tabId);
-    if(!removed) return;
-
-    // find a replacement active tab before removing
-    let newActiveTabId: TabId | null = null;
-    if(this.activeTabId === tabId) {
-      const orderedIds = this.getOrderedTabIds();
-      const idx = orderedIds.indexOf(tabId);
-      if(idx > 0) {
-        newActiveTabId = orderedIds[idx - 1];
-      } else if(orderedIds.length > 1) {
-        newActiveTabId = orderedIds[1];
-      } /* else -- no other tabs to switch to */
-    }
-
-    this.tabs.delete(tabId);
-    this.migrationsInFlight.delete(tabId);
-
-    // clean up appState only if this client initiated the deletion
-    if(this.locallyDeletedTabs.has(tabId)) {
-      this.locallyDeletedTabs.delete(tabId);
-      if(removed.slug !== null) this.configStore.removeTab(removed.slug)/*async*/;
-    } /* else -- another client deleted the tab */
-
-    // switch to replacement or handle no-tabs state
-    if(newActiveTabId) {
-      this.switchTab(newActiveTabId);
-    } else if(this.activeTabId === tabId) {
-      if((this.tabs.size < 1) && this.initialSetupDone) {
-        this.createDefaultTab();
-      } else {
-        this.activeTabId = null;
-        this.editorWrapper.setValue('');
-        this.editorWrapper.lock();
-      }
-    } /* else -- deleted tab was not active */
-
-    this.notify();
-  }
-
   // .. Create Default Tab ........................................................
   /** create a welcome/default tab when no tabs exist after discovery */
   private async createDefaultTab(): Promise<void> {
