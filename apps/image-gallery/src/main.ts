@@ -168,16 +168,19 @@ const clearAllSlots = async (): Promise<boolean> => {
 };
 
 // ................................................................................
-/** open the platform media picker and append the User's selection */
+/** open the platform media picker and append the User's selection. While the
+ *  picker is open and the chosen Assets are resolving, swap the empty-state
+ *  prompt from "No images yet." to "Loading…" so a novice User isn't left
+ *  staring at a message that contradicts what they just clicked */
 const pickAndAdd = async (): Promise<ReadonlyArray<string>> => {
   const cfg = configStore.getConfig();
   gridView.setStatus('Loading…');
+  gridView.setLoading(true);
   try {
     const newItems = await assetResolver.pickImages(cfg.assetCategory);
-    const ids = await appendItems(newItems);
-    return ids;
+    return await appendItems(newItems);
   } finally {
-    // status is reset by grid render; no explicit clear needed
+    gridView.setLoading(false)/*restores "No images yet." + Add button*/;
   }
 };
 

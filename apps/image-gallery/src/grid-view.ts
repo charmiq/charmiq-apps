@@ -35,6 +35,7 @@ export class GridView {
   private readonly appEl:        HTMLElement;
   private readonly gridEl:       HTMLElement;
   private readonly emptyStateEl: HTMLElement;
+  private readonly emptyTextEl:  HTMLElement;
   private readonly emptyAddBtn:  HTMLButtonElement;
   private readonly addBtn:       HTMLButtonElement;
   private readonly zoomSlider:   HTMLInputElement;
@@ -77,6 +78,7 @@ export class GridView {
     this.appEl        = document.getElementById('app')!;
     this.gridEl       = document.getElementById('grid')!;
     this.emptyStateEl = document.getElementById('emptyState')!;
+    this.emptyTextEl  = document.getElementById('emptyText')!;
     this.emptyAddBtn  = document.getElementById('emptyAddBtn') as HTMLButtonElement;
     this.addBtn       = document.getElementById('addBtn')      as HTMLButtonElement;
     this.zoomSlider   = document.getElementById('zoomSlider')  as HTMLInputElement;
@@ -173,6 +175,17 @@ export class GridView {
   /** set the status label shown in the header (e.g. "4 items", "Loading…") */
   public setStatus(text: string): void {
     this.statusEl.textContent = text;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** toggle the empty-state prompt between idle ("No images yet.") and
+   *  loading ("Loading…"). The empty state's visibility is still driven by
+   *  item count — this only controls which message + affordance is shown
+   *  when it is visible. The Add button is suppressed while loading so a
+   *  double-click doesn't re-open the picker */
+  public setLoading(loading: boolean): void {
+    this.emptyTextEl.textContent = loading ? 'Loading…' : 'No images yet.';
+    this.emptyAddBtn.hidden = loading;
   }
 
   // == Internal ==================================================================
