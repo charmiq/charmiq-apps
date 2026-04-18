@@ -27,6 +27,28 @@ export interface ParsedName {
   readonly displayName: string;
 }
 
+// --------------------------------------------------------------------------------
+/** the public projection of a tab — the shape returned by `listTabs` and pushed
+ *  through `tabs$()`. Carries no slug; external callers see only the display
+ *  name and the platform-minted ID */
+export interface TabInfo {
+  readonly id: TabId;
+  readonly name: string;
+  readonly mode: string;
+  readonly isActive: boolean;
+}
+
+// --------------------------------------------------------------------------------
+/** emission shape for `changes$()` — one event per content update for any tab,
+ *  including the initial population on tab creation. Subscribers typically filter
+ *  by `name` and react to `content` */
+export interface TabContentChange {
+  readonly tabId: TabId;
+  readonly name: string;
+  readonly mode: string;
+  readonly content: string;
+}
+
 // == Functions ===================================================================
 /** split a raw app-content name into `{ slug, displayName }`. A name with no
  *  delimiter is treated as slug-less (the entire string becomes the display

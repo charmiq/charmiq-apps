@@ -133,7 +133,7 @@ Three Applications cooperating in one Document — none of them know the others 
 | [`src/shader-program.ts`](charmiq://./src/shader-program.ts) | GLSL preamble + trampoline, compile / link, line-number remapping on failure |
 | [`src/renderer.ts`](charmiq://./src/renderer.ts) | WebGL2 pipeline — fullscreen-triangle via `gl_VertexID`, uniform upload, `iChannel0..3` binding |
 | [`src/channel-binder.ts`](charmiq://./src/channel-binder.ts) | Discovers `ai.charm.shared.imageGallery`, reconciles bindings into `WebGLTexture`s + sampler meta |
-| [`src/editor-bridge.ts`](charmiq://./src/editor-bridge.ts) | Duck-types a `charmiq.command` provider as the editor; reads the `shader.frag` tab on demand |
+| [`src/editor-bridge.ts`](charmiq://./src/editor-bridge.ts) | Discovers `ai.charm.shared.codemirror-editor`; subscribes to `changes$` filtered to the `shader.frag` tab and republishes via `shaderSource$` |
 | [`src/playback.ts`](charmiq://./src/playback.ts) | RAF loop — `iTime` / `iFrame` / `iFrameRate` / `iMouse`; play / pause / reset; telemetry stream |
 | [`src/config-store.ts`](charmiq://./src/config-store.ts) | Persists the `autoCompile` toggle (and debounce window) to `appState` |
 | [`src/toolbar.ts`](charmiq://./src/toolbar.ts) | Imperative DOM for transport, telemetry readout, samplers popover |
@@ -187,7 +187,7 @@ Three Applications cooperating in one Document — none of them know the others 
 
 None of the three manifests reference each other. At load time:
 
- - The player calls `charmiq.discover('charmiq.command')` and shape-checks each returned provider for the editor's tab-oriented method trio (`listTabs`, `getText`, `createTab`) to locate the editor without a dedicated capability on the editor's side.
+ - The player calls `charmiq.discover$('ai.charm.shared.codemirror-editor')` and subscribes to each returned editor's `changes$()`, filtering for a tab named `shader.frag`. Auto-compile is push-driven off that stream — no polling.
  - The player calls `charmiq.discover('ai.charm.shared.imageGallery')` to attach to the gallery's reactive `state$()` — that is what the gallery exists for (see the comment in its [`command-surface.ts`](charmiq://../../apps/image-gallery/src/command-surface.ts): *"e.g. a shader player watching slot bindings"*).
  - The player itself advertises `charmiq.command` (play, pause, reset, compile, setAutoCompile) so an agent — or a future toolbar next to it — can drive it.
 

@@ -1,7 +1,9 @@
+import { BehaviorSubject, concat, defer, from, Observable, Subject } from 'rxjs';
+
 import type { ContentBridge, ContentChange } from './content-bridge';
 import { type ConfigStore, DEFAULT_MODE } from './config-store';
 import type { EditorWrapper } from './editor-wrapper';
-import { composeName, mintSlug, type TabId, type TabSlug } from './tab-types';
+import { composeName, mintSlug, type TabContentChange, type TabId, type TabInfo, type TabSlug } from './tab-types';
 
 // owns tab state (create, delete, switch, rename, reorder) and coordinates the
 // ContentBridge, ConfigStore, and EditorWrapper when tabs change.
@@ -57,6 +59,12 @@ export class TabManager {
    *  so concurrent ingest events don't trigger a second migration */
   private readonly migrationsInFlight = new Set<TabId>();
 
+  // reactive surface — fed by `notify()` (tabs / activeTab) and by content
+  // mutations in `applyRemoteContent` / `upsertTab` / `notifyLocalEdit` (changes)
+  private readonly tabsSubject      = new BehaviorSubject<ReadonlyArray<TabInfo>>([]);
+  private readonly activeTabSubject = new BehaviorSubject<TabId | null>(null);
+  private readonly changesSubject   = new Subject<TabContentChange>();
+
   private onTabsChanged: TabsChangedCallback | null = null;
   private initialSetupDone = false;
 
@@ -81,18 +89,66 @@ export class TabManager {
   public getTabs(): ReadonlyMap<TabId, Readonly<Tab>> { return this.tabs; }
   public getActiveTabId(): TabId | null { return this.activeTabId; }
 
+  // -- Reactive Surface ----------------------------------------------------------
+  /** stream of the public tab list (display names + active flag). Emits the
+   *  current snapshot to new subscribers and on every notify() */
+  public tabs$():      Observable<ReadonlyArray<TabInfo>> { return this.tabsSubject.asObservable(); }
+  /** stream of the active tab id; emits null when no tab is active */
+  public activeTab$(): Observable<TabId | null>           { return this.activeTabSubject.asObservable(); }
+  /** stream of content updates — both remote echoes and local edits. Each
+   *  emission carries `{ tabId, name, mode, content }` so subscribers can filter
+   *  by name without a separate listTabs() lookup. On subscribe, the current
+   *  cache is replayed (one emission per existing tab) so late subscribers don't
+   *  miss the initial population from the editor's discovery phase */
+  public changes$(): Observable<TabContentChange> {
+    return defer(() => concat(from(this.snapshotChanges()), this.changesSubject.asObservable()));
+  }
+
+  /** project the current tab cache into the TabContentChange shape — used by
+   *  changes$() to seed late subscribers */
+  private snapshotChanges(): ReadonlyArray<TabContentChange> {
+    const out: TabContentChange[] = [];
+    for(const [id, tab] of this.tabs) {
+      out.push({
+        tabId: id,
+        name: tab.displayName,
+        mode: (tab.slug !== null) ? this.configStore.getTabMode(tab.slug) : DEFAULT_MODE,
+        content: tab.content
+      });
+    }
+    return out;
+  }
+
+  /** the public TabInfo projection — used by `listTabs` and the tabs$ stream */
+  public listTabs(): ReadonlyArray<TabInfo> {
+    const activeTabId = this.activeTabId;
+    const out: TabInfo[] = [];
+    for(const [id, tab] of this.tabs) {
+      out.push({
+        id,
+        name: tab.displayName,
+        mode: (tab.slug !== null) ? this.configStore.getTabMode(tab.slug) : DEFAULT_MODE,
+        isActive: (id === activeTabId)
+      });
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------------------
   /** the active tab's slug, or null while it is mid-migration or absent */
   public getActiveTabSlug(): TabSlug | null {
     if(!this.activeTabId) return null;
     return this.tabs.get(this.activeTabId)?.slug ?? null;
   }
 
+  // ------------------------------------------------------------------------------
   /** true if a new tab can be created (respects maxTabs limit) */
   public canCreateTab(): boolean {
     const max = this.configStore.getMaxTabs();
     return (max < 1) || (this.tabs.size < max);/*0 = unlimited*/
   }
 
+  // ------------------------------------------------------------------------------
   /** return ordered tab IDs, merging configStore (slug-keyed) order with any
    *  tabs not yet in the order. Tabs whose slug is still null (migration in
    *  flight) are appended but NOT persisted yet — wait for their slug echo */
@@ -344,6 +400,7 @@ export class TabManager {
         this.switchTab(change.id);
       } /* else -- leave new tab in background */
       this.notify();
+      this.emitChange(change.id, this.tabs.get(change.id)!)/*initial content*/;
       return;
     } /* else -- existing tab */
 
@@ -368,7 +425,11 @@ export class TabManager {
   // REF: https://prosemirror.net/examples/codemirror/
   private applyRemoteContent(tabId: TabId, newText: string): void {
     const tab = this.tabs.get(tabId);
-    if(tab) tab.content = newText;
+    if(!tab) return;
+
+    const wasUnchanged = (tab.content === newText);
+    tab.content = newText;
+    if(!wasUnchanged) this.emitChange(tabId, tab);
 
     if(tabId !== this.activeTabId) return;/*not the active tab — just cache it*/
 
@@ -420,8 +481,39 @@ export class TabManager {
   }
 
   // .. Notify UI .................................................................
-  /** notify the UI that tabs changed */
+  /** notify the UI that tabs changed; also pushes the public projection through
+   *  `tabs$` and the active tab id through `activeTab$` for capability subscribers */
   private notify(): void {
     if(this.onTabsChanged) this.onTabsChanged();
+
+    this.tabsSubject.next(this.listTabs());
+
+    const currentActive = this.activeTabSubject.getValue();
+    if(currentActive !== this.activeTabId) this.activeTabSubject.next(this.activeTabId);
+  }
+
+  // .. Notify Local Edit .........................................................
+  /** push a local edit's post-image into the cache and the changes$ stream. Called
+   *  from main.ts on every keystroke so capability subscribers (e.g. shader-demo)
+   *  see live edits without waiting for the OT echo */
+  public notifyLocalEdit(tabId: TabId, content: string): void {
+    const tab = this.tabs.get(tabId);
+    if(!tab) return;
+
+    tab.content = content;
+    this.emitChange(tabId, tab);
+  }
+
+  // .. Emit Content Change .......................................................
+  /** push a TabContentChange for the given tab through changes$. Centralized so
+   *  the projection (display name + resolved mode) stays consistent across
+   *  remote echoes, local edits, and initial population */
+  private emitChange(tabId: TabId, tab: Tab): void {
+    this.changesSubject.next({
+      tabId,
+      name: tab.displayName,
+      mode: (tab.slug !== null) ? this.configStore.getTabMode(tab.slug) : DEFAULT_MODE,
+      content: tab.content
+    });
   }
 }

@@ -10,8 +10,9 @@ import { Toolbar, type SamplerRow } from './toolbar';
 // player's command surface, and kicks off discovery of the sibling Apps
 //
 // Data flow
-//   EditorBridge (discover 'charmiq.command')
-//       -> getShader() on Compile or (debounced) auto -> Renderer.setShader
+//   EditorBridge (discover 'ai.charm.shared.codemirror-editor')
+//       -> shaderSource$ -> debounced auto-compile (when autoCompile is on)
+//       -> getShader() on Compile clicks -> Renderer.setShader
 //
 //   ChannelBinder (discover 'ai.charm.shared.imageGallery')
 //       -> state$ -> GL textures + per-channel SamplerMeta
@@ -73,7 +74,7 @@ const compile = async (): Promise<{ ok: boolean; infoLog: string; }> => {
 
   const started = performance.now();
   try {
-    const fromEditor = await editorBridge.getShader();
+    const fromEditor = editorBridge.getShader();
     const source = fromEditor ?? FALLBACK_SHADER;
     const usingFallback = (fromEditor === null);
     lastCompiledSource = source;
@@ -102,34 +103,26 @@ const compile = async (): Promise<{ ok: boolean; infoLog: string; }> => {
 };
 
 // ................................................................................
-/** poll the editor for text changes and schedule an auto-compile after a quiet
- *  window. The poll runs at a fixed cadence regardless of the User's typing speed;
- *  whenever the text changes, the debounce timer is reset, so the compile fires only
- *  once the User has stopped editing. No-op when autoCompile is off or no ConfigStore
- *  is available */
-let lastObservedSource: string | null = null;
-const pollAndScheduleAutoCompile = async (): Promise<void> => {
+/** schedule an auto-compile from a fresh shader source emission. Subscribed to
+ *  `editorBridge.shaderSource$()` (see init); the editor pushes on every keystroke
+ *  so we debounce here to fire only once the User has stopped editing. No-op when
+ *  autoCompile is off or no ConfigStore is available */
+const scheduleAutoCompile = (source: string): void => {
   if(!configStore) return;/*no appState -- auto-compile disabled*/
   if(!configStore.getConfig().autoCompile) return;
 
-  const source = await editorBridge.getShader();
-  if(source === null) return;/*editor unreachable; try again next tick*/
-
-  if(source !== lastObservedSource) {
-    const debounceMs = configStore.getConfig().autoCompileDebounceMs;
-    dbg('compile', `autoCompile: source changed (${source.length} chars); (re)scheduling debounce ${debounceMs}ms`);
-    lastObservedSource = source;
-    if(autoCompileTimer) clearTimeout(autoCompileTimer);
-    autoCompileTimer = setTimeout(() => {
-      autoCompileTimer = null;
-      if(lastObservedSource === lastCompiledSource) {
-        dbg('compile', 'autoCompile: debounce fired but source matches last compile; skipping');
-        return;
-      } /* else -- something new to compile */
-      dbg('compile', 'autoCompile: debounce fired -> compile()');
-      void compile();
-    }, debounceMs);
-  } /* else -- no change since last poll; leave any pending timer alone */
+  const debounceMs = configStore.getConfig().autoCompileDebounceMs;
+  dbg('compile', `autoCompile: source changed (${source.length} chars); (re)scheduling debounce ${debounceMs}ms`);
+  if(autoCompileTimer) clearTimeout(autoCompileTimer);
+  autoCompileTimer = setTimeout(() => {
+    autoCompileTimer = null;
+    if(editorBridge.getShader() === lastCompiledSource) {
+      dbg('compile', 'autoCompile: debounce fired but source matches last compile; skipping');
+      return;
+    } /* else -- something new to compile */
+    dbg('compile', 'autoCompile: debounce fired -> compile()');
+    void compile();
+  }, debounceMs);
 };
 
 // == Status + Error UI ===========================================================
@@ -234,9 +227,12 @@ toolbar.setOnAutoCompile(async (enabled: boolean) => {
   if(!configStore) return;
   dbg('compile', `autoCompile: user toggled -> ${enabled}`);
   await configStore.updateAutoCompile(enabled);
-  // if just turned on, start polling immediately so the User sees fast feedback
-  // rather than waiting for the next scheduled tick
-  if(enabled) void pollAndScheduleAutoCompile();
+  // if just turned on, schedule a compile from the current source so the User
+  // doesn't have to type a character to see the first auto-compile
+  if(enabled) {
+    const source = editorBridge.getShader();
+    if(source !== null) scheduleAutoCompile(source);
+  } /* else -- toggled off; pending timer can stay (it self-skips on next tick) */
 });
 toolbar.setOnSamplerChange((index: number, meta: Readonly<SamplerMeta>) => {
   void channelBinder.setSamplerMeta(index, meta);
@@ -278,12 +274,10 @@ const start = async (): Promise<void> => {
     });
   } /* else -- no appState; the Auto checkbox is a local-only toggle */
 
-  // discover sibling Apps in parallel so the first compile doesn't wait on the
-  // gallery round-trip and vice versa
-  await Promise.all([
-    editorBridge.init(charmiqGlobal),
-    channelBinder.init(charmiqGlobal)
-  ]);
+  // wire up sibling-App discovery — the editor bridge subscribes synchronously
+  // (returns immediately), the channel binder is async because it touches GL
+  editorBridge.init(charmiqGlobal);
+  await channelBinder.init(charmiqGlobal);
 
   // advertise the player's own command surface once peers are known
   advertiseCommands();
@@ -296,11 +290,10 @@ const start = async (): Promise<void> => {
   // no-program case but starting earlier just wastes frames)
   playback.start();
 
-  // Platform-side auto-compile: poll the editor at a slow cadence when the flag is
-  // on. Not a subscription because the editor doesn't advertise a text stream; 500ms
-  // is infrequent enough to be imperceptible yet responsive relative to the debounce
-  // window
-  setInterval(() => { void pollAndScheduleAutoCompile(); }, 500);
+  // auto-compile is push-driven: the editor's capability streams every keystroke
+  // through shaderSource$, and scheduleAutoCompile debounces them into compiles.
+  // No polling — when autoCompile is off, scheduleAutoCompile short-circuits
+  editorBridge.shaderSource$().subscribe((source: string) => scheduleAutoCompile(source));
 };
 
 start().catch(error => console.error('shader-demo initialization failed:', error));

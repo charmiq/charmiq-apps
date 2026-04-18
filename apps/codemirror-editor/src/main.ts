@@ -15,10 +15,7 @@ const contentBridge = new ContentBridge(charmiq.appContent);
 const configStore = new ConfigStore(charmiq.appState);
 const tabManager = new TabManager(contentBridge, configStore, editorWrapper);
 const toolbar = new Toolbar(tabManager, configStore, editorWrapper);
-const commandSurface = new CommandSurface(tabManager, editorWrapper, configStore);
-
-// expose contentBridge for command.ts setText
-(window as any).__contentBridge = contentBridge;
+const commandSurface = new CommandSurface(tabManager, editorWrapper, contentBridge);
 
 // == Init ========================================================================
 const start = async () => {
@@ -32,10 +29,13 @@ const start = async () => {
     DEFAULT_MODE
   );
 
-  // forward user edits from editor → content bridge
+  // forward User edits to the OT layer AND mirror the post-image into TabManager
+  // so capability subscribers (changes$) see live edits without OT-echo lag
   editorWrapper.onContentChange((from, to, insertedText) => {
     const activeTabId = tabManager.getActiveTabId();
-    if(activeTabId) contentBridge.forwardChange(activeTabId, from, to, insertedText);
+    if(!activeTabId) return;
+    contentBridge.forwardChange(activeTabId, from, to, insertedText);
+    tabManager.notifyLocalEdit(activeTabId, editorWrapper.getValue());
   });
 
   // react to remote config changes
