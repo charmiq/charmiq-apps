@@ -30,7 +30,7 @@ const selection      = new SelectionManager(viewport, document.getElementById('p
 const interaction    = new InteractionHandler(viewport, renderer, selection, tools, textMeasure);
 const textEditor     = new TextEditor(viewport, textMeasure, renderer, selection, tools);
 const imageHandler   = new ImageHandler(viewport, renderer, selection, tools);
-const exportHandler  = new ExportHandler(textMeasure);
+const exportHandler  = new ExportHandler(textMeasure, selection);
 const generation     = new GenerationHandler(exportHandler, renderer, selection);
 const clipboard      = new ClipboardHandler(viewport, renderer, selection, textMeasure);
 const contentBridge  = new ContentBridge(charmiq.appContent);
@@ -56,7 +56,6 @@ const syncElements = () => {
   textEditor.elements = elements;
   imageHandler.elements = elements;
   exportHandler.elements = elements;
-  exportHandler.selectedElements = selection.selectedElements;
   generation.elements = elements;
   propsPanel.elements = elements;
   clipboard.elements = elements;

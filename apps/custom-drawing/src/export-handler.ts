@@ -3,6 +3,7 @@ import { closeOnClickOutside } from './dom-utils';
 import { getElementBounds, type DrawingElement } from './element-model';
 import { getDrawingBounds } from './geometry';
 import { ensureGoogleFontsLoaded } from './google-fonts';
+import type { SelectionManager } from './selection-manager';
 import { DEFAULT_FONT_FAMILY } from './svg-renderer';
 import type { TextMeasurement } from './text-measurement';
 
@@ -11,22 +12,23 @@ import type { TextMeasurement } from './text-measurement';
 // == ExportHandler ===============================================================
 export class ExportHandler {
   private readonly textMeasure: TextMeasurement;
+  private readonly selection: SelectionManager;
   private services: CharmIQServices | null = null;
 
   public elements: DrawingElement[] = [];
-  public selectedElements: DrawingElement[] = [];
   public exportMode: 'all' | 'selected' = 'all';
 
-  public constructor(textMeasure: TextMeasurement) {
+  public constructor(textMeasure: TextMeasurement, selection: SelectionManager) {
     this.textMeasure = textMeasure;
+    this.selection = selection;
   }
 
   public setServices(s: CharmIQServices): void { this.services = s; }
 
   // ==============================================================================
   public async exportToPNG(target: 'download' | 'clipboard' | 'files'): Promise<void> {
-    const elements = (this.exportMode === 'selected') && (this.selectedElements.length > 0)
-                    ? this.selectedElements
+    const elements = (this.exportMode === 'selected') && (this.selection.selectedElements.length > 0)
+                    ? this.selection.selectedElements
                     : this.elements;
 
     const canvas = await this.exportDrawingToCanvas(elements);
@@ -87,12 +89,12 @@ export class ExportHandler {
     if(!visible) {
       const selBtn = document.getElementById('exportSelectedBtn')!;
       const allBtn = document.getElementById('exportAllBtn')!;
-      if(this.selectedElements.length > 0) {
+      if(this.selection.selectedElements.length > 0) {
         selBtn.style.display = 'flex';
         this.exportMode = 'selected';
         selBtn.style.background = '#e8f0fe';
         allBtn.style.background = 'none';
-      } else {
+      } else { /*no selection*/
         selBtn.style.display = 'none';
         this.exportMode = 'all';
         allBtn.style.background = '#e8f0fe';

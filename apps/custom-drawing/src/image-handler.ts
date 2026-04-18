@@ -2,6 +2,7 @@ import type { CharmIQServices } from '../../../shared/charmiq-services';
 import type { CanvasViewport } from './canvas-viewport';
 import { closeOnClickOutside } from './dom-utils';
 import { generateElementId, type DrawingElement, type ImageElement, type Point } from './element-model';
+import { showLoadingOverlay, type LoadingOverlay } from './loading-overlay';
 import { notifyError } from './notifications';
 import type { SelectionManager } from './selection-manager';
 import type { SvgRenderer } from './svg-renderer';
@@ -55,6 +56,10 @@ export class ImageHandler {
       const url = input.value.trim();
       if(!url) { error.textContent = 'Please enter a URL'; error.classList.add('visible'); return; }
 
+      // hide the URL modal behind the busy overlay so the user sees progress
+      // instead of a frozen dialog while the image is fetched
+      modal.classList.remove('visible');
+      let overlay: LoadingOverlay | null = showLoadingOverlay('Loading image...');
       try {
         error.classList.remove('visible');
         const img = new Image();
@@ -65,6 +70,7 @@ export class ImageHandler {
         const max = 300;
         if((w > max) || (h > max)) { const s = Math.min(max / w, max / h); w *= s; h *= s; }
 
+        overlay.setMessage('Adding image...');
         if(this.editingImageElement) {
           const editing = this.editingImageElement;
           // re-anchor around existing center so the new image keeps its natural
@@ -90,7 +96,15 @@ export class ImageHandler {
           this.tools.selectTool('selection');
         }
         hide();
-      } catch { error.textContent = 'Failed to load image. Please check the URL.'; error.classList.add('visible'); }
+      } catch{
+        // failure: re-show the modal so the User can correct the URL
+        modal.classList.add('visible');
+        error.textContent = 'Failed to load image. Please check the URL.';
+        error.classList.add('visible');
+      } finally {
+        overlay?.dismiss();
+        overlay = null;
+      }
     };
 
     okBtn.addEventListener('click', loadImage);
@@ -171,10 +185,12 @@ export class ImageHandler {
     if(!this.services) return;
     const { assetService, commandService } = this.services;
 
+    let overlay: LoadingOverlay | null = null;
     try {
       const assetIds = await commandService.execute<string[] | null>({ id: 'modal.mediaImport.openAndResolve', args: { assetCategory: 'image' } });
       if(!assetIds || (assetIds.length < 1)) return;
 
+      overlay = showLoadingOverlay('Importing images...');
       const copyResults = await commandService.execute<Array<{ assetId: string; downloadUrl: string }>>({ id: 'asset.copy.toRichtextAsset', args: { assetIds } });
       const center = this.canvasCenter();
       const newEls: DrawingElement[] = [];
@@ -183,8 +199,10 @@ export class ImageHandler {
       for (const assetId of assetIds) {
         const copy = copyResults.find(c => c.assetId === assetId);
         if(!copy) continue;
+        overlay.setMessage('Waiting for asset...');
         await assetService.waitForStoredAsset(assetId);
         try {
+          overlay.setMessage('Loading image...');
           const el = await this.createImageFromUrl(copy.downloadUrl, center, offsetX);
           newEls.push(el);
           offsetX += (el as any).width + 20;
@@ -193,12 +211,14 @@ export class ImageHandler {
 
       this.commitNewElements(newEls);
     } catch(error) { console.error('Failed to import images from files:', error); }
+    finally { overlay?.dismiss(); }
   }
 
   // ..............................................................................
   private async importFromClipboard(): Promise<void> {
     if(!this.services) return;
 
+    let overlay: LoadingOverlay | null = null;
     try {
       const items = await navigator.clipboard.read();
       let blob: Blob | null = null;
@@ -211,16 +231,18 @@ export class ImageHandler {
       }
       if(!blob || !mime) { notifyError(this.services.commandService, 'Clipboard import', 'No image found in clipboard.'); return; }
 
+      overlay = showLoadingOverlay('Uploading image...');
       const ext = mime.split('/')[1] || 'png';
       const name = `clipboard-image-${Date.now()}.${ext}`;
       const url = await this.uploadBlob(blob, name, mime);
+      overlay.setMessage('Loading image...');
       const center = this.canvasCenter();
       const el = await this.createImageFromUrl(url, center, 0);
       this.commitNewElements([el]);
     } catch(error) {
       console.error('Clipboard import failed:', error);
       if((error as Error)?.name === 'NotAllowedError') notifyError(this.services.commandService, 'Clipboard import', 'Clipboard access denied.');
-    }
+    } finally { overlay?.dismiss(); }
   }
 
   // ..............................................................................
@@ -238,17 +260,22 @@ export class ImageHandler {
     const valid = Array.from(files).filter(f => supported.includes(f.type));
     if(valid.length < 1) return;
 
+    const overlay = showLoadingOverlay(valid.length > 1 ? `Uploading ${valid.length} images...` : 'Uploading image...');
     const newEls: DrawingElement[] = [];
     let offsetX = 0;
-    for (const file of valid) {
-      try {
-        const url = await this.uploadBlob(file, file.name, file.type);
-        const el = await this.createImageFromUrl(url, position, offsetX);
-        newEls.push(el);
-        offsetX += (el as any).width + 20;
-      } catch{ /*skip failed*/ }
-    }
-    this.commitNewElements(newEls);
+    try {
+      for (const file of valid) {
+        try {
+          overlay.setMessage(`Uploading ${file.name}...`);
+          const url = await this.uploadBlob(file, file.name, file.type);
+          overlay.setMessage('Loading image...');
+          const el = await this.createImageFromUrl(url, position, offsetX);
+          newEls.push(el);
+          offsetX += (el as any).width + 20;
+        } catch{ /*skip failed*/ }
+      }
+      this.commitNewElements(newEls);
+    } finally { overlay.dismiss(); }
   }
 
   // ..............................................................................
