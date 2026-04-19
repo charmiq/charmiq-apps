@@ -381,7 +381,7 @@ export class ChannelBinder {
   }
 }
 
-// == Helpers =====================================================================
+// == Util ========================================================================
 /** coerce an opaque meta object into a validated SamplerMeta. Unknown fields are
  *  ignored, invalid values fall back to defaults */
 const normalizeMeta = (raw: unknown): Readonly<SamplerMeta> => {
