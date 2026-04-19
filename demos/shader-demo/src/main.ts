@@ -180,10 +180,12 @@ const toggleFullscreen = (): void => {
 };
 
 // == Command surface =============================================================
+// NOTE: each method receives a single named-args object whose properties match
+//       the method's `inputSchema` in manifest.json
 const advertiseCommands = (): void => {
-  if(!charmiqGlobal?.advertise) return/*standalone -- no CharmIQ bridge*/;
+  if(!charmiqGlobal?.exportCommands) return/*standalone -- no CharmIQ bridge*/;
 
-  charmiqGlobal.advertise('charmiq.command', {
+  charmiqGlobal.exportCommands({
     play: () => {
       playback.play();
       return true;

@@ -46,8 +46,10 @@ export class CommandSurface {
 
   // == Internal ==================================================================
   /** register the discrete agent-callable commands listed in manifest.json */
+  // NOTE: each method receives a single named-args object whose properties match
+  //       the method's `inputSchema` in manifest.json
   private advertiseCommands(charmiq: CharmIQAPI): void {
-    charmiq.advertise('charmiq.command', {
+    charmiq.exportCommands({
       addItems:      ()                                       => this.actions.addItems(),
       removeItem:    ({ itemId }: { itemId: string; })        => this.actions.removeItem(itemId),
       getItems:      ()                                       => this.model.getItems() as ReadonlyArray<GalleryItem>,

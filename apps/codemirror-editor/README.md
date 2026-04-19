@@ -74,7 +74,7 @@ graph TD
 
 **CodeMirror 5 via CDN globals.** CM5 isn't an ES module — it attaches to `window.CodeMirror`. Language modes load the same way, as additional `<script>` tags declared in the manifest. The `editor-wrapper.ts` facade means the rest of the Application never touches `window.CodeMirror` directly.
 
-**The Charm command surface.** `command.ts` calls `charmiq.advertise('charmiq.command', { ... })` to register named operations: `getText`, `setText`, `createTab`, `switchTab`, `removeTab`, `listTabs`. Any Charm working in the same document can discover and call these. This is the pattern for making an Application Charm-controllable without coupling it to any specific Charm.
+**The Charm command surface.** `command.ts` calls `charmiq.exportCommands({ ... })` to register named operations: `getText`, `setText`, `createTab`, `switchTab`, `removeTab`, `listTabs`. Each method receives a single named-args object whose properties match the method's `inputSchema` declared in `manifest.json`. Any Charm working in the same document can discover and call these. This is the pattern for making an Application Charm-controllable without coupling it to any specific Charm.
 
 **RxJS at the boundary only.** `onChange$()` returns an Observable; the Application subscribes to it. But RxJS doesn't appear inside the modules themselves — only at the integration points where the CharmIQ API requires it.
 

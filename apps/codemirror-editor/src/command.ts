@@ -38,20 +38,27 @@ export class CommandSurface {
 
   // == Internal ==================================================================
   /** register the discrete agent-callable commands declared in manifest.json */
+  // NOTE: exportCommands delivers each call's args as a single named-params
+  //       object whose properties match the method's `inputSchema` in the
+  //       manifest — methods destructure that object directly
   private advertiseCommands(charmiq: CharmIQAPI): void {
-    charmiq.advertise('charmiq.command', {
-      getText: (tabId?: TabId) => this.getText(tabId),
-      setText: (text: string, tabId?: TabId) => this.setText(text, tabId),
+    charmiq.exportCommands({
+      getText: ({ tabId }: { tabId?: TabId; } = {}) => this.getText(tabId),
+      setText: ({ text, tabId }: { text: string; tabId?: TabId }) => this.setText(text, tabId),
 
       listTabs: () => this.tabManager.listTabs(),
-      switchTab: (tabId: TabId) => this.switchTab(tabId),
-      createTab: (name?: string, content = '', mode = DEFAULT_MODE) => this.createTab(name, content, mode),
-      removeTab: (tabId: TabId) => this.removeTab(tabId)
+      switchTab: ({ tabId }: { tabId: TabId; }) => this.switchTab(tabId),
+      createTab: ({ name, content = '', mode = DEFAULT_MODE }: { name?: string; content?: string; mode?: string } = {}) => this.createTab(name, content, mode),
+      removeTab: ({ tabId }: { tabId: TabId; }) => this.removeTab(tabId)
     });
   }
 
   // ------------------------------------------------------------------------------
   /** advertise the reactive capability for sibling apps in the same Document */
+  // NOTE: this is the CORBA-style sibling-app surface — methods receive
+  //       positional arguments (a sibling that calls `proxy.setText(text, tabId)`
+  //       arrives here as `setText(text, tabId)`). Distinct from the MCP-style
+  //       `exportCommands` block above which uses named-args destructuring
   private advertiseCapability(charmiq: CharmIQAPI): void {
     charmiq.advertise('ai.charm.shared.codemirror-editor', {
       // streams

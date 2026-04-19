@@ -20,8 +20,10 @@ export class CommandSurface {
   }
 
   // ------------------------------------------------------------------------------
+  // NOTE: each method receives a single named-args object whose properties match
+  //       the method's `inputSchema` in manifest.json
   public init(charmiq: CharmIQAPI): void {
-    charmiq.advertise('charmiq.command', {
+    charmiq.exportCommands({
       getElements: () => [...this.elements],
 
       addElement: (spec: any) => {
@@ -36,7 +38,7 @@ export class CommandSurface {
         return el.id;
       },
 
-      addElements: (specs: any[]) => {
+      addElements: ({ elements: specs }: { elements: any[]; }) => {
         const newEls = specs.map((s: any) => {
           const el: any = { id: generateElementId(), ...s };
           if((el.width !== undefined) && (el.height !== undefined)) { el.x2 = el.x + el.width; el.y2 = el.y + el.height; }
@@ -48,7 +50,7 @@ export class CommandSurface {
         return newEls.map(e => e.id);
       },
 
-      move: (targets: string | string[], deltaX: number, deltaY: number) => {
+      move: ({ targets, deltaX, deltaY }: { targets: string | string[]; deltaX: number; deltaY: number; }) => {
         const elements = this.resolveTargets(targets);
         const positions: { id: string; bounds: ReturnType<typeof getElementBounds> }[] = [];
         for(const el of elements) {
@@ -60,7 +62,7 @@ export class CommandSurface {
         return positions;
       },
 
-      rotate: (targets: any, angle: number) => {
+      rotate: ({ targets, angle }: { targets: string | string[]; angle: number; }) => {
         const els = this.resolveTargets(targets);
         if(els.length === 1) {
           els[0].angle = angle;
@@ -86,7 +88,7 @@ export class CommandSurface {
         return angle;
       },
 
-      delete: (targets: string | string[]) => {
+      delete: ({ targets }: { targets: string | string[]; }) => {
         const els = this.resolveTargets(targets);
         const ids = new Set(els.map(e => e.id));
         // mutate in place so the shared elements array reference stays valid across modules
@@ -98,7 +100,7 @@ export class CommandSurface {
         return [...ids];
       },
 
-      group: (targets: string | string[]) => {
+      group: ({ targets }: { targets: string | string[]; }) => {
         const els = this.resolveTargets(targets);
         if(els.length <= 1) throw new Error('At least 2 elements are required');
         const gid = generateGroupId();
@@ -108,7 +110,7 @@ export class CommandSurface {
         return gid;
       },
 
-      ungroup: (groupId: string) => {
+      ungroup: ({ groupId }: { groupId: string; }) => {
         const grouped = this.elements.filter(e => e.groupId === groupId);
         if(grouped.length < 1) throw new Error(`No elements found with groupId ${groupId}`);
         for(const el of grouped) delete el.groupId;

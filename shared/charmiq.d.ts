@@ -106,11 +106,15 @@ export interface AppStateAPI {
 export type CapabilityProxy = Record<string, (...args: any[]) => any>;
 
 // --------------------------------------------------------------------------------
+/** advertise an app-to-app capability. CORBA-style: methods receive **positional
+ *  arguments** — a sibling that calls `proxy.foo(a, b)` arrives here as
+ *  `foo(a, b)`. The `charmiq.command` capability is reserved and must be
+ *  registered via {@link ExportCommands} instead — calling
+ *  `advertise('charmiq.command', ...)` will throw at runtime */
 export type AdvertiseCapability = (
   capability: string,
   methods: Record<string/*method name*/, Function>
 ) => void;
-
 // --------------------------------------------------------------------------------
 /** discover a single provider. The type parameter narrows the proxy to the
  *  concrete capability shape — callers usually know the remote's method set
@@ -121,6 +125,18 @@ export type DiscoverCapability  = <T = CapabilityProxy>(capability: string) => P
 /** observable variant — emits the current provider set whenever it changes. The
  *  type parameter narrows each proxy as with {@link DiscoverCapability} */
 export type DiscoverCapability$ = <T = CapabilityProxy>(capability: string) => Observable<T[]>;
+
+// == Commands ====================================================================
+/** export this Application's MCP-style command surface — the methods declared in
+ *  the app's `manifest.json` under `commands` with JSON-Schema `inputSchema` /
+ *  `outputSchema`. Methods receive a **single named-args object** whose
+ *  properties match the method's `inputSchema`.
+ *
+ *  Targeted by the host (`editor.application.call`) and by sibling apps
+ *  (`discover('charmiq.command')`) — both routes converge here */
+export type ExportCommands = (
+  methods: Record<string/*method name*/, Function>
+) => void;
 
 // == Fetch =======================================================================
 export type CharmIQFetch = (
@@ -343,8 +359,13 @@ export interface CharmIQAPI {
    */
   appState: AppStateAPI;
 
-  /** advertise a capability that this Application provides. Other Applications can
-   *  discover and communicate with this Application through the advertised capability.
+  /** advertise a capability that this Application provides for sibling Applications
+   *  in the same Document. CORBA-style: methods receive **positional arguments**.
+   *
+   *  Use this for app-to-app communication (e.g. a previewer subscribing to an
+   *  editor's text stream). For host-callable commands described by JSON-Schema
+   *  in the app's manifest, use {@link CharmIQAPI.exportCommands} instead —
+   *  calling `advertise('charmiq.command', ...)` will throw.
    *  @example
    *  window.charmiq.advertise('counter', {
    *    increment: () => ++count,
@@ -373,6 +394,22 @@ export interface CharmIQAPI {
    *  counter.value$().pipe(retry()).subscribe(...);  // use retry() for streams
    */
   discover: DiscoverCapability;
+
+  /** export this Application's MCP-style command surface — the methods declared
+   *  in the app's `manifest.json` under `commands` with JSON-Schema `inputSchema`
+   *  / `outputSchema`. Methods receive a **single named-args object** whose
+   *  properties match the method's `inputSchema`.
+   *
+   *  Targeted by the host (`editor.application.call`) and by sibling apps
+   *  (`discover('charmiq.command')`) — both routes converge here.
+   *  @example
+   *  // manifest.json declares: setText({ text: string, tabId?: string })
+   *  window.charmiq.exportCommands({
+   *    setText: ({ text, tabId }) => editor.replace(tabId, text),
+   *    listTabs: () => tabManager.listTabs()
+   *  });
+   */
+  exportCommands: ExportCommands;
 
   /** fetch proxy to bypass CORS restrictions. Routes requests through the parent
    *  window which has a valid origin and returns a standard Response.

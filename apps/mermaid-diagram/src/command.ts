@@ -2,8 +2,8 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { ConfigStore } from './config-store';
 import type { ContentBridge } from './content-bridge';
 
-// registers LLM-facing commands via window.charmiq.advertise so that agents
-// can read diagram source and control configuration
+// registers LLM-facing commands via window.charmiq.exportCommands so that
+// agents can read diagram source and control configuration
 // ********************************************************************************
 /** exposes the command surface for LLM / agent interaction */
 export class CommandSurface {
@@ -15,10 +15,14 @@ export class CommandSurface {
     this.configStore = configStore;
   }
 
-  /** register all commands via `charmiq.advertise` — called once from main.ts */
+  /** register all commands via `charmiq.exportCommands` — called once from main.ts */
+  // NOTE: each method receives a single named-args object whose properties match
+  //       the method's `inputSchema` in manifest.json. For `setConfig`, the entire
+  //       object IS the partial config (theme, flowchart, ...) so it's passed
+  //       through to configStore.setConfig as-is
   public init(): void {
     const charmiq: CharmIQAPI = window.charmiq;
-    charmiq.advertise('charmiq.command', {
+    charmiq.exportCommands({
       getText: () => {
         return this.contentBridge.getCurrentSource();
       },

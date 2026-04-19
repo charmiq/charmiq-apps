@@ -111,11 +111,11 @@ function initializeWidget() {
 
     log('Advertised "counter" capability');
 
-    window.charmiq.advertise('charmiq.command', {
+    window.charmiq.exportCommands({
       lastValue: async () => count
     });
 
-    log('Advertised "charmiq.command" capability');
+    log('Exported "charmiq.command" surface');
     log('Ready to receive commands');
   } catch (error) {
     log(`Error: ${error.message}`);
@@ -286,12 +286,12 @@ function initializeWidget() {
 
     updateStatus('Discovering "counter" capability...');
 
-    window.charmiq.advertise('charmiq.command', {
+    window.charmiq.exportCommands({
       increment: async () => await handleIncrement(),
       decrement: async () => await handleDecrement()
     });
 
-    updateStatus('Advertised "charmiq.command" capability');
+    updateStatus('Exported "charmiq.command" surface');
   } catch(error) {
     updateStatus(`Error: ${error.message}`);
     console.error('[CONTROLS] Error:', error);
@@ -503,7 +503,9 @@ initializePromise();
 
 These three apps share no code and have no knowledge of each other at build time. They coordinate entirely through CharmIQ's `advertise` / `discover` API:
 
-**`advertise(name, surface)`** — an app declares a named capability with an object of methods and streams. Any other app on the page can discover it.
+**`advertise(name, surface)`** — an app declares a named app-to-app capability with an object of methods and streams. Any other app on the page can discover it. Methods receive **positional arguments** — `proxy.foo(a, b)` arrives as `foo(a, b)`.
+
+**`exportCommands(surface)`** — separate, MCP-flavored surface for the methods declared in the app's `manifest.json` under `commands`. Called by the host (`editor.application.call`) and by sibling apps via `discover('charmiq.command')`. Methods receive a **single named-args object** matching the manifest's `inputSchema`. (Calling `advertise('charmiq.command', ...)` throws — use `exportCommands` instead.)
 
 **`discover$(name)`** — returns an observable that emits whenever providers of that capability connect or disconnect. The controller uses this to auto-enable its buttons when the counter appears.
 
@@ -511,7 +513,7 @@ These three apps share no code and have no knowledge of each other at build time
 
 **Streams across iframes** — the provider's `value$()` returns a `BehaviorSubject` observable. The observer subscribes to it through the proxy, receiving live updates as the controller clicks buttons. RxJS operators like `switchMap` and `retry` work normally across the boundary.
 
-**Charms can play too** — both the provider and the controller advertise `charmiq.command` surfaces. A Charm can call `lastValue` on the provider or `increment`/`decrement` on the controller, bridging the coordination API into the agent world.
+**Charms can play too** — both the provider and the controller call `exportCommands` to expose a `charmiq.command` surface. A Charm can call `lastValue` on the provider or `increment`/`decrement` on the controller, bridging the coordination API into the agent world.
 
 
 ## The Pattern
@@ -520,7 +522,7 @@ These three apps share no code and have no knowledge of each other at build time
 ┌─────────────────────────────────────────┐
 │  Provider                               │
 │  advertise('counter', { ... })          │
-│  advertise('charmiq.command', { ... })  │
+│  exportCommands({ ... })                │
 └──────────────────┬──────────────────────┘
                    │ discover$('counter')
          ┌─────────┴─────────┐
