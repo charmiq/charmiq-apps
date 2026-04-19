@@ -187,11 +187,11 @@ export class ImageHandler {
 
     let overlay: LoadingOverlay | null = null;
     try {
-      const assetIds = await commandService.execute<string[] | null>({ id: 'modal.mediaImport.openAndResolve', args: { assetCategory: 'image' } });
+      const assetIds = await commandService.execute({ id: 'modal.mediaImport.openAndResolve', args: { assetCategory: 'image' } });
       if(!assetIds || (assetIds.length < 1)) return;
 
       overlay = showLoadingOverlay('Importing images...');
-      const copyResults = await commandService.execute<Array<{ assetId: string; downloadUrl: string }>>({ id: 'asset.copy.toRichtextAsset', args: { assetIds } });
+      const copyResults = await commandService.execute({ id: 'asset.copy.toRichtextAsset', args: { assetIds } });
       const center = this.canvasCenter();
       const newEls: DrawingElement[] = [];
       let offsetX = 0;
@@ -286,7 +286,7 @@ export class ImageHandler {
     const assetId = await assetService.getUploadAssetId(uploadResult);
     if(!assetId) throw new Error('Upload did not produce an asset id');
     await assetService.waitForStoredAsset(assetId);
-    const copies = await commandService.execute<Array<{ downloadUrl: string }>>({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
+    const copies = await commandService.execute({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
     return copies[0].downloadUrl;
   }
 

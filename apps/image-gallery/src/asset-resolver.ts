@@ -1,3 +1,4 @@
+import type { AssetCategory, AssetCopyResult } from '../../../shared/charmiq-commands';
 import type { CharmIQServices } from '../../../shared/charmiq-services';
 import type { GalleryItem } from './content-bridge';
 
@@ -15,13 +16,6 @@ import type { GalleryItem } from './content-bridge';
 // URL into an off-DOM HTMLImageElement
 // ********************************************************************************
 // == Types =======================================================================
-/** internal payload returned by asset.copy.toRichtextAsset */
-interface AssetCopyResult {
-  readonly assetId:     string;
-  readonly downloadUrl: string;
-}
-
-// --------------------------------------------------------------------------------
 /** internal shape returned by waitForStoredAsset — only the fields read here */
 interface StoredAsset {
   readonly name?:        string;
@@ -43,11 +37,11 @@ export class AssetResolver {
   // == Public ====================================================================
   /** open the platform media picker and resolve the user's selection into
    *  GalleryItems. Returns [] when the user cancels or services are unavailable */
-  public async pickImages(assetCategory: string): Promise<ReadonlyArray<GalleryItem>> {
+  public async pickImages(assetCategory: AssetCategory): Promise<ReadonlyArray<GalleryItem>> {
     if(!this.services) return [];
 
     try {
-      const assetIds = await this.services.commandService.execute<string[] | null>({
+      const assetIds = await this.services.commandService.execute({
         id:   'modal.mediaImport.openAndResolve',
         args: { assetCategory }
       });
@@ -70,7 +64,7 @@ export class AssetResolver {
 
     let copies: ReadonlyArray<AssetCopyResult>;
     try {
-      copies = await commandService.execute<AssetCopyResult[]>({
+      copies = await commandService.execute({
         id:   'asset.copy.toRichtextAsset',
         args: { assetIds: [...assetIds] }
       });

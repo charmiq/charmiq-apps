@@ -1,3 +1,5 @@
+import type { CharmIQCommandsMap } from './charmiq-commands';
+
 // shared duck-typed contract for the CharmIQ services that the host injects
 // into apps at runtime. See shared/Plan.md for the long-term plan that will
 // replace this file.
@@ -21,7 +23,13 @@ export interface CharmIQAssetService {
 }
 
 // == Command =====================================================================
+// NOTE: the typed overload is selected when `id` is a literal key of
+//       CharmIQCommandsMap, giving apps typechecked args + inferred return.
+//       The string-typed overload is the escape hatch for command ids that
+//       haven't yet been mirrored into CharmIQCommandsMap -- behaves like the
+//       original duck-typed signature
 export interface CharmIQCommandService {
+  execute<K extends keyof CharmIQCommandsMap>(req: { id: K; args?: CharmIQCommandsMap[K]['args'] }): Promise<CharmIQCommandsMap[K]['return']>;
   execute<T = unknown>(req: { id: string; args?: unknown }): Promise<T>;
 }
 

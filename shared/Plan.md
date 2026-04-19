@@ -7,6 +7,10 @@
     oauth, visualEditor, visualDesigner
   * `charmiq-services.d.ts` — the CharmIQ *services* (`CharmIQServices`): shared
     singletons injected by the host (commandService, assetService, generationService)
+  * `charmiq-commands.d.ts` — the `CharmIQCommandsMap`: per-command `{ args, return }`
+    signatures for the platform Commands that apps call through `commandService.execute`.
+    Hand-mirrored from the platform's `registerCommand` declarations; a generator
+    will eventually replace the hand mirror so it can't drift
 
 ## CharmIQ API Typing (`charmiq.d.ts`)
 

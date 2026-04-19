@@ -53,7 +53,7 @@ export class GenerationHandler {
       // dismiss overlay while the user interacts with the generation modal
       overlay.dismiss(); overlay = null;
 
-      const result = await commandService.execute<{ prompt: string; generationProvider: string; generationConfiguration: unknown } | null>({
+      const result = await commandService.execute({
         id: 'modal.generation.image.editor.openAndResolve',
         args: { parentFolderId: undefined, imageUrls: [dataUrl] },
       });
@@ -71,7 +71,7 @@ export class GenerationHandler {
         if(!asset || (asset.store.storeStatus !== 'stored')) continue;
 
         overlay.setMessage('Preparing generated image...');
-        const copies = await commandService.execute<Array<{ downloadUrl: string }>>({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
+        const copies = await commandService.execute({ id: 'asset.copy.toRichtextAsset', args: { assetIds: [assetId] } });
         if(!copies?.[0]) continue;
 
         overlay.setMessage('Adding generated image to canvas...');
