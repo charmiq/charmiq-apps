@@ -58,6 +58,11 @@ const toolbar       = new Toolbar();
 /** the most recently compiled shader source -- used to deduplicate auto recompiles
  *  when the text hasn't actually changed */
 let lastCompiledSource: string | null = null;
+/** whether the most recent compile fell back to FALLBACK_SHADER (editor hadn't
+ *  emitted yet). Used to force a catch-up compile on the first real emission,
+ *  even when autoCompile is off -- covers the iframe-reload case where the initial
+ *  compile beats the editor's first `changes$` push */
+let lastCompileUsedFallback = true;
 let autoCompileTimer: ReturnType<typeof setTimeout> | null = null;
 let compileInFlight = false;
 
@@ -78,6 +83,7 @@ const compile = async (): Promise<{ ok: boolean; infoLog: string; }> => {
     const source = fromEditor ?? FALLBACK_SHADER;
     const usingFallback = (fromEditor === null);
     lastCompiledSource = source;
+    lastCompileUsedFallback = usingFallback;
 
     const result = renderer.setShader(source);
     dbg('compile', result.ok ? 'ok' : 'FAILED', {
@@ -292,8 +298,18 @@ const start = async (): Promise<void> => {
 
   // auto-compile is push-driven: the editor's capability streams every keystroke
   // through shaderSource$, and scheduleAutoCompile debounces them into compiles.
-  // No polling — when autoCompile is off, scheduleAutoCompile short-circuits
-  editorBridge.shaderSource$().subscribe((source: string) => scheduleAutoCompile(source));
+  // No polling — when autoCompile is off, scheduleAutoCompile short-circuits.
+  // Exception: if the last compile used FALLBACK_SHADER (iframe reload beat the
+  // editor's first `changes$` push), force a catch-up compile so the User sees
+  // their real shader without having to click Compile
+  editorBridge.shaderSource$().subscribe((source: string) => {
+    if(lastCompileUsedFallback) {
+      dbg('compile', 'editor source arrived after fallback compile; forcing catch-up compile');
+      void compile();
+      return;
+    } /* else -- already on real source; respect autoCompile gate */
+    scheduleAutoCompile(source);
+  });
 };
 
 start().catch(error => console.error('shader-demo initialization failed:', error));
