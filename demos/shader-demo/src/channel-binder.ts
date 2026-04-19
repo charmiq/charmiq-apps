@@ -395,7 +395,12 @@ const decodeImage = async (url: string): Promise<ImageBitmap> => {
     const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
     if(!response.ok) throw new Error(`HTTP ${response.status}`);
     const blob = await response.blob();
-    return await createImageBitmap(blob, { imageOrientation: 'from-image', premultiplyAlpha: 'none' });
+    // NOTE: imageOrientation must be 'none' -- the texImage2D path flips via
+    //       UNPACK_FLIP_Y_WEBGL so the shader's `texture(iChannel0, uv)` is upright
+    //       under Shadertoy's bottom-left-origin fragCoord. 'from-image' causes
+    //       some browsers to pre-apply an orientation that races with the GL flag
+    //       and yields an inverted image
+    return await createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none' });
   } catch(error) {
     // fall back to the image element path so data: URLs and permissive hosts still work
     // NOTE: this path can't set colorSpace the same way
