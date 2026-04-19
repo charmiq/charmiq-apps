@@ -35,7 +35,7 @@
 //   iMouse      -- xy: cursor, zw: last click (negated when up)
 //   iChannel0   -- a texture if a slot is bound in the gallery
 //
-// Try it: drop an image into iChannel0 (right), then uncomment the
+// Try it: drop an image into iChannel0 (left) then uncomment the
 // two lines below.
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
