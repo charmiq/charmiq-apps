@@ -116,6 +116,23 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
   fragColor = vec4(col, 1.0);
 }
+    </app-content>
+    <app-state>
+{
+  "config": {
+    "lineNumbers": true,
+    "lineWrapping": false,
+    "smartIndent": true,
+    "indentWithTabs": false,
+    "maxTabs": 1
+  },
+  "tabModes": {
+    "shader": "x-shader/x-fragment"
+  },
+  "tabOrder": [
+    "shader"
+  ]
+}
     </app-state>
   </iframe-app>
 </p>
