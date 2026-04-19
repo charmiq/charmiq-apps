@@ -28,42 +28,93 @@
 <p style="text-align: center;">
   <iframe-app data-name="editor" height="360px" width="99%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://../../apps/codemirror-editor">
     <app-content name="shader:shader.frag">
-// A tiny greeting — edit and hit Compile (or Cmd/Ctrl+Enter).
+// Liquid lens — drag the mouse to push the image around
+//   • ripples radiate from the last click (iMouse.zw)
+//   • a soft lens follows the cursor while held (iMouse.xy)
+//   • chromatic aberration scales with distortion
+//   • subtle film grain + vignette on top
 //
-//   iResolution -- viewport size in px (vec3)
-//   iTime       -- playback time in seconds
-//   iMouse      -- xy: cursor, zw: last click (negated when up)
-//   iChannel0   -- a texture if a slot is bound in the gallery
-//
-// Try it: drop an image into iChannel0 (left) then uncomment the
-// two lines below.
+// Requires iChannel0. If the channel is unbound you'll see the
+// procedural fallback (animated gradient) underneath
+
+#define TAU 6.28318530718
+
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+mat2 rot(float a) {
+  float c = cos(a), s = sin(a);
+  return mat2(c, -s, s, c);
+}
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-  vec2 uv = fragCoord / iResolution.xy;
+  vec2 res = iResolution.xy;
+  vec2 uv  = fragCoord / res;
+  vec2 p   = (fragCoord - 0.5 * res) / min(res.x, res.y);
 
-  vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0.0, 2.0, 4.0));
+  // Mouse in the same normalized space. Fall back to a slow orbit
+  // so the demo still moves before the user touches it
+  bool held    = iMouse.z > 0.0;
+  vec2 clickPx = abs(iMouse.zw);
+  vec2 cursor  = held ? iMouse.xy : 0.5 * res + 0.25 * min(res.x, res.y) * vec2(cos(iTime * 0.4), sin(iTime * 0.5));
+  vec2 m       = (cursor  - 0.5 * res) / min(res.x, res.y);
+  vec2 c       = (clickPx - 0.5 * res) / min(res.x, res.y);
 
-  // vec3 tex = texture(iChannel0, uv).rgb;
-  // col = mix(col, tex, 0.5);
+  // Ripples from the last click point
+  float d    = length(p - c);
+  float wave = sin(d * 28.0 - iTime * 4.0) * exp(-d * 3.0);
+
+  // Soft attractor lens at the cursor
+  vec2  toM  = p - m;
+  float dm   = length(toM);
+  float lens = exp(-dm * dm * 12.0);
+  vec2  pull = -toM * lens * 0.35;
+
+  // Gentle global swirl driven by time
+  vec2 pr = rot(0.25 * sin(iTime * 0.3)) * p;
+
+  // Combined distortion field, mapped back to UV space
+  vec2 aspect = vec2(min(res.x, res.y) / res.x, min(res.x, res.y) / res.y);
+  vec2 dist   = pull + 0.02 * wave * normalize(p - c + 1e-5) + (pr - p) * 0.4;
+  vec2 duv    = dist * aspect;
+
+  // Chromatic aberration scales with how much the light is bent
+  float ca = 0.004 + 0.02 * (lens + abs(wave));
+  vec2  dir = normalize(duv + 1e-5);
+
+  vec2 uvR = uv + duv + dir * ca;
+  vec2 uvG = uv + duv;
+  vec2 uvB = uv + duv - dir * ca;
+
+  // Sample iChannel0. If unbound (1x1 transparent), blend in a
+  // procedural gradient so the screen isn't empty
+  vec4 sR = texture(iChannel0, uvR);
+  vec4 sG = texture(iChannel0, uvG);
+  vec4 sB = texture(iChannel0, uvB);
+
+  vec3 tex  = vec3(sR.r, sG.g, sB.b);
+  float haveTex = step(0.01, max(max(sR.a, sG.a), sB.a));
+
+  vec3 proc = 0.5 + 0.5 * cos(iTime + uv.xyx * vec3(6.0, 4.0, 3.0) + vec3(0.0, 2.0, 4.0));
+  vec3 col  = mix(proc, tex, haveTex);
+
+  // Highlight the ripple crests a touch
+  col += 0.15 * wave * vec3(0.6, 0.8, 1.0);
+
+  // Cursor halo while held
+  col += vec3(1.0, 0.95, 0.85) * lens * (held ? 0.25 : 0.08);
+
+  // Vignette
+  float v = smoothstep(1.2, 0.3, length(p));
+  col *= mix(0.65, 1.0, v);
+
+  // Film grain
+  col += (hash12(fragCoord + iTime * 60.0) - 0.5) * 0.03;
 
   fragColor = vec4(col, 1.0);
-}
-    </app-content>
-    <app-state>
-{
-  "config": {
-    "lineNumbers": true,
-    "lineWrapping": false,
-    "smartIndent": true,
-    "indentWithTabs": false,
-    "maxTabs": 1
-  },
-  "tabModes": {
-    "shader": "x-shader/x-fragment"
-  },
-  "tabOrder": [
-    "shader"
-  ]
 }
     </app-state>
   </iframe-app>
