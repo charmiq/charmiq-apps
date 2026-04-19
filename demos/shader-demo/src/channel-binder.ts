@@ -293,11 +293,13 @@ export class ChannelBinder {
       } /* else -- still the active binding for this channel */
 
       gl.bindTexture(gl.TEXTURE_2D, texture);
-      // NOTE: no UNPACK_FLIP_Y_WEBGL -- Chromium's ImageBitmap path ignores that flag
-      //       and the bitmap already arrives in the row order that produces upright
-      //       Shadertoy-style sampling (uv.y=0 at screen bottom, row 0 in memory
-      //       = bottom of image)
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap as unknown as TexImageSource);
+      // NOTE: manual Y-flip via OffscreenCanvas -- UNPACK_FLIP_Y_WEBGL is silently a
+      //       no-op on the ImageBitmap upload path in this browser (both on/off
+      //       produced upside-down output), so flip the row data ourselves. This
+      //       lands the image in memory as "row 0 = bottom of image", which pairs
+      //       with Shadertoy's `uv.y=0 at screen bottom` sampling convention
+      const flipped = flipYToCanvas(bitmap);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, flipped);
 
       slot.width  = bitmap.width;
       slot.height = bitmap.height;
@@ -414,6 +416,21 @@ const decodeImage = async (url: string): Promise<ImageBitmap> => {
       img.src = url;
     });
   }
+};
+
+// --------------------------------------------------------------------------------
+/** draw a bitmap to an OffscreenCanvas with a scale(1, -1) transform so the canvas
+ *  pixels are Y-flipped relative to the source. Used as a cross-browser substitute
+ *  for UNPACK_FLIP_Y_WEBGL, which is silently ignored on the ImageBitmap upload
+ *  path in some browsers */
+const flipYToCanvas = (bitmap: ImageBitmap): OffscreenCanvas => {
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const ctx = canvas.getContext('2d');
+  if(!ctx) throw new Error('2d context unavailable on OffscreenCanvas');
+  ctx.translate(0, bitmap.height);
+  ctx.scale(1, -1);
+  ctx.drawImage(bitmap, 0, 0);
+  return canvas;
 };
 
 // --------------------------------------------------------------------------------
