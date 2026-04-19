@@ -430,22 +430,22 @@ export class TabManager {
   }
 
   // .. Upsert Tab ................................................................
-  /** apply a slug-bearing change — either a new tab, a migration completion,
-   *  or an ongoing content/name update */
+  /** apply a slug-bearing change — either a new tab, a migration completion, or an
+   *  ongoing content/name update */
   private upsertTab(change: ContentChange): void {
     const slug = change.slug!;
     const existing = this.tabs.get(change.id);
-    const isNew = !existing;
     const wasMigration = this.migrationsInFlight.delete(change.id);
 
-    this.tabs.set(change.id, {
-      slug,
-      displayName: change.displayName,
-      content: change.content,
-      mode: this.configStore.getTabMode(slug)
-    });
+    if(!existing) {
+      // brand-new tab — seed the cache and emit the initial content
+      this.tabs.set(change.id, {
+        slug,
+        displayName: change.displayName,
+        content: change.content,
+        mode: this.configStore.getTabMode(slug)
+      });
 
-    if(isNew) {
       // auto-switch only if this client created the tab
       if(this.locallyCreatedSlugs.has(slug)) {
         this.locallyCreatedSlugs.delete(slug);
@@ -458,6 +458,13 @@ export class TabManager {
       return;
     } /* else -- existing tab */
 
+    // existing tab — mutate identity-tuple fields in place. Content is left
+    // alone so applyRemoteContent can diff old vs new and emit through
+    // changes$ — clobbering it here would make wasUnchanged always true and
+    // suppress the emission for downstream subscribers (e.g. shader-demo)
+    existing.slug = slug;
+    existing.mode = this.configStore.getTabMode(slug);
+
     // migration completion — slug just arrived; if we're the active tab,
     // re-apply the mode now that we know it
     if(wasMigration && (this.activeTabId === change.id)) {
@@ -466,8 +473,8 @@ export class TabManager {
 
     this.applyRemoteContent(change.id, change.content);
 
-    if(change.displayName !== existing!.displayName) {
-      this.tabs.get(change.id)!.displayName = change.displayName;
+    if(change.displayName !== existing.displayName) {
+      existing.displayName = change.displayName;
       this.notify();
     } else if(wasMigration) {
       this.notify()/*slug change is invisible but downstream may want to refresh*/;
