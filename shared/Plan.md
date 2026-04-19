@@ -1,9 +1,37 @@
 # Shared Code Plan
 
 * Web Components with an AYS dialog
-* Shared TypeScript contracts for the CharmIQ services injected at runtime — see `charmiq-services.d.ts`
+* Shared TypeScript contracts for the runtime surface that the Platform exposes to Applications:
+  * `charmiq.d.ts` — the `window.charmiq` namespace (`CharmIQAPI`): per-Application
+    instance API for appContent, appState, capability advertise/discover, fetch, mcp,
+    oauth, visualEditor, visualDesigner
+  * `charmiq-services.d.ts` — the CharmIQ *services* (`CharmIQServices`): shared
+    singletons injected by the host (commandService, assetService, generationService)
 
-## CharmIQ Services Typing
+## CharmIQ API Typing (`charmiq.d.ts`)
+
+### Near-term (current)
+`shared/charmiq.d.ts` mirrors the `CharmIQAPI` interface from the Platform's iframe-scripts
+bundle — the
+scripts run *inside* the Application iframe, so the Promise / Observable shapes here ARE
+the app-side signatures (no promisification pass needed, unlike services). Transitive
+types (rxjs `Observable`, OAuth / MCP value types, etc.) are inlined as minimal or
+opaque forms so the file is zero-dependency.
+
+Apps import via relative path:
+```ts
+import type { CharmIQAPI } from '../../../shared/charmiq';
+```
+Importing anything from this module also types `window.charmiq` globally (via
+`declare global { interface Window { ... } }`), so apps can reach through
+`window.charmiq.appContent.get()` etc. without a local cast.
+
+### Long-term
+Same destination as services (see below): publish as part of the types-only
+`@charmiq/app-sdk` package, generated from the Platform's `CharmIQAPI` source of truth
+so signatures can't drift. Cutover is mechanical — only the module specifier changes.
+
+## CharmIQ Services Typing (`charmiq-services.d.ts`)
 
 ### Near-term (current)
 `shared/charmiq-services.d.ts` duck-types the subset of `commandService` / `assetService` /
