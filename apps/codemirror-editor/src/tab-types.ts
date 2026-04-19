@@ -52,8 +52,12 @@ export interface TabContentChange {
 // == Functions ===================================================================
 /** split a raw app-content name into `{ slug, displayName }`. A name with no
  *  delimiter is treated as slug-less (the entire string becomes the display
- *  name) and triggers the migration path on ingest */
-export function parseName(rawName: string): ParsedName {
+ *  name) and triggers the migration path on ingest. A missing/empty name
+ *  yields `{ slug: null, displayName: '' }` — TabManager treats that as a
+ *  content-only echo (no name change) for an existing tab */
+export function parseName(rawName: string | undefined | null): ParsedName {
+  if(!rawName) return { slug: null, displayName: '' };
+
   const idx = rawName.indexOf(SLUG_DELIMITER);
   if(idx < 0) return { slug: null, displayName: rawName };
 

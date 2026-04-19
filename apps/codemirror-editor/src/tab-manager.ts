@@ -142,6 +142,51 @@ export class TabManager {
   }
 
   // ------------------------------------------------------------------------------
+  /** permissively resolve a caller-supplied tab identifier to a real `TabId`. This
+   *  exists for the `exportCommands` (LLM-facing) surface — the agent picks identifier
+   *  strings from the document HTML it can already see, which are rarely the
+   *  Platform-minted opaque IDs. We probe in order of LLM visibility:
+   *  1. `undefined` / empty → the active tab (the natural default for an MCP-
+   *     style call where the caller doesn't specify a target)
+   *  2. exact `TabId` match — the canonical handle, accepted as-is
+   *  3. `<left>:<right>` tuple — the LLM may have copied the whole `name`
+   *     attribute; try the left half as a state key, then the right half as a
+   *     display label
+   *  4. left-side state key — appears in the app-content `name` attr AND in
+   *     app-state JSON (as a `tabModes` key and `tabOrder` value). Most likely
+   *     what the LLM passes
+   *  5. display label — what the user sees in the tab UI; the LLM sometimes uses
+   *     this when no other identifier looks distinct
+   *  Returns `null` only when the input is non-empty and matches nothing —
+   *  callers decide whether to no-op or surface an error */
+  public resolveTabId(input: string | undefined | null): TabId | null {
+    if(!input) return this.activeTabId;
+
+    if(this.tabs.has(input)) return input;
+
+    const colonIdx = input.indexOf(':');
+    if(colonIdx >= 0) {
+      const left = input.slice(0, colonIdx);
+      for(const [id, tab] of this.tabs) {
+        if(tab.slug === left) return id;
+      }
+      const right = input.slice(colonIdx + 1);
+      for(const [id, tab] of this.tabs) {
+        if(tab.displayName === right) return id;
+      }
+    } /* else -- not a tuple-shaped input */
+
+    for(const [id, tab] of this.tabs) {
+      if(tab.slug === input) return id;
+    }
+    for(const [id, tab] of this.tabs) {
+      if(tab.displayName === input) return id;
+    }
+
+    return null;
+  }
+
+  // ------------------------------------------------------------------------------
   /** true if a new tab can be created (respects maxTabs limit) */
   public canCreateTab(): boolean {
     const max = this.configStore.getMaxTabs();
@@ -308,6 +353,15 @@ export class TabManager {
   /** handle a content change from the content bridge — only create/update
    *  events arrive here; deletions are filtered by the bridge */
   private handleContentChange(change: ContentChange): void {
+    // content-only echo: the platform fired an event with no `name` (parseName
+    // surfaces this as slug=null + displayName=''). Apply the content update
+    // for existing tabs without disturbing the identity tuple. New ids that
+    // arrive name-less still fall through to the migration path
+    if((change.slug === null) && (change.displayName === '') && this.tabs.has(change.id)) {
+      this.applyRemoteContent(change.id, change.content);
+      return;
+    } /* else -- not a name-less echo on an existing tab */
+
     // legacy migration: slug-less name → mint a slug, rewrite, wait for echo
     if(change.slug === null) {
       this.handleSlugLessChange(change);

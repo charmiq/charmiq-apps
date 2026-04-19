@@ -133,7 +133,30 @@ export type DiscoverCapability$ = <T = CapabilityProxy>(capability: string) => O
  *  properties match the method's `inputSchema`.
  *
  *  Targeted by the host (`editor.application.call`) and by sibling apps
- *  (`discover('charmiq.command')`) — both routes converge here */
+ *  (`discover('charmiq.command')`) — both routes converge here.
+ *
+ *  ## Designing for LLM callers
+ *
+ *  This is the surface agents reach for. Agents pick identifier values from
+ *  the document HTML they can already see — `<app-content id="..." name="..."/>`
+ *  attributes and the JSON inside `<app-state>JSON</app-state>`. Whatever string
+ *  looks like an identifier in that context is what they will pass back, which is
+ *  rarely the platform-minted opaque ID your code wants. If the same token appears
+ *  in multiple places (e.g. as a key in app-state AND as the prefix of an app-content
+ *  `name`), that is the form the agent will most confidently use.
+ *
+ *  Two consequences for handler design:
+ *  - **Be tolerant of identifier slop.** Where you accept an identifier, resolve
+ *    it permissively: try the canonical id first, then any document-visible aliases
+ *    (state keys, `name`-attr halves, display labels). Telling the agent "call
+ *    listX first to find the real id" defeats the purpose of an MCP-style surface —
+ *    the agent already saw what it needed.
+ *  - **Be defensive about input shape.** Optional fields really are optional; a
+ *    missing arg should fall back to a sensible default (typically "the active /
+ *    most recent / only thing"), not throw.
+ *
+ *  This is intentionally laxer than {@link AdvertiseCapability}, which is
+ *  app-to-app (developers know the canonical contract) */
 export type ExportCommands = (
   methods: Record<string/*method name*/, Function>
 ) => void;
@@ -402,10 +425,21 @@ export interface CharmIQAPI {
    *
    *  Targeted by the host (`editor.application.call`) and by sibling apps
    *  (`discover('charmiq.command')`) — both routes converge here.
+   *
+   *  This is the LLM-facing surface — handlers should be **tolerant of
+   *  identifier slop** (resolve any document-visible alias, not just the
+   *  canonical id) and **defensive about input shape** (optional fields fall
+   *  back to a sensible default, never throw). See {@link ExportCommands} for
+   *  the full rationale and an example resolver.
    *  @example
    *  // manifest.json declares: setText({ text: string, tabId?: string })
    *  window.charmiq.exportCommands({
-   *    setText: ({ text, tabId }) => editor.replace(tabId, text),
+   *    setText: ({ text, tabId }) => {
+   *      // tabId tolerated as: platform id | document-visible state key |
+   *      //                     display label | "key:label" tuple
+   *      const id = tabManager.resolveTabId(tabId);
+   *      if(id !== null) editor.replace(id, text);
+   *    },
    *    listTabs: () => tabManager.listTabs()
    *  });
    */

@@ -40,16 +40,37 @@ export class CommandSurface {
   /** register the discrete agent-callable commands declared in manifest.json */
   // NOTE: exportCommands delivers each call's args as a single named-params
   //       object whose properties match the method's `inputSchema` in the
-  //       manifest — methods destructure that object directly
+  //       manifest — methods destructure that object directly.
+  //       LLM tolerance: every `tabId` arg is funneled through
+  //       `tabManager.resolveTabId` so agents can pass any document-visible
+  //       identifier (state key, display label, or `key:label` tuple) and
+  //       still hit the right tab — see TabManager.resolveTabId for the order.
+  //       The arg is typed as `string` (not `TabId`) on this surface because
+  //       it really can be anything the agent has on hand
   private advertiseCommands(charmiq: CharmIQAPI): void {
     charmiq.exportCommands({
-      getText: ({ tabId }: { tabId?: TabId; } = {}) => this.getText(tabId),
-      setText: ({ text, tabId }: { text: string; tabId?: TabId }) => this.setText(text, tabId),
+      getText: ({ tabId }: { tabId?: string; } = {}) => {
+        const resolved = this.tabManager.resolveTabId(tabId);
+        return (resolved !== null) ? this.getText(resolved) : null;
+      },
+      setText: ({ text, tabId }: { text: string; tabId?: string; }) => {
+        const resolved = this.tabManager.resolveTabId(tabId);
+        if(resolved === null) return;
+        return this.setText(text, resolved);
+      },
 
       listTabs: () => this.tabManager.listTabs(),
-      switchTab: ({ tabId }: { tabId: TabId; }) => this.switchTab(tabId),
-      createTab: ({ name, content = '', mode = DEFAULT_MODE }: { name?: string; content?: string; mode?: string } = {}) => this.createTab(name, content, mode),
-      removeTab: ({ tabId }: { tabId: TabId; }) => this.removeTab(tabId)
+      switchTab: ({ tabId }: { tabId: string; }) => {
+        const resolved = this.tabManager.resolveTabId(tabId);
+        if(resolved === null) return false;
+        return this.switchTab(resolved);
+      },
+      createTab: ({ name, content = '', mode = DEFAULT_MODE }: { name?: string; content?: string; mode?: string; } = {}) => this.createTab(name, content, mode),
+      removeTab: ({ tabId }: { tabId: string; }) => {
+        const resolved = this.tabManager.resolveTabId(tabId);
+        if(resolved === null) return false;
+        return this.removeTab(resolved);
+      }
     });
   }
 
