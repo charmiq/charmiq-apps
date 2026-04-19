@@ -293,9 +293,11 @@ export class ChannelBinder {
       } /* else -- still the active binding for this channel */
 
       gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)/*texture origin is bottom-left*/;
+      // NOTE: no UNPACK_FLIP_Y_WEBGL -- Chromium's ImageBitmap path ignores that flag
+      //       and the bitmap already arrives in the row order that produces upright
+      //       Shadertoy-style sampling (uv.y=0 at screen bottom, row 0 in memory
+      //       = bottom of image)
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap as unknown as TexImageSource);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
 
       slot.width  = bitmap.width;
       slot.height = bitmap.height;
