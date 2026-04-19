@@ -59,7 +59,6 @@ interface PublicState {
 // --------------------------------------------------------------------------------
 interface GalleryCapability {
   state$():    Observable<Readonly<PublicState>>;
-  getState():  Readonly<PublicState>;
   bindSlot?(slotId: string, itemId: string | null): Promise<boolean>;
   setSlotMeta?(slotId: string, meta: unknown):      Promise<boolean>;
 }
@@ -98,6 +97,11 @@ export class ChannelBinder {
   private gallery: GalleryCapability | null = null;
   private subscription: Subscription | null = null;
 
+  /** most recent snapshot received from the gallery's state$. Cached because the
+   *  gallery's `getState()` is proxied and therefore async -- readMetaFromGallery()
+   *  needs a synchronous peek for the samplers popover */
+  private latestGalleryState: Readonly<PublicState> | null = null;
+
   // == Lifecycle =================================================================
   public constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -127,6 +131,7 @@ export class ChannelBinder {
           items: state.items.length,
           slots: state.slots.map(s => ({ id: s.id, itemId: s.itemId, meta: s.meta }))
         });
+        this.latestGalleryState = state;
         this.reconcile(state);
       });
     } catch(error) {
@@ -366,8 +371,10 @@ export class ChannelBinder {
    *  as a fallback when the slot isn't loaded yet but the User opened the sampler
    *  popover */
   private readMetaFromGallery(slotId: string): Readonly<SamplerMeta> | null {
-    if(!this.gallery) return null;
-    const snapshot = this.gallery.getState();
+    // read from the cached snapshot, not gallery.getState() -- bridged methods are
+    // always async so getState() returns a Promise, not a PublicState
+    const snapshot = this.latestGalleryState;
+    if(!snapshot) return null;
     const slot = snapshot.slots.find(s => s.id === slotId);
     if(!slot) return null;
     return normalizeMeta(slot.meta);
