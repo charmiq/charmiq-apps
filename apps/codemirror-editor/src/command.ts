@@ -1,3 +1,4 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import { DEFAULT_MODE } from './config-store';
 import type { ContentBridge } from './content-bridge';
 import type { EditorWrapper } from './editor-wrapper';
@@ -30,16 +31,14 @@ export class CommandSurface {
 
   /** advertise both surfaces — called once from main.ts */
   public init(): void {
-    const charmiq = (window as any).charmiq;
-    if(!charmiq?.advertise) return/*not running inside CharmIQ — skip*/;
-
+    const charmiq: CharmIQAPI = window.charmiq;
     this.advertiseCommands(charmiq);
     this.advertiseCapability(charmiq);
   }
 
   // == Internal ==================================================================
   /** register the discrete agent-callable commands declared in manifest.json */
-  private advertiseCommands(charmiq: any): void {
+  private advertiseCommands(charmiq: CharmIQAPI): void {
     charmiq.advertise('charmiq.command', {
       getText: (tabId?: TabId) => this.getText(tabId),
       setText: (text: string, tabId?: TabId) => this.setText(text, tabId),
@@ -53,7 +52,7 @@ export class CommandSurface {
 
   // ------------------------------------------------------------------------------
   /** advertise the reactive capability for sibling apps in the same Document */
-  private advertiseCapability(charmiq: any): void {
+  private advertiseCapability(charmiq: CharmIQAPI): void {
     charmiq.advertise('ai.charm.shared.codemirror-editor', {
       // streams
       tabs$:      () => this.tabManager.tabs$(),

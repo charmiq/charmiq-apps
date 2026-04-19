@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 
+import type {} from '../../shared/charmiq'/*activates the window.charmiq global augmentation*/;
+
 // ********************************************************************************
 export const App = () => {
   const [content, setContent] = useState(''/*default to empty*/);

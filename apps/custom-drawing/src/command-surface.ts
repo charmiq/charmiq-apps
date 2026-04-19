@@ -1,3 +1,4 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import { generateElementId, generateGroupId, getElementBounds, moveElementBy, type DrawingElement } from './element-model';
 import { getDrawingBounds, rotatePoint } from './geometry';
 import type { SelectionManager } from './selection-manager';
@@ -5,10 +6,6 @@ import type { SvgRenderer } from './svg-renderer';
 
 // advertise drawing API to LLMs and other Applications
 // ********************************************************************************
-interface Charmiq {
-  advertise?: (channel: string, handlers: Record<string, (...args: any[]) => any>) => void;
-}
-
 // == CommandSurface ==============================================================
 export class CommandSurface {
   private readonly renderer: SvgRenderer;
@@ -23,12 +20,7 @@ export class CommandSurface {
   }
 
   // ------------------------------------------------------------------------------
-  public init(charmiq: Charmiq): void {
-    if(!charmiq.advertise) {
-      console.warn('advertise not available — drawing capabilities not exposed');
-      return;
-    } /* else -- CharmIQ exists as expected */
-
+  public init(charmiq: CharmIQAPI): void {
     charmiq.advertise('charmiq.command', {
       getElements: () => [...this.elements],
 

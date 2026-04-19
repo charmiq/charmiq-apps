@@ -1,3 +1,4 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { CharmIQServices } from '../../../shared/charmiq-services';
 import { AssetResolver } from './asset-resolver';
 import { CommandSurface, type GalleryActions } from './command-surface';
@@ -21,7 +22,7 @@ import { SlotStrip } from './slot-strip';
 //   toggles `.orientation-vertical` when height > width. horizontal/vertical
 //   overrides pin the class regardless of size
 // ********************************************************************************
-const charmiqGlobal = (window as any).charmiq;
+const charmiqGlobal: CharmIQAPI = window.charmiq;
 
 // == Create Instances ============================================================
 const contentBridge  = new ContentBridge(charmiqGlobal.appContent);
@@ -276,10 +277,9 @@ contentBridge.onBindingsChange((bindings) => {
 const start = async (): Promise<void> => {
   gridView.init();
 
-  // services via charmiq.discover; in standalone/dev (no charmiq bridge) they
-  // fall back to null so the gallery still renders (just no picker)
-  const discover = (name: string): Promise<unknown> =>
-    charmiqGlobal?.discover?.(name).catch(() => null) ?? Promise.resolve(null);
+  // services via charmiq.discover; absent services resolve to undefined so the
+  // gallery still renders (just no picker)
+  const discover = (name: string): Promise<unknown> => charmiqGlobal.discover(name).catch(() => undefined);
   const [commandService, assetService, generationService] = await Promise.all([
     discover('charmiq.service.command'),
     discover('charmiq.service.asset'),

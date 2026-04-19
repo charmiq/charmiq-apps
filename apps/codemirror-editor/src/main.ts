@@ -1,3 +1,4 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import { CommandSurface } from './command';
 import { ConfigStore, DEFAULT_MODE } from './config-store';
 import { ContentBridge } from './content-bridge';
@@ -7,7 +8,7 @@ import { Toolbar } from './toolbar';
 
 // entry point — creates all modules, wires dependencies, starts discovery
 // ********************************************************************************
-const charmiq = (window as any).charmiq;
+const charmiq: CharmIQAPI = window.charmiq;
 
 // == Create Instances ============================================================
 const editorWrapper = new EditorWrapper();

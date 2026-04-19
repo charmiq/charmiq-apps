@@ -9,9 +9,10 @@
 
 // == Observable ==================================================================
 // minimal structural duck-type for rxjs Observable. Apps use real rxjs at runtime
-// (it's in the Application importMap); this interface is just enough surface for
-// TS to type-check `.subscribe()`. Chain operators (`.pipe()`, etc.) come from the
-// real rxjs Observable assigned to these slots
+// (it's in the Application importMap); this interface declares just enough surface
+// (`subscribe` + a loose `pipe`) for the shared type to be structurally assignable
+// to and from the real rxjs Observable. Apps that chain operators (`.pipe(...)`)
+// should import rxjs's typed operators at the call site
 export interface Observable<T> {
   subscribe(observer: Partial<{
     next: (value: T) => void;
@@ -23,6 +24,10 @@ export interface Observable<T> {
     error?: (error: Error) => void,
     complete?: () => void
   ): { unsubscribe: () => void; };
+
+  /** loosely typed for structural compat with real rxjs Observable; prefer to
+   *  assign to an rxjs-typed Observable at the call site to recover full types */
+  pipe(...operators: Array<(source: any) => any>): Observable<any>;
 }
 
 // == AppContent ==================================================================
@@ -56,7 +61,7 @@ export interface AppContentAPI {
    *  @param selector optional selector to identify which app-content to update
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
    *  @returns Promise that resolves when changes are applied to the document */
-  applyChanges: (changes: ContentChange[], selector?: string) => Promise<void>;
+  applyChanges: (changes: readonly ContentChange[], selector?: string) => Promise<void>;
 
   /** get current content value (one-time read). Use onChange$ for reactive updates
    *  instead of polling with get()
@@ -100,13 +105,22 @@ export interface AppStateAPI {
 // shape of the remote capability and cast the proxy to a concrete interface
 export type CapabilityProxy = Record<string, (...args: any[]) => any>;
 
+// --------------------------------------------------------------------------------
 export type AdvertiseCapability = (
   capability: string,
   methods: Record<string/*method name*/, Function>
 ) => void;
 
-export type DiscoverCapability = (capability: string) => Promise<CapabilityProxy>;
-export type DiscoverCapability$ = (capability: string) => Observable<CapabilityProxy[]>;
+// --------------------------------------------------------------------------------
+/** discover a single provider. The type parameter narrows the proxy to the
+ *  concrete capability shape — callers usually know the remote's method set
+ *  (e.g. `discover<GalleryCapability>('ai.charm.shared.imageGallery')`) and
+ *  supplying it avoids an `as unknown as X` cast. Defaults to {@link CapabilityProxy}
+ *  when not supplied */
+export type DiscoverCapability  = <T = CapabilityProxy>(capability: string) => Promise<T>;
+/** observable variant — emits the current provider set whenever it changes. The
+ *  type parameter narrows each proxy as with {@link DiscoverCapability} */
+export type DiscoverCapability$ = <T = CapabilityProxy>(capability: string) => Observable<T[]>;
 
 // == Fetch =======================================================================
 export type CharmIQFetch = (
@@ -495,7 +509,22 @@ export interface CharmIQAPI {
 }
 
 // == Global Augmentation =========================================================
-// type `window.charmiq` for any file that imports a symbol from this module
+// type `window.charmiq` for any file that imports a symbol from this module.
+//
+// Bridge presence:
+//   Apps run inside the CharmIQ platform iframe where the bridge is injected
+//   before any app code. The global is therefore typed as present
+//   (non-optional) — bridge-required apps read `window.charmiq` directly with
+//   no null-checking noise.
+//
+// Standalone / local testing (opt-in):
+//   Apps that need to run outside the platform (file://, a local dev server,
+//   Storybook, ...) narrow the global at the app entry and branch at every
+//   touchpoint:
+//     const charmiq: CharmIQAPI | undefined = window.charmiq;
+//     if(charmiq) { /* bridge path */ } else { /* standalone fallback */ }
+//   `demos/shader-demo` is the reference implementation — falls back to a
+//   starter shader, skips discovery, runs without appState.
 declare global {
   interface Window {
     charmiq: CharmIQAPI;

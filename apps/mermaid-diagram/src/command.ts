@@ -1,3 +1,4 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { ConfigStore } from './config-store';
 import type { ContentBridge } from './content-bridge';
 
@@ -16,9 +17,7 @@ export class CommandSurface {
 
   /** register all commands via `charmiq.advertise` — called once from main.ts */
   public init(): void {
-    const charmiq = (window as any).charmiq;
-    if(!charmiq?.advertise) return;/*not running inside CharmIQ — skip*/
-
+    const charmiq: CharmIQAPI = window.charmiq;
     charmiq.advertise('charmiq.command', {
       getText: () => {
         return this.contentBridge.getCurrentSource();

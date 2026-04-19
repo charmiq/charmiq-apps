@@ -1,3 +1,4 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { GalleryItem } from './content-bridge';
 import type { GalleryModel, PublicState, PublicSlot } from './gallery-model';
 
@@ -38,16 +39,14 @@ export class CommandSurface {
   // ------------------------------------------------------------------------------
   /** advertise both surfaces. Called once from main.ts after discovery */
   public init(): void {
-    const charmiq = (window as any).charmiq;
-    if(!charmiq?.advertise) return;/*not inside charmiq — skip silently*/
-
+    const charmiq: CharmIQAPI = window.charmiq;
     this.advertiseCommands(charmiq);
     this.advertiseCapability(charmiq);
   }
 
   // == Internal ==================================================================
   /** register the discrete agent-callable commands listed in manifest.json */
-  private advertiseCommands(charmiq: any): void {
+  private advertiseCommands(charmiq: CharmIQAPI): void {
     charmiq.advertise('charmiq.command', {
       addItems:      ()                                       => this.actions.addItems(),
       removeItem:    ({ itemId }: { itemId: string; })        => this.actions.removeItem(itemId),
@@ -61,7 +60,7 @@ export class CommandSurface {
 
   // ------------------------------------------------------------------------------
   /** advertise the reactive capability for other apps in the same Document */
-  private advertiseCapability(charmiq: any): void {
+  private advertiseCapability(charmiq: CharmIQAPI): void {
     charmiq.advertise('ai.charm.shared.imageGallery', {
       // streams
       items$:    () => this.model.items$(),

@@ -1,3 +1,4 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import { ChannelBinder, CHANNEL_SLOT_IDS, type SamplerMeta } from './channel-binder';
 import { ConfigStore } from './config-store';
 import { dbg, setDbgEnabled } from './debug';
@@ -39,7 +40,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 `;
 
 // == Globals =====================================================================
-const charmiqGlobal = (window as any).charmiq;
+const charmiqGlobal: CharmIQAPI | undefined = window.charmiq;
 
 // == Create Instances ============================================================
 const canvas       = document.getElementById('canvas') as HTMLCanvasElement;

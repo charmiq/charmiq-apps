@@ -1,5 +1,6 @@
 import { BehaviorSubject, Subscription, type Observable } from 'rxjs';
 
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import { dbg } from './debug';
 import type { ChannelState } from './renderer';
 
@@ -111,14 +112,14 @@ export class ChannelBinder {
   /** discover the gallery capability + subscribe. Safe to call with no CharmIQ
    *  bridge (standalone preview) -- the binder just stays idle and publishes a
    *  4-slot array of empties */
-  public async init(charmiq: any): Promise<void> {
+  public async init(charmiq: CharmIQAPI | undefined): Promise<void> {
     if(!charmiq?.discover) {
       dbg('gallery', 'discover skipped (standalone — no charmiq bridge)');
       return;
     } /* else -- platform bridge is present */
 
     try {
-      const cap = await charmiq.discover('ai.charm.shared.imageGallery') as GalleryCapability | null;
+      const cap = await charmiq.discover<GalleryCapability | undefined>('ai.charm.shared.imageGallery');
       if(!cap) {
         dbg('gallery', 'discover: no ai.charm.shared.imageGallery provider in this Document');
         return;

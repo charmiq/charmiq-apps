@@ -1,3 +1,5 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
+import type { CharmIQServices } from '../../../shared/charmiq-services';
 import { CanvasViewport } from './canvas-viewport';
 import { ClipboardHandler } from './clipboard-handler';
 import { CommandSurface } from './command-surface';
@@ -19,7 +21,7 @@ import { ToolManager } from './tool-manager';
 
 // entry point — creates all modules, wires dependencies, starts discovery
 // ********************************************************************************
-const charmiq = (window as any).charmiq;
+const charmiq: CharmIQAPI = window.charmiq;
 
 // == Create Instances ============================================================
 const textMeasure    = new TextMeasurement();
@@ -208,14 +210,15 @@ const start = async () => {
   // wait for fonts before initializing anything
   await textMeasure.init();
 
-  // services via charmiq.discover; in standalone/dev (no charmiq bridge) they fall back to null
-  const discover = (name: string) => charmiq?.discover?.(name).catch(() => null) ?? Promise.resolve(null);
+  // services via charmiq.discover; absent services resolve to undefined so the
+  // app still starts (the handlers that need them check at use-time)
+  const discover = (name: string) => charmiq.discover(name).catch(() => undefined);
   const [commandService, assetService, generationService] = await Promise.all([
     discover('charmiq.service.command'),
     discover('charmiq.service.asset'),
     discover('charmiq.service.generation'),
   ]);
-  const services = { commandService, assetService, generationService };
+  const services = { commandService, assetService, generationService } as unknown as CharmIQServices;
   imageHandler.setServices(services);
   exportHandler.setServices(services);
   generation.setServices(services);

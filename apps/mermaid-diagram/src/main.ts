@@ -1,10 +1,11 @@
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import { CommandSurface } from './command';
 import { ConfigStore } from './config-store';
 import { ContentBridge } from './content-bridge';
 
 // entry point — creates all modules, wires dependencies, starts discovery
 // ********************************************************************************
-const charmiq = (window as any).charmiq;
+const charmiq: CharmIQAPI = window.charmiq;
 
 // == Create Instances ============================================================
 const configStore = new ConfigStore(charmiq.appState);

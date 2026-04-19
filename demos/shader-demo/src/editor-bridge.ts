@@ -1,6 +1,7 @@
 import { timer, type Observable, Subject, Subscription } from 'rxjs';
 import { retry } from 'rxjs/operators';
 
+import type { CharmIQAPI } from '../../../shared/charmiq';
 import { dbg } from './debug';
 
 // pulls the fragment shader source from a sibling CodeMirror editor App.
@@ -79,14 +80,14 @@ export class EditorBridge {
   // == Public =====================================================================
   /** subscribe to the editor's advertiser set. Safe to call without a CharmIQ
    *  bridge (standalone preview) — getShader() then always returns null */
-  public init(charmiq: any): void {
+  public init(charmiq: CharmIQAPI | undefined): void {
     if(!charmiq?.discover$) {
       dbg('editor', 'discover skipped (standalone — no charmiq bridge)');
       return;
     } /* else -- platform bridge is present */
 
     try {
-      const providers$ = charmiq.discover$(EDITOR_CAPABILITY) as Observable<ReadonlyArray<EditorCapability>>;
+      const providers$ = charmiq.discover$<EditorCapability>(EDITOR_CAPABILITY);
       this.discoverySubscription = providers$.subscribe((providers: ReadonlyArray<EditorCapability>) => {
         this.rewireProviders(providers);
       });
@@ -168,5 +169,4 @@ export class EditorBridge {
     this.latestSource = change.content;
     this.sourceSubject.next(change.content);
   }
-
 }
