@@ -71,17 +71,28 @@ intuition starts.
 
 ## What The Math Says
 
-For `n` flips of a fair coin the probability that the longest heads-run is
-at most `k` is approximately
+The textbook approximation is
 
 ```
 P(longest ≤ k in n flips)  ≈  (1 - 1/2ᵏ)ⁿ
 ```
 
-so the probability that the longest run is exactly `k` is the difference of
-that expression at `k` and `k - 1`. Multiply by the number of trials and
-you get the expected count in each bucket — the theoretical outline you see
-on the figure.
+which treats the events "k consecutive heads starting at position i" as
+independent. They aren't — consecutive windows overlap by `k - 1` positions
+— and the approximation is noticeably off for moderate `n`. At `n = 100`
+it puts `E[L]` at ~7.9 while the true value is ~6.0, a shift of nearly two
+buckets to the right.
+
+This sim computes the exact distribution directly from a small dynamic
+program: track the probability of each `(trailing-heads-count, has-not-yet-
+exceeded-k)` state as you step through the `n` flips. Sum at the end. It's
+O(maxK² · n) — ~23k operations at n=100 — and cached per `(flipsPerTrial,
+leadingRun)` so the overlay only recomputes when the experiment parameters
+change. See [`src/theory.ts`](charmiq://./src/theory.ts).
+
+For the **leading-run** variant the math is exact and trivial:
+`P(leading = k) = 1/2^(k+1)` for `k < n` (k heads then a tails), and
+`1/2^n` at `k == n` (no terminator possible). No approximation needed.
 
 For the **leading-run** variant the math is exact rather than asymptotic:
 the probability of exactly `k` consecutive heads followed by a tails is
@@ -158,15 +169,22 @@ Every interactive control on the figure is also a command. An agent can:
 
 A few intentional changes against the 2012 original:
 
+ - **Exact theoretical distribution** — the original used the approximation
+   `P(L ≤ k) ≈ (1 - 1/2ᵏ)ⁿ` and compensated for its bias with a
+   `flipsPerTrial / 4` fudge factor its author flagged `CHECK: why?`. At
+   n=100 the approximation overestimates `E[L]` by almost two buckets.
+   The new version computes the exact distribution via dynamic programming
+   and drops the fudge factor. The theoretical outline now actually tracks
+   the empirical bars.
+ - **Leading-run theory is exact too** — the original reused the
+   longest-anywhere approximation for the leading-run mode. Leading-run has
+   an exact closed form (`1/2ᵏ⁺¹`); the new version uses it.
  - **Dropped "Collapse Trials"** — the original had a modulo-based bucket
    reuse mode whose scaling math the author flagged with `CHECK: why?`. It
    confused the basic message and is gone.
  - **Deterministic PRNG** — the original used `Math.random()`. This version
    uses Mulberry32 seeded from `appState`, which is the price of admission
    for an embedded figure that should look the same every time it's loaded.
- - **Leading-run theory is exact** — the original used the same approximate
-   `(1 - 1/2ᵏ)ⁿ` formula for both modes. The leading-run variant has an
-   exact closed form (`1/2ᵏ⁺¹`); the new version uses it.
 
 
 ## Credit
