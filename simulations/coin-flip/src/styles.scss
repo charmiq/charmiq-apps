@@ -1,0 +1,224 @@
+// paper-figure aesthetic for the coin-flip sketch -- Palatino body, "Gill Sans"
+// labels, hairline frame, restrained categorical palette. Tokens kept local
+// while the catalogue is one entry; lifts to charmiq-apps/shared/ when a second
+// simulation arrives
+// ********************************************************************************
+// == Paper-figure tokens =========================================================
+:root {
+  // type
+  --sketch-serif: Palatino, Cambria, "Times New Roman", Georgia, serif;
+  --sketch-sans:  "Gill Sans", "Gill Sans MT", Inter, "Helvetica Neue", Arial, sans-serif;
+  --sketch-mono:  "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  // surface -- fixed light even in dark mode (the textbook look doesn't survive inversion)
+  --sketch-bg:           #ffffff;
+  --sketch-frame:        #dddddd;
+  --sketch-text:         #1a1a1a;
+  --sketch-text-muted:   #6b6b6b;
+
+  // palette: d3 v1 categorical -- restrained, slightly retro, reads as "paper"
+  --sketch-blue:         #1f77b4;  // primary -- run-distribution actual
+  --sketch-indianred:    indianred; // run-distribution theoretical
+  --sketch-purple:       #9467bd;  // longest-run actual
+  --sketch-olive:        #bcbd22;  // longest-run theoretical
+
+  --sketch-heads:        #2c8a4f;  // tasteful green -- darker than the original's "green"
+  --sketch-tails:        #c0392b;  // tasteful red
+
+  --sketch-axis:         #888888;
+  --sketch-axis-text:    #6b6b6b;
+}
+
+// == Reset =======================================================================
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; }
+
+body {
+  background: var(--sketch-bg);
+  color:      var(--sketch-text);
+  font-family: var(--sketch-serif);
+  font-size:   12pt;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  padding:     8px;
+}
+
+.mono { font-family: var(--sketch-mono); font-size: 0.9em; }
+
+// == Figure frame ================================================================
+.sketch {
+  border: 1px solid var(--sketch-frame);
+  background: var(--sketch-bg);
+  padding: 14px 16px 12px 16px;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+// == Controls ====================================================================
+.sketch-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 32px;
+  justify-content: center;
+  margin-bottom: 14px;
+  font-family: var(--sketch-sans);
+  font-size: 10.5pt;
+}
+.control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.control button {
+  font-family: var(--sketch-sans);
+  font-size: 10.5pt;
+  width: 100px;
+  padding: 4px 8px;
+  background: var(--sketch-bg);
+  color: var(--sketch-text);
+  border: 1px solid var(--sketch-frame);
+  border-radius: 2px;
+  cursor: pointer;
+
+  &:hover  { background: #f6f6f6; }
+  &:active { background: #ececec; }
+}
+.control-delay {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 9pt;
+  color: var(--sketch-text-muted);
+
+  input {
+    font-family: var(--sketch-mono);
+    font-size: 9pt;
+    width: 56px;
+    padding: 2px 4px;
+    border: 1px solid var(--sketch-frame);
+    border-radius: 2px;
+    text-align: right;
+  }
+}
+.control-seed {
+  font-size: 9pt;
+  color: var(--sketch-text-muted);
+}
+
+// == Live readout ================================================================
+.sketch-readout {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-bottom: 8px;
+  font-family: var(--sketch-serif);
+}
+.coin-pip {
+  display: inline-block;
+  min-width: 1.2em;
+  font-weight: 600;
+  font-family: var(--sketch-sans);
+  &[data-coin="H"] { color: var(--sketch-heads); }
+  &[data-coin="T"] { color: var(--sketch-tails); }
+}
+
+// == Run vectors =================================================================
+.sketch-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0;
+  padding-left: 24px;
+}
+.row-label { width: 100px; }
+
+.run-vector svg { display: block; }
+.run-vector-cell {
+  fill: none;
+  stroke: var(--sketch-text);
+  stroke-width: 1px;
+  fill-opacity: 0.18;
+  shape-rendering: crispEdges;
+}
+.current-run-vector .run-vector-cell { fill: var(--sketch-heads); }
+.longest-run-vector .run-vector-cell { fill: var(--sketch-heads); }
+
+.run-vector-cell-text {
+  font-family: var(--sketch-sans);
+  font-size: 11pt;
+  fill: var(--sketch-heads);
+  stroke: none;
+}
+
+// == Histograms ==================================================================
+.sketch-histograms {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.histogram svg { display: block; }
+
+.histogram-title {
+  font-family: var(--sketch-sans);
+  font-size: 9pt;
+  fill: var(--sketch-text);
+}
+.histogram-axis-label {
+  font-family: var(--sketch-sans);
+  font-size: 8pt;
+  fill: var(--sketch-text-muted);
+}
+.histogram-axis-line {
+  stroke: var(--sketch-axis);
+  stroke-width: 1px;
+  shape-rendering: crispEdges;
+}
+.histogram-axis-tick {
+  stroke: var(--sketch-axis);
+  stroke-width: 1px;
+  shape-rendering: crispEdges;
+}
+.histogram-axis-tick-label {
+  font-family: var(--sketch-sans);
+  font-size: 7.5pt;
+  fill: var(--sketch-axis-text);
+}
+.histogram-bar {
+  shape-rendering: crispEdges;
+}
+.histogram-bar-label {
+  font-family: var(--sketch-sans);
+  font-size: 7pt;
+  fill: var(--sketch-text);
+}
+
+// .. series colors -- empirical filled, theoretical outlined
+.run-series.series-actual           .histogram-bar { fill: var(--sketch-blue);    fill-opacity: 0.85; }
+.run-series.series-theoretical      .histogram-bar {
+  fill: var(--sketch-indianred);
+  fill-opacity: 0.18;
+  stroke: var(--sketch-indianred);
+  stroke-width: 1px;
+}
+.longest-series.series-actual       .histogram-bar { fill: var(--sketch-purple);  fill-opacity: 0.85; }
+.longest-series.series-theoretical  .histogram-bar {
+  fill: var(--sketch-olive);
+  fill-opacity: 0.18;
+  stroke: var(--sketch-olive);
+  stroke-width: 1px;
+}
+
+// == Caption =====================================================================
+.sketch-caption {
+  font-family: var(--sketch-sans);
+  font-size: 9pt;
+  font-style: italic;
+  color: var(--sketch-text-muted);
+  text-align: center;
+  margin-top: 12px;
+  padding: 0 24px;
+}
