@@ -46,8 +46,9 @@ body {
 .mono { font-family: var(--sketch-mono); font-size: 0.9em; }
 
 // == Figure frame ================================================================
+// no border here -- the embedding `<iframe-app>` provides one. Padding stays
+// so there's breathing room between the iframe edge and the controls
 .sketch {
-  border: 1px solid var(--sketch-frame);
   background: var(--sketch-bg);
   padding: 14px 16px 12px 16px;
   width: max-content;

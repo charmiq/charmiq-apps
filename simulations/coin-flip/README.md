@@ -10,7 +10,7 @@ becomes a way to estimate cardinality.*
 ## The Sketch
 
 <p style="text-align: center;">
-  <iframe-app height="520px" width="640px" style="border: 1px solid #dddddd; vertical-align: top;" src="charmiq://.">
+  <iframe-app height="655px" width="640px" style="border: 1px solid #dddddd; vertical-align: top;" src="charmiq://.">
     <app-state>
 {
   "seed": 1729,
