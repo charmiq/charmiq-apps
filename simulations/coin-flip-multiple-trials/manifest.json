@@ -1,0 +1,109 @@
+{
+  "id": "ai.charm.simulations.coin-flip-multiple-trials",
+  "name": "Coin Flip — Multiple Trials",
+  "description": "Monte Carlo sketch of many independent coin-flip trials — the distribution of the longest heads-run fills in bar-by-bar as trials accumulate and converges to the theoretical curve. Overlays arithmetic, geometric, and harmonic means. Sets up the harmonic-mean refinement story that HyperLogLog later makes rigorous.",
+
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
+    },
+    "format": "esm"
+  },
+
+  "runtime": {
+    "appState": true
+  },
+
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "play",
+        "description": "Start the auto-trial loop (no-op if already playing). Returns the running state.",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "pause",
+        "description": "Pause the auto-trial loop (no-op if already paused). Returns the running state.",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "runTrial",
+        "description": "Advance the experiment by one trial (one sample of the longest heads-run in a sequence of `flipsPerTrial` flips). Returns the post-trial snapshot.",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "longestRun":    { "type": "number" },
+            "trialCount":    { "type": "number" },
+            "flipsPerTrial": { "type": "number" },
+            "leadingRun":    { "type": "boolean" }
+          },
+          "required": ["longestRun", "trialCount", "flipsPerTrial", "leadingRun"]
+        }
+      },
+      {
+        "name": "reset",
+        "description": "Clear all accumulated trials and pause. Optionally re-seeds the PRNG; omit `seed` to keep the current seed (deterministic replay).",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "seed": { "type": "number", "description": "32-bit integer PRNG seed. Omit to keep the current seed." }
+          }
+        },
+        "outputSchema": { "type": "boolean" }
+      },
+      {
+        "name": "setSeed",
+        "description": "Replace the PRNG seed and reset accumulated trials. Returns the new seed.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "seed": { "type": "number", "description": "32-bit integer PRNG seed." }
+          },
+          "required": ["seed"]
+        },
+        "outputSchema": { "type": "number" }
+      },
+      {
+        "name": "setDelay",
+        "description": "Set the inter-trial delay in milliseconds (clamped to ≥1). Returns the applied value.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "ms": { "type": "number", "minimum": 1 }
+          },
+          "required": ["ms"]
+        },
+        "outputSchema": { "type": "number" }
+      },
+      {
+        "name": "setFlipsPerTrial",
+        "description": "Set the number of coin flips per trial and reset accumulated trials (changing the trial size is a different experiment). Returns the applied value.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "n": { "type": "number", "minimum": 1 }
+          },
+          "required": ["n"]
+        },
+        "outputSchema": { "type": "number" }
+      },
+      {
+        "name": "setLeadingRun",
+        "description": "Toggle between 'longest run anywhere in the trial' (false) and 'longest *leading* run of heads' (true). Resets accumulated trials since the two are different experiments. Returns the applied value.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        },
+        "outputSchema": { "type": "boolean" }
+      }
+    ]
+  }
+}

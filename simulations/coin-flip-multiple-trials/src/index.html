@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coin Flip — Multiple Trials</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gill+Sans:wght@400;500&display=swap">
+</head>
+<body>
+  <figure class="sketch" id="sketch">
+
+    <!-- == Controls ========================================================== -->
+    <div class="sketch-controls">
+      <div class="control control-manual">
+        <button type="button" id="trialBtn">Run Trial</button>
+        <label class="control-input">
+          Flips / trial
+          <input type="number" id="flipsInput" min="1" max="999" step="1" value="100">
+        </label>
+        <label class="control-checkbox">
+          <input type="checkbox" id="leadingRunInput">
+          Leading run only
+        </label>
+      </div>
+
+      <div class="control control-auto">
+        <button type="button" id="playBtn">Play</button>
+        <label class="control-input">
+          Delay
+          <input type="number" id="delayInput" min="1" max="9999" step="1" value="100">
+          ms
+        </label>
+      </div>
+
+      <div class="control control-reset">
+        <button type="button" id="resetBtn">Reset</button>
+        <div class="control-seed">
+          seed <span id="seedDisplay" class="mono">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- == Live readouts ===================================================== -->
+    <div class="sketch-readout">
+      <span class="readout-longest">
+        Longest in trial:
+        <span id="longestDisplay" class="mono">—</span>
+      </span>
+      <span class="readout-count">
+        Trials: <span id="trialCountDisplay" class="mono">0</span>
+      </span>
+    </div>
+
+    <!-- == Current-trial run vector ========================================== -->
+    <div class="sketch-row">
+      <span class="row-label">Current trial:</span>
+      <div id="currentRunVector"></div>
+    </div>
+
+    <!-- == Histogram ========================================================= -->
+    <div class="sketch-histograms">
+      <div id="longestRunHistogram"></div>
+    </div>
+
+    <!-- == Mean legend ======================================================= -->
+    <div class="sketch-legend">
+      <span class="legend-item legend-arithmetic">
+        <span class="legend-swatch"></span> arithmetic
+        <span id="arithDisplay" class="mono">—</span>
+      </span>
+      <span class="legend-item legend-geometric">
+        <span class="legend-swatch"></span> geometric
+        <span id="geomDisplay" class="mono">—</span>
+      </span>
+      <span class="legend-item legend-harmonic">
+        <span class="legend-swatch"></span> harmonic
+        <span id="harmDisplay" class="mono">—</span>
+      </span>
+    </div>
+
+    <figcaption class="sketch-caption">
+      Distribution of the longest heads-run across independent trials. The
+      empirical bars converge to the theoretical outline; the three means
+      bracket the location the estimator is aiming at.
+    </figcaption>
+  </figure>
+</body>
+</html>
