@@ -12,11 +12,11 @@ import type { BindingRecord, GalleryItem } from './content-bridge';
 //   bindings$  the current binding records (slotId -> itemId + opaque meta)
 //
 // A combined publicState$ is derived as well, shaped for external consumers
-// (see ai.charm.shared.imageGallery capability in command-surface.ts)
+// (see ai.charmiq.shared.imageGallery capability in command-surface.ts)
 // ********************************************************************************
 // == Types =======================================================================
 /** a slot with its binding resolved inline — the shape published to external
- *  consumers of `ai.charm.shared.imageGallery` */
+ *  consumers of `ai.charmiq.shared.imageGallery` */
 export interface PublicSlot {
   readonly id:       string;
   readonly label:    string;

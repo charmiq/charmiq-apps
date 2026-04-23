@@ -2,7 +2,7 @@
 
 Each tutorial teaches exactly one new concept. The application from the previous step is the starting point.
 
-Manifest IDs follow the convention `ai.charm.tutorials.<name>` (e.g. `ai.charm.tutorials.hello-app`).
+Manifest IDs follow the convention `ai.charmiq.tutorials.<name>` (e.g. `ai.charmiq.tutorials.hello-app`).
 
 | # | Name | Builds on | Adds | Key API |
 |---|------|-----------|------|---------|

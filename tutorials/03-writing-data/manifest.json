@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.tutorials.writing-data",
+  "id": "ai.charmiq.tutorials.writing-data",
   "name": "Writing Data",
   "description": "Writing to the document with appContent.set() and applyChanges()",
   "bundle": {

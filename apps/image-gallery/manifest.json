@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.apps.image-gallery",
+  "id": "ai.charmiq.apps.image-gallery",
   "name": "Image Gallery",
   "description": "A minimal image gallery backed by platform Assets, with optional labelled slots that other apps can discover and subscribe to",
   "bundle": {

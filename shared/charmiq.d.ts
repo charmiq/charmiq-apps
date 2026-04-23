@@ -118,7 +118,7 @@ export type AdvertiseCapability = (
 // --------------------------------------------------------------------------------
 /** discover a single provider. The type parameter narrows the proxy to the
  *  concrete capability shape — callers usually know the remote's method set
- *  (e.g. `discover<GalleryCapability>('ai.charm.shared.imageGallery')`) and
+ *  (e.g. `discover<GalleryCapability>('ai.charmiq.shared.imageGallery')`) and
  *  supplying it avoids an `as unknown as X` cast. Defaults to {@link CapabilityProxy}
  *  when not supplied */
 export type DiscoverCapability  = <T = CapabilityProxy>(capability: string) => Promise<T>;

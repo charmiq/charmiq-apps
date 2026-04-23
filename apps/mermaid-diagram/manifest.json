@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.apps.mermaid-diagram",
+  "id": "ai.charmiq.apps.mermaid-diagram",
   "name": "Mermaid Diagram",
   "description": "A read-only Mermaid renderer that renders diagram source from appContent with configurable theme and options",
   "bundle": {

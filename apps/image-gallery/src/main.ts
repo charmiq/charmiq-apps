@@ -15,7 +15,7 @@ import { SlotStrip } from './slot-strip';
 //   ContentBridge  <-->  GalleryModel  <-->  GridView / SlotStrip
 //                             |
 //                             +---->  CommandSurface (charmiq.command
-//                                     + ai.charm.shared.imageGallery)
+//                                     + ai.charmiq.shared.imageGallery)
 //
 // Layout
 //   orientation=auto tracks the container via ResizeObserver — the body

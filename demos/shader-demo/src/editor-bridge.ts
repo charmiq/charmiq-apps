@@ -7,7 +7,7 @@ import { dbg } from './debug';
 // pulls the fragment shader source from a sibling CodeMirror editor App.
 // The editor advertises a dedicated reactive capability under the same name as
 // its manifest id, so this bridge:
-//   1. subscribes to `discover$('ai.charm.shared.codemirror-editor')` to track
+//   1. subscribes to `discover$('ai.charmiq.shared.codemirror-editor')` to track
 //      the live set of editor providers (any number; a Document may host more
 //      than one editor)
 //   2. subscribes to each provider's `changes$()` and filters by tab name —
@@ -45,7 +45,7 @@ const SHADER_TAB_NAME = 'shader.frag';
 
 /** capability advertised by the codemirror-editor app — same string as its
  *  manifest id */
-const EDITOR_CAPABILITY = 'ai.charm.shared.codemirror-editor';
+const EDITOR_CAPABILITY = 'ai.charmiq.shared.codemirror-editor';
 
 // --------------------------------------------------------------------------------
 // retry policy for `changes$()` subscription — covers the brief window during

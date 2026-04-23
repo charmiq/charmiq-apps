@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.apps.excalidraw-drawing",
+  "id": "ai.charmiq.apps.excalidraw-drawing",
   "name": "Excalidraw Drawing",
   "description": "A collaborative drawing canvas powered by Excalidraw with OT content sync, persistent configuration, and an LLM command surface",
   "bundle": {

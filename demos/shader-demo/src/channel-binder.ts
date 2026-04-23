@@ -4,7 +4,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import { dbg } from './debug';
 import type { ChannelState } from './renderer';
 
-// discovers the sibling Image Gallery's `ai.charm.shared.imageGallery`
+// discovers the sibling Image Gallery's `ai.charmiq.shared.imageGallery`
 // capability, subscribes to its state stream, and keeps a GL texture per
 // channel slot in sync with whatever image the User has bound. Owns:
 //   * one GL texture per slot (lazily created when a slot first becomes bound)
@@ -119,9 +119,9 @@ export class ChannelBinder {
     } /* else -- platform bridge is present */
 
     try {
-      const cap = await charmiq.discover<GalleryCapability | undefined>('ai.charm.shared.imageGallery');
+      const cap = await charmiq.discover<GalleryCapability | undefined>('ai.charmiq.shared.imageGallery');
       if(!cap) {
-        dbg('gallery', 'discover: no ai.charm.shared.imageGallery provider in this Document');
+        dbg('gallery', 'discover: no ai.charmiq.shared.imageGallery provider in this Document');
         return;
       } /* else -- gallery found */
       this.gallery = cap;

@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.shared.codemirror-editor",
+  "id": "ai.charmiq.shared.codemirror-editor",
   "name": "CodeMirror Editor",
   "description": "A multi-tab code editor with collaborative editing, OT content sync, and configurable language modes",
   "bundle": {

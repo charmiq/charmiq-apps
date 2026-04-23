@@ -11,11 +11,11 @@ import { Toolbar, type SamplerRow } from './toolbar';
 // player's command surface, and kicks off discovery of the sibling Apps
 //
 // Data flow
-//   EditorBridge (discover 'ai.charm.shared.codemirror-editor')
+//   EditorBridge (discover 'ai.charmiq.shared.codemirror-editor')
 //       -> shaderSource$ -> debounced auto-compile (when autoCompile is on)
 //       -> getShader() on Compile clicks -> Renderer.setShader
 //
-//   ChannelBinder (discover 'ai.charm.shared.imageGallery')
+//   ChannelBinder (discover 'ai.charmiq.shared.imageGallery')
 //       -> state$ -> GL textures + per-channel SamplerMeta
 //
 //   Playback (RAF loop) -> Renderer.render + Toolbar telemetry

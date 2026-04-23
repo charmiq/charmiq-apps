@@ -8,9 +8,9 @@ import type { TabId } from './tab-types';
 // advertises the editor's two external surfaces:
 //   charmiq.command                     -- discrete, agent-callable actions
 //                                          (getText, listTabs, createTab, ...)
-//   ai.charm.shared.codemirror-editor   -- reactive capability for sibling apps
-//                                          that want to observe tabs / live text
-//                                          without polling (e.g. shader-demo)
+//   ai.charmiq.shared.codemirror-editor   -- reactive capability for sibling apps
+//                                            that want to observe tabs / live text
+//                                            without polling (e.g. shader-demo)
 //
 // The slug half of the (slug, displayName) tuple is intentionally hidden from
 // both surfaces — external callers see only the platform tab id and display name
@@ -81,7 +81,7 @@ export class CommandSurface {
   //       arrives here as `setText(text, tabId)`). Distinct from the MCP-style
   //       `exportCommands` block above which uses named-args destructuring
   private advertiseCapability(charmiq: CharmIQAPI): void {
-    charmiq.advertise('ai.charm.shared.codemirror-editor', {
+    charmiq.advertise('ai.charmiq.shared.codemirror-editor', {
       // streams
       tabs$:      () => this.tabManager.tabs$(),
       activeTab$: () => this.tabManager.activeTab$(),

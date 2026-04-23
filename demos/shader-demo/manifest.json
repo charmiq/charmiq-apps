@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.demos.shader-demo",
+  "id": "ai.charmiq.demos.shader-demo",
   "name": "Shader Demo",
   "description": "A minimal Shadertoy-style live GLSL player — pulls its fragment shader from a sibling CodeMirror editor and its iChannel textures from a sibling Image Gallery",
   "bundle": {

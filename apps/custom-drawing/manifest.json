@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.apps.custom-drawing",
+  "id": "ai.charmiq.apps.custom-drawing",
   "name": "Custom Drawing",
   "description": "An SVG drawing canvas with shape tools, text, images, rotation, grouping, and export — with reactive state sync and an LLM command surface",
   "bundle": {

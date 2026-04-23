@@ -50,7 +50,7 @@ Because the gallery is generic, it knows nothing about what its slots mean. Cons
 | [`src/gallery-model.ts`](charmiq://./src/gallery-model.ts) | Reactive model — BehaviorSubjects for items, slots, bindings, and a combined public state |
 | [`src/grid-view.ts`](charmiq://./src/grid-view.ts) | Grid + lightbox + zoom slider DOM |
 | [`src/slot-strip.ts`](charmiq://./src/slot-strip.ts) | Slot tiles + click-to-bind + drag-and-drop |
-| [`src/command-surface.ts`](charmiq://./src/command-surface.ts) | Advertises `charmiq.command` and `ai.charm.shared.imageGallery` |
+| [`src/command-surface.ts`](charmiq://./src/command-surface.ts) | Advertises `charmiq.command` and `ai.charmiq.shared.imageGallery` |
 | [`src/main.ts`](charmiq://./src/main.ts) | Entry point — composes modules, owns the imperative actions, auto-orientation |
 
 
@@ -78,7 +78,7 @@ Because the gallery is generic, it knows nothing about what its slots mean. Cons
                                                   GalleryModel (BehaviorSubjects)
                                                          │
                                                          ▼
-                                                 ai.charm.shared.imageGallery
+                                                 ai.charmiq.shared.imageGallery
                                                  (reactive capability)
 ```
 
@@ -89,9 +89,9 @@ Because the gallery is generic, it knows nothing about what its slots mean. Cons
 Bindings persist even when `itemId=null` so slot order stays stable and so opaque `meta` can outlive a binding.
 
 
-### The Capability (`ai.charm.shared.imageGallery`)
+### The Capability (`ai.charmiq.shared.imageGallery`)
 
-Any Application running in the same Document can call `charmiq.discover('ai.charm.shared.imageGallery')` to attach to the gallery. The capability surface
+Any Application running in the same Document can call `charmiq.discover('ai.charmiq.shared.imageGallery')` to attach to the gallery. The capability surface
  - `items$()` → `Observable<ReadonlyArray<GalleryItem>>`
  - `slots$()` → `Observable<ReadonlyArray<SlotDefinition>>`
  - `bindings$()` → `Observable<ReadonlyArray<BindingRecord>>`

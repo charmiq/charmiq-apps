@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.tutorials.hello-app",
+  "id": "ai.charmiq.tutorials.hello-app",
   "name": "Hello App",
   "description": "A simple React app — file structure, ESM, and SCSS",
   "bundle": {

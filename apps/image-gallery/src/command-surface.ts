@@ -5,9 +5,9 @@ import type { GalleryModel, PublicState, PublicSlot } from './gallery-model';
 // advertises the gallery's two external surfaces
 //   charmiq.command               -- discrete, agent-callable actions
 //                                    (addItems, removeItem, bindSlot, ...)
-//   ai.charm.shared.imageGallery  -- reactive capability for other apps that
-//                                    want to observe the collection + bindings
-//                                    (e.g. a shader player watching slot bindings)
+//   ai.charmiq.shared.imageGallery  -- reactive capability for other apps that
+//                                      want to observe the collection + bindings
+//                                      (e.g. a shader player watching slot bindings)
 //
 // All imperative mutations are delegated to the callbacks on GalleryActions —
 // the gallery surface does not know how to persist or resolve assets; main.ts
@@ -63,7 +63,7 @@ export class CommandSurface {
   // ------------------------------------------------------------------------------
   /** advertise the reactive capability for other apps in the same Document */
   private advertiseCapability(charmiq: CharmIQAPI): void {
-    charmiq.advertise('ai.charm.shared.imageGallery', {
+    charmiq.advertise('ai.charmiq.shared.imageGallery', {
       // streams
       items$:    () => this.model.items$(),
       slots$:    () => this.model.slots$(),

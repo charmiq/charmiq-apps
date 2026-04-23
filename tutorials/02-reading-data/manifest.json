@@ -1,5 +1,5 @@
 {
-  "id": "ai.charm.tutorials.reading-data",
+  "id": "ai.charmiq.tutorials.reading-data",
   "name": "Reading Data",
   "description": "Reading document content with appContent.onChange$()",
   "bundle": {
