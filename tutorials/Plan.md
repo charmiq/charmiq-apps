@@ -9,11 +9,12 @@ Manifest IDs follow the convention `ai.charmiq.tutorials.<name>` (e.g. `ai.charm
 | 01 | `hello-app` | — | File structure, ESM, SCSS, React | none |
 | 02 | `reading-data` | 01 | Read document content reactively | `appContent.onChange$()` |
 | 03 | `writing-data` | 02 | Write back to the document | `appContent.set()`, `applyChanges()` |
-| 04 | `persistent-state` | 03 | Config that survives reloads | `appState.onChange$()`, `appState.set()` |
-| 05 | `charm-integration` | 04 | A Charm populates `appContent`; the Application renders it live | — |
-| 06 | `app-discovery` | 05 | Two Applications in the same document | `advertise()` / `discover()` |
-| 07 | `oauth` | 06 | Connecting to an external API — Google or GitHub | — |
-| 08 | `mcp` | 07 | Calling an MCP server tool from inside an Application | — |
+| 04 | `inline-app` | 03 | The inline form: a full HTML document in `app-source` — no folder, no manifest — and why the missing manifest gates it | `discover('charmiq.service.command')`, scopes/consent |
+| 05 | `persistent-state` | 03 | Config that survives reloads | `appState.onChange$()`, `appState.set()` |
+| 06 | `charm-integration` | 05 | A Charm populates `appContent`; the Application renders it live | — |
+| 07 | `app-discovery` | 06 | Two Applications in the same document | `advertise()` / `discover()` |
+| 08 | `oauth` | 07 | Connecting to an external API — Google or GitHub | — |
+| 09 | `mcp` | 08 | Calling an MCP server tool from inside an Application | — |
 
 ---
 
@@ -67,7 +68,18 @@ Key concepts: full replacement vs. incremental changes, OT safety, the update gu
 
 ---
 
-## 04 `persistent-state`
+## 04 `inline-app` (done)
+
+**Concept:** The inline Application form — a complete HTML document inside `app-source`; no folder, no files, no manifest — and what the missing manifest costs: every capability is a scope, scopes are declared in `requestedScopes`, and an Application that declares nothing cannot use any gated capability.
+
+**Files:** `README.md` only (the document IS the Application — that's the point).
+
+- A single "Celebrate" button calls `notification.toast.emit` through `discover('charmiq.service.command')`; the click is DENIED (`deny-undeclared`) because the inline form has nowhere to declare the scope — the denial and its error message are the lesson.
+- Becomes a working toast when inline Applications gain a declaration mechanism (open design: srcdoc-embedded manifest).
+
+---
+
+## 05 `persistent-state`
 
 **Concept:** App configuration that survives reloads without polluting document content.
 
