@@ -1,0 +1,995 @@
+<h1 style="text-align: center;">
+  Sea Battle | Design V3
+</h1>
+
+Turning
+
+
+<iframe-app height="900px" in-progress="false" width="100%">
+  <app-source>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sea Battle · Board</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Raleway:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #1a1612; color: #ddd; overflow: hidden; }
+  #app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+  /* --- sidebar --- */
+  #sidebar { background: #f0e8d4; border-right: 3px solid #8a7a4a; overflow-y: auto; padding: 0; font-size: 13px; font-family: "Raleway", "Segoe UI", sans-serif; position: relative; }
+  #sidebar::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #8a7a4a 0%, #c4a84a 30%, #e8cc6a 50%, #c4a84a 70%, #8a7a4a 100%); z-index: 10; }
+  #sidebar::after { content: ""; position: absolute; inset: 0; background: url("data:image/svg+xml,%3Csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10h20M10 0v20' stroke='%23c4b088' stroke-width='0.2' opacity='0.3'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; opacity: 0.5; }
+  #sidebar > * { position: relative; z-index: 2; }
+  #sidebar h2 { font-family: "Bebas Neue", "Arial Narrow", sans-serif; font-size: 16px; letter-spacing: 4px; color: #3a3020; text-transform: uppercase; margin: 0; padding: 12px 16px 8px; font-weight: 400; border-top: 2px solid #8a7a4a; position: relative; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; }
+  #sidebar h2::after { content: ""; position: absolute; bottom: 0; left: 16px; right: 16px; height: 1px; background: linear-gradient(90deg, #c4a84a, transparent); }
+  #sidebar h2:first-of-type { border-top: none; margin-top: 8px; }
+  #sidebar h2 .chev { font-size: 10px; color: #8a7a5a; transition: transform 0.2s ease; line-height: 1; }
+  #sidebar h2.collapsed .chev { transform: rotate(-90deg); }
+  .sidebar-section { padding: 8px 16px 14px; }
+  .sidebar-section.collapsed { display: none; }
+  .row { display: flex; align-items: center; justify-content: space-between; margin: 5px 0; gap: 8px; }
+  .row label { color: #5a4e38; font-size: 11px; font-weight: 500; letter-spacing: 0.5px; }
+  .row select, .row input[type="range"] { background: #faf4e6; color: #3a3020; border: 1px solid #c4b088; border-radius: 0; padding: 4px 8px; font-size: 11px; font-family: "DM Mono", "Courier New", monospace; }
+  .row select { min-width: 120px; }
+  .row select:focus { border-color: #8a7a4a; outline: none; box-shadow: 0 0 0 2px rgba(196,168,74,0.25); }
+  .row input[type="range"] { flex: 1; min-width: 0; accent-color: #8a6a2a; }
+  .row .val { color: #6a4a1a; font-family: "DM Mono", monospace; font-size: 12px; min-width: 24px; text-align: right; font-weight: 500; }
+  .toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .toggle input { margin: 0; accent-color: #8a6a2a; }
+  .seg { display: flex; gap: 0; background: #e4d8be; border-radius: 0; padding: 0; border: 2px solid #8a7a4a; }
+  .seg button { flex: 1; background: transparent; color: #6a5e44; border: 0; border-right: 1px solid #c4b088; padding: 8px 4px; font-size: 10px; font-family: "Bebas Neue", sans-serif; cursor: pointer; border-radius: 0; letter-spacing: 2px; text-transform: uppercase; transition: all 0.15s; }
+  .seg button:last-child { border-right: 0; }
+  .seg button.active { background: #3a3020; color: #e8dcc0; }
+  .seg button:hover:not(.active) { background: #d8c8a4; color: #3a3020; }
+  .ship-card { background: #faf4e6; border: 1px solid #c4b088; border-left: 4px solid #c4b088; border-radius: 0; padding: 8px 10px; margin: 5px 0; cursor: pointer; transition: all 0.12s; position: relative; }
+  .ship-card::before { content: ""; position: absolute; top: 0; right: 0; width: 0; height: 0; border-top: 12px solid #c4b088; border-left: 12px solid transparent; opacity: 0; transition: opacity 0.12s; }
+  .ship-card:hover { background: #fff8ea; border-color: #a09060; border-left-color: #a09060; }
+  .ship-card.active { border-left-color: #8a6a2a; border-color: #8a6a2a; background: #fff8ea; box-shadow: 2px 2px 0 #c4b088; }
+  .ship-card.active::before { opacity: 1; border-top-color: #8a6a2a; }
+  .ship-card .ship-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #4a3e28; }
+  .ship-card .ship-head b { font-family: "Bebas Neue", sans-serif; font-weight: 400; font-size: 15px; letter-spacing: 2px; }
+  .ship-card .ship-head .badge { font-family: "DM Mono", monospace; font-size: 10px; color: #8a7a5a; }
+  .ship-card.active .ship-head { color: #2a2010; }
+  .ship-card.active .ship-head .badge { color: #6a4a1a; }
+  .ship-controls { margin-top: 8px; display: none; border-top: 1px solid #ddd0b0; padding-top: 8px; }
+  .ship-card.active .ship-controls { display: block; }
+  .heading-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; }
+  .heading-grid button { background: #faf4e6; color: #6a5e44; border: 1px solid #c4b088; border-radius: 0; padding: 5px 0; font-size: 10px; cursor: pointer; font-family: "DM Mono", monospace; letter-spacing: 0.5px; transition: all 0.1s; }
+  .heading-grid button:hover { background: #e8dcc0; color: #3a3020; border-color: #a09060; }
+  .heading-grid button.active { background: #3a3020; color: #e8dcc0; border-color: #3a3020; }
+  .meta { color: #8a7a5a; font-size: 10px; margin-top: 6px; font-family: "DM Mono", monospace; letter-spacing: 0.3px; }
+  /* --- board --- */
+  #board-wrap { position: relative; overflow: hidden; background: #2a2620; }
+  #board { width: 100%; height: 100%; background: linear-gradient(135deg, #e8dcc0 0%, #d9c89f 100%); }
+  #hud { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.55); color: #c9b88a; padding: 8px 12px; font-family: "SF Mono", monospace; font-size: 11px; border-radius: 3px; line-height: 1.5; pointer-events: none; }
+  /* --- mode controls overlay --- */
+  #mode-controls { position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; flex-direction: column; gap: 8px; }
+  .mode-toggle { display: flex; gap: 0; border: 2px solid rgba(138,122,74,0.7); background: rgba(0,0,0,0.45); backdrop-filter: blur(6px); }
+  .mode-toggle button { background: transparent; color: #c9b88a; border: none; border-right: 1px solid rgba(138,122,74,0.4); padding: 7px 14px; font-family: "Bebas Neue", sans-serif; font-size: 13px; letter-spacing: 2px; cursor: pointer; text-transform: uppercase; transition: all 0.15s; white-space: nowrap; }
+  .mode-toggle button:last-child { border-right: none; }
+  .mode-toggle button.active { background: rgba(196,168,74,0.25); color: #f0e8d0; }
+  .mode-toggle button:hover:not(.active) { background: rgba(196,168,74,0.12); }
+  .run-controls { display: flex; align-items: center; gap: 6px; }
+  .run-controls.hidden { display: none; }
+  .run-controls button { background: rgba(0,0,0,0.5); color: #c9b88a; border: 1px solid rgba(138,122,74,0.5); padding: 5px 10px; font-size: 14px; cursor: pointer; font-family: "Bebas Neue", sans-serif; letter-spacing: 1px; transition: all 0.15s; line-height: 1; }
+  .run-controls button:hover { background: rgba(196,168,74,0.25); color: #f0e8d0; border-color: #c4a84a; }
+  .run-controls button:active { background: rgba(196,168,74,0.4); }
+  .run-controls button:disabled { opacity: 0.35; cursor: default; }
+  #tickDisplay { color: #c9b88a; font-family: "DM Mono", monospace; font-size: 12px; background: rgba(0,0,0,0.5); padding: 5px 10px; border: 1px solid rgba(138,122,74,0.3); min-width: 70px; text-align: center; }
+  #speedChart { background: rgba(0,0,0,0.5); border: 1px solid rgba(138,122,74,0.3); padding: 6px 10px; font-family: "DM Mono", monospace; font-size: 10px; color: #a09070; line-height: 1.6; }
+  #speedChart .moves { color: #e8cc6a; }
+  #speedChart b { color: #c9b88a; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============== SIDEBAR ============== -->
+  <aside id="sidebar">
+
+    <h2>Render Mode</h2>
+    <div class="sidebar-section">
+      <div class="seg" id="renderSeg">
+        <button data-r="A">A · Ink</button>
+        <button data-r="B" class="active">B · Detail</button>
+        <button data-r="E">E · Line</button>
+        <button data-r="F">F · Counter</button>
+      </div>
+      <div class="meta" id="renderMeta">B — gradient hull, deck features, default</div>
+    </div>
+
+    <h2>Board</h2>
+    <div class="sidebar-section">
+      <div class="row">
+        <label>Hex orientation</label>
+        <select id="orient">
+          <option value="pointy">Pointy-top</option>
+          <option value="flat" selected>Flat-top</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Radius</label>
+        <input id="radius" type="range" min="4" max="9" value="7"/>
+        <span class="val" id="radiusVal">7</span>
+      </div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" id="showHighlight" checked/> Highlight ship cells</label>
+      </div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" id="showLabels" checked/> Ship labels</label>
+      </div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" id="showCoords"/> Debug: hex coords</label>
+      </div>
+      <div class="row">
+        <label class="toggle"><input type="checkbox" id="showCompass" checked/> Compass</label>
+      </div>
+    </div>
+
+    <h2>Fleet</h2>
+    <div class="sidebar-section">
+      <div id="fleetList"></div>
+    </div>
+
+  </aside>
+
+  <!-- ============== BOARD ============== -->
+  <div id="board-wrap">
+    <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="mode-controls">
+      <div class="mode-toggle">
+        <button id="modePlacement" class="active">⚓ Placement</button>
+        <button id="modeRunning">▶ Running</button>
+      </div>
+      <div id="runControls" class="run-controls hidden">
+        <button id="stepBack" title="Step back" disabled>◀</button>
+        <button id="stepFwd" title="Step forward">▶ Step</button>
+        <span id="tickDisplay">Tick 0</span>
+        <button id="resetTick" title="Reset to start">↺ Reset</button>
+      </div>
+      <div id="speedChart" class="hidden"></div>
+    </div>
+    <div id="hud">
+      <div>render: <span id="hudRender">B</span></div>
+      <div>active: <span id="hudActive">—</span></div>
+      <div>mode: <span id="hudMode">placement</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+   1. DATA MODEL  (no rendering knowledge)
+   ===================================================================== */
+
+const HEX_DIRS_POINTY = [
+  { name: "E",  dq:+1, dr: 0, angle:   0 },
+  { name: "SE", dq: 0, dr:+1, angle:  60 },
+  { name: "SW", dq:-1, dr:+1, angle: 120 },
+  { name: "W",  dq:-1, dr: 0, angle: 180 },
+  { name: "NW", dq: 0, dr:-1, angle: 240 },
+  { name: "NE", dq:+1, dr:-1, angle: 300 },
+];
+const HEX_DIRS_FLAT = [
+  { name: "NE", dq:+1, dr:-1, angle: -30 },
+  { name: "SE", dq:+1, dr: 0, angle:  30 },
+  { name: "S",  dq: 0, dr:+1, angle:  90 },
+  { name: "SW", dq:-1, dr:+1, angle: 150 },
+  { name: "NW", dq:-1, dr: 0, angle: 210 },
+  { name: "N",  dq: 0, dr:-1, angle: 270 },
+];
+
+const fleet = [
+  { id: "BB-01", size: 5, q: -3, r: -2, head: 0 },
+  { id: "CA-02", size: 4, q:  1, r: -3, head: 1 },
+  { id: "DD-03", size: 3, q:  3, r:  1, head: 2 },
+  { id: "DD-04", size: 3, q: -4, r:  2, head: 5 },
+  { id: "PT-05", size: 2, q:  0, r:  3, head: 0 },
+];
+
+let activeShipId = fleet[0].id;
+
+const state = {
+  render: "B",
+  orient: "flat",             // "pointy" | "flat"
+  radius: 7,
+  showHighlight: true,
+  showLabels: true,
+  showCoords: false,
+  showCompass: true,
+  mode: "placement",          // "placement" | "running"
+};
+
+/* ---- SPEED / MOVEMENT MODEL ---- */
+// interval = how many ticks between moves. Smaller ships are faster.
+// size 1 → every 1 tick, size 2 → every 1, size 3 → every 2, size 4 → every 3, size 5 → every 4
+const SHIP_SPEED = {
+  interval(size) { return Math.max(1, size - 1); },
+  movesOnTick(size, tick) {
+    if (tick <= 0) return false;
+    return tick % this.interval(size) === 0;
+  },
+  label(size) {
+    const iv = this.interval(size);
+    return iv === 1 ? "every tick" : `every ${iv} ticks`;
+  },
+};
+
+/* ---- SIMULATION STATE ---- */
+const sim = {
+  tick: 0,
+  history: [],               // history[i] = fleet snapshot BEFORE tick i+1 was applied
+  initialPositions: null,     // saved on entering running mode
+  actions: {},                // last tick's action per ship (for display)
+};
+
+function saveFleetSnapshot() {
+  return fleet.map(s => ({ id: s.id, q: s.q, r: s.r, head: s.head, size: s.size }));
+}
+function restoreFleetSnapshot(snap) {
+  snap.forEach(ss => {
+    const ship = fleet.find(s => s.id === ss.id);
+    if (ship) { ship.q = ss.q; ship.r = ss.r; ship.head = ss.head; ship.size = ss.size; }
+  });
+}
+
+/* ---- TURN PREFERENCE (delta from current heading) ---- */
+// Prefer: straight, gentle port/starboard, harder turns, reverse as last resort
+const TURN_PREFERENCE = [0, 1, -1, 2, -2, 3];
+
+/* Given a hypothetical ship position + heading, return its wrapped cells */
+function cellsForShipAt(q, r, head, size) {
+  const dir = hexDirs()[head];
+  const cells = [];
+  for (let i = 0; i < size; i++) {
+    cells.push(wrapHex(q + i * dir.dq, r + i * dir.dr, state.radius));
+  }
+  return cells;
+}
+
+function cellsOverlap(cells, lockedSet) {
+  return cells.some(c => lockedSet.has(`${c.q},${c.r}`));
+}
+
+/* Score a candidate heading by simulating N ticks of straight-line travel
+   and counting how many steps before a collision with locked cells.
+   Also penalizes going off-board (cells that wrap = less desirable). */
+function scoreHeading(shipQ, shipR, newHead, size, lockedCells, depth) {
+  const dirs = hexDirs();
+  const dir = dirs[newHead];
+  let q = shipQ, r = shipR;
+  let score = 0;
+  for (let d = 0; d < depth; d++) {
+    const nq = q + dir.dq, nr = r + dir.dr;
+    const wrapped = wrapHex(nq, nr, state.radius);
+    q = wrapped.q; r = wrapped.r;
+    const cells = cellsForShipAt(q, r, newHead, size);
+    if (cellsOverlap(cells, lockedCells)) break;
+    score++;
+  }
+  return score;
+}
+
+const LOOKAHEAD_DEPTH = 4;
+
+function stepForward() {
+  sim.history.push(saveFleetSnapshot());
+  sim.tick++;
+  sim.actions = {};  // track what each ship did this tick
+
+  // Sort fleet: largest first (priority)
+  const sorted = [...fleet].sort((a, b) => b.size - a.size);
+  const lockedCells = new Set();
+  const dirs = hexDirs();
+  const numDirs = dirs.length;
+
+  // First, lock cells of ships that DON'T act this tick
+  sorted.forEach(ship => {
+    if (!SHIP_SPEED.movesOnTick(ship.size, sim.tick)) {
+      shipCells(ship).forEach(c => lockedCells.add(`${c.q},${c.r}`));
+      sim.actions[ship.id] = "—";
+    }
+  });
+
+  // Process ships that DO act (largest first)
+  sorted.forEach(ship => {
+    if (!SHIP_SPEED.movesOnTick(ship.size, sim.tick)) return;
+
+    let bestHead = ship.head;
+    let bestQ = ship.q, bestR = ship.r;
+    let bestScore = -1;
+    let bestDelta = 999;
+    let found = false;
+
+    for (const delta of TURN_PREFERENCE) {
+      const candidateHead = ((ship.head + delta) % numDirs + numDirs) % numDirs;
+      const dir = dirs[candidateHead];
+      // Move one cell forward in candidate heading
+      const nq = ship.q + dir.dq, nr = ship.r + dir.dr;
+      const wrapped = wrapHex(nq, nr, state.radius);
+      const newCells = cellsForShipAt(wrapped.q, wrapped.r, candidateHead, ship.size);
+
+      if (!cellsOverlap(newCells, lockedCells)) {
+        // Score by lookahead
+        const score = scoreHeading(wrapped.q, wrapped.r, candidateHead, ship.size, lockedCells, LOOKAHEAD_DEPTH);
+        const absDelta = Math.abs(delta);
+        // Prefer: higher lookahead score, then smaller turn delta
+        if (score > bestScore || (score === bestScore && absDelta < bestDelta)) {
+          bestScore = score;
+          bestDelta = absDelta;
+          bestHead = candidateHead;
+          bestQ = wrapped.q;
+          bestR = wrapped.r;
+          found = true;
+        }
+      }
+    }
+
+    if (found) {
+      const turned = bestHead !== ship.head;
+      const turnDir = turned ? (() => {
+        let d = bestHead - ship.head;
+        if (d > numDirs / 2) d -= numDirs;
+        if (d < -numDirs / 2) d += numDirs;
+        return d > 0 ? "⟳" : "⟲";
+      })() : "";
+      const oldDirName = dirs[ship.head].name;
+      const newDirName = dirs[bestHead].name;
+      ship.head = bestHead;
+      ship.q = bestQ;
+      ship.r = bestR;
+      sim.actions[ship.id] = turned
+        ? `${turnDir} ${oldDirName}→${newDirName} + fwd`
+        : "fwd";
+    } else {
+      // Emergency all-stop: can't move anywhere
+      sim.actions[ship.id] = "⚠ blocked";
+    }
+
+    // Lock this ship's final cells
+    shipCells(ship).forEach(c => lockedCells.add(`${c.q},${c.r}`));
+  });
+
+  updateSimUI();
+  buildFleetList();
+  renderBoard();
+}
+
+function stepBack() {
+  if (sim.tick <= 0 || sim.history.length === 0) return;
+  const snap = sim.history.pop();
+  restoreFleetSnapshot(snap);
+  sim.tick--;
+  updateSimUI();
+  buildFleetList();
+  renderBoard();
+}
+
+function resetSim() {
+  if (sim.initialPositions) restoreFleetSnapshot(sim.initialPositions);
+  sim.tick = 0;
+  sim.history = [];
+  updateSimUI();
+  buildFleetList();
+  renderBoard();
+}
+
+function enterRunningMode() {
+  state.mode = "running";
+  sim.tick = 0;
+  sim.history = [];
+  sim.initialPositions = saveFleetSnapshot();
+  document.getElementById("modePlacement").classList.remove("active");
+  document.getElementById("modeRunning").classList.add("active");
+  document.getElementById("runControls").classList.remove("hidden");
+  document.getElementById("speedChart").classList.remove("hidden");
+  updateSimUI();
+  updateSpeedChart();
+  renderBoard();
+}
+
+function enterPlacementMode() {
+  // Restore initial positions when leaving running mode
+  if (sim.initialPositions) restoreFleetSnapshot(sim.initialPositions);
+  state.mode = "placement";
+  sim.tick = 0;
+  sim.history = [];
+  sim.initialPositions = null;
+  document.getElementById("modeRunning").classList.remove("active");
+  document.getElementById("modePlacement").classList.add("active");
+  document.getElementById("runControls").classList.add("hidden");
+  document.getElementById("speedChart").classList.add("hidden");
+  buildFleetList();
+  renderBoard();
+}
+
+function updateSimUI() {
+  document.getElementById("tickDisplay").textContent = `Tick ${sim.tick}`;
+  document.getElementById("stepBack").disabled = sim.tick <= 0;
+  document.getElementById("hudMode").textContent = state.mode + (state.mode === "running" ? ` · tick ${sim.tick}` : "");
+}
+
+function updateSpeedChart() {
+  const chart = document.getElementById("speedChart");
+  const dirs = hexDirs();
+  const lines = fleet.map(s => {
+    const willMove = SHIP_SPEED.movesOnTick(s.size, sim.tick + 1);
+    const action = sim.actions && sim.actions[s.id] ? sim.actions[s.id] : "";
+    const nextMark = willMove ? ' · <span style="color:#90c060">▸ next</span>' : '';
+    const actionMark = action ? ` · <span style="color:#e8cc6a">${action}</span>` : '';
+    return `<b>${s.id}</b> sz${s.size} ${dirs[s.head].name} <span class="moves">${SHIP_SPEED.label(s.size)}</span>${actionMark}${nextMark}`;
+  });
+  chart.innerHTML = lines.join('<br>');
+}
+
+/* =====================================================================
+   2. HEX GEOMETRY  (math only — no DOM)
+   ===================================================================== */
+
+function hexDirs() { return state.orient === "pointy" ? HEX_DIRS_POINTY : HEX_DIRS_FLAT; }
+
+function axialToPx(q, r, hexR) {
+  if (state.orient === "pointy") {
+    const w = Math.sqrt(3) * hexR;
+    const h = 1.5 * hexR;
+    return { x: w * (q + r/2), y: h * r };
+  } else {
+    const w = 1.5 * hexR;
+    const h = Math.sqrt(3) * hexR;
+    return { x: w * q, y: h * (r + q/2) };
+  }
+}
+
+function hexCorners(cx, cy, hexR) {
+  const pts = [];
+  const offset = state.orient === "pointy" ? -30 : 0;
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI/180) * (60*i + offset);
+    pts.push([cx + hexR*Math.cos(a), cy + hexR*Math.sin(a)]);
+  }
+  return pts;
+}
+
+function inBoard(q, r, R) {
+  return Math.abs(q) <= R && Math.abs(r) <= R && Math.abs(q + r) <= R;
+}
+
+// Wrap an axial coordinate back onto the board (toroidal hex grid).
+// Uses the 6 edge-to-edge translation vectors for a hexagonal region.
+function hexWrapOffsets(R) {
+  return [
+    [-(2*R+1),  R      ],  // edge q=+R  → q=-R
+    [  2*R+1,  -R      ],  // edge q=-R  → q=+R
+    [-(R+1),   -R      ],  // edge s=-R  → s=+R  (q+r>R, diagonal)
+    [  R+1,     R      ],  // edge s=+R  → s=-R  (q+r<-R, diagonal)
+    [  R,      -(2*R+1)],  // edge r=+R  → r=-R
+    [ -R,       2*R+1  ],  // edge r=-R  → r=+R
+  ];
+}
+
+function wrapHex(q, r, R) {
+  if (inBoard(q, r, R)) return { q, r };
+  const offsets = hexWrapOffsets(R);
+  for (const [dq, dr] of offsets) {
+    if (inBoard(q + dq, r + dr, R)) return { q: q + dq, r: r + dr };
+  }
+  // Double offset for corner cases
+  for (let i = 0; i < offsets.length; i++) {
+    for (let j = i + 1; j < offsets.length; j++) {
+      const wq = q + offsets[i][0] + offsets[j][0];
+      const wr = r + offsets[i][1] + offsets[j][1];
+      if (inBoard(wq, wr, R)) return { q: wq, r: wr };
+    }
+  }
+  return { q, r };
+}
+
+// Raw (unwrapped) cells — the "true" trajectory
+function shipCellsRaw(ship) {
+  const dir = hexDirs()[ship.head];
+  const cells = [];
+  for (let i = 0; i < ship.size; i++) {
+    cells.push({ q: ship.q + i * dir.dq, r: ship.r + i * dir.dr });
+  }
+  return cells;
+}
+
+// Wrapped cells — for board display (highlighting, hit detection)
+function shipCells(ship) {
+  return shipCellsRaw(ship).map(c => wrapHex(c.q, c.r, state.radius));
+}
+
+function centroidPx(cells, hexR) {
+  let x = 0, y = 0;
+  cells.forEach(c => { const p = axialToPx(c.q, c.r, hexR); x += p.x; y += p.y; });
+  return { x: x / cells.length, y: y / cells.length };
+}
+
+/* =====================================================================
+   3. SHIP FEATURE BUILDER  (single source of truth for A / B / E)
+   Returns geometric primitives in ship-local coords (bow toward +x).
+   ===================================================================== */
+
+function buildShipFeatures(ship, hexR) {
+  // Distance between adjacent hex centers is always sqrt(3)*hexR regardless of orientation
+  const cellSpan = Math.sqrt(3) * hexR;
+  const L = ship.size * cellSpan * 1.02;
+  const B = hexR * 0.78;
+  const bow = L * 0.42, stern = -L * 0.5;
+  const hullPath = `
+    M ${bow},0
+    C ${bow},${-B*0.4} ${bow*0.35},${-B*0.95} ${0},${-B*0.95}
+    L ${stern*0.6},${-B*0.95}
+    C ${stern},${-B*0.85} ${stern},${-B*0.4} ${stern},0
+    C ${stern},${B*0.4} ${stern},${B*0.85} ${stern*0.6},${B*0.95}
+    L ${0},${B*0.95}
+    C ${bow*0.35},${B*0.95} ${bow},${B*0.4} ${bow},0 Z
+  `;
+  const deckPath = `
+    M ${bow*0.85},0
+    C ${bow*0.85},${-B*0.3} ${bow*0.3},${-B*0.72} ${0},${-B*0.72}
+    L ${stern*0.55},${-B*0.72}
+    C ${stern*0.85},${-B*0.6} ${stern*0.85},${-B*0.3} ${stern*0.85},0
+    C ${stern*0.85},${B*0.3} ${stern*0.85},${B*0.6} ${stern*0.55},${B*0.72}
+    L ${0},${B*0.72}
+    C ${bow*0.3},${B*0.72} ${bow*0.85},${B*0.3} ${bow*0.85},0 Z
+  `;
+
+  // Bridge position: scale with L so features spread properly on longer ships
+  // BB (5): push bridge well aft to make room for dual forward turrets
+  // PT (2): push bridge aft a bit for compact look
+  const bridgeX = ship.size >= 5 ? -L * 0.10
+                : ship.size <= 2 ? -L * 0.14
+                : -L * 0.06;
+
+  return {
+    L, B, bow, stern, hullPath, deckPath,
+    fwdTurret:  { x: bow * 0.55, r: B * 0.32 },
+    fwdTurret2: ship.size >= 5 ? { x: bow * 0.20, r: B * 0.30 } : null,
+    aftTurret:  ship.size >= 3 ? { x: stern * 0.55, r: B * 0.32 } : null,
+    bridge:     { x: bridgeX, y: -B*0.4, w: B*1.1, h: B*0.8 },
+    stack:      ship.size >= 4 ? { x: bridgeX + B * 0.78, r: B*0.18 } : null,
+    barrel:     { x: bow*0.55, y: -B*0.08, w: L*0.06, h: B*0.16 },
+    bowWedge:   `M ${bow+2},0 L ${bow-5},-3 L ${bow-5},3 Z`,
+  };
+}
+
+/* =====================================================================
+   4. RENDERERS  (each: (svgGroup, ship, feat) => void)
+   A / B / E share buildShipFeatures(). F has its own geometry.
+   ===================================================================== */
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs = {}) => {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+};
+
+const renderers = {
+
+  // ---- A · INK SILHOUETTE ----------------------------------------
+  // Same anatomy as B, but everything is the same dark fill.
+  A(g, ship, feat) {
+    g.appendChild(el("path", { d: feat.hullPath, fill: "#1a1410", stroke: "#000", "stroke-width": 0.6 }));
+    g.appendChild(el("path", { d: feat.bowWedge, fill: "#5a4a30" }));   // tiny wedge marks the bow
+    // Subtle deck centerline so orientation is unambiguous
+    g.appendChild(el("path", {
+      d: `M ${feat.stern*0.85},0 L ${feat.bow*0.85},0`,
+      stroke: "#c9b58a", "stroke-width": 0.8, opacity: 0.4, fill: "none"
+    }));
+  },
+
+  // ---- B · DECK DETAIL (default) ---------------------------------
+  B(g, ship, feat) {
+    g.appendChild(el("path", { d: feat.hullPath, fill: "url(#hullGrad)", stroke: "#1c1f1a", "stroke-width": 0.5 }));
+    g.appendChild(el("path", { d: feat.deckPath, fill: "url(#deckGrad)" }));
+
+    const features = el("g", { filter: "url(#hardShadow)" });
+    features.appendChild(el("circle", { cx: feat.fwdTurret.x, cy: 0, r: feat.fwdTurret.r, fill: "#3c4438" }));
+    if (feat.fwdTurret2) features.appendChild(el("circle", { cx: feat.fwdTurret2.x, cy: 0, r: feat.fwdTurret2.r, fill: "#3c4438" }));
+    if (feat.aftTurret) features.appendChild(el("circle", { cx: feat.aftTurret.x, cy: 0, r: feat.aftTurret.r, fill: "#3c4438" }));
+    features.appendChild(el("rect", { x: feat.bridge.x, y: feat.bridge.y, width: feat.bridge.w, height: feat.bridge.h, fill: "#5a6450", stroke: "#2c332a", "stroke-width": 0.3 }));
+    if (feat.stack)     features.appendChild(el("circle", { cx: feat.stack.x, cy: 0, r: feat.stack.r, fill: "#1a1c18" }));
+    features.appendChild(el("rect", { x: feat.barrel.x, y: feat.barrel.y, width: feat.barrel.w, height: feat.barrel.h, fill: "#2a2e26" }));
+    g.appendChild(features);
+  },
+
+  // ---- E · BLUEPRINT LINE ----------------------------------------
+  // Same anatomy, outlines only, light parchment fill.
+  E(g, ship, feat) {
+    const stroke = { fill: "none", stroke: "#3a2e1c", "stroke-width": 0.9, "stroke-linejoin": "round" };
+    g.appendChild(el("path", { d: feat.hullPath, fill: "#c9b48a", "fill-opacity": 0.55, stroke: "none" }));
+    g.appendChild(el("path", { d: feat.hullPath, ...stroke }));
+    g.appendChild(el("path", { d: feat.deckPath, ...stroke, "stroke-width": 0.55 }));
+    // Keel dashed line
+    g.appendChild(el("path", { d: `M ${feat.stern*0.92},0 L ${feat.bow*0.92},0`, ...stroke, "stroke-width": 0.4, "stroke-dasharray": "2,2" }));
+    // Hex-cell dots
+    for (let i = 0; i < ship.size; i++) {
+      const dx = feat.stern + (i + 0.5) * (feat.L / ship.size);
+      g.appendChild(el("circle", { cx: dx, cy: 0, r: 1.2, fill: "#3a2e1c" }));
+    }
+    g.appendChild(el("circle", { cx: feat.fwdTurret.x, cy: 0, r: feat.fwdTurret.r, ...stroke }));
+    if (feat.fwdTurret2) g.appendChild(el("circle", { cx: feat.fwdTurret2.x, cy: 0, r: feat.fwdTurret2.r, ...stroke }));
+    if (feat.aftTurret) g.appendChild(el("circle", { cx: feat.aftTurret.x, cy: 0, r: feat.aftTurret.r, ...stroke }));
+    g.appendChild(el("rect", { x: feat.bridge.x, y: feat.bridge.y, width: feat.bridge.w, height: feat.bridge.h, ...stroke }));
+  },
+
+  // ---- F · COMMAND COUNTER (own geometry) ------------------------
+  F(g, ship, feat) {
+    const L = feat.L, B = feat.B * 1.15;
+    g.appendChild(el("rect", { x: -L/2, y: -B*0.7, width: L, height: B*1.4, rx: B*0.25, fill: "#1a3050", stroke: "#0a1828", "stroke-width": 0.8 }));
+    const arrow = el("path", {
+      d: `M ${-L/2 + B*0.3},${-B*0.4} L ${L/2 - B*0.7},${-B*0.4} L ${L/2 - B*0.3},0 L ${L/2 - B*0.7},${B*0.4} L ${-L/2 + B*0.3},${B*0.4} Z`,
+      fill: "#3a6090"
+    });
+    g.appendChild(arrow);
+    // Size number (counter-rotated so it's always upright)
+    const text = el("text", {
+      y: B*0.22, "text-anchor": "middle", "font-family": "Georgia",
+      "font-weight": "bold", "font-size": B*0.75, fill: "#f0e8d0",
+      transform: `rotate(${-(hexDirs()[ship.head].angle)})`
+    });
+    text.textContent = ship.size;
+    g.appendChild(text);
+    // Pips — one per cell, running stern→bow (left→right in local coords)
+    for (let i = 0; i < ship.size; i++) {
+      const px = -L/2 + (i + 0.5) * (L / ship.size);
+      g.appendChild(el("circle", { cx: px, cy: B*0.55, r: 1.6, fill: "#f0e8d0" }));
+    }
+  },
+};
+
+/* =====================================================================
+   5. BOARD RENDER  (layered pipeline)
+   ===================================================================== */
+
+function computeHexR(boardW, boardH, R) {
+  // Fit the board (2R+1 hexes across, ~similar tall) with margin.
+  const margin = 40;
+  if (state.orient === "pointy") {
+    const wCells = 2*R + 1, hCells = (3*R)/2 + 1;
+    const wByW = (boardW - 2*margin) / (wCells * Math.sqrt(3));
+    const wByH = (boardH - 2*margin) / (hCells * 1.5);
+    return Math.min(wByW, wByH);
+  } else {
+    const wCells = (3*R)/2 + 1, hCells = 2*R + 1;
+    const wByW = (boardW - 2*margin) / (wCells * 1.5);
+    const wByH = (boardH - 2*margin) / (hCells * Math.sqrt(3));
+    return Math.min(wByW, wByH);
+  }
+}
+
+function renderBoard() {
+  const svg = document.getElementById("board");
+  const wrap = document.getElementById("board-wrap");
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = "";
+
+  const hexR = computeHexR(W, H, state.radius);
+  const cx = W/2, cy = H/2;
+
+  // ---- DEFS ----------------------------------------------------------
+  const defs = el("defs");
+  defs.innerHTML = `
+    <radialGradient id="paperVignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#f0e4c8" stop-opacity="0.0"/>
+      <stop offset="70%" stop-color="#a08858" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#5a4628" stop-opacity="0.40"/>
+    </radialGradient>
+    <linearGradient id="hullGrad" x1="0" y1="-1" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6a7560"/>
+      <stop offset="50%" stop-color="#4a5444"/>
+      <stop offset="100%" stop-color="#2c332a"/>
+    </linearGradient>
+    <linearGradient id="deckGrad" x1="0" y1="-1" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7a6a4a"/>
+      <stop offset="100%" stop-color="#5a4e36"/>
+    </linearGradient>
+    <filter id="shipShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.8"/>
+      <feOffset dx="1.5" dy="2.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="hardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.6"/>
+      <feOffset dx="1" dy="1.6"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.7"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  `;
+  // Board clip-path: union of all hex cell polygons (exact boundary)
+  const boardClip = el("clipPath", { id: "boardClip" });
+  defs.appendChild(boardClip);
+
+  // Fade mask: blurred white hex region → fades at board edge
+  const fadeMaskFilter = el("filter", { id: "fadeMaskBlur", x: "-20%", y: "-20%", width: "140%", height: "140%" });
+  fadeMaskFilter.appendChild(el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: String(hexR * 0.8) }));
+  defs.appendChild(fadeMaskFilter);
+
+  const fadeMask = el("mask", { id: "boardFadeMask" });
+  fadeMask.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, fill: "black" }));
+  const fadeMaskHexes = el("g", { filter: "url(#fadeMaskBlur)" });
+  fadeMask.appendChild(fadeMaskHexes);
+  defs.appendChild(fadeMask);
+
+  svg.appendChild(defs);
+
+  // ---- LAYER: hex grid (all in-board cells) -------------------------
+  const gridLayer = el("g", { id: "layer-grid" });
+  svg.appendChild(gridLayer);
+
+  const cellByKey = {};
+  for (let q = -state.radius; q <= state.radius; q++) {
+    for (let r = -state.radius; r <= state.radius; r++) {
+      if (!inBoard(q, r, state.radius)) continue;
+      const p = axialToPx(q, r, hexR);
+      const px = cx + p.x, py = cy + p.y;
+      const corners = hexCorners(px, py, hexR).map(c => c.join(",")).join(" ");
+      const cell = el("polygon", { points: corners, fill: "transparent", stroke: "rgba(58,46,28,0.50)", "stroke-width": 0.8 });
+      gridLayer.appendChild(cell);
+      cellByKey[`${q},${r}`] = { px, py, cell };
+      // Also add to clip-path and fade mask
+      boardClip.appendChild(el("polygon", { points: corners }));
+      fadeMaskHexes.appendChild(el("polygon", { points: corners, fill: "white" }));
+
+      if (state.showCoords) {
+        const t = el("text", { x: px, y: py + 3, "text-anchor": "middle", "font-family": "SF Mono, monospace", "font-size": Math.max(6, hexR*0.28), fill: "#8a7350", opacity: 0.55 });
+        t.textContent = `${q},${r}`;
+        gridLayer.appendChild(t);
+      }
+    }
+  }
+
+  // ---- LAYER: ship-cell highlights ----------------------------------
+  const highlightLayer = el("g", { id: "layer-highlight" });
+  svg.appendChild(highlightLayer);
+
+  if (state.showHighlight) {
+    fleet.forEach(ship => {
+      const isActive = ship.id === activeShipId;
+      shipCells(ship).forEach(c => {
+        const key = `${c.q},${c.r}`;
+        const slot = cellByKey[key];
+        if (!slot) return;  // off-board cell (wrap to be handled later)
+        const corners = hexCorners(slot.px, slot.py, hexR).map(p => p.join(",")).join(" ");
+        highlightLayer.appendChild(el("polygon", {
+          points: corners,
+          fill: isActive ? "#3a6090" : "#5a7a9a",
+          "fill-opacity": isActive ? 0.55 : 0.35,
+          stroke: isActive ? "#1f3a5f" : "#3a5a7a",
+          "stroke-width": isActive ? 1.4 : 0.9,
+        }));
+      });
+    });
+  }
+
+  // ---- LAYER: vignette --------------------------------------------
+  svg.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#paperVignette)", "pointer-events": "none" }));
+
+  // ---- LAYER: ships -----------------------------------------------
+  const shipLayer = el("g", { id: "layer-ships" });
+  svg.appendChild(shipLayer);
+
+  const renderer = renderers[state.render];
+
+  fleet.forEach(ship => {
+    const rawCells = shipCellsRaw(ship);
+    const wrappedCells = shipCells(ship);
+    if (wrappedCells.length === 0) return;
+
+    // "True" centroid of the unwrapped cells (may be off-board)
+    const rawCtr = centroidPx(rawCells, hexR);
+    const angle = hexDirs()[ship.head].angle;
+    const feat = buildShipFeatures(ship, hexR);
+
+    // Render a clipped copy at each wrap offset that has on-board cells
+    const wrapVecs = [[0, 0], ...hexWrapOffsets(state.radius)];
+
+    wrapVecs.forEach(([dq, dr]) => {
+      const onBoard = rawCells.some(c => inBoard(c.q + dq, c.r + dr, state.radius));
+      if (!onBoard) return;
+
+      const wOff = axialToPx(dq, dr, hexR);
+      const px = cx + rawCtr.x + wOff.x;
+      const py = cy + rawCtr.y + wOff.y;
+
+      // Ghost layer: faded overhang beyond board edge
+      const ghostG = el("g", { mask: "url(#boardFadeMask)", opacity: 0.25 });
+      const gGhost = el("g", { transform: `translate(${px},${py}) rotate(${angle})` });
+      renderer(gGhost, ship, feat);
+      ghostG.appendChild(gGhost);
+      shipLayer.appendChild(ghostG);
+
+      // Solid layer: clipped to board
+      const clipG = el("g", { "clip-path": "url(#boardClip)" });
+      const g = el("g", { transform: `translate(${px},${py}) rotate(${angle})`, filter: "url(#shipShadow)" });
+      renderer(g, ship, feat);
+      clipG.appendChild(g);
+      shipLayer.appendChild(clipG);
+    });
+
+    // Label at anchor cell (always on-board)
+    if (state.showLabels) {
+      const anchorPx = axialToPx(ship.q, ship.r, hexR);
+      const labelX = cx + anchorPx.x;
+      const labelY = cy + anchorPx.y + hexR * 1.4;
+      const label = el("text", {
+        x: labelX, y: labelY,
+        "text-anchor": "middle", "font-family": "SF Mono, monospace",
+        "font-size": Math.max(8, hexR*0.32), fill: "#3a2e1c",
+        opacity: ship.id === activeShipId ? 1 : 0.6,
+        "font-weight": ship.id === activeShipId ? 700 : 400
+      });
+      label.textContent = `${ship.id}`;
+      svg.appendChild(label);
+    }
+  });
+
+  // ---- LAYER: compass ---------------------------------------------
+  if (state.showCompass) {
+    const compass = el("g", { transform: `translate(40, ${H-45})`, opacity: 0.55, "pointer-events": "none" });
+    compass.innerHTML = `
+      <circle r="22" fill="none" stroke="#3a2e1c" stroke-width="0.6"/>
+      <circle r="16" fill="none" stroke="#3a2e1c" stroke-width="0.4"/>
+      <path d="M0,-22 L3,0 L0,22 L-3,0 Z" fill="#3a2e1c" opacity="0.6"/>
+      <path d="M-22,0 L0,3 L22,0 L0,-3 Z" fill="#3a2e1c" opacity="0.6"/>
+      <text y="-26" text-anchor="middle" font-size="8" fill="#3a2e1c" font-family="Georgia">N</text>
+    `;
+    svg.appendChild(compass);
+  }
+
+  // ---- HUD --------------------------------------------------------
+  document.getElementById("hudRender").textContent = state.render;
+  const active = fleet.find(s => s.id === activeShipId);
+  document.getElementById("hudActive").textContent =
+    active ? `${active.id} · size ${active.size} · (${active.q},${active.r}) · ${hexDirs()[active.head].name}` : "—";
+}
+
+/* =====================================================================
+   6. SIDEBAR  (state -> DOM, event wiring)
+   ===================================================================== */
+
+function buildFleetList() {
+  const root = document.getElementById("fleetList");
+  root.innerHTML = "";
+  fleet.forEach(ship => {
+    const card = document.createElement("div");
+    card.className = "ship-card" + (ship.id === activeShipId ? " active" : "");
+    card.dataset.id = ship.id;
+    const dir = hexDirs()[ship.head];
+    card.innerHTML = `
+      <div class="ship-head">
+        <b>${ship.id}</b>
+        <span class="badge">size ${ship.size} · ${dir.name}</span>
+      </div>
+      <div class="ship-controls">
+        <div class="row">
+          <label>Size</label>
+          <input type="range" min="1" max="5" value="${ship.size}" data-prop="size"/>
+          <span class="val">${ship.size}</span>
+        </div>
+        <div class="row">
+          <label>q</label>
+          <input type="range" min="-${state.radius}" max="${state.radius}" value="${ship.q}" data-prop="q"/>
+          <span class="val">${ship.q}</span>
+        </div>
+        <div class="row">
+          <label>r</label>
+          <input type="range" min="-${state.radius}" max="${state.radius}" value="${ship.r}" data-prop="r"/>
+          <span class="val">${ship.r}</span>
+        </div>
+        <div class="row" style="margin-top:6px;">
+          <label>Heading</label>
+        </div>
+        <div class="heading-grid">
+          ${hexDirs().map((d, i) =>
+            `<button data-head="${i}" class="${i===ship.head?'active':''}">${d.name}</button>`
+          ).join("")}
+        </div>
+      </div>
+    `;
+    card.addEventListener("click", (e) => {
+      if (e.target.closest(".ship-controls")) return;  // don't re-select on control interaction
+      activeShipId = ship.id;
+      buildFleetList();
+      renderBoard();
+    });
+    // Disable editing in running mode
+    if (state.mode === "running") {
+      card.querySelectorAll('input[type="range"]').forEach(inp => inp.disabled = true);
+      card.querySelectorAll('.heading-grid button').forEach(btn => btn.disabled = true);
+    } else {
+      card.querySelectorAll('input[type="range"]').forEach(inp => {
+        inp.addEventListener("input", () => {
+          const prop = inp.dataset.prop;
+          ship[prop] = parseInt(inp.value, 10);
+          inp.parentElement.querySelector(".val").textContent = ship[prop];
+          card.querySelector(".badge").textContent = `size ${ship.size} · ${hexDirs()[ship.head].name}`;
+          renderBoard();
+        });
+      });
+      card.querySelectorAll('.heading-grid button').forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          ship.head = parseInt(btn.dataset.head, 10);
+          buildFleetList();
+          renderBoard();
+        });
+      });
+    }
+    root.appendChild(card);
+  });
+}
+
+/* =====================================================================
+   7. WIRE-UP
+   ===================================================================== */
+
+const RENDER_LABELS = {
+  A: "A — dark ink silhouette (same anatomy as B)",
+  B: "B — gradient hull + deck features (default)",
+  E: "E — outlines only (same anatomy as B)",
+  F: "F — NATO command counter (own geometry)",
+};
+
+document.querySelectorAll("#renderSeg button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#renderSeg button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.render = btn.dataset.r;
+    document.getElementById("renderMeta").textContent = RENDER_LABELS[state.render];
+    renderBoard();
+  });
+});
+
+document.getElementById("orient").addEventListener("change", e => { state.orient = e.target.value; buildFleetList(); renderBoard(); });
+document.getElementById("radius").addEventListener("input", e => {
+  state.radius = parseInt(e.target.value, 10);
+  document.getElementById("radiusVal").textContent = state.radius;
+  // re-clamp ship positions so they don't go nuts
+  fleet.forEach(s => { s.q = Math.max(-state.radius, Math.min(state.radius, s.q)); s.r = Math.max(-state.radius, Math.min(state.radius, s.r)); });
+  buildFleetList(); renderBoard();
+});
+["showHighlight","showLabels","showCoords","showCompass"].forEach(id => {
+  document.getElementById(id).addEventListener("change", e => { state[id] = e.target.checked; renderBoard(); });
+});
+
+// ---- Mode & simulation controls ----
+document.getElementById("modePlacement").addEventListener("click", enterPlacementMode);
+document.getElementById("modeRunning").addEventListener("click", enterRunningMode);
+document.getElementById("stepFwd").addEventListener("click", () => { stepForward(); updateSpeedChart(); });
+document.getElementById("stepBack").addEventListener("click", () => { stepBack(); updateSpeedChart(); });
+document.getElementById("resetTick").addEventListener("click", () => { resetSim(); updateSpeedChart(); });
+
+window.addEventListener("resize", renderBoard);
+
+// Collapsible sidebar sections
+document.querySelectorAll('#sidebar h2').forEach(h2 => {
+  const chev = document.createElement('span');
+  chev.className = 'chev';
+  chev.textContent = '▾';
+  h2.appendChild(chev);
+  h2.addEventListener('click', () => {
+    h2.classList.toggle('collapsed');
+    const section = h2.nextElementSibling;
+    if (section && section.classList.contains('sidebar-section')) {
+      section.classList.toggle('collapsed');
+    }
+  });
+});
+
+buildFleetList();
+setTimeout(renderBoard, 50);
+</script>
+</body>
+</html>
+  </app-source>
+</iframe-app>
+
+

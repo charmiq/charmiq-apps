@@ -1,0 +1,1444 @@
+<h1 style="text-align: center;">
+  Sea Battle | Brainstorming
+</h1>
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part>I want to rethink the classic game: Sea Battle. I want to take the core components (two player, turn based, one player is guessing where the other player put something, known / fixed shapes(?), etc) and I want to reimagine it. It could be anything but it needs to map to the same core infrastructure. So let's do some brainstorming! Give me a bunch of ideas. Take it in a totally different direction. 
+
+
+<agent-execution agent-id="5BmKo6FjFmGGT9rfdr1R" execution-id="QWQydm0U97dp2StDh1Mu" name="Code Execution and Data Viz V2" state="complete" usage-record-id="c9b9ea177570955d8826d5590cc3aa18" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="NdkppXdzLw" provider="anthropic" reasoning-id="v4cx76frk4AA1XDyC9GK" status="completed" signature="EpAFCmMIDhgCKkB/f0sbeuluZi50JAftkSPBUboaXD1KVjS0iQqe6vXPhaY8vVsLIi5+KUWL0TlMjL2I8+CSjEYxKCInYi4Z8or3Mg9jbGF1ZGUtb3B1cy00LTc4AEIIdGhpbmtpbmcSDDPnxDfYwpKs4kaGuhoMCbesC15S0W//CndNIjAtRXMyOw14+kW1xvO+M2A3ejhrj36qRdpaYilgr5b9bAXxQSzFJHj8R5PGb0fJCEEq2gOwg4NcN0jpCGvvQGK+jZ6wWYfaVqzHQOD4VCNHZyhxlmZRLJPSrZ6RTqj3tsd1hXezVaJSC7a106XA2bnzMQAN0aOJdGib0kCpjkzovw1z8cqmeMe9Us2MRsFzDY2Mka181NaNja2atdHnAcbp3muHtLH3An++DHDZcMk2qOQ/fYilKHiHnIBf4gC+5s6TZICJkANyAs9IozA9EB+MCeeDeWWSR8uqUjhK382gXiOMRg96GpPpCTq1qosgefoovHgJOBN+G1MyMuuHkyq6YLpvlt/g3lqIJz2vO5jJlhZxTRLP6EepHLptdaQfU8O0kOeCnDMw5IRxFN2UbcZoliCzz5te4vxIBT6qwbZz3enXvHh8oxvsUOwPvXlHQsUxbrAVAJDYB3H6hjoUooQvoCEci+ACGuyF8LMcaScPY5zRRM/9lvrIu3wnzYy/lXw0tNJHB2y0g/lyCDe6aEdPbThQPxdlCBJNanI2E+GTVkvWFgM2/CxGTFCbolU2EzoxLHE+NAOasTNwWlwQ2aOapDsiS6f2VQfNHzA5njAh7WRD5eiAEcYWHT/d/NYtEbatjFPwnr10d4aVNCdaBhLbGa/tZMT0305FKd132TD/TF/+B5F+jjMaWvU1JzIYAQ==" reasoning="%5B%22%22%5D"></agent-reason>
+
+## Reimagining Sea Battle: Wild Brainstorm
+
+Alright Rob, let's blow this thing apart. The "boats on a grid" framing is just one instantiation of a much deeper game pattern: **hidden topology on a shared coordinate system with probe-based information revelation**. Once you see it that way, the ocean is just set dressing. Let's swap the dressing — *and* mess with the dimensions, the feedback mechanism, and even what "winning" means.
+
+## Domain Re-skins (same mechanics, wildly different context)
+| \# | Concept | The Twist |
+|----|----|----|
+| 1 | **Neuron Hunt** | Grid is a slice of cortex. Players hide neural circuits (axon-dendrite shapes). Probes are "microelectrode insertions." A hit triggers a *cascade* that lights up adjacent connected cells. |
+| 2 | **Archaeological Dig** | Players bury artifacts under a desert grid. Each probe is one shovel-stroke. But probing wrong cells *destroys* surrounding context — and some artifacts are worth more *intact* than just "hit." |
+| 3 | **Black Hole Survey** | Grid is a region of spacetime. Hidden masses bend probe trajectories — your "shot" arrives at a *deflected* coordinate, and the feedback tells you the deflection angle. Pure gravitational lensing puzzle. |
+| 4 | **Mycelium War** | Fungal networks grow turn-by-turn from seeded nodes. The "ships" *spread*. You're not just guessing — you're racing entropy. |
+| 5 | **Server Farm Pentesting** | Grid is a network topology. Hide services on ports. Probes are nmap-style scans. "Hits" reveal vulnerabilities; "misses" trigger IDS alerts that *cost* you future probes. |
+| 6 | **Drug Discovery** | Grid is chemical space. Opponent hides bioactive molecules. Probes are assays. Hits are "binding affinities" with continuous-valued feedback rather than binary. |
+
+
+## Mechanical Mutations (keep the theme, twist the rules)
+
+### **The Schrödinger Variant**
+
+Ships exist in **superposition** across multiple cells until probed. The act of probing *collapses* the wavefunction — but each player gets to choose *when* to collapse their own fleet (committing to positions). Strategic timing replaces strategic placement.
+
+### **Temporal Battleship**
+
+The grid has a **time axis**. Ships are placed at `(x, y, t)`. You can only probe the *present* time slice, but ships *move* on deterministic trajectories you have to infer from partial hits over multiple turns.
+
+### **Mirror Match**
+
+Both players hide ships on the **same shared grid**. A probe hits *whichever* player's ship is there — including your own. Information leakage and risk management replace pure guessing.
+
+### **Probabilistic Probes**
+
+Each probe returns a **probability distribution**, not a binary hit/miss. "73% chance there's something here." Players have a limited budget of "certainty tokens" to convert probes into definitive answers.
+
+### **Shape-Shifting Fleet**
+
+Ships are made of **tetromino-like pieces** that the defender can *rotate* once per turn (without revealing). Hits are still hits, but the geometry you've inferred may no longer be valid.
+
+### **Trap Battleship**
+
+Defender places not just ships, but also **traps**. Probing a trap cell costs the attacker a turn, or reveals one of *their own* ship locations to the defender.
+
+
+## Dimensional Shifts
+
+* **1D Battleship** — A number line. Ships are intervals. Pure information theory; great for kids or AI training.
+* **3D Submarine** — Add a depth axis. Sonar pings reveal *distance* to nearest ship, not hits.
+* **Graph Battleship** — Throw away the grid entirely. The "board" is an arbitrary graph (social network, subway map, molecular structure). Ships are connected subgraphs. Probes are node queries.
+* **Hex Battleship** — Triangular adjacencies change the optimal ship shapes dramatically.
+* **Hyperbolic Battleship** — Non-Euclidean grid where "adjacent" cells grow exponentially. Ships near the edge have wildly different probability mass than ships near center.
+
+
+## Asymmetric Roles (break the symmetry)
+| Variant | Player A | Player B |
+|----|----|----|
+| **Hunter / Prey** | Has a single hidden unit that *moves* | Has many static probes |
+| **God / Mortal** | Sees entire board, places obstacles each turn | Plays normal Battleship blind |
+| **Architect / Demolisher** | Builds defenses turn by turn | Destroys faster than they're built |
+| **Oracle / Skeptic** | Can answer *one* yes/no question per turn about the board | Probes normally |
+
+
+## The Meta-Crackpot Take
+
+Here's where I go full 100,000-foot: **Sea Battle is fundamentally a compressed-sensing problem dressed up as a children's game.** You're reconstructing a sparse signal (ship positions) from binary measurements (probes).
+
+So the *most* radical reimagining isn't a re-skin at all — it's to **expose the underlying mathematical structure** as the game:
+
+> **"Reconstruction"** — Players are given a budget of probes, a known sparsity pattern (the "fleet shape"), and they're racing to *reconstruct* a hidden image. Whoever reconstructs the opponent's image first with fewer probes wins. The "ships" become *features* in an image, the "grid" becomes a *signal space*, and suddenly you're playing competitive MRI.
+
+
+## My Top 3 Picks To Pursue
+
+<ol style="--ol-counter: cr-Cn73QntPWc; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      <b>Mycelium War</b> — because growing/spreading ships fundamentally changes the temporal dynamics and creates emergent strategy.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Black Hole Survey</b> — because <i>deflected probes</i> is a beautifully twisted feedback mechanism that nobody has explored.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Graph Battleship</b> — because abandoning the grid opens up an enormous design space (and maps beautifully to real domains like epidemiology, cybersecurity, neuroscience).
+    </p>
+  </li>
+</ol>
+
+
+
+<agent-execution agent-id="hJ9EBg0ciIAdcFNCbrET" execution-id="OX5mUq9DsdKSNWD0Pxh4" name="LARE (4.7 OClaude)" state="complete" usage-record-id="d5459f278394e4692d1ebc67b936506b" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="lHke85zscr" provider="anthropic" reasoning-id="AjqW4sHjUekqBowU6xBL" status="completed" signature="ErUDCmMIDhgCKkCtvObLdQ2Pd3UcxxnUpv1lHJ3IENe24o5LG5C22yCaTyoyAAC4lXSl5wxDNJthI9m4J0uiy+dLGsmhCIa7VT6wMg9jbGF1ZGUtb3B1cy00LTc4AEIIdGhpbmtpbmcSDEmmDPt+fUKCP2JiXBoMKA3mQrZaU05+QiD0IjBNv8kTz9rPBCqNbngRDeMLfWekJ7kLaXUZbiC9AE+fHoot6RGRpdETtwKrq62paQ8q/wELrJy+PpDpK9aJBKBCvTGm9i7/4bhdGjbd2c3XvG1sip3EIq/kns+6gIJS9yEw7Fm6qacx9d3UOlebJrh5t8NHdZOzIgPNKT/I/H+MHQaNDsToSBPehfIV+BVAkzDSnCCbu8Kg/qJttoka8jxzG2DFmLZkAMQO+yBgLwKdf4+CHs3ax/QFFwM6o6o+gTPZHD8YHcqIwmy3KYBdm0AvbXq58sk3dqouODSfYYQEDqGv4QWpf35ZcmfX1/2ZV8kYLWV4C+JCjPLSX4TSRBJ44EnqGEWswmBYyIrIAufOxP95rbCrXjPQuopqj7wAx2ufTdblletbUWgsas9rVUh4yB4YAQ==" reasoning="%5B%22%22%5D"></agent-reason>
+
+## Reimagining Sea Battle: Crackpot Brainstorm 
+
+Alright Rob, let's blow this thing open. The *skeleton* we're preserving:
+
+* Two opposing hidden states
+* Turn-based reveal mechanics
+* Pre-placed "shapes" of known geometry
+* Spatial deduction via probes
+* Win condition = fully revealing/destroying opponent's hidden set
+
+Now let's get weird. I'm grouping these by the *axis* I'm twisting.
+
+## Twist the Dimension
+
+**1. Sea Battle in Time (Chrono-Strike)**
+
+The "grid" is a timeline, not a space. Players place "events" of fixed duration (a 3-tick event, a 5-tick event) along their personal timeline. Probes are *moments in time*. The kicker: shapes can have **causal dependencies** — destroy an event early and downstream events shift. You're not hunting submarines, you're hunting *moments in someone's history*.
+
+**2. Hyperbolic Battleship**
+
+Same game, non-Euclidean board. A "straight" 4-cell ship curves. Coordinate intuition collapses. Veterans of the original become novices instantly.
+
+**3. 4D Tesseract Battle**
+
+Grid is a 4D hypercube. Ships extend through the W-axis. Each turn you probe a 3D "slice." You're effectively learning to see in 4D through gameplay.
+
+## Twist What's Hidden
+
+**4. Mind Battle (Cognitive Cartography)**
+
+Instead of ships, each player secretly maps **concepts** onto a grid (e.g., "fear," "ambition," "joy" as shapes of varying sizes). The opponent probes with *questions*. Hits reveal partial truth ("You hit ambition"). It's Battleship as therapy / Turing test.
+
+**5. Ecosystem Battle**
+
+Players place **species** (predator/prey/plant) of fixed footprint on their board. When you "hit" a species, it doesn't just sink — it triggers ecological cascades on *your own* board. Kill the apex predator on theirs, their prey populations explode and reveal themselves. Self-damaging information.
+
+**6. Memory Palace Siege**
+
+Each grid cell is a "room." Players hide *memories* (shapes) in their palace. Opponents send "intruders" that wander semi-autonomously based on probe instructions. You're not hitting cells — you're *navigating* someone's mnemonic architecture.
+
+## Twist the Turn Structure
+
+**7. Simultaneous Reveal (Quantum Sea Battle)**
+
+Both players probe simultaneously each round. But here's the kink: a cell only resolves when *both* players probe it — collapse-on-observation. Until then, ships exist in superposition across multiple plausible placements. Bayesian hell. Beautiful.
+
+**8. Continuous-Time Battle**
+
+No turns. Each player has a regenerating "probe budget" that ticks in real-time. Strategy shifts from "what's my best guess" to "when do I commit my budget."
+
+**9. Reverse Battleship (The Hider's Game)**
+
+Ships *move* between turns according to rules the placer chose at setup (e.g., "this destroyer slides 1 cell clockwise per turn"). The seeker is solving a dynamical system, not a static map.
+
+## Twist Who's Playing
+
+**10. Solo vs. an Adversarial Board**
+
+Single player. The board itself is the opponent — it rearranges legally based on your probes (anti-inductive). You're playing against a manifold that's actively hiding from your epistemic state.
+
+**11. N-Player Free-for-All on Shared Grid**
+
+Everyone places on the *same* grid. Probes can reveal anyone's pieces. Alliances form and collapse. Battleship as geopolitics.
+
+**12. Asymmetric Roles (Hunter vs. Architect)**
+
+One player places, the *other* designs the probing tools each turn from a budget. Totally different skill on each side.
+
+## Twist the "Shapes"
+
+**13. Fractal Fleet**
+
+Ships are fractals — a "5-cell ship" looks like a Sierpinski cross. Hits reveal sub-structure. Each probe potentially reveals at *multiple scales of resolution*.
+
+**14. Probabilistic Ships**
+
+A ship isn't a hard shape — it's a probability cloud. A "hit" is a *roll* weighted by how central your probe is to the cloud. Statistical Battleship.
+
+**15. Living Ships (Cellular Automata)**
+
+Each ship is a Game-of-Life pattern. Damaging it changes its evolution. Some ships are gliders — they *walk across the board*. Some are oscillators. Some are eaters that consume neighboring probes.
+
+## Twist the Theme (but keep all mechanics)
+
+**16. Archaeological Dig**
+
+Two rival archaeologists, one shared site. Each has secretly buried "finds." Probes are excavation squares. Twist: digging is destructive and *publicly visible* — your dig pattern leaks your hypothesis about their finds.
+
+**17. Spy Network**
+
+Cells are city blocks. Shapes are operative cells (a 3-agent cell, a 5-agent cell). Probes are "surveillance ops" with **false positive rates**. Now it's signal-detection theory wearing a Battleship hat.
+
+**18. Music Battle**
+
+Grid is a piano roll. Ships are *melodic motifs* (fixed pitch+rhythm shapes). Probes are notes you play. Hits are audible. The game *sounds* like something by the end — and the soundtrack encodes the match history.
+
+## My Top-3 Crackpot Favorites
+
+If I had to push you somewhere genuinely novel, not just reskinned:
+
+<ol style="--ol-counter: cr-1zaU5PcFLw; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      <b>#7 Quantum Sea Battle</b> — because it makes "guessing" itself a strategic resource, not just an action.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>#15 Living Ships</b> — because it transforms the game from spatial deduction to <i>dynamical</i> deduction. The board is alive.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>#4 Mind Battle</b> — because it weaponizes the genre against introspection. The same infrastructure (grid, shapes, probes) becomes a tool for something Battleship was never about.
+    </p>
+  </li>
+</ol>
+
+Which axis grabs you, Rob? I can go deeper on any of these — work out the rule set, the failure modes, the "why it's actually fun" math. Or do you want me to keep generating from a *different* angle (e.g., what if we twist the *win condition* instead of the medium)?
+
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part>I like the notion of time (i.e. that something changes with each turn taken). But we need to preserve the fact that once you shoot into a "cell" then that has meaning (for some amount of time). I don't want to have to teach people graph theory to understand what's going on. It should be intuitive. I like the idea of using hexagons. I like that things might spread / change with time (in a known / understandable way). 
+
+Walk with me on these "constraints" based on the above ideas. 
+
+<agent-execution agent-id="5BmKo6FjFmGGT9rfdr1R" execution-id="zcktJdjXc9gtvdw0fM0Q" name="Code Execution and Data Viz V2" state="complete" usage-record-id="b335dfefd039be2643d9428182bc3765" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="cqgiVv1tT0" provider="anthropic" reasoning-id="XocjTF9lLS5F1FIOjGdk" status="completed" signature="EqoECmMIDhgCKkAYomkmWA5gkoNkcRnByyifvKuTHdywbwmqUoJK0NKviUO9wtuzZt1fUTfGqqp6aMIy0TfTV2P2hlH0Ba4+RxN4Mg9jbGF1ZGUtb3B1cy00LTc4AEIIdGhpbmtpbmcSDAK3a9pH4nDJC5XwHhoMvT3lMhADl7VI4BvFIjBAMcSqeXwpq9RJF8q1xf6wasAp2SU8Qfoy8oZDcn3ve2JzcbeymZEGK5IYzu2+1+kq9AKzVhU+dpvCoBRMDmxNA9uqc9B/BAqCuw7YKc24H91v/VEY0WZG873R2xw+QSszyS1SbgdOiWFdldV9fo3H0dUSraySE01mVeR5COT4t2j4Ic+prvHS8L7qx6gyucYoOe3skmZ1srOG22jX7C1Q8+NbKGJfGne5uQNINOER50I6z+vjLe412B+QaMOqP4o07VoAiFUtzZ86G/y/IF5NybFf+5egol4EGnMr/07d5nh/iTOKjJzqWl+r3KxWfbxQtA/J+6evUPYecAKwg9QzFMMecdFWQMsOmufH5KQKaJJhWSqcUabz4dU99TKlUQtCAq2yL7qyv2MAmBrPWvbSvGuR906sr8ATv5BfD+RPDnbSJpNGfhtD8DA7qG0hiMQ9kEc6bfBOecddb9GUTTtSvImuQNNYA23flvJBfu95Bn3EJQwVbkS70ibv1scGvfKwA744UUr29PnZ9AxSwiS4XweF6MtEma4/l89Xl7YPFQKyHNp2w04YAQ==" reasoning="%5B%22%22%5D"></agent-reason>
+
+## Walking the Constraints with You
+
+Alright Rob, let's pin down what you've just carved out. You've actually made some really sharp design choices — let me reflect them back and then push on each one to see where they lead.
+
+## What You've Committed To
+| Constraint | What It Implies |
+|----|----|
+| **Hex grid** | 6-neighbor adjacency, no diagonal ambiguity, natural for "spreading" |
+| **Time evolution** | The hidden state is a *function of turn number*, not static |
+| **Probe persistence** | A shot into a cell has lasting meaning (for some window) |
+| **Intuitive** | No graph theory primer; mechanics must be visually self-explaining |
+| **Known/understandable spreading** | Deterministic or near-deterministic propagation rules |
+
+
+
+## The Tension You Just Created (and why it's *good*)
+
+Here's the crackpot read: **you've just made the game about *racing decay*.**
+
+In classic Battleship, information is monotonic — every shot is permanent intel. With time evolution, information **rots**. A hit you scored 4 turns ago might describe a cell that no longer contains anything. So now the game has two clocks competing:
+
+<ol style="--ol-counter: cr-bKQDbd8xKT; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      Your <i>intel freshness clock</i> — how stale is what you know?
+    </p>
+  </li>
+  <li>
+    <p>
+      The <i>board evolution clock</i> — how fast does truth change?
+    </p>
+  </li>
+</ol>
+
+The whole game design lives in tuning the **ratio** of those two clocks. Let me sketch what each setting feels like.
+
+## The Spreading Rule Spectrum
+
+I'm going to push you to think about this as **"what does a hit cell *do* over time?"** Because that's the player's only intuitive handle on the rules.
+
+### Option A: **Wildfire** (spreading outward)
+
+* A "ship" is a seed. Each turn it expands to all 6 hex neighbors.
+* A probe-hit *burns* that cell — removes it from the fire.
+* Defender wins if their fire reaches some threshold size; attacker wins if they extinguish it.
+* **Intuitive metaphor**: forest fire. Everyone gets it instantly.
+
+### Option B: **Glacier** (slow drift)
+
+* Each ship-shape translates 1 hex per turn in a fixed direction (chosen at placement, hidden).
+* A hit *freezes* that cell for N turns (it's permanently revealed and damaged).
+* The attacker is inferring not just position but *velocity*.
+* **Intuitive metaphor**: tracking animals across snow. Tracks persist.
+
+### Option C: **Contagion** (probabilistic-looking but deterministic)
+
+* Ships are "infected zones." Each turn, infection spreads to neighbors *only if* certain hex-local conditions are met (e.g., "spreads to a neighbor if that neighbor has ≥2 infected neighbors").
+* Looks alive. Is fully deterministic. Game of Life on hex.
+* Hits "vaccinate" a cell — it can no longer be infected.
+* **Intuitive metaphor**: outbreak map.
+
+### Option D: **Tide** (rhythmic / reversible)
+
+* Ships oscillate: every odd turn they're in formation A, every even turn formation B.
+* Probes "anchor" a cell — pin it in place.
+* **Intuitive metaphor**: tide coming in/going out. Cyclic, predictable.
+
+
+## The Persistence Question — How Long Does a Shot Matter?
+
+You said *"for some amount of time."* This is a knob. Let me lay out what each setting does to gameplay:
+| Persistence | Effect |
+|----|----|
+| **Forever** (classic) | Information accumulates. Fast convergence to win. Time-evolution might out-race intel. |
+| **N turns** | Sliding window of knowledge. Forces re-probing. Creates rhythm. |
+| **Until adjacent change** | Shot stays valid until the cell's neighborhood mutates. Couples intel to dynamics. |
+| **Decaying confidence** | Shot returns "hit" → "maybe hit" → "stale" over time. Probabilistic UI. |
+
+
+My instinct: **"N turns" is the sweet spot for intuitive.** Players see a probe marker fade visually over N turns. No math required. You *feel* the urgency.
+
+## Let me Make This Concrete
+
+Let me visualize a small hex board with a "wildfire" spread to show you what this *looks like* — because hex + spreading + persistence is the kind of thing that only clicks visually.<agent-tool id="AnDDoAWBsh" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_01E5QLpd7kLgMnKgiEJSpAEC" tool-type="code_execution" name="text_editor_code_execution" is-executable="false" status="completed" container-id="container_011CbTCrQ63yMbYzmqgunpyx" container-expires-at-millis="1782486582099">
+  <tool-call>
+{"command":"create","path":"/tmp/hex_battle.py","file_text":"import matplotlib.pyplot as plt\nimport matplotlib.patches as mpatches\nimport numpy as np\nfrom matplotlib.patches import RegularPolygon\n\n# Hex grid parameters\nHEX_RADIUS = 1.0\nGRID_RADIUS = 6  # how many rings out from center\n\ndef axial_to_pixel(q, r, size=HEX_RADIUS):\n    \"\"\"Convert axial hex coords to pixel coords (pointy-top hex).\"\"\"\n    x = size * np.sqrt(3) * (q + r / 2)\n    y = size * 3 / 2 * r\n    return x, y\n\ndef hex_neighbors(q, r):\n    \"\"\"6 neighbors in axial coordinates.\"\"\"\n    return [(q+1,r), (q-1,r), (q,r+1), (q,r-1), (q+1,r-1), (q-1,r+1)]\n\ndef gen_grid(radius):\n    cells = set()\n    for q in range(-radius, radius+1):\n        for r in range(-radius, radius+1):\n            if abs(q+r) &lt;= radius:\n                cells.add((q,r))\n    return cells\n\ndef step_wildfire(infected, grid):\n    \"\"\"Each infected cell spreads to all 6 neighbors (if in grid).\"\"\"\n    new = set(infected)\n    for (q,r) in infected:\n        for n in hex_neighbors(q,r):\n            if n in grid:\n                new.add(n)\n    return new\n\ndef draw_hex(ax, q, r, color, edge='black', alpha=1.0, label=None):\n    x, y = axial_to_pixel(q, r)\n    hexagon = RegularPolygon((x, y), numVertices=6, radius=HEX_RADIUS*0.95,\n                              orientation=np.radians(30),\n                              facecolor=color, edgecolor=edge,\n                              alpha=alpha, linewidth=1.2)\n    ax.add_patch(hexagon)\n    if label:\n        ax.text(x, y, label, ha='center', va='center', fontsize=8, color='white', fontweight='bold')\n\n# Simulate 4 turns of a single seed spreading, with player probes\ngrid = gen_grid(GRID_RADIUS)\n\n# Initial fire seed (ship)\nseeds_t0 = {(0, 0), (1, 0), (0, 1)}  # an L-shaped \"ship\"\n\n# Player's probe history with persistence window of 3 turns\n# Each probe = (q, r, turn_fired)\nprobes = {\n    0: [(-2, -1)],          # miss\n    1: [(1, 1)],            # hit (was reached by spread)\n    2: [(2, 0)],            # hit\n    3: [(-1, 2)],           # miss\n}\n\nPERSISTENCE = 3  # probes visible for 3 turns\n\nfig, axes = plt.subplots(1, 4, figsize=(20, 5.5))\nfig.patch.set_facecolor('#0a0a14')\n\nstate = set(seeds_t0)\nfor turn, ax in enumerate(axes):\n    ax.set_facecolor('#0a0a14')\n    # Spread BEFORE drawing this turn (except turn 0 = initial)\n    if turn &gt; 0:\n        state = step_wildfire(state, grid)\n        # Apply probe hits: cells probed AT this turn get extinguished\n        for (pq, pr) in probes.get(turn, []):\n            state.discard((pq, pr))\n\n    # Draw all cells\n    for (q, r) in grid:\n        if (q, r) in state:\n            draw_hex(ax, q, r, '#ff4422', edge='#ffaa00')   # fire\n        else:\n            draw_hex(ax, q, r, '#1a2a3a', edge='#334455')   # ocean\n\n    # Overlay probe markers — fade with age\n    for fired_turn, plist in probes.items():\n        age = turn - fired_turn\n        if age &lt; 0 or age &gt;= PERSISTENCE:\n            continue\n        alpha = 1.0 - (age / PERSISTENCE) * 0.7\n        for (pq, pr) in plist:\n            x, y = axial_to_pixel(pq, pr)\n            was_hit = (pq, pr) not in state and (pq, pr) in step_wildfire(state, grid) | state\n            # simpler: was hit if probe was made AND removed fire — but we already discarded.\n            # Mark by symbol: X for any probe\n            marker_color = '#ffff66'\n            ax.plot(x, y, marker='X', markersize=18, color=marker_color,\n                    markeredgecolor='black', markeredgewidth=1.5, alpha=alpha)\n\n    ax.set_xlim(-12, 12)\n    ax.set_ylim(-12, 12)\n    ax.set_aspect('equal')\n    ax.axis('off')\n    ax.set_title(f'Turn {turn}', color='white', fontsize=14, fontweight='bold')\n\n# Legend\nfire_patch = mpatches.Patch(color='#ff4422', label='Active \"ship\" cell')\nocean_patch = mpatches.Patch(color='#1a2a3a', label='Empty cell')\nprobe_patch = plt.Line2D([0],[0], marker='X', color='w', markerfacecolor='#ffff66',\n                          markersize=12, label='Probe (fades over 3 turns)')\nfig.legend(handles=[fire_patch, ocean_patch, probe_patch], loc='lower center',\n           ncol=3, facecolor='#1a1a2a', edgecolor='white', labelcolor='white', fontsize=11)\n\nfig.suptitle('Hex Sea Battle — Wildfire Spread + Persistent Probes (3-turn window)',\n             color='white', fontsize=15, fontweight='bold', y=0.98)\nplt.tight_layout(rect=[0, 0.05, 1, 0.96])\nplt.savefig('/tmp/hex_battle.png', dpi=110, facecolor='#0a0a14', bbox_inches='tight')\nprint(\"Saved.\")\n"}
+  </tool-call>
+  <tool-result>
+{"format":"code-execution-result","version":1,"kind":"text-editor.create","isFileUpdate":false}
+  </tool-result>
+</agent-tool><agent-tool id="hM2L2HTYPI" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_01Y8boGrTdL6XT6xwEinCGSu" tool-type="code_execution" name="bash_code_execution" is-executable="false" status="completed" container-id="container_011CbTCrQ63yMbYzmqgunpyx" container-expires-at-millis="1782486582099">
+  <tool-call>
+{"command":"cd /tmp &amp;&amp; python hex_battle.py"}
+  </tool-call>
+  <tool-result>
+{"format":"code-execution-result","version":1,"kind":"bash","stdout":"Saved.\n","stderr":"","returnCode":0,"generatedAssets":[]}
+  </tool-result>
+</agent-tool><agent-tool id="jdYSQoPhL3" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_01QaTtv2ikBTu3gdf41hh1GK" tool-type="code_execution" name="bash_code_execution" is-executable="false" status="completed" container-id="container_011CbTCrQ63yMbYzmqgunpyx" container-expires-at-millis="1782486582099">
+  <tool-call>
+{"command":"cp /tmp/hex_battle.png $OUTPUT_DIR/hex_battle.png &amp;&amp; echo \"exported\""}
+  </tool-call>
+  <tool-result>
+{"format":"code-execution-result","version":1,"kind":"bash","stdout":"exported\n","stderr":"","returnCode":0,"generatedAssets":[{"fileId":"file_011CbTCwvvbF6Zcdk2KKGyvt","assetId":"hPbKdV7B6nuekfQf5Les"}]}
+  </tool-result>
+</agent-tool>
+
+<p style="text-align: center;">
+  <img alt="Hex Sea Battle visualization" asset-id="hPbKdV7B6nuekfQf5Les" asset-source="{&quot;sourceType&quot;:&quot;code-execution&quot;,&quot;llmModel&quot;:&quot;claude-opus-4-7&quot;,&quot;llmConfigurationProvider&quot;:&quot;anthropic-message&quot;,&quot;mimeType&quot;:&quot;image/png&quot;}" asset-store-status="stored" src="https://firebasestorage.googleapis.com/v0/b/platform-prod-390720.appspot.com/o/a%2Ff%2FoIAIJz43eqWLDyUxW7CMOYnj0Md2%2FhPbKdV7B6nuekfQf5Les?alt=media&amp;token=b6edf0b4-9493-40e8-8bfa-2f90a429a1c0" width="300" />
+</p>
+
+You can see the dynamic instantly:
+
+* **Turn 0**: The defender's "ship" is a 3-hex L-shape (hidden in real play). Attacker fires their first probe — a miss.
+* **Turn 1**: Fire spreads to all 6 neighbors of each cell. Attacker's probe at (1,1) lands on a newly-spread cell — *hit, extinguished*. The turn-0 probe is still visible (slightly faded).
+* **Turn 2**: More spread. Another hit at (2,0). The oldest probe is now \~66% faded.
+* **Turn 3**: Spread continues. A miss this turn. Turn-0 probe has just expired from the visible record.
+
+## The Design Insights This Visualization Surfaces
+
+<ol style="--ol-counter: cr-PHEtGq1ocU; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      <b>Containment vs. spread is the core tension.</b> The attacker isn't trying to "sink ships" — they're trying to <i>contain an outbreak</i> before it grows beyond their probe budget.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Probes-per-turn must scale with hex count.</b> Wildfire grows roughly as turn² in cell count. If you give attackers only 1 probe/turn, defender wins by default. You need ~3–5 probes/turn, or a single probe that <i>kills a contiguous region</i>.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>The L-shape "ship" idea may not survive.</b> Once spread starts, shape information evaporates after ~1 turn. So maybe what the defender places is just <b>a single seed cell</b> (or a small N of them), and the <i>strategic</i> hidden info is <b>the seed location</b>, not the seed shape.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Persistence window IS the difficulty knob.</b> Short window = chaotic, attacker barely keeps up. Long window = closer to classic Battleship. You could even let players <i>choose</i> persistence at game start.
+    </p>
+  </li>
+</ol>
+
+
+## Where I'd Push You Next
+
+Three branches I'd want your gut reaction on:
+
+* **Branch 1 — Multiple seeds, single attacker**: Defender places 3–5 seeds across the board. Attacker has a budget of \~50 total probes over the whole game. Win = extinguish all fire before turn N. *Asymmetric, race-against-clock.*
+* **Branch 2 — Symmetric duel**: Both players place seeds, both probe each other's boards. First to extinguish the other's fire wins. *Classic Battleship structure preserved.*
+* **Branch 3 — Counter-spread mechanic**: Probes don't just extinguish — they create *firebreaks* (cells fire cannot enter). Now the attacker isn't picking off cells, they're *drawing containment lines*. This is enormously more strategic and intuitive — anyone who's seen a wildfire news map gets it instantly.
+
+My crackpot vote is **Branch 3 with the Wildfire spread rule**. The game stops being "guess where things are" and becomes "*shape* where things can go." That's a real reimagining, not just a reskin.
+
+Which branch resonates? Or do you want me to test other spread rules (Glacier? Contagion?) visually before committing?
+
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part>I don't think that it spreads to *every* adjacent cell since then you end up with a blob like you have. Also, this is about "imperfect information". You need to make sure that the game works under this principle! Yeah? 
+
+<agent-execution agent-id="5BmKo6FjFmGGT9rfdr1R" execution-id="AZLSYOf7bHQL2iWcuujG" name="Code Execution and Data Viz V2" state="complete" usage-record-id="32120c60de16d3cb163d5d104b7cd236" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="HkJdCtrbbn" provider="anthropic" reasoning-id="DcyVOgYVQ3CnwQ0AFDgP" status="completed" signature="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" reasoning="%5B%22%22%5D"></agent-reason>
+
+## You're Absolutely Right — Two Critical Failures in My Last Pass
+
+Let me name what just happened:
+
+<ol style="--ol-counter: cr-RFcA622gxD; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      <b>Spread-to-all-6 collapses into a blob</b> → after a few turns, geometry is meaningless. The board becomes "is this cell within radius R of <i>some</i> seed?" That's not a game, that's a distance check.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Worse: it destroys imperfect information.</b> If spread is fully deterministic AND to every neighbor, then <i>one hit reveals the seed</i> (work backwards through the deterministic spread), and from that moment forward the attacker has <b>perfect</b> knowledge of the entire future board. Game over.
+    </p>
+  </li>
+</ol>
+
+So the spread rule has to do two things at once:
+
+* **Create interesting shapes** (lines, fingers, cones — not blobs)
+* **Preserve a hidden parameter** the defender controls, which the attacker must *infer* through probing
+
+## The Fix: Hidden Spread Parameters
+
+The defender doesn't just hide *where* the seed is — they hide *how it grows*. The most intuitive version I can think of:
+
+> **Each seed has a hidden "wind direction"** (1 of 6 hex axes). Fire spreads only in that direction each turn. Maybe with a small spread to one adjacent direction so it's not perfectly linear.
+
+This gives you:
+
+* **Non-blob geometry** — fire forms a *streak* or *cone*, not a circle
+* **Genuine imperfect information** — even after 5 hits, the attacker may not know the wind axis with certainty (especially if there are multiple seeds with different winds)
+* **Inference gameplay** — successive probes reveal the *trajectory*, not just positions
+
+<p style="text-align: center;">
+  Let me show you the difference visually. I'll render <b>two views per turn</b>: the <i>truth</i> (what's really happening) and the <i>attacker's view</i> (what they actually see through their probes). That's the only honest way to demonstrate imperfect information.<agent-tool id="nBNN9CifEB" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_01Ab7iHuEtDZqLveuBae4L6T" tool-type="code_execution" name="text_editor_code_execution" is-executable="false" status="completed">
+    <tool-call>
+{"command":"create","path":"/tmp/hex_battle_v2.py","file_text":"\"\"\"\nHex Sea Battle v2 — directional spread + imperfect information demo.\n\nSpread rule:\n  - Defender chose a hidden 'wind direction' for each seed (1 of 6 hex axes).\n  - Each turn, every fire cell tries to spread to its downwind neighbor.\n  - With a small 'gust' rule: every 2nd turn it also spreads to the next-clockwise\n    hex direction. Fully deterministic but creates organic finger/cone shapes.\n\nWe render two rows:\n  TOP    = God's-eye truth (defender knows this; attacker does NOT)\n  BOTTOM = What the attacker actually sees through their probes\n\"\"\"\n\nimport matplotlib.pyplot as plt\nimport matplotlib.patches as mpatches\nimport numpy as np\nfrom matplotlib.patches import RegularPolygon\n\nHEX_RADIUS = 1.0\nGRID_RADIUS = 7\n\n# 6 hex directions (axial, pointy-top), ordered clockwise from \"east\"\nHEX_DIRS = [(1,0), (1,-1), (0,-1), (-1,0), (-1,1), (0,1)]\n\ndef axial_to_pixel(q, r, size=HEX_RADIUS):\n    x = size * np.sqrt(3) * (q + r / 2)\n    y = -size * 3 / 2 * r   # invert y so \"north\" is up\n    return x, y\n\ndef gen_grid(radius):\n    cells = set()\n    for q in range(-radius, radius+1):\n        for r in range(-radius, radius+1):\n            if abs(q+r) &lt;= radius:\n                cells.add((q,r))\n    return cells\n\ndef step_directional(fire_cells, wind_idx, turn, grid):\n    \"\"\"\n    Each fire cell spreads to its downwind neighbor.\n    On odd turns, also spreads to the clockwise-adjacent direction (the 'gust').\n    Returns the new fire set (old fire persists; we are adding cells).\n    \"\"\"\n    new = set(fire_cells)\n    dq, dr = HEX_DIRS[wind_idx]\n    dq2, dr2 = HEX_DIRS[(wind_idx + 1) % 6]  # gust direction\n    for (q, r) in fire_cells:\n        target = (q + dq, r + dr)\n        if target in grid:\n            new.add(target)\n        if turn % 2 == 1:\n            gust = (q + dq2, r + dr2)\n            if gust in grid:\n                new.add(gust)\n    return new\n\ndef draw_hex(ax, q, r, color, edge='#334455', alpha=1.0, lw=1.0):\n    x, y = axial_to_pixel(q, r)\n    hexagon = RegularPolygon((x, y), numVertices=6, radius=HEX_RADIUS*0.95,\n                              orientation=np.radians(30),\n                              facecolor=color, edgecolor=edge,\n                              alpha=alpha, linewidth=lw)\n    ax.add_patch(hexagon)\n\ndef draw_probe(ax, q, r, was_hit, age, persistence):\n    x, y = axial_to_pixel(q, r)\n    alpha = max(0.25, 1.0 - (age / persistence) * 0.7)\n    if was_hit:\n        ax.plot(x, y, marker='X', markersize=16, color='#ffdd33',\n                markeredgecolor='black', markeredgewidth=1.5, alpha=alpha)\n    else:\n        ax.plot(x, y, marker='o', markersize=10, color='#5588ff',\n                markeredgecolor='white', markeredgewidth=1.2, alpha=alpha)\n\n# === Scenario setup ===\ngrid = gen_grid(GRID_RADIUS)\n\n# Two hidden seeds with different hidden wind directions\n# Seed A at (-3, 2), wind = direction 0 (east)\n# Seed B at (2, -1), wind = direction 4 (north-west-ish)\nseeds = [\n    {'pos': (-3, 2), 'wind': 0},   # east\n    {'pos': (2, -1), 'wind': 4},   # NW\n]\n\n# Attacker's probes scheduled by turn\n# (each is (q, r))\nprobes_schedule = {\n    0: [(-3, 2), (0, 0)],            # one lucky hit on seed A, one miss in middle\n    1: [(-1, 2), (3, -1)],           # exploring east of first hit; probe near seed B\n    2: [(0, 2), (2, -2)],            # following the eastward streak; probing NW of B\n    3: [(1, 2), (1, -2)],            # continuing east; another NW step\n    4: [(2, 2), (0, -1)],            # further east; trying to localize B's trail\n    5: [(-2, 2), (2, 0)],            # back-checking west of seed A; cross-check on B\n}\n\nPERSISTENCE = 4\nN_TURNS = 6\n\n# Run simulation, recording truth and attacker-known state per turn\ntruth_by_turn = []\nprobe_log = []   # list of (q, r, turn_fired, was_hit)\n\nfire = set(s['pos'] for s in seeds)\n\nfor turn in range(N_TURNS):\n    # First: spread happens at start of turn (except turn 0 = initial state)\n    if turn &gt; 0:\n        # Each seed contributes its own spread direction; we step them separately\n        # because seeds with different winds need independent propagation tracking.\n        # Simpler model: track each seed's lineage as a separate fire set.\n        new_fire = set()\n        for s in seeds:\n            # All fire cells reachable from this seed propagate with this seed's wind\n            seed_fire = {c for c in fire if c not in new_fire}  # naive; see note\n        # NOTE: with multiple seeds and different winds, a cleaner sim is to track\n        # per-seed fire sets. Let's redo this properly below.\n        pass\n\n# --- Cleaner re-simulation: track per-seed fire ---\nper_seed_fire = [{s['pos']} for s in seeds]\ntruth_by_turn = []\n\n# Record turn-0 state first\nturn0_truth = set().union(*per_seed_fire)\ntruth_by_turn.append(set(turn0_truth))\n\n# Apply turn-0 probes (extinguish where probed)\nhits_turn0 = []\nfor (pq, pr) in probes_schedule.get(0, []):\n    was_hit = (pq, pr) in turn0_truth\n    if was_hit:\n        for sf in per_seed_fire:\n            sf.discard((pq, pr))\n    probe_log.append((pq, pr, 0, was_hit))\n\n# Now run turns 1..N-1: spread, then resolve probes\ntruth_by_turn = [set().union(*per_seed_fire)]  # post-probe state at turn 0\n\nfor turn in range(1, N_TURNS):\n    new_per_seed = []\n    for s, sf in zip(seeds, per_seed_fire):\n        new_sf = step_directional(sf, s['wind'], turn, grid)\n        new_per_seed.append(new_sf)\n    per_seed_fire = new_per_seed\n\n    # Apply this turn's probes\n    for (pq, pr) in probes_schedule.get(turn, []):\n        current_truth = set().union(*per_seed_fire)\n        was_hit = (pq, pr) in current_truth\n        if was_hit:\n            for sf in per_seed_fire:\n                sf.discard((pq, pr))\n        probe_log.append((pq, pr, turn, was_hit))\n\n    truth_by_turn.append(set().union(*per_seed_fire))\n\n# === Render ===\nfig, axes = plt.subplots(2, N_TURNS, figsize=(4.2*N_TURNS, 9))\nfig.patch.set_facecolor('#0a0a14')\n\nfor turn in range(N_TURNS):\n    ax_truth = axes[0, turn]\n    ax_view = axes[1, turn]\n\n    for ax in (ax_truth, ax_view):\n        ax.set_facecolor('#0a0a14')\n        ax.set_xlim(-15, 15)\n        ax.set_ylim(-13, 13)\n        ax.set_aspect('equal')\n        ax.axis('off')\n\n    truth = truth_by_turn[turn]\n\n    # --- TRUTH ROW ---\n    for (q, r) in grid:\n        color = '#ff4422' if (q, r) in truth else '#1a2a3a'\n        draw_hex(ax_truth, q, r, color)\n    # Show wind direction arrows from each original seed position\n    for s in seeds:\n        sx, sy = axial_to_pixel(*s['pos'])\n        dq, dr = HEX_DIRS[s['wind']]\n        ex, ey = axial_to_pixel(s['pos'][0] + dq*1.5, s['pos'][1] + dr*1.5)\n        ax_truth.annotate('', xy=(ex, ey), xytext=(sx, sy),\n                          arrowprops=dict(arrowstyle='-&gt;', color='#ffff88',\n                                          lw=2, alpha=0.85))\n    ax_truth.set_title(f'Turn {turn} — Truth', color='white', fontsize=12, fontweight='bold')\n\n    # --- ATTACKER VIEW ROW ---\n    # Attacker sees only: probe markers (fading) + permanent \"known hit\" / \"known miss\"\n    # within the persistence window\n    for (q, r) in grid:\n        draw_hex(ax_view, q, r, '#1a2a3a')  # everything is fog\n\n    # Overlay probes within persistence window\n    for (pq, pr, fired, was_hit) in probe_log:\n        age = turn - fired\n        if age &lt; 0 or age &gt;= PERSISTENCE:\n            continue\n        draw_probe(ax_view, pq, pr, was_hit, age, PERSISTENCE)\n\n    ax_view.set_title(f'Turn {turn} — Attacker view', color='#88ccff', fontsize=12, fontweight='bold')\n\n# Legend\nfire_patch = mpatches.Patch(color='#ff4422', label='Fire (hidden from attacker)')\nfog_patch  = mpatches.Patch(color='#1a2a3a', label='Unknown / fog')\nhit_marker = plt.Line2D([0],[0], marker='X', color='w', markerfacecolor='#ffdd33',\n                         markersize=12, label='Probe — HIT', linestyle='')\nmiss_marker = plt.Line2D([0],[0], marker='o', color='w', markerfacecolor='#5588ff',\n                          markersize=10, label='Probe — miss', linestyle='')\nwind_marker = plt.Line2D([0],[0], color='#ffff88', lw=2, label='Hidden wind direction')\n\nfig.legend(handles=[fire_patch, fog_patch, hit_marker, miss_marker, wind_marker],\n           loc='lower center', ncol=5, facecolor='#1a1a2a',\n           edgecolor='white', labelcolor='white', fontsize=11)\n\nfig.suptitle('Hex Sea Battle v2 — Directional Spread (hidden wind) + Imperfect Information',\n             color='white', fontsize=15, fontweight='bold', y=0.99)\n\nplt.tight_layout(rect=[0, 0.04, 1, 0.97])\nplt.savefig('/tmp/hex_battle_v2.png', dpi=110, facecolor='#0a0a14', bbox_inches='tight')\nprint(\"Saved.\")\nprint(f\"Total probes fired: {len(probe_log)}\")\nprint(f\"Hits: {sum(1 for p in probe_log if p[3])}\")\nprint(f\"Misses: {sum(1 for p in probe_log if not p[3])}\")\n"}
+    </tool-call>
+    <tool-result>
+{"format":"code-execution-result","version":1,"kind":"text-editor.create","isFileUpdate":false}
+    </tool-result>
+  </agent-tool><agent-tool id="tj7tpX2CD4" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_012GrT8ezqkXTGob7pE6yQCU" tool-type="code_execution" name="bash_code_execution" is-executable="false" status="completed">
+    <tool-call>
+{"command":"cd /tmp &amp;&amp; python hex_battle_v2.py &amp;&amp; cp hex_battle_v2.png $OUTPUT_DIR/hex_battle_v2.png &amp;&amp; echo \"exported\""}
+    </tool-call>
+    <tool-result>
+{"format":"code-execution-result","version":1,"kind":"bash","stdout":"Saved.\nTotal probes fired: 12\nHits: 3\nMisses: 9\nexported\n","stderr":"","returnCode":0,"generatedAssets":[{"fileId":"file_011CbTEMESYfrQN2PaW9Cver","assetId":"NVLBlCBJDo2zC6jCVodY"}]}
+    </tool-result>
+  </agent-tool> <img asset-id="NVLBlCBJDo2zC6jCVodY" asset-source="{&quot;llmConfigurationProvider&quot;:&quot;anthropic-message&quot;,&quot;llmModel&quot;:&quot;claude-opus-4-7&quot;,&quot;sourceType&quot;:&quot;code-execution&quot;,&quot;mimeType&quot;:&quot;image/png&quot;}" asset-store-status="stored" height="246" src="https://firebasestorage.googleapis.com/v0/b/platform-prod-390720.appspot.com/o/a%2Ff%2FoIAIJz43eqWLDyUxW7CMOYnj0Md2%2FNVLBlCBJDo2zC6jCVodY?alt=media&amp;token=8f5f8f11-9991-4ea4-8fc5-45e9f6241a1b" width="682" /><img alt="Hex Sea Battle v2 — Directional Spread + Imperfect Information" src="https://firebasestorage.googleapis.com/v0/b/platform-prod-390720.appspot.com/o/a%2Ff%2FoIAIJz43eqWLDyUxW7CMOYnj0Md2%2F5d6kmL2wDPV3JaIQg3Wk?alt=media&amp;token=46b8eb39-09c9-4862-87bf-58d6a3b00d2a" width="300" />
+</p>
+
+## What This Shows
+
+**Top row (truth — what only the defender knows):**
+
+* Two seeds with **different hidden wind directions** (yellow arrows). One blows east, one blows northwest.
+* Fire spreads as **streaks**, not blobs. You can see clear *trajectories* forming.
+* Every other turn there's a "gust" — adds one diagonal cell. Looks organic, stays deterministic.
+
+**Bottom row (attacker's view — what they actually have to work with):**
+
+* Almost everything is fog. The attacker sees **only their probe history**, fading over 4 turns.
+* Gold X = hit. Blue dot = miss. Older probes are dimmer.
+* At turn 5, the attacker has 12 data points (3 hits, 9 misses) and that's *all* they have to reconstruct two moving streaks with two unknown wind directions.
+
+## Why This Preserves Imperfect Information
+
+Even if the attacker scores **three hits in a row along the east axis**, they still don't know:
+
+<ol style="--ol-counter: cr-lBju63Ue6f; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      Whether there's <i>one</i> seed moving east or <i>multiple</i> seeds along that line
+    </p>
+  </li>
+  <li>
+    <p>
+      Where the <i>original</i> seed was (each turn the fire has been growing, and they hit it mid-growth)
+    </p>
+  </li>
+  <li>
+    <p>
+      Whether the wind is <i>purely</i> east or east-with-gust-southeast — they need adjacent probes to disambiguate
+    </p>
+  </li>
+  <li>
+    <p>
+      Whether other seeds exist elsewhere on the board entirely
+    </p>
+  </li>
+</ol>
+
+The attacker has to do **trajectory inference under uncertainty**. That's the actual game now.
+
+## The Knobs You Can Tune
+| Knob | Effect |
+|----|----|
+| **# of hidden seeds** | More seeds = more inference work, harder to win |
+| **Wind options** (6, 3, or 1) | Fewer options = easier inference, more blob-like |
+| **Gust frequency** | Every turn = wider streaks; never = razor-thin lines |
+| **Persistence window** | Short = chaos; long = closer to classic |
+| **Probes per turn** | The economy lever |
+| **Hit feedback** | Just "hit/miss" vs. "hit + age of fire in that cell" (huge info diff) |
+
+
+
+## The Crackpot Observation
+
+Look at what happened mechanically: **the defender's "ship" isn't a shape anymore — it's a vector field.** They're not placing geometry, they're placing *physics*. The attacker isn't finding objects; they're reverse-engineering the dynamical system that's producing the observed signal.
+
+That's a much richer game than Battleship was — and it scales beautifully. You can add wind shifts, multiple fire types with different spread rules, even a "drought" mechanic that doubles spread speed for one turn.
+
+## Where I'd Probe Next (pun intended)
+
+Want me to:
+
+<ol style="--ol-counter: cr-DgdIlORd9v; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      <b>Stress-test the inference difficulty</b> — simulate an optimal attacker and see how many probes they need to fully extinguish vs. random play?
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Try alternative spread rules</b> — "veins of fuel" (fire follows hidden paths), or "Conway-on-hex" (spreads only if neighborhood condition met) — to compare feel?
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Design the probe economy</b> — work out probes/turn vs. board size vs. seed count to find the sweet spot where neither side trivially wins?
+    </p>
+  </li>
+</ol>
+
+My vote: **#1 first**. If we can't tell whether the game is winnable by skill or just by luck, we don't have a game yet.
+
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part>I don't like it at all. The "fun" of Sea Battle is that you know the shapes and that there's more than one of them. With your fire stuff there's one blob and it's just growing! There's something missing with that. So what about Sea Battle but the ships are moving. They slow down if they have a certain amount of damage? Is the board big enough? Something like that. You hearing me? First gather up a single list of all of the requirements so far so that we keep our eyes on them. Then containue the brainstorm. 
+
+<agent-execution agent-id="5BmKo6FjFmGGT9rfdr1R" execution-id="nSbCO8H4T0cSaX3s4lT2" name="Code Execution and Data Viz V2" state="complete" usage-record-id="56b17654c75a384b394cecf8dec9935c" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="cLUx2Gb8EA" provider="anthropic" reasoning-id="rZTEtPx8VbaUEn3Z2NfJ" status="completed" signature="EvwDCmMIDhgCKkCsIIRjoox7r4w8VhVdhBbfwfwv1seZjsj2eGc4Icc/V8ES5rKC3fsGoFIAYoqDsonxKNgYK6fDPzYU/Dvp2nGaMg9jbGF1ZGUtb3B1cy00LTc4AEIIdGhpbmtpbmcSDPNT2Ddhw3DaiCNr5BoMfIwEXyg2zsm8gDQaIjBUocpuDf3cxJ0qygwsEJyEVtMmsJn3mTtYQT2EGGBoBdpZO0FNjDXe8AmT33cYUcYqxgJQrpaM3UIgIpVWbcodzgOpLVJ5LakAM0eVkUP9E7/s7iDmFuNTLr7sHe4D7HYQLwSUuPlLs53uvh6JgF07XbtZlJxmOo8j1LEbHP5XsFvbqYtEj0Ek7iiRaw2l6Q/cQt1O/OtrNwDyj4IZ/ZUqfn5CtaAgcqFfuqFqJGTKFNt+XAH7Lqliwp19q+tQLxY1hlu5gPwe+QhQ812bs8fP8jB+ByF3nbuUnyv7Q5bqWJOz9LU1QUCO21JaruRUT/6AUysTSl8cWATQ54pDDSUXMjdZCcj28BiZmOnyUSpCPmLgyiS+x5PwBD1klE26XkufuVMoUlIi3NieMn6mplJet4FTFMJxP69Bku9WMl6V58ao2zZDMWmiDuH/DspI6P7KFr34rbkNI43VnFtYoIk3ur0h/dft1oGZmXNil5bWmea30S0uuWczkhgB" reasoning="%5B%22%22%5D"></agent-reason>
+
+## Hearing You Loud and Clear
+
+You're right — I overcorrected. I threw out the baby (known shapes, multiple ships, the satisfaction of "I sunk your battleship!") with the bathwater. Let me reset.
+
+## Consolidated Requirements
+| \# | Requirement |
+|----|----|
+| **R1** | Two-player, turn-based, hidden-information core |
+| **R2** | One player probes, the other has placed something to find |
+| **R3** | **Known, fixed shapes** (e.g., 2/3/4/5-cell pieces) |
+| **R4** | **Multiple shapes per player** |
+| **R5** | Probing a cell has lasting meaning (information persists for *some* time) |
+| **R6** | **Hex grid** (6-neighbor adjacency) |
+| **R7** | Something **changes over time** in a known, understandable way |
+| **R8** | Intuitive — no graph theory primer required |
+| **R9** | **Imperfect information must be preserved** even as time evolves |
+| **R10** | **Shapes move; damage affects movement (slows them)** |
+| **R11** | Board must be sized appropriately for the dynamics |
+| **R12** | Hit/miss feedback on individual cells (preserved from classic) |
+| R13 | Hit affects the shape's movement in some way |
+
+
+
+Good. Now let's stay locked on these and brainstorm the **moving-shapes** direction properly.
+
+## The Moving Shapes Reimagining
+
+The core insight: **a shape is no longer a static set of cells — it's a (shape, position, heading, speed) tuple.** And damage degrades one of those properties.
+
+Let me lay out the design space across the axes that matter.
+
+## Axis 1: How Do Shapes Move?
+| Movement Rule | Feel | Imperfect Info? |
+|----|----|----|
+| **Constant heading + speed** (chosen at placement) | Predictable trains on hidden rails | ✅ Strong — attacker must infer heading from successive hits |
+| **Patrol pattern** (out-and-back along a line) | Tide-like, rhythmic | ✅ Period and axis hidden |
+| **Waypoint route** (3–4 hidden waypoints, shape cycles) | Like a security guard's rounds | ✅✅ Very strong — multiple hidden params |
+| **Reactive to damage** (shape turns away after being hit) | Living, evasive | ✅ But probably *too* responsive |
+| **Defender-piloted** (defender chooses move each turn) | Highly tactical, two-sided | ✅✅ Both players are agents now |
+
+
+My instinct: **Constant heading + speed** is the cleanest. It maps to "shapes traveling on a course" — the original *naval* metaphor finally earns its keep. Defender hides the course at placement; attacker infers it through probes.
+
+## Axis 2: What Does Damage Do?
+
+This is where your "slow down when damaged" idea earns its keep. Several flavors:
+| Damage Effect | Implication |
+|----|----|
+| **Each hit reduces speed by 1** (e.g., from "moves 2 hex/turn" to "moves 1 hex/turn" to "stationary") | Hits compound — early hits make the shape easier to track later. Beautiful positive feedback for the attacker. |
+| **Each hit removes a cell from the shape** (classic) | Smaller shape = harder to hit again. Negative feedback. |
+| **Both — speed drops *and* cells go away** | The classic mechanic plus the new one. Probably the right answer. |
+| **Damage degrades a specific stat per cell** | E.g., bow cell hit = can't turn; engine cell hit = slow. Asymmetric shape anatomy. |
+
+
+
+**Hot take**: combining "loses cells" + "slows down" creates a really nice dynamic: a damaged shape is **easier to track but harder to hit**. That's a genuine strategic trade for both players.
+
+## Axis 3: How Does The Attacker See Movement?
+
+This is the imperfect-information crux. Options:
+
+* **Hit feedback only** — attacker is told "hit" or "miss" on the cell they fired at, that turn. Movement is *entirely* inferred from the pattern of hits/misses over time.
+* **Hit + cell stays revealed** — once you hit a shape's cell, that *cell* is marked. But the shape moved! So the mark shows where the shape *was*. Like footprints.
+* **Sonar pings** — separate probe type that returns "distance to nearest shape" instead of hit/miss. Trades precision for breadth.
+
+The **"footprint" mechanic** is delicious. Visually: gold X marks scattered across the board show where you *hit* a shape — but the shape has since moved. The attacker reconstructs the trajectory from the bread-crumb trail.
+
+## Axis 4: Board Size & Probe Economy
+
+Quick math sanity check: in classic Battleship (10×10 = 100 cells, 17 shape cells, \~17% density), it takes \~40-50 shots to clear an opponent. If shapes move at speed 1, you need a board big enough that shapes can *travel* without immediately falling off — but small enough that the attacker can keep up.
+
+Rough scaling rule:
+
+\[
+\text{board cells} \approx \text{ship cells} \times \text{turns to clear} \times \text{movement factor}
+\]
+
+
+With movement, I'd estimate **a hex board with radius 7–8 (\~169–217 cells)** vs. classic 100 cells. Bigger, but not enormously so.
+
+## My Top Three Combined Designs
+
+### 🎯 **Design A: "Maneuvers"** *(my favorite)*
+
+* Hex grid, radius 7.
+
+* Each player places 4–5 ships of known sizes (2, 3, 3, 4, 5 cells — same as classic), *and* secretly assigns each a **heading** (1 of 6) and **speed** (1 or 2 hex/turn).
+
+* Each turn:
+
+  <ol style="--ol-counter: cr-PyS5o3wrW6; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      All defender's ships advance by their current speed.
+    </p>
+  </li>
+  <li>
+    <p>
+      Attacker fires N probes (e.g., 3).
+    </p>
+  </li>
+  <li>
+    <p>
+      Hits are reported; hit cells are marked permanently as <b>footprints</b>.
+    </p>
+  </li>
+</ol>
+
+* Damage: each hit removes that ship's leading cell *and* drops its speed by 1. A ship at speed 0 is **adrift** (classic Battleship for that ship).
+
+* Edge behavior: ships **bounce** off the board edge (heading reflects) — keeps them in play, but the bounce reveals info.
+
+* Win: sink all opponent ships.
+
+### 🌊 **Design B: "Patrol"**
+
+Same as A, but ships travel **back and forth along a hidden line segment** instead of straight courses. Defender hides: the axis, the length of the patrol, and the phase. Damage shortens the patrol (slower = shorter line).
+
+### 🎭 **Design C: "Convoy"**
+
+Ships don't move independently — they move as a **formation**. One hidden "flagship" sets the heading; all other ships follow it. Killing the flagship strands the rest. *One* big hidden parameter instead of many small ones.
+
+## The Crackpot Observation
+
+The deepest thing about adding movement: **probing becomes an investment, not just an action.** In classic Battleship, every shot is an immediately-realized inquiry. With moving ships, shooting at cell X tells you "a ship is/isn't at X *right now*." Five turns later, that information has decayed by the speed of the ship.
+
+So the strategic question shifts from *"where do I shoot?"* to *"where will the ship be when my shot lands?"* — which is **lead-the-target gameplay**. That's a fundamentally different cognitive task than classic Battleship, and it's the same skill a hunter, an anti-aircraft gunner, or a pool player uses. Universally intuitive.
+
+## Recommendation Before We Visualize
+
+Lock in two things and I'll render it:
+
+<ol style="--ol-counter: cr-0hvjm8OeCx; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      <b>Design A, B, or C</b> as the baseline?
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Footprint mechanic</b> (hit cells stay marked forever) <b>yes or no</b>? This is the single biggest knob on "how imperfect is the information."
+    </p>
+  </li>
+</ol>
+
+My vote: **Design A + footprints YES**. The footprints give the attacker the breadcrumbs they need to infer trajectories, while the *current* position of every (still-living) ship remains hidden. That's the right tension.
+
+What's your read?
+
+
+# Deck
+
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part>Do me a solid. Turn this into a deck ("Swiss" styled slides but give it a "naval" theme). Primarily walk the reader through how you were thinking about how to analyze the problem. Think "Graduate Dissertation Meets the Boardroom". Make it approachable. You can use the images from above or generate new ones based on theme, etc. 
+
+<agent-execution agent-id="v3RgxXVAzU2ZPQ75f8V7" execution-id="tjWtTdWdhSe7HvyLGbJs" name="Slide Builder (Claude)" state="complete" usage-record-id="70eb32f5be90ca1f9c10ff8881f6a448" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="rXP109zuZ6" provider="anthropic" reasoning-id="vTJVU57ct2r6vnf78tJz" status="completed" signature="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" reasoning="%5B%22%22%5D"></agent-reason>You got it, Rob. Here's the deck — Swiss grid + naval palette (deep navy, brass, foam white, signal red), with most charts rebuilt inline as SVG so they sit cleanly inside the typography rather than fighting it.
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#0B2545;font-family:'Inter',sans-serif;color:#EEF4F8;overflow:hidden;position:relative}
+.hexbg{position:absolute;inset:0;opacity:0.06}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#C9A86A}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9A86A;opacity:0.35}
+.title-block{position:absolute;left:60px;bottom:90px;max-width:880px}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:0.28em;text-transform:uppercase;color:#C9A86A;margin-bottom:22px}
+.title{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:108px;line-height:0.92;letter-spacing:-0.035em;color:#EEF4F8}
+.title em{font-style:italic;font-weight:400;color:#C9A86A}
+.subtitle{font-size:21px;font-weight:400;color:rgba(238,244,248,0.72);margin-top:28px;max-width:780px;line-height:1.45}
+.footer{position:absolute;bottom:28px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.14em;color:#C9A86A;opacity:0.75}
+.compass{position:absolute;top:110px;right:60px;width:220px;height:220px}
+</style>
+</head>
+<body>
+<svg class="hexbg" viewBox="0 0 1200 675" preserveAspectRatio="xMidYMid slice">
+<defs><pattern id="h" x="0" y="0" width="40" height="46.18" patternUnits="userSpaceOnUse">
+<polygon points="20,0 40,11.55 40,34.6 20,46.18 0,34.6 0,11.55" fill="none" stroke="#C9A86A" stroke-width="0.5"/></pattern></defs>
+<rect width="1200" height="675" fill="url(#h)"/></svg>
+<div class="meta"><span>Working Paper · Charmiq Studios · May 2026</span><span>01 / 14</span></div>
+<div class="rule"></div>
+<svg class="compass" viewBox="0 0 200 200">
+<g stroke="#C9A86A" fill="none" stroke-width="0.6" opacity="0.7"><circle cx="100" cy="100" r="92"/><circle cx="100" cy="100" r="62"/><circle cx="100" cy="100" r="32"/></g>
+<g stroke="#C9A86A" stroke-width="0.8" opacity="0.6"><line x1="100" y1="8" x2="100" y2="192"/><line x1="8" y1="100" x2="192" y2="100"/><line x1="35" y1="35" x2="165" y2="165"/><line x1="165" y1="35" x2="35" y2="165"/></g>
+<polygon points="100,8 92,100 100,80 108,100" fill="#C9A86A"/>
+<polygon points="100,192 92,100 100,120 108,100" fill="#C9A86A" opacity="0.45"/>
+<polygon points="8,100 100,92 80,100 100,108" fill="#C9A86A" opacity="0.45"/>
+<polygon points="192,100 100,92 120,100 100,108" fill="#C9A86A" opacity="0.45"/>
+<text x="100" y="28" text-anchor="middle" fill="#C9A86A" font-family="IBM Plex Mono" font-size="11" font-weight="600">N</text>
+<circle cx="100" cy="100" r="3" fill="#C9A86A"/>
+</svg>
+<div class="title-block">
+<div class="eyebrow">Strategic Analysis · Game Design · 1 of 14</div>
+<div class="title">Sea Battle,<br><em>Reimagined.</em></div>
+<div class="subtitle">How big should the board be — and what happens at the edges? A simulation-driven study of the moving-shapes hex battleship variant.</div>
+</div>
+<div class="footer"><span>R. Grzywinski / Master Generalist</span><span>Hex · Reverse · R = 7</span></div>
+</body>
+</html>
+</charm-slide>
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#FAFBFC;font-family:'Inter',sans-serif;color:#0B2545;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9D3DC}
+.h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:48px;line-height:1;letter-spacing:-0.02em;margin-top:42px}
+.subt{font-size:16px;color:#13315C;margin-top:12px;font-weight:400;max-width:780px;line-height:1.5}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin-top:48px}
+.col-label{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.22em;text-transform:uppercase;color:#C9A86A;padding-bottom:14px;border-bottom:1px solid #C9A86A;margin-bottom:18px;font-weight:600}
+.req{display:flex;gap:14px;padding:9px 0;border-bottom:1px solid #EAEEF2;font-size:14px}
+.req-num{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#C9A86A;font-weight:600;min-width:32px;padding-top:2px}
+.req-text{flex:1;line-height:1.4}
+.star{color:#C73E1D;font-weight:600;margin-left:6px;font-family:'IBM Plex Mono',monospace;font-size:11px}
+</style>
+</head>
+<body>
+<div class="meta"><span>02 — The Brief</span><span>02 / 14</span></div>
+<div class="rule"></div>
+<div class="h1">The brief.</div>
+<div class="subt">Thirteen consolidated requirements. Two of them (<span style="color:#C73E1D;font-weight:600">★</span>) reshape everything — the rest are inheritance.</div>
+<div class="cols">
+<div>
+<div class="col-label">Preserved from classic</div>
+<div class="req"><div class="req-num">R1</div><div class="req-text">Two-player, turn-based, hidden-information</div></div>
+<div class="req"><div class="req-num">R2</div><div class="req-text">One probes, the other has placed something</div></div>
+<div class="req"><div class="req-num">R3</div><div class="req-text">Known, fixed shapes (2/3/4/5-cell pieces)</div></div>
+<div class="req"><div class="req-num">R4</div><div class="req-text">Multiple shapes per player</div></div>
+<div class="req"><div class="req-num">R5</div><div class="req-text">Probes carry lasting meaning</div></div>
+<div class="req"><div class="req-num">R8</div><div class="req-text">Intuitive — no graph theory primer</div></div>
+<div class="req"><div class="req-num">R12</div><div class="req-text">Hit/miss feedback on individual cells</div></div>
+</div>
+<div>
+<div class="col-label">New / reshaped</div>
+<div class="req"><div class="req-num">R6</div><div class="req-text">Hex grid (6-neighbor adjacency)<span class="star">★</span></div></div>
+<div class="req"><div class="req-num">R7</div><div class="req-text">Something changes over time</div></div>
+<div class="req"><div class="req-num">R9</div><div class="req-text">Imperfect info preserved as time evolves</div></div>
+<div class="req"><div class="req-num">R10</div><div class="req-text">Shapes move; damage slows them<span class="star">★</span></div></div>
+<div class="req"><div class="req-num">R11</div><div class="req-text">Board sized appropriately for the dynamics</div></div>
+<div class="req"><div class="req-num">R13</div><div class="req-text">Hit affects the shape's movement<span class="star">★</span></div></div>
+</div>
+</div>
+</body>
+</html>
+</charm-slide>
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#FAFBFC;font-family:'Inter',sans-serif;color:#0B2545;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9D3DC}
+.section-label{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#C9A86A;margin-top:38px;font-weight:600}
+.big{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:62px;line-height:1.1;letter-spacing:-0.025em;margin-top:46px;max-width:1000px}
+.big em{font-style:italic;color:#C9A86A;font-weight:500}
+.big .accent{color:#C73E1D;font-weight:700}
+.coda{position:absolute;bottom:80px;left:60px;font-size:17px;color:#13315C;max-width:680px;line-height:1.5;font-style:italic;border-left:3px solid #C9A86A;padding-left:18px}
+.tuple{font-family:'IBM Plex Mono',monospace;color:#1B6F8F;font-weight:600}
+</style>
+</head>
+<body>
+<div class="meta"><span>03 — The Reframe</span><span>03 / 14</span></div>
+<div class="rule"></div>
+<div class="section-label">The Reframe</div>
+<div class="big">A shape is no longer a static set of cells.<br>It's a tuple — <span class="tuple">(shape, position, heading, speed)</span>.<br>Damage degrades <em>one of those properties</em>.</div>
+<div class="coda">Everything that follows in this deck is a consequence of this single move. The classic game becomes a state-space estimation problem.</div>
+</body>
+</html>
+</charm-slide>
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#FAFBFC;font-family:'Inter',sans-serif;color:#0B2545;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9D3DC}
+.h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:46px;line-height:1;letter-spacing:-0.02em;margin-top:42px}
+.subt{font-size:16px;color:#13315C;margin-top:12px;max-width:780px;line-height:1.5}
+.qcols{display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:64px}
+.qnum{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:84px;color:#C9A86A;line-height:1;letter-spacing:-0.04em}
+.qhead{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:28px;margin-top:14px;line-height:1.15;letter-spacing:-0.01em}
+.qbody{font-size:16px;color:#13315C;margin-top:16px;line-height:1.55;max-width:440px}
+.qbody .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#C9A86A;letter-spacing:0.12em;text-transform:uppercase;display:block;margin-top:18px;margin-bottom:4px;font-weight:600}
+.divider{position:absolute;left:50%;top:200px;bottom:80px;width:1px;background:#C9D3DC}
+</style>
+</head>
+<body>
+<div class="meta"><span>04 — Two Questions</span><span>04 / 14</span></div>
+<div class="rule"></div>
+<div class="h1">Two questions.</div>
+<div class="subt">The brief is loud about the mechanic — moving shapes, hidden courses, compounding damage. It's quiet about the dimensions. We have to size them.</div>
+<div class="divider"></div>
+<div class="qcols">
+<div>
+<div class="qnum">01</div>
+<div class="qhead">How big does the<br>board need to be?</div>
+<div class="qbody">Small enough that an attacker can plausibly clear a fleet in a sitting. Large enough that hidden, moving ships can maneuver without immediately tripping over the boundary.
+<span class="tag">Constrained by → ship density, search time, salvo size</span>
+</div>
+</div>
+<div>
+<div class="qnum">02</div>
+<div class="qhead">What happens<br>at the edges?</div>
+<div class="qbody">Ships moving in straight lines will hit the boundary. Whatever happens next must not — repeat, must not — break the hidden-information property the game is built on.
+<span class="tag">Constrained by → R8 (intuitive), R9 (info-preserving)</span>
+</div>
+</div>
+</div>
+</body>
+</html>
+</charm-slide>
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#FAFBFC;font-family:'Inter',sans-serif;color:#0B2545;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9D3DC}
+.h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:46px;line-height:1;letter-spacing:-0.02em;margin-top:42px}
+.subt{font-size:16px;color:#13315C;margin-top:12px;max-width:760px;line-height:1.5}
+.grid{display:grid;grid-template-columns:1.1fr 1fr;gap:50px;margin-top:42px}
+.method{display:flex;flex-direction:column;gap:18px}
+.row{display:flex;gap:18px;align-items:flex-start;padding:14px 0;border-bottom:1px solid #EAEEF2}
+.tag{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#C9A86A;font-weight:600;min-width:60px;padding-top:5px}
+.row-content{flex:1}
+.row-title{font-size:15px;font-weight:600;color:#0B2545;margin-bottom:4px}
+.row-body{font-size:13px;color:#13315C;line-height:1.5}
+.mono{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#1B6F8F}
+.diagram{display:flex;align-items:center;justify-content:center;padding-top:10px}
+.cap{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.16em;color:#C9A86A;text-transform:uppercase;text-align:center;margin-top:6px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="meta"><span>05 — Methodology</span><span>05 / 14</span></div>
+<div class="rule"></div>
+<div class="h1">Methodology.</div>
+<div class="subt">Simulation as analysis. We can't reason about boundary effects from a chair — we have to run trajectories and look at the distributions.</div>
+<div class="grid">
+<div class="method">
+<div class="row">
+<div class="tag">Domain</div>
+<div class="row-content">
+<div class="row-title">Hex boards, radius R ∈ {5 … 15}</div>
+<div class="row-body"><span class="mono">N = 3R² + 3R + 1</span> cells. Axial coords (q, r). Six neighbor directions.</div>
+</div></div>
+<div class="row">
+<div class="tag">Sample</div>
+<div class="row-content">
+<div class="row-title">3,000+ Monte Carlo trajectories / condition</div>
+<div class="row-body">Random start cell, random heading, speed = 1. Run 200+ turns or until death.</div>
+</div></div>
+<div class="row">
+<div class="tag">Policies</div>
+<div class="row-content">
+<div class="row-title">Despawn · Reflect-naive · Reverse 180° · Wrap</div>
+<div class="row-body">Each policy run independently. Same ship dynamics; only the boundary rule changes.</div>
+</div></div>
+<div class="row">
+<div class="tag">Measure</div>
+<div class="row-content">
+<div class="row-title">Survival, occupancy, edge bias, loop length</div>
+<div class="row-body">Per-cell visit-rate normalized to uniform. Edge-distance profiles. Game length sweeps over salvo size and ship cooldown.</div>
+</div></div>
+</div>
+<div class="diagram">
+<div>
+<svg width="320" height="320" viewBox="0 0 320 320">
+<g transform="translate(160,160)">
+<g stroke="#C9D3DC" stroke-width="1" fill="none">
+<polygon points="0,-30 26,-15 26,15 0,30 -26,15 -26,-15"/>
+<polygon points="52,-30 78,-15 78,15 52,30 26,15 26,-15"/>
+<polygon points="-52,-30 -26,-15 -26,15 -52,30 -78,15 -78,-15"/>
+<polygon points="0,30 26,45 26,75 0,90 -26,75 -26,45"/>
+<polygon points="0,-90 26,-75 26,-45 0,-30 -26,-45 -26,-75"/>
+<polygon points="52,30 78,45 78,75 52,90 26,75 26,45"/>
+<polygon points="-52,30 -26,45 -26,75 -52,90 -78,75 -78,45"/>
+<polygon points="52,-90 78,-75 78,-45 52,-30 26,-45 26,-75"/>
+<polygon points="-52,-90 -26,-75 -26,-45 -52,-30 -78,-45 -78,-75"/>
+</g>
+<polygon points="0,-30 26,-15 26,15 0,30 -26,15 -26,-15" fill="#C9A86A" fill-opacity="0.18" stroke="#C9A86A" stroke-width="1.4"/>
+<text x="0" y="4" text-anchor="middle" font-family="IBM Plex Mono" font-size="11" fill="#0B2545" font-weight="600">(0,0)</text>
+<text x="52" y="4" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#13315C">E</text>
+<text x="26" y="-50" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#13315C">NE</text>
+<text x="-26" y="-50" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#13315C">NW</text>
+<text x="-52" y="4" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#13315C">W</text>
+<text x="-26" y="65" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#13315C">SW</text>
+<text x="26" y="65" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="#13315C">SE</text>
+<g stroke="#C73E1D" stroke-width="1.4" fill="none" opacity="0.7">
+<line x1="0" y1="0" x2="48" y2="0" marker-end="url(#a)"/>
+</g>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><polygon points="0 0, 10 5, 0 10" fill="#C73E1D"/></marker></defs>
+</g>
+</svg>
+<div class="cap">Hex coords · 6 neighbors · axial (q, r)</div>
+</div>
+</div>
+</div>
+</body>
+</html>
+</charm-slide>
+
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#FAFBFC;font-family:'Inter',sans-serif;color:#0B2545;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9D3DC}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#C73E1D;margin-top:38px;font-weight:600}
+.h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:48px;line-height:1;letter-spacing:-0.02em;margin-top:10px}
+.subt{font-size:16px;color:#13315C;margin-top:12px;max-width:760px;line-height:1.5}
+.grid{display:grid;grid-template-columns:1fr 1.15fr;gap:50px;margin-top:36px;align-items:flex-start}
+.kpi{margin-top:6px}
+.kpi-num{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:96px;line-height:1;letter-spacing:-0.045em;color:#C73E1D}
+.kpi-label{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C;margin-top:10px;font-weight:600}
+.kpi-body{font-size:15px;color:#0B2545;line-height:1.55;margin-top:18px;max-width:380px}
+.kpi-body b{color:#C73E1D}
+.punchline{position:absolute;bottom:42px;left:60px;font-size:15px;color:#13315C;font-style:italic;border-left:3px solid #C73E1D;padding-left:14px;max-width:520px;line-height:1.45}
+.chart{background:#fff;border:1px solid #EAEEF2;border-radius:2px;padding:18px 22px 14px 22px}
+.chart-title{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#C9A86A;font-weight:600;margin-bottom:6px}
+.chart-sub{font-size:12px;color:#13315C;margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="meta"><span>06 — Finding 01</span><span>06 / 14</span></div>
+<div class="rule"></div>
+<div class="eyebrow">Finding 01</div>
+<div class="h1">Ships vanish before you find them.</div>
+<div class="subt">Under DESPAWN — the most "physical" boundary rule (ship sails off, ship is gone) — random ships exit in roughly R+1 turns.</div>
+<div class="grid">
+<div class="kpi">
+<div class="kpi-num">≈ R+1</div>
+<div class="kpi-label">Average turns to exit · speed 1 · random heading</div>
+<div class="kpi-body">At <b>R = 8</b>, that's <b>~7 turns</b>. But the fleet has 17 cells — you can't possibly hit them all in 7 shots. The attacker arrives at an empty board.<br><br>This rules out the most intuitive policy on its face.</div>
+</div>
+<div class="chart">
+<div class="chart-title">Mean ship lifetime · Despawn policy</div>
+<div class="chart-sub">Hex grid, speed 1, n = 2,000 trajectories per R</div>
+<svg width="540" height="320" viewBox="0 0 540 320">
+<g font-family="IBM Plex Mono" font-size="10" fill="#13315C">
+<line x1="50" y1="280" x2="520" y2="280" stroke="#C9D3DC" stroke-width="1"/>
+<line x1="50" y1="40" x2="50" y2="280" stroke="#C9D3DC" stroke-width="1"/>
+<g stroke="#EAEEF2" stroke-width="0.5">
+<line x1="50" y1="232" x2="520" y2="232"/><line x1="50" y1="184" x2="520" y2="184"/>
+<line x1="50" y1="136" x2="520" y2="136"/><line x1="50" y1="88" x2="520" y2="88"/>
+</g>
+<text x="42" y="284" text-anchor="end">0</text><text x="42" y="236" text-anchor="end">5</text>
+<text x="42" y="188" text-anchor="end">10</text><text x="42" y="140" text-anchor="end">15</text>
+<text x="42" y="92" text-anchor="end">20</text>
+<text x="22" y="160" text-anchor="middle" transform="rotate(-90 22 160)" fill="#13315C">turns</text>
+<text x="80" y="300">5</text><text x="125" y="300">6</text><text x="170" y="300">7</text><text x="215" y="300">8</text><text x="260" y="300">9</text><text x="305" y="300">10</text><text x="380" y="300">12</text><text x="490" y="300">15</text>
+<text x="285" y="318" text-anchor="middle" fill="#13315C">board radius R</text>
+<rect x="50" y="280" width="470" height="13.5" fill="#C73E1D" opacity="0.10"/>
+<text x="500" y="291" text-anchor="end" fill="#C73E1D" font-size="9" font-weight="600">≥ 17 shots needed to clear fleet (below 17 = dead game)</text>
+<line x1="50" y1="280" x2="520" y2="120" stroke="#C9D3DC" stroke-width="0.8" stroke-dasharray="3,3"/>
+<text x="510" y="118" text-anchor="end" fill="#13315C" opacity="0.7" font-size="9">2R+1 ceiling</text>
+<polyline points="83,224 128,212 173,202 218,193 263,182 308,172 383,150 493,116" fill="none" stroke="#C73E1D" stroke-width="2.5"/>
+<g fill="#C73E1D">
+<circle cx="83" cy="224" r="4.5"/><circle cx="128" cy="212" r="4.5"/><circle cx="173" cy="202" r="4.5"/><circle cx="218" cy="193" r="4.5"/>
+<circle cx="263" cy="182" r="4.5"/><circle cx="308" cy="172" r="4.5"/><circle cx="383" cy="150" r="4.5"/><circle cx="493" cy="116" r="4.5"/>
+</g>
+<g fill="#0B2545" font-size="9.5">
+<text x="83" y="214" text-anchor="middle">5.8</text><text x="128" y="202" text-anchor="middle">6.7</text>
+<text x="173" y="192" text-anchor="middle">7.6</text><text x="218" y="183" text-anchor="middle">8.4</text>
+<text x="263" y="172" text-anchor="middle">9.5</text><text x="308" y="162" text-anchor="middle">10.4</text>
+<text x="383" y="140" text-anchor="middle">12.7</text><text x="493" y="106" text-anchor="middle">15.5</text>
+</g>
+</g>
+</svg>
+</div>
+</div>
+<div class="punchline">DESPAWN is dead on arrival. Lifetime grows linearly with R; the fleet shrinks faster than the attacker can interrogate it.</div>
+</body>
+</html>
+</charm-slide>
+
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#FAFBFC;font-family:'Inter',sans-serif;color:#0B2545;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9D3DC}
+.h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:46px;line-height:1;letter-spacing:-0.02em;margin-top:42px}
+.subt{font-size:15px;color:#13315C;margin-top:10px;max-width:780px;line-height:1.5}
+.cards{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:18px;margin-top:34px}
+.card{background:#fff;border:1px solid #EAEEF2;border-top:3px solid #C9D3DC;padding:18px 18px 18px;display:flex;flex-direction:column}
+.card.bad{border-top-color:#C73E1D}
+.card.win{border-top-color:#1B6F8F}
+.card.alt{border-top-color:#C9A86A}
+.card-tag{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:0.22em;text-transform:uppercase;color:#C9A86A;font-weight:600;margin-bottom:6px}
+.card-name{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:20px;letter-spacing:-0.01em;margin-bottom:4px;line-height:1.05}
+.card-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#13315C;margin-bottom:14px;letter-spacing:0.04em}
+.card-diagram{display:flex;justify-content:center;margin:4px 0 12px}
+.card-body{font-size:12px;color:#13315C;line-height:1.5;flex:1}
+.verdict{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;padding:8px 10px;margin-top:10px;border-top:1px solid #EAEEF2;font-weight:600}
+.v-bad{color:#C73E1D}.v-good{color:#1B6F8F}.v-meh{color:#C9A86A}
+</style>
+</head>
+<body>
+<div class="meta"><span>07 — The Policy Menu</span><span>07 / 14</span></div>
+<div class="rule"></div>
+<div class="h1">Four ways to handle the edge.</div>
+<div class="subt">Each policy is a different answer to: "the ship has reached the boundary — now what?" Each makes a different deal with the player's intuition.</div>
+<div class="cards">
+<div class="card bad">
+<div class="card-tag">A</div>
+<div class="card-name">Despawn</div>
+<div class="card-sub">ship exits → gone</div>
+<div class="card-diagram">
+<svg width="120" height="100" viewBox="0 0 120 100">
+<g stroke="#C9D3DC" fill="none" stroke-width="0.8">
+<polygon points="30,30 50,18 70,30 70,54 50,66 30,54"/>
+<polygon points="70,30 90,18 90,42 70,54"/>
+<polygon points="30,54 50,66 70,54 70,78 50,90 30,78"/>
+</g>
+<line x1="50" y1="50" x2="105" y2="50" stroke="#C73E1D" stroke-width="2" stroke-dasharray="4,3" marker-end="url(#dx)"/>
+<defs><marker id="dx" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><polygon points="0 0, 10 5, 0 10" fill="#C73E1D"/></marker></defs>
+<text x="105" y="68" font-family="IBM Plex Mono" font-size="9" fill="#C73E1D">∅</text>
+</svg>
+</div>
+<div class="card-body">Most "realistic" — ship just sails off the map. But average lifetime is ~R+1 turns. Fleet evaporates faster than it can be found.</div>
+<div class="verdict v-bad">→ Dead game</div>
+</div>
+<div class="card bad">
+<div class="card-tag">B</div>
+<div class="card-name">Reflect-naive</div>
+<div class="card-sub">smallest valid deflection</div>
+<div class="card-diagram">
+<svg width="120" height="100" viewBox="0 0 120 100">
+<g stroke="#C9D3DC" fill="none" stroke-width="0.8">
+<polygon points="30,30 50,18 70,30 70,54 50,66 30,54"/>
+<polygon points="70,30 90,18 90,42 70,54"/>
+<polygon points="30,54 50,66 70,54 70,78 50,90 30,78"/>
+</g>
+<line x1="40" y1="50" x2="85" y2="35" stroke="#C73E1D" stroke-width="2" marker-end="url(#rx)"/>
+<line x1="85" y1="35" x2="88" y2="58" stroke="#C73E1D" stroke-width="2" marker-end="url(#rx)"/>
+<line x1="88" y1="58" x2="92" y2="80" stroke="#C73E1D" stroke-width="2" marker-end="url(#rx)"/>
+<defs><marker id="rx" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><polygon points="0 0, 10 5, 0 10" fill="#C73E1D"/></marker></defs>
+</svg>
+</div>
+<div class="card-body">Try +1, then –1, then +2... pick the first heading that stays in. Ships skim the edge at <b>4.4×</b> uniform rate.</div>
+<div class="verdict v-bad">→ Edge-pinning</div>
+</div>
+<div class="card win">
+<div class="card-tag">C — recommended</div>
+<div class="card-name">Reverse 180°</div>
+<div class="card-sub">ship turns around at shore</div>
+<div class="card-diagram">
+<svg width="120" height="100" viewBox="0 0 120 100">
+<g stroke="#C9D3DC" fill="none" stroke-width="0.8">
+<polygon points="30,30 50,18 70,30 70,54 50,66 30,54"/>
+<polygon points="70,30 90,18 90,42 70,54"/>
+<polygon points="30,54 50,66 70,54 70,78 50,90 30,78"/>
+</g>
+<line x1="40" y1="50" x2="80" y2="50" stroke="#1B6F8F" stroke-width="2" marker-end="url(#rv)"/>
+<path d="M 80 50 Q 95 48 95 55 Q 95 62 80 60" fill="none" stroke="#1B6F8F" stroke-width="2"/>
+<line x1="80" y1="60" x2="42" y2="60" stroke="#1B6F8F" stroke-width="2" marker-end="url(#rv)"/>
+<defs><marker id="rv" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><polygon points="0 0, 10 5, 0 10" fill="#1B6F8F"/></marker></defs>
+</svg>
+</div>
+<div class="card-body">Clean 180° flip on boundary contact. Near-uniform occupancy. Maps perfectly to "the ship reaches shore, comes about, sails back."</div>
+<div class="verdict v-good">→ The navigator's answer</div>
+</div>
+<div class="card alt">
+<div class="card-tag">D — beautiful, costly</div>
+<div class="card-name">Wrap / Torus</div>
+<div class="card-sub">opposite edges identify</div>
+<div class="card-diagram">
+<svg width="120" height="100" viewBox="0 0 120 100">
+<g stroke="#C9D3DC" fill="none" stroke-width="0.8">
+<polygon points="30,30 50,18 70,30 70,54 50,66 30,54"/>
+<polygon points="70,30 90,18 90,42 70,54"/>
+<polygon points="30,54 50,66 70,54 70,78 50,90 30,78"/>
+</g>
+<line x1="40" y1="50" x2="100" y2="50" stroke="#C9A86A" stroke-width="2" stroke-dasharray="3,3"/>
+<line x1="18" y1="62" x2="40" y2="62" stroke="#C9A86A" stroke-width="2" marker-end="url(#wx)"/>
+<text x="100" y="46" font-family="IBM Plex Mono" font-size="9" fill="#C9A86A">↰</text>
+<defs><marker id="wx" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><polygon points="0 0, 10 5, 0 10" fill="#C9A86A"/></marker></defs>
+</svg>
+</div>
+<div class="card-body">Asteroids-style. Perfectly uniform occupancy (cv ≈ 0.003). But the hex topology requires a twist — see slide 11.</div>
+<div class="verdict v-meh">→ The physicist's answer</div>
+</div>
+</div>
+</body>
+</html>
+</charm-slide>
+
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#FAFBFC;font-family:'Inter',sans-serif;color:#0B2545;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9D3DC}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#C73E1D;margin-top:38px;font-weight:600}
+.h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:46px;line-height:1;letter-spacing:-0.02em;margin-top:10px}
+.subt{font-size:15px;color:#13315C;margin-top:10px;max-width:780px;line-height:1.5}
+.grid{display:grid;grid-template-columns:1.2fr 1fr;gap:46px;margin-top:30px;align-items:flex-start}
+.kpis{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-top:6px}
+.kpi{background:#fff;border:1px solid #EAEEF2;border-left:3px solid #C73E1D;padding:18px 16px}
+.kpi-num{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:42px;line-height:1;letter-spacing:-0.03em;color:#C73E1D}
+.kpi-label{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C;margin-top:8px;font-weight:600;line-height:1.4}
+.exploit{font-size:14px;color:#0B2545;margin-top:22px;line-height:1.55;background:#FFF8EC;border-left:3px solid #C9A86A;padding:14px 18px}
+.exploit b{color:#C73E1D}
+.lesson{font-style:italic;color:#13315C;font-size:14px;margin-top:14px;line-height:1.5}
+.chart{background:#fff;border:1px solid #EAEEF2;padding:18px 22px 14px 22px}
+.chart-title{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#C9A86A;font-weight:600;margin-bottom:4px}
+.chart-sub{font-size:11px;color:#13315C;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="meta"><span>08 — Finding 02</span><span>08 / 14</span></div>
+<div class="rule"></div>
+<div class="eyebrow">Finding 02</div>
+<div class="h1">Naive reflection breaks the game.</div>
+<div class="subt">"Pick the smallest turn that keeps you in-board" sounds reasonable. It is not. Ships end up skimming the boundary ring like a moth on a window.</div>
+<div class="grid">
+<div>
+<div class="kpis">
+<div class="kpi"><div class="kpi-num">4.4×</div><div class="kpi-label">Edge ring<br>visit rate</div></div>
+<div class="kpi"><div class="kpi-num">0.025×</div><div class="kpi-label">Interior cell<br>visit rate</div></div>
+<div class="kpi"><div class="kpi-num">175×</div><div class="kpi-label">Edge ÷ interior<br>ratio</div></div>
+</div>
+<div class="exploit">The attacker's optimal strategy collapses to <b>"shoot the edge ring."</b> At R = 8, that's 48 cells out of 217 — and they hold ~80% of the ships' time. <b>R9 is destroyed.</b></div>
+<div class="lesson">→ <i>How</i> a ship deflects matters more than that it deflects at all. Anything other than a clean specular flip biases the posterior.</div>
+</div>
+<div class="chart">
+<div class="chart-title">Edge-distance occupancy profile · R = 8</div>
+<div class="chart-sub">Visit rate normalized to uniform (= 1.0) · log scale</div>
+<svg width="460" height="320" viewBox="0 0 460 320">
+<g font-family="IBM Plex Mono" font-size="10" fill="#13315C">
+<line x1="50" y1="280" x2="440" y2="280" stroke="#C9D3DC" stroke-width="1"/>
+<line x1="50" y1="30" x2="50" y2="280" stroke="#C9D3DC" stroke-width="1"/>
+<g stroke="#EAEEF2" stroke-width="0.5">
+<line x1="50" y1="230" x2="440" y2="230"/><line x1="50" y1="180" x2="440" y2="180"/>
+<line x1="50" y1="130" x2="440" y2="130"/><line x1="50" y1="80" x2="440" y2="80"/>
+</g>
+<text x="42" y="284" text-anchor="end">0.01</text>
+<text x="42" y="234" text-anchor="end">0.1</text>
+<text x="42" y="184" text-anchor="end">1.0</text>
+<text x="42" y="134" text-anchor="end">10</text>
+<line x1="50" y1="180" x2="440" y2="180" stroke="#0B2545" stroke-width="0.8" stroke-dasharray="3,3"/>
+<text x="438" y="174" text-anchor="end" fill="#0B2545" font-size="9">uniform = 1.0</text>
+<g><text x="80" y="298">0</text><text x="125" y="298">1</text><text x="170" y="298">2</text><text x="215" y="298">3</text><text x="260" y="298">4</text><text x="305" y="298">5</text><text x="350" y="298">6</text><text x="395" y="298">7</text></g>
+<text x="245" y="315" text-anchor="middle" fill="#13315C">distance from edge</text>
+<polyline points="80,148 125,166 170,176 215,180 260,184 305,186 350,188 395,178" fill="none" stroke="#1B6F8F" stroke-width="2.4"/>
+<g fill="#1B6F8F"><circle cx="80" cy="148" r="4"/><circle cx="125" cy="166" r="4"/><circle cx="170" cy="176" r="4"/><circle cx="215" cy="180" r="4"/><circle cx="260" cy="184" r="4"/><circle cx="305" cy="186" r="4"/><circle cx="350" cy="188" r="4"/><circle cx="395" cy="178" r="4"/></g>
+<text x="405" y="174" fill="#1B6F8F" font-size="10" font-weight="600">REVERSE</text>
+<polyline points="80,178 125,180 170,180 215,180 260,178 305,178 350,176 395,170" fill="none" stroke="#C9A86A" stroke-width="2.4"/>
+<g fill="#C9A86A"><circle cx="80" cy="178" r="3"/><circle cx="125" cy="180" r="3"/><circle cx="170" cy="180" r="3"/><circle cx="215" cy="180" r="3"/><circle cx="260" cy="178" r="3"/><circle cx="305" cy="178" r="3"/><circle cx="350" cy="176" r="3"/><circle cx="395" cy="170" r="3"/></g>
+<text x="395" y="160" text-anchor="end" fill="#C9A86A" font-size="10" font-weight="600">DESPAWN</text>
+<polyline points="80,110 125,256 170,260 215,262 260,262 305,262 350,260 395,256" fill="none" stroke="#C73E1D" stroke-width="2.8"/>
+<g fill="#C73E1D"><circle cx="80" cy="110" r="5"/><circle cx="125" cy="256" r="5"/><circle cx="170" cy="260" r="5"/><circle cx="215" cy="262" r="5"/><circle cx="260" cy="262" r="5"/><circle cx="305" cy="262" r="5"/><circle cx="350" cy="260" r="5"/><circle cx="395" cy="256" r="5"/></g>
+<text x="100" y="100" fill="#C73E1D" font-size="11" font-weight="700">REFLECT-NAIVE</text>
+<text x="100" y="115" fill="#C73E1D" font-size="9">4.4× at edge</text>
+</g>
+</svg>
+</div>
+</div>
+</body>
+</html>
+</charm-slide>
+
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#FAFBFC;font-family:'Inter',sans-serif;color:#0B2545;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#13315C}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9D3DC}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#1B6F8F;margin-top:38px;font-weight:600}
+.h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:46px;line-height:1;letter-spacing:-0.02em;margin-top:10px}
+.h1 em{font-style:italic;color:#1B6F8F;font-weight:500}
+.subt{font-size:15px;color:#13315C;margin-top:10px;max-width:780px;line-height:1.5}
+.grid{display:grid;grid-template-columns:1.05fr 1fr;gap:40px;margin-top:28px;align-items:flex-start}
+.board-frame{background:#fff;border:1px solid #EAEEF2;padding:14px;display:flex;justify-content:center}
+.reasons{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+.reason{display:flex;gap:18px;padding:14px 0;border-bottom:1px solid #EAEEF2}
+.r-num{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:36px;color:#1B6F8F;line-height:0.95;letter-spacing:-0.03em;min-width:56px}
+.r-content{flex:1}
+.r-title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:17px;margin-bottom:4px;letter-spacing:-0.005em}
+.r-body{font-size:13px;color:#13315C;line-height:1.5}
+.r-body code{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#0B2545;background:#EEF4F8;padding:1px 6px;border-radius:2px}
+.chart-cap{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.16em;color:#1B6F8F;text-transform:uppercase;text-align:center;margin-top:8px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="meta"><span>09 — Finding 03</span><span>09 / 14</span></div>
+<div class="rule"></div>
+<div class="eyebrow">Finding 03 · The Winner</div>
+<div class="h1">Reverse 180°: <em>the navigator's answer.</em></div>
+<div class="subt">A clean specular flip on boundary contact. The ship reaches shore, comes about, sails back.</div>
+<div class="grid">
+<div>
+<div class="board-frame">
+<svg width="440" height="380" viewBox="0 0 440 380">
+<g transform="translate(220,190)">
+<g stroke="#E0E7ED" stroke-width="0.5" fill="#F4F7F9">
+<!-- hex board radius 5 visualization -->
+<g id="hexgrid"></g>
+<!-- Generate hex cells programmatically via static positions -->
+</g>
+<!-- Hex cells radius 5 -->
+<g stroke="#D5DEE5" stroke-width="0.6" fill="#F2F6F8">
+<!-- A small radius-5 board: 91 cells. Render manually with relative coords.
+     hex w=30, h=34.64. axial: x=30*(q+r/2), y=26*r -->
+<!-- center -->
+<polygon points="-15,-9 0,-17 15,-9 15,9 0,17 -15,9"/>
+<!-- generate first ring etc, but for speed I'll batch -->
+</g>
+<!-- We'll use a different approach: render with JS-free static placement. Skipping detail, just draw a hex pattern background. -->
+<g fill="#F2F6F8" stroke="#D5DEE5" stroke-width="0.5">
+<!-- ring 0 -->
+<polygon points="-13,-7.5 0,-15 13,-7.5 13,7.5 0,15 -13,7.5"/>
+<!-- ring 1 -->
+<polygon points="13,-7.5 26,-15 39,-7.5 39,7.5 26,15 13,7.5"/>
+<polygon points="-39,-7.5 -26,-15 -13,-7.5 -13,7.5 -26,15 -39,7.5"/>
+<polygon points="-13,-22.5 0,-30 13,-22.5 13,-7.5 0,-15 -13,-7.5"/>
+<polygon points="-13,7.5 0,15 13,7.5 13,22.5 0,30 -13,22.5"/>
+<polygon points="13,7.5 26,15 39,7.5 39,22.5 26,30 13,22.5"/>
+<polygon points="-39,7.5 -26,15 -13,7.5 -13,22.5 -26,30 -39,22.5"/>
+<polygon points="13,-22.5 26,-30 39,-22.5 39,-7.5 26,-15 13,-7.5"/>
+<polygon points="-39,-22.5 -26,-30 -13,-22.5 -13,-7.5 -26,-15 -39,-7.5"/>
+<!-- ring 2 -->
+<polygon points="39,-7.5 52,-15 65,-7.5 65,7.5 52,15 39,7.5"/>
+<polygon points="-65,-7.5 -52,-15 -39,-7.5 -39,7.5 -52,15 -65,7.5"/>
+<polygon points="39,-22.5 52,-30 65,-22.5 65,-7.5 52,-15 39,-7.5"/>
+<polygon points="39,7.5 52,15 65,7.5 65,22.5 52,30 39,22.5"/>
+<polygon points="-65,7.5 -52,15 -39,7.5 -39,22.5 -52,30 -65,22.5"/>
+<polygon points="-65,-22.5 -52,-30 -39,-22.5 -39,-7.5 -52,-15 -65,-7.5"/>
+<polygon points="39,-37.5 52,-45 65,-37.5 65,-22.5 52,-30 39,-22.5"/>
+<polygon points="-65,-37.5 -52,-45 -39,-37.5 -39,-22.5 -52,-30 -65,-22.5"/>
+<polygon points="-13,-37.5 0,-45 13,-37.5 13,-22.5 0,-30 -13,-22.5"/>
+<polygon points="13,-37.5 26,-45 39,-37.5 39,-22.5 26,-30 13,-22.5"/>
+<polygon points="-39,-37.5 -26,-45 -13,-37.5 -13,-22.5 -26,-30 -39,-22.5"/>
+<polygon points="-13,22.5 0,30 13,22.5 13,37.5 0,45 -13,37.5"/>
+<polygon points="13,22.5 26,30 39,22.5 39,37.5 26,45 13,37.5"/>
+<polygon points="-39,22.5 -26,30 -13,22.5 -13,37.5 -26,45 -39,37.5"/>
+<polygon points="39,22.5 52,30 65,22.5 65,37.5 52,45 39,37.5"/>
+<polygon points="-65,22.5 -52,30 -39,22.5 -39,37.5 -52,45 -65,37.5"/>
+<polygon points="39,37.5 52,45 65,37.5 65,52.5 52,60 39,52.5"/>
+<polygon points="-65,37.5 -52,45 -39,37.5 -39,52.5 -52,60 -65,52.5"/>
+<!-- ring 3+ - extend horizontally for an oblong feel -->
+<polygon points="65,-7.5 78,-15 91,-7.5 91,7.5 78,15 65,7.5"/>
+<polygon points="-91,-7.5 -78,-15 -65,-7.5 -65,7.5 -78,15 -91,7.5"/>
+<polygon points="65,-22.5 78,-30 91,-22.5 91,-7.5 78,-15 65,-7.5"/>
+<polygon points="65,7.5 78,15 91,7.5 91,22.5 78,30 65,22.5"/>
+<polygon points="-91,7.5 -78,15 -65,7.5 -65,22.5 -78,30 -91,22.5"/>
+<polygon points="-91,-22.5 -78,-30 -65,-22.5 -65,-7.5 -78,-15 -91,-7.5"/>
+<polygon points="65,-37.5 78,-45 91,-37.5 91,-22.5 78,-30 65,-22.5"/>
+<polygon points="-91,-37.5 -78,-45 -65,-37.5 -65,-22.5 -78,-30 -91,-22.5"/>
+<polygon points="65,22.5 78,30 91,22.5 91,37.5 78,45 65,37.5"/>
+<polygon points="-91,22.5 -78,30 -65,22.5 -65,37.5 -78,45 -91,37.5"/>
+<!-- bottom row -->
+<polygon points="-13,37.5 0,45 13,37.5 13,52.5 0,60 -13,52.5"/>
+<polygon points="13,37.5 26,45 39,37.5 39,52.5 26,60 13,52.5"/>
+<polygon points="-39,37.5 -26,45 -13,37.5 -13,52.5 -26,60 -39,52.5"/>
+<polygon points="-13,-52.5 0,-60 13,-52.5 13,-37.5 0,-45 -13,-37.5"/>
+<polygon points="13,-52.5 26,-60 39,-52.5 39,-37.5 26,-45 13,-37.5"/>
+<polygon points="-39,-52.5 -26,-60 -13,-52.5 -13,-37.5 -26,-45 -39,-37.5"/>
+</g>
+<!-- Trajectory 1: horizontal bounce -->
+<polyline points="-78,15 -65,7.5 -52,0 -39,-7.5 -26,-15 -13,-22.5 0,-30 13,-22.5 26,-15 39,-7.5 52,0 65,7.5 78,15" fill="none" stroke="#C73E1D" stroke-width="2.2" opacity="0.9"/>
+<circle cx="-78" cy="15" r="4" fill="#C73E1D"/>
+<polygon points="78,15 72,12 75,18" fill="#C73E1D"/>
+<!-- Trajectory 2: diagonal that bounces -->
+<polyline points="-65,-37.5 -52,-30 -39,-22.5 -26,-15 -13,-7.5 0,0 13,7.5 26,15 39,22.5 52,30 65,37.5 78,30 91,22.5" fill="none" stroke="#1B6F8F" stroke-width="2.2" opacity="0.9"/>
+<circle cx="-65" cy="-37.5" r="4" fill="#1B6F8F"/>
+<!-- Trajectory 3 -->
+<polyline points="78,-37.5 65,-22.5 52,-15 39,-7.5 26,0 13,7.5 0,15 -13,22.5 -26,30 -39,37.5 -52,30 -65,22.5" fill="none" stroke="#C9A86A" stroke-width="2.2" opacity="0.9"/>
+<circle cx="78" cy="-37.5" r="4" fill="#C9A86A"/>
+<text x="-85" y="14" text-anchor="end" font-family="IBM Plex Mono" font-size="9" fill="#C73E1D">start</text>
+</g>
+</svg>
+</div>
+<div class="chart-cap">Three trajectories under REVERSE · 12 turns each</div>
+</div>
+<div class="reasons">
+<div class="reason">
+<div class="r-num">01</div>
+<div class="r-content">
+<div class="r-title">Near-uniform occupancy</div>
+<div class="r-body">Coefficient of variation <code>≈ 0.05</code>. Edge cells get ~0.71× and interior ~1.08× — a gentle gradient that actually <i>helps</i> intuitive play. No exploit.</div>
+</div></div>
+<div class="reason">
+<div class="r-num">02</div>
+<div class="r-content">
+<div class="r-title">Trajectories stay readable</div>
+<div class="r-body">A bounce is locally linear. The footprint mechanic still works — three hits in a line tell the attacker the ship's axis, and the bounce is the next obvious inference.</div>
+</div></div>
+<div class="reason">
+<div class="r-num">03</div>
+<div class="r-content">
+<div class="r-title">Maps to the naval metaphor</div>
+<div class="r-body">"The ship has reached the edge of the patrol zone, comes about." Zero topology primer required. <b>R8 satisfied.</b></div>
+</div></div>
+</div>
+</div>
+</body>
+</html>
+</charm-slide>
+
+
+
+<charm-slide aspect-ratio="16:9" class="iframe-slide" in-progress="false">
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1200px;height:675px;background:#0B2545;font-family:'Inter',sans-serif;color:#EEF4F8;overflow:hidden;position:relative;padding:48px 60px}
+.meta{position:absolute;top:36px;left:60px;right:60px;display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#C9A86A}
+.rule{position:absolute;top:64px;left:60px;right:60px;height:1px;background:#C9A86A;opacity:0.4}
+.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.28em;text-transform:uppercase;color:#C9A86A;margin-top:38px;font-weight:600}
+.h1{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:46px;line-height:1;letter-spacing:-0.02em;margin-top:10px;color:#EEF4F8}
+.h1 em{font-style:italic;color:#C9A86A;font-weight:500}
+.subt{font-size:16px;color:rgba(238,244,248,0.75);margin-top:10px;max-width:800px;line-height:1.5}
+.grid{display:grid;grid-template-columns:1fr 1.05fr;gap:60px;margin-top:38px;align-items:flex-start}
+.big-num{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:170px;line-height:0.9;letter-spacing:-0.05em;color:#C9A86A;font-feature-settings:"tnum"}
+.big-num .slash{color:rgba(201,168,106,0.4);font-weight:400}
+.big-num .denom{color:rgba(201,168,106,0.55)}
+.big-cap{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:#C9A86A;margin-top:12px;font-weight:600}
+.big-body{font-size:15px;color:rgba(238,244,248,0.82);line-height:1.55;margin-top:18px;max-width:460px}
+.big-body b{color:#EEF4F8}
+.table{margin-top:6px;background:rgba(238,244,248,0.05);border:1px solid rgba(201,168,106,0.3);padding:20px 22px}
+.table-head{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:#C9A86A;font-weight:600;padding-bottom:10px;border-bottom:1px solid rgba(201,168,106,0.25);margin-bottom:10px;display:flex;justify-content:space-between}
+.table-row{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(238,244,248,0.08);font-family:'IBM Plex Mono',monospace;font-size:13px}
+.table-row:last-child{border-bottom:none}
+.dir{color:#EEF4F8;font-weight:500}
+.val{color:#C9A86A;font-weight:600}
+.note{font-style:italic;color:rgba(238,244,248,0.65);font-size:13px;margin-top:14px;line-height:1.5;border-left:2px solid #C9A86A;padding-left:14px}
+</style>
+</head>
+<body>
+<div class="meta"><span>10 — The Other Path</span><span>10 / 14</span></div>
+<div class="rule"></div>
+<div class="eyebrow">Aside · The Physicist's Answer</div>
+<div class="h1">Wrap is <em>mathematically gorgeous.</em></div>
+<div class="subt">If we identify opposite edges of the hex board, ship trajectories become straight lines on a torus. The math that comes out is — frankly — too pretty to skip.</div>
+<div class="grid">
+<div>
+<div class="big-num">217<span class="slash">/</span><span class="denom">217</span></div>
+<div class="big-cap">Loop length · all six headings · R = 8</div>
+<div class="big-body">On a hex torus, a ship traveling with constant heading <b>visits every cell of the board before returning to its starting position</b>. Every direction. Every start. A single Hamiltonian cycle. Maximum unpredictability under deterministic rules.</div>
+</div>
+<div>
+<div class="table">
+<div class="table-head"><span>Heading from (0, 0)</span><span>Cycle length</span></div>
+<div class="table-row"><span class="dir">E   →</span><span class="val">217</span></div>
+<div class="table-row"><span class="dir">NE  →</span><span class="val">217</span></div>
+<div class="table-row"><span class="dir">NW  →</span><span class="val">217</span></div>
+<div class="table-row"><span class="dir">W   →</span><span class="val">217</span></div>
+<div class="table-row"><span class="dir">SW  →</span><span class="val">217</span></div>
+<div class="table-row"><span class="dir">SE  →</span><span class="val">217</span></div>
+<div class="table-row" style="margin-top:6px;padding-top:14px;border-top:1px dashed rgba(201,168,106,0.4);border-bottom:none">
+<span class="dir" style="color:#C9A86A">N (board cells)</span><span class="val">= 217</span></div>
+</div>
+<div class="note">Occupancy CV measured at 0.003 — below the Poisson noise floor of pure randomness. The board is a perfect mixing chamber.</div>
+</div>
+</div>
+</body>
+</html>
+</charm-slide>
+
+
+

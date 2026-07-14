@@ -1,0 +1,528 @@
+<h1 style="text-align: center;">
+  Sea Battle Reimagined | Design Spec V2
+</h1>
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part> in the reference material is the entire history of going through and working on a reimagined version of the sea battle game. I need you to distill that down into a spec. So go through and extract all of the requirements so that we have all of them in one place. We've contradicted ourselves a couple of times, etc. but you should get a feel for where we're going. Separate the core requirements from some nice to have like around how we're gonna do explosions and colors and things like that. The requirement section should really get somebody in the right headspace as how to think about what we're talking about. Then give me a bunch of other sections around some of the logic and coding work that we've done to try to understand all of this. Then have a section on the UX and what we're going to do. And then have a section on the open questions that will tackle. The result of what you produce should give somebody the complete overview that they would get by trying to dissect, whatever is in all the rest of these documents.
+
+<agent-execution agent-id="ZQnQfEYTrBClL44zUvgi" execution-id="0VQfnWPeD3zpreBgyI6o" name="All Purpose Charm (A)" state="complete" usage-record-id="cab2bd2c19d44351615d243d5e2f6198" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="GNDgAw97HM" provider="anthropic" reasoning-id="UJHFY9KS1fmpb7LWQ6AW" status="completed" signature="Er0GCmMIDhgCKkDTiJphlmJWQUf9yhCXJTOQciZAz3shEOETyFifhlcHhbNlAlyKs3UB8gSWnBXnc3N19p71UFkIYNC89NUuSfwSMg9jbGF1ZGUtb3B1cy00LTY4AEIIdGhpbmtpbmcSDNL1Hq+j+gcwNmJvShoMuGYOeCmuhpK3O6+JIjBxURUb0ciqVw3BQ5fMPiEaCylWOigCIZwtmHJPQKnCpyufax8wGIz73LwivasBT70qhwVLp8HfVhHPUdDpXkrXKAthMvO5bJYdQqfU28fDuv4hMpOfAI59B4l0qx+R0YuaiyXL7OYtbLKLF+Vbzo+yDK86EGEDs7fmXiBJTKHsTA7PpYopf4Y5eEeQkRvP8BZzCCfw1ivjD9bKyXayywTYkL8ndF9I2nhEtW8PiSgzVhKbVau55OrLTFzsC2mlMNgRa1HhWFb7EaYxSX5qJAah+aBzuQEZRoVlqIXXRdHyMkMV+N8pe/AjRMru6uUhvK0isRWam+6MAmTZoBQjHO07ShJd9rBiL/nsFblRg/jNXMzpNi8Hn5GXh2GPstudVq2z2gghdg/4HGVkVfPBlrTIZH9K2o688x0VOGESKPzymkmRqHP/2EOvaUj41WNxAGVDRF02wXBSTfbcLmfFhJ9at0CAcEs5R6kYgLbaxhDh7vF0T4CZIoTGkE6vpEfHvLGcy1zE8ejqGLnQ+rBMmDXDnE6oDPTH3TtxLC7jMGtJdHI/ynSiu0gqrpIu6auvVrgyRZRSlmEwBZDgRLtQ5ols273/n4sw5Uz8+9/7k+JlnSxj1XHcX84l05TLtH/wHpaLlm8fHjs0W1cDw2wHQf6A+kQjSZJ7259qsCcMXFs0k8JeYbt5aE035bvp+zxDKi7Vf6Fh2rMEFDLcz6remFgtym1vYv8ALqQQpyVi8q+GCwwlTZW6VLG/L24wg+OWuXg9EAOTVEevxilbquZuCjg5I5dxd+c9qDzi5xpbHMgnQSk95xkUa2YrZhVRJwJZ3Wg9V+TtmtDQ1WPCnRYOmQorP6zl9l5rTQ5hH0RQQta4yyeyTjl0UqFa2zFt+JUdv5G3hBr5XoRnLeP0rSldaZOjUCbOFd2NJCNQ5xgB" reasoning="%5B%22The%20user%20wants%20me%20to%20distill%20the%20entire%20conversation%20history%20from%20the%20reference%20materials%20into%20a%20comprehensive%20design%20spec%20for%20the%20Sea%20Battle%20reimagined%20game.%20Let%20me%20go%20through%20everything%20carefully%20and%20organize%20it%20into%20the%20requested%20sections.%5Cn%5CnLet%20me%20parse%20through%20all%20the%20key%20decisions%2C%20requirements%2C%20contradictions%2C%20and%20open%20questions%20from%20the%20conversation.%5Cn%5CnKey%20areas%20to%20cover%3A%5Cn1.%20Core%20requirements%20(consolidated%20from%20R1-R13%20plus%20all%20subsequent%20decisions)%5Cn2.%20Game%20mechanics%20(movement%2C%20damage%2C%20collision%2C%20wrap%2C%20etc.)%5Cn3.%20Math%2Fsimulation%20findings%5Cn4.%20UX%20design%20decisions%5Cn%5Cn%5Cn5.%20Unresolved%20questions%20and%20edge%20cases%20that%20still%20need%20clarification%5Cn%5CnLet%20me%20be%20thorough%20and%20organize%20this%20well.%22%5D">
+The user wants me to distill the entire conversation history from the reference materials into a comprehensive design spec for the Sea Battle reimagined game. Let me go through everything carefully and organize it into the requested sections.
+
+Let me parse through all the key decisions, requirements, contradictions, and open questions from the conversation.
+
+Key areas to cover:
+1. Core requirements (consolidated from R1-R13 plus all subsequent decisions)
+2. Game mechanics (movement, damage, collision, wrap, etc.)
+3. Math/simulation findings
+4. UX design decisions
+
+
+5. Unresolved questions and edge cases that still need clarification
+
+Let me be thorough and organize this well.
+</agent-reason>
+
+# Sea Battle Reimagined — Design Specification
+
+## 1\. Vision Statement
+
+Classic Battleship is a **static-belief Bayesian inference puzzle** — the prior never moves, you just refine the posterior. This game replaces that with a **state-space estimation problem with hidden dynamics**: ships move on hidden courses across a hex torus, damage degrades speed, and the attacker reconstructs trajectories from sparse, timestamped observations. The result is a two-player, turn-based, hidden-information **computer game** where inference *is* the gameplay.
+
+> The metaphor: you are a WWII captain on the bridge of a warship, in fog or moonless dark, ordering fire into the void. You see flashes when shells land. Your XO marks hits and misses on a plotting sheet by candle-lamp. The parchment remembers everything.
+
+
+## 2\. Core Requirements
+
+These are **non-negotiable** constraints that define what the game *is*.
+| \# | Requirement | Source | Status |
+|----|----|----|----|
+| **R1** | Two-player, turn-based, hidden-information core | Original | ✅ Locked |
+| **R2** | One player probes (attacker); the other has placed shapes to find (defender) | Original | ✅ Locked |
+| **R3** | Known, fixed shapes (multi-cell pieces of defined sizes) | Original | ✅ Locked |
+| **R4** | Multiple shapes per player (fleet of 5 ships: sizes 5/4/3/3/2) | Original | ✅ Locked |
+| **R5** | Probing a cell has lasting meaning — information persists | Original | ✅ Locked |
+| **R6** | **Hex grid** (6-neighbor adjacency, flat-top orientation) | Original | ✅ Locked |
+| **R7** | Something **changes over time** — ships move on hidden courses | Original | ✅ Locked |
+| **R8** | Intuitive — no graph-theory primer required; the renderer does the topology work | Original | ✅ Locked — computer game, not board game |
+| **R9** | **Imperfect information preserved** even as time evolves; attacker must *infer* trajectories from sparse observations | Original | ✅ Locked |
+| **R10** | **Shapes move; damage affects movement** (slows them via cooldown increase) | Original | ✅ Locked |
+| **R11** | Board sized appropriately for the dynamics | Original | ✅ Locked — R=7 or R=8 |
+| **R12** | Hit/miss feedback on individual cells (preserved from classic) | Original | ✅ Locked |
+| **R13** | Hit affects the shape's movement — each hit increments cooldown by +1 | Original | ✅ Locked |
+| **R14** | **Wrap (torus) boundary** — ships going off one edge reappear on the opposite side; renderer handles the twist invisibly | Evolved | ✅ Locked |
+| **R15** | **Computer game** — not a board game; the renderer handles all topology/wrap math for the player | Evolved | ✅ Locked |
+| **R16** | **Damage = HP decrement only, no cell removal.** A ship has `hp = size`. Each hit decrements HP by 1 and increments cooldown by 1. Ship is sunk when HP = 0. Body footprint stays full-size until sunk. | Evolved | ✅ Locked |
+| **R17** | **Salvo firing** — attacker fires at an aim point with a spread pattern (2 cells probed per turn) | Evolved | ✅ Locked |
+| **R18** | **No ship-class reveal on sink** (Standard difficulty default) — defender says "enemy vessel destroyed," not which class | Evolved | ✅ Locked as default |
+
+
+## 3\. Board & Topology
+
+### 3.1 Hex Grid Specifications
+| Parameter | Value | Rationale |
+|----|----|----|
+| **Shape** | Regular hexagonal region, radius R | Standard hex board |
+| **Recommended R** | **7** (169 cells, 10.1% density) or **8** (217 cells, 7.8% density) | Sim-validated sweet spot: 8–14% ship-cell density, first-hit in 4–10 turns |
+| **Orientation** | Flat-top | Matches existing prototype |
+| **Coordinate system** | Axial (q, r) | Standard; `inBoard(q,r,R)` iff `max(|q|, |r|, |q+r|) ≤ R` |
+| **Cell count formula** | `N = 3R² + 3R + 1` | R=7→169, R=8→217 |
+
+
+### 3.2 Torus Wrap
+
+Ships that exit one edge reappear on the opposite side. The hex torus uses **6 translation vectors**:
+
+``` Y5Z363yidw
+wrapOffsets(R) = [
+  (-(2R+1),  R),  (2R+1, -R),
+  (-(R+1),  -R),  (R+1,   R),
+  ( R, -(2R+1)), (-R,  2R+1)
+]
+```
+
+
+**Key simulation findings:**
+
+* Wrap gives **statistically perfect occupancy uniformity** (cv = 0.003 at R=8) — no edge exploits
+
+* Straight-line trajectories on the torus form **closed loops** whose length depends on heading:
+
+  * Some headings (e.g., S at R=8) produce **Hamiltonian cycles** visiting all 217 cells
+  * Others (e.g., SE at R=8) produce shorter sub-cycles (\~26 cells)
+  * This is a **meaningful defender strategy axis** — heading choice determines cycle coverage
+
+**Why wrap over reverse:**
+| Criterion | Reverse | Wrap |
+|----|----|----|
+| Occupancy uniformity | Good (cv ≈ 0.05, mild center bias) | **Perfect** (cv ≈ 0.003) |
+| Imperfect info | Good | **Excellent** (longer non-repeating cycles) |
+| Intuitive (computer) | Good | **Equivalent** — renderer shows ships appearing on opposite edge |
+| Spatial strategy | Has it (edge vs center) | None (homogeneous) — **this is a feature**: forces strategy into heading/speed, not position |
+| Trajectory inference | Linear, bounded | Requires wrap-aware rendering — **trivially handled by renderer** |
+
+
+### 3.3 Boundary Policy Comparison (Sim Results)
+| Policy | Occupancy edge-ring rate | Verdict |
+|----|----|----|
+| Despawn | Ships exit in \~R+1 turns | ❌ Dead game |
+| Reflect (naive) | Edge ring at **4.4× interior** | ❌ Broken — attacker shoots edges |
+| Reverse (180°) | <sub>0.71× at edge,</sub> 1.1× at center | ✅ Viable but creates positional asymmetry |
+| **Wrap (torus)** | **1.000 ± 0.001 everywhere** | ✅ **Selected** — perfect uniformity |
+
+
+## 4\. Fleet & Movement Model
+
+### 4.1 Fleet Composition
+| Ship | ID | Size (cells) | HP | Base Cooldown | Speed Description |
+|----|----|----|----|----|----|
+| Battleship | BB-01 | 5 | 5 | 4 | Moves every 4th tick — lumbering |
+| Cruiser | CA-02 | 4 | 4 | 3 | Moves every 3rd tick |
+| Destroyer | DD-03 | 3 | 3 | 2 | Moves every 2nd tick |
+| Destroyer | DD-04 | 3 | 3 | 2 | Moves every 2nd tick |
+| PT Boat | PT-05 | 2 | 2 | 1 | Moves every tick — nimble |
+
+
+**Cooldown formula:** `base_cooldown = max(1, size − 1)`
+
+**Defender band (nice-to-have for v2):** Allow defender to set cooldown within ±1 of base during placement.
+
+### 4.2 Movement Rules
+
+Each ship is defined by the tuple: **(anchor_position, heading, cooldown, hp, since_last_move)**
+
+**Per-tick movement logic:**
+
+1. Increment `since_last_move` by 1
+
+2. If `since_last_move ≥ cooldown`:
+
+   * Attempt to advance 1 cell in the current heading direction
+   * Apply wrap if the new position exits the board
+   * Reset `since_last_move = 0`
+
+4. Otherwise, the ship holds position
+
+**Damage effect:** Each hit increments `cooldown` by +1. A PT boat (base cd 1) hit once becomes cd 2. A BB (base cd 4) hit twice becomes cd 6. This creates **compounding positive feedback** for the attacker: damaged ships are slower → easier to track → easier to hit again.
+
+### 4.3 Ship Shape & Body
+
+* A ship's body is a **rigid line of `size` contiguous hex cells** extending from the anchor along the heading direction
+* The body does **not** shrink when hit (R16) — a damaged size-5 still occupies 5 cells
+* The body persists at full size until HP reaches 0 (sunk), at which point all cells are removed
+
+### 4.4 Collision / Avoidance (Turning Mechanics)
+
+**Collision frequency is high** — simulations show **31% of turns** have at least one multi-ship cell overlap with random headings. Only 1% of 80-turn games have zero collisions. This is structural, not edge-case.
+
+**Selected approach — Priority-based avoidance with turning:**
+
+* **Priority:** Largest ships move first; they lock their cells; smaller ships must work around them
+
+* **Pivot point:** Stern (cell 0 = anchor at q, r). When a ship turns, anchor stays fixed — only heading changes, swinging the bow to a new hex direction
+
+* **Turn cadence:** Identical to movement — governed by `SHIP_SPEED.interval(size)`. A size-5 BB can only turn every 4th tick. A size-2 PT can turn every tick.
+
+* **Decision AI per eligible ship each tick:**
+
+  1. Try all 6 heading options in preference order: **straight → ±60° → ±120° → 180°**
+  2. For each option, simulate move-forward-one and check cells against all locked cells
+  3. Among collision-free options, **score by lookahead** (4 ticks of straight-line projection) — prefer the heading with the most open road ahead
+  4. Ties broken by smallest turn angle
+  5. If *every* option collides → **emergency stop** (⚠ blocked)
+
+**Known issue:** After sufficient turns, ships may converge to parallel headings. A randomizer (periodic forced turn on larger ships) may be needed — flagged as open question.
+
+
+## 5\. Probe & Damage Model
+
+### 5.1 Attacker's Turn
+
+1. **Select an aim hex** (hover → targeting reticle → click to lock)
+
+2. **Choose a spread pattern** via radial control that blooms around the aim cell:
+
+   * Tight pair (2 adjacent cells)
+   * Line ahead (2 cells in a line)
+   * Wide spread (2 cells separated by 1)
+   * Wedge pattern
+
+4. **Confirm** (second click or Enter)
+
+5. **Resolution**: each probed cell is evaluated independently:
+
+   * **HIT**: a surviving ship has a body-segment at this cell on this turn. HP decrements by 1; cooldown increments by 1.
+   * **MISS**: no ship body at this cell.
+
+### 5.2 Multi-Ship Cell Probes
+
+If a world-cell has 2+ ships' body-segments, a probe results in a **single HIT** — the ship with the lowest body-index (closest to bow) on the highest-priority (largest) ship is hit. **The attacker sees only "HIT"** — no indication of multi-ship overlap.
+
+### 5.3 Same-Cell-Hit-Twice
+
+This is **structural, not edge-case**. A ship cycling on the torus will revisit the same world-cells after `(cycle_length − size) × cooldown` turns. Simulation at R=8 shows:
+
+* Each cell on a ship's path is occupied for `size × cooldown` consecutive turns
+* Then empty for `(cycle_len − size) × cooldown` turns (e.g., 44 turns for a size-4, cd-2 ship on a 26-step cycle)
+* **17 out of 26** trajectory cells get multi-visited in an 80-turn game
+
+The hit-count rule (R16) handles this cleanly: hit the same world cell 3 times on a size-3 ship = sunk, regardless of *where* on the body the probes landed.
+
+### 5.4 Sinking
+
+* **Condition:** HP reaches 0
+* **Attacker notification (configurable difficulty):**
+| Tier | On Sink | Feel |
+|----|----|----|
+| Classic | "Enemy destroyer sunk" — class revealed | Standard Battleship |
+| **Standard** ⭐ (default) | "Enemy vessel destroyed" — no class | Preserves ambiguity |
+| Hardcore | *Nothing* | Pure fog of war |
+
+
+* **Post-sink reveal:** Animate the ship's actual full trajectory across the attacker's hit history — the X marks light up in turn-order with a faint "phantom track" connecting the probed cells. This is the **dopamine moment**.
+* **Wreck stays on the board** at the final position as a small wreck icon with turn-of-sinking. Associated hits recolor to a muted "closed case" palette.
+
+
+## 6\. Information Model & Inference
+
+### 6.1 What the Attacker Knows
+
+The attacker's **only** data source is a list of probe records:
+
+``` bI7crikpG6
+Probe = { turn: number, cell: {q, r}, result: HIT | MISS }
+```
+
+Everything else — heading, cooldown, ship identity, body-index — is hidden. The attacker infers trajectories by correlating timestamped hits.
+
+### 6.2 Belief Pruning (Simulation Results)
+
+From a prior space of 5,208 hypotheses (217 starts × 6 headings × 4 cooldowns):
+| After... | Consistent hypotheses | % of prior |
+|----|----|----|
+| 1 hit | \~24 | 0.46% |
+| **2 hits** | **\~1** | **0.02%** |
+| 3 hits | 1 | 0.02% |
+
+
+**Two hits with known timestamps are typically sufficient to uniquely identify a ship's trajectory** — heading, cooldown, and position are all determined. However, the player must correctly attribute both hits to the *same* ship — which is the core inferential challenge. (Note that this will have changed now that we've added turning dynamics!)
+
+### 6.3 Same-Cell Hit Pairs Are Highest-Information Events
+
+The gap between two hits on the same cell constrains (heading, cooldown) tightly:
+
+* Gap \< `size × cooldown`: same continuous occupancy window
+* Gap ≈ `(cycle_len − size) × cooldown`: full wrap revisit — **pins heading and cooldown**
+* Gap doesn't fit any legal (heading, cooldown): **two different ships**
+
+The UI must make same-cell revisits **impossible to miss**.
+
+
+## 7\. UX Design
+
+### 7.1 Layout
+
+* **Primary canvas**: Attacker board (hex grid with probe history) — 95% of screen time
+* **Sidebar**: Fleet panels, inference aids, fire-order teletype, controls
+* **Defender board**: Demoted to a **\~200px corner minimap** once placement locks; click-to-expand; pulses/flashes on incoming hits
+
+### 7.2 Attacker Board — Cell Visual Lifecycle
+
+All rendering stays **inside the hex's clip path** — nothing leaks outside the cell boundary.
+| Age | Visual Treatment |
+|----|----|
+| **Fresh hit (this turn)** | Bright orange/red burn animation, bold turn-number badge, brief ship-fragment silhouette flash that fades to X |
+| **Recent (last 3–5 turns)** | Full-saturation X, large turn label, slight glow if part of an active contact track |
+| **Tracked (correlated to contact)** | Colored to that contact's track color, connected to siblings by faint vector arrow |
+| **Stale (>10 turns)** | Desaturated X, smaller turn label — **never removed** |
+| **Closed (ship sunk)** | Recolored to sunk-ship "case-closed" hue |
+| **Miss (any age)** | Small grey dot, fading slightly over time, never disappearing |
+
+
+**Multi-hit cells** show the most recent timestamp prominently with smaller earlier timestamps stacked in a corner. Hover reveals full history in sidebar popover.
+
+### 7.3 Hit Aura (Inference Aid — Toggle)
+
+A single hit generates a faint red ring around the cell representing uncertainty. The ring **grows with elapsed turns** — the ship has had time to wander further. A fresh hit = tight circle. A 10-turn-old hit = huge soft cloud covering a third of the board. **The player sees their information decaying in real time.**
+
+### 7.4 Contact Tracks
+
+**Dual mode — toggled via sidebar pill:**
+| Mode | Behavior |
+|----|----|
+| **AUTO** | Hits auto-correlate into tracks. Sidebar shows "Contact Alpha · 2 hits · heading NE · cooldown 3 (est)." Inferred arrows drawn automatically. Default for novices. |
+| **MANUAL** | Hits drop as orphans. Player drag-selects or shift-clicks to form a track. Inference aids activate only on asserted tracks. Optional "💡 3 hits might be one ship — apply?" suggester. For experienced players. |
+
+
+**Track confidence scoring:** When a track is formed, the engine computes whether the timestamps + positions fit any legal (heading, cooldown):
+
+* **Consistent**: fits cleanly → heading arrow drawn solid
+* **Forced**: fits, but only with specific constraints → constraints shown
+* **Inconsistent**: timestamps *can't* belong to one ship → track glows red
+
+### 7.5 Enemy Fleet Silhouette Panel
+
+Five ship silhouettes in the sidebar (5/4/3/3/2), each in one of:
+| State | Visual |
+|----|----|
+| **At large** | Full ink silhouette, no marks |
+| **Contact** | Silhouette + hit-count pip ("2/?") |
+| **Declared sunk** | Silhouette overlaid with ✕, greyed — *player's hypothesis* |
+| **Confirmed** | Wreck icon (post-game or optional in-game) |
+
+
+Click any silhouette to **declare it sunk** — the inference engine recalculates around this assertion. Wrong guesses waste turns chasing ghosts.
+
+### 7.6 Defender Fleet Panel (Own Ships)
+
+Compact sidebar panel, always visible:
+
+``` 1doG65ICCP
+▰▰▰▰▰  BB-01  cd 4→6  ●●●○○    ← 2 hits, 3 hp left
+         heading N · turn 31
+
+▰▰▰▰   CA-02  cd 3    ○○○○     ← undamaged
+
+💀      PT-05  SUNK turn 47      ← dimmed
+```
+
+
+Click any card to temporarily overlay that ship's actual trajectory on the main board (\~3 seconds).
+
+### 7.7 Firing UX — Bridge Metaphor
+
+1. **Hover** hex → subtle targeting reticle
+2. **Click** → reticle locks; **radial control blooms** with spread-pattern icons (tight pair, line ahead, wide spread, wedge). Each previews affected cells in ghost-orange on hover.
+3. **Teletype line** types out below the board:
+
+> `> TGT BEARING 045 · RANGE 6 · PATTERN: LINE AHEAD · FIRE FOR EFFECT_`
+
+4. **Confirm** → muzzle flash (warm vignette flare), beat of silence, then resolution:
+
+   * **Miss**: white-ink splash blooms, fades to grey dot. Quiet "plnk."
+   * **Hit**: orange/red flash, brief silhouette flicker, settles into persistent X. Distant *crump*.
+
+6. **Teletype console** (bottom of sidebar, scrollable, \~4-line visible) narrates each salvo with timestamp and result, including explicit **REVISIT** callouts:
+
+> `> SALVO 3 LANDS · TGT (3,0): HIT (REVISIT, last T=8)`
+
+### 7.8 Animation Language
+
+All animations match the parchment/ink aesthetic:
+
+* **Splash** = spreading wet circle that dries to a stain
+* **Hit** = scorch mark that smolders for a turn then cools to ink
+* **Sunk reveal** = ink line tracing the true trajectory across the board
+* **Cell burn** = perfectly radial within the hex (no directional bias that would leak heading info)
+
+### 7.9 Onboarding
+
+* **Pre-game intro animation** (\~20 seconds): 3–4 ghost-ships looping the board under wrap so the player pattern-matches "ships wrap around"
+* **First match is a tutorial** with slowed-down opponent ship and visible trajectory
+* **Post-sink replay**: shows the sunk ship's actual path so the player retroactively evaluates their inference
+
+
+## 8\. Simulation Findings & Constants
+
+### 8.1 Board Sizing
+| R | Cells | Ship density | First-hit (turns, salvo=2) | Verdict |
+|----|----|----|----|----|
+| 5 | 91 | 18.7% | \~3 | Too cramped |
+| 6 | 127 | 13.4% | \~4 | Borderline |
+| **7** | **169** | **10.1%** | **\~5** | ✅ **Recommended** |
+| **8** | **217** | **7.8%** | **\~6** | ✅ Alternate |
+| 9 | 271 | 6.3% | \~7 | Borderline sparse |
+| 10 | 331 | 5.1% | \~10 | Too sparse |
+
+
+### 8.2 Cycle Lengths Under Wrap (R=8)
+| Heading | Cycle length | % of board covered |
+|----|----|----|
+| S (0, +1) | **217** (Hamiltonian) | 100% |
+| SE (+1, 0) | 26 | 12% |
+| NE (+1, -1) | 25–42 (varies by start) | 12–19% |
+
+
+**Design implication:** Heading choice is a meaningful defender strategy axis. Long-cycle headings give better board coverage but more predictable returns. Short-cycle headings are stealthier but revisit sooner.
+
+### 8.3 Collision Frequency
+
+With 5-ship fleet, random headings, R=8, cd=2:
+
+* **31% of turns** have ≥1 collision (multi-ship cell overlap)
+* Only **1% of games** have zero collisions across 80 turns
+* With size-based cooldowns: rises to **34%**
+
+### 8.4 Same-Cell Revisit Timing
+
+For a size-4, cooldown-2 ship on a 26-step cycle at R=8:
+
+* Occupancy window per cell: **8 consecutive turns** (`size × cooldown`)
+* Gap between revisits: **44 turns** (`(cycle_len − size) × cooldown`)
+* 17 of 26 trajectory cells get multi-visited in 80 turns
+
+
+## 9\. Data Model
+
+### 9.1 Ship State (Defender-Side, Full Truth)
+
+```typescript UPjaJUQCTl
+interface Ship {
+  id: string;           // "BB-01", "DD-03", etc.
+  size: number;         // 2–5, immutable
+  hp: number;           // starts = size, decrements on hit, sunk at 0
+  anchor: { q: number, r: number };  // stern position
+  heading: number;      // index into HEX_DIRS (0–5)
+  cooldown: number;     // base + hits_taken
+  sinceMoved: number;   // ticks since last movement
+}
+```
+
+### 9.2 Probe Record (Attacker-Side)
+
+```typescript ESOa9G4Y97
+interface ProbeRecord {
+  turn: number;
+  cell: { q: number, r: number };
+  result: 'HIT' | 'MISS';
+  // attacker does NOT know: shipId, bodyIndex
+}
+```
+
+**A cell is not a state, it's a history.** The board accumulates probe records. The same cell can have many. Display is a function of the cell's full history.
+
+### 9.3 Contact Track (Attacker-Side Hypothesis)
+
+```typescript ri5qePVyVN
+interface ContactTrack {
+  id: string;           // "Alpha", "Bravo", etc.
+  hits: ProbeRecord[];  // attributed hits
+  inferredHeading?: number;
+  inferredCooldown?: number;
+  confidence: 'consistent' | 'forced' | 'inconsistent';
+  sunkDeclared: boolean;
+}
+```
+
+
+## 10\. Open Questions
+
+### 10.1 High Priority (Must resolve before coding gameplay)
+| \# | Question | Options | Leaning |
+|----|----|----|----|
+| **OQ1** | **Board radius: 7 or 8?** | R=7 (169 cells, tighter) vs R=8 (217, more room) | R=8 — more room for wrap dynamics, Hamiltonian S-heading |
+| **OQ2** | **Heading-cycle disclosure at placement** — do we tell the defender which headings are Hamiltonian vs short-cycle? | Show it / hide it / show after first game | Show it — it's a meaningful strategic axis |
+| **OQ3** | **Convergence problem** — after many turns with avoidance AI, ships may converge to parallel headings. Mitigation? | Periodic randomizer / bounded-corridor rule / accept it | Needs sim — flagged for testing |
+| **OQ4** | **Salvo dispersion: deterministic shape or RNG?** | Exact placement / small random scatter | Slight RNG — punishes long-range, rewards proximity, mirrors gunnery dispersion |
+| **OQ5** | **Probe records as source of truth** — confirm the cell-history model over per-cell-state? | History model / state model | History model — same cell can have many events |
+
+
+### 10.2 Medium Priority (Before beta)
+| \# | Question | Options |
+|----|----|----|
+| **OQ6** | **Track persistence after declared sink** — stay as "closed case" or release to orphan pool? | Closed but reversible (one-click un-declare) |
+| **OQ7** | **Teletype console** — ephemeral (current order only) or scrollable history? | Scrollable, \~4-line visible window |
+| **OQ8** | **Multi-hit pip on revisit cells** — show a small "N" badge for N hits? | Yes — at-a-glance multi-hit indication |
+| **OQ9** | **Defender cooldown band** — allow ±1 from base at placement? | v2 feature — keep uniform for v1 |
+| **OQ10** | **Fleet composition affects attacker salvo** — losing ships degrades your own fire quality? | v2 feature — compelling but complex |
+
+
+### 10.3 Low Priority / v2 Features
+| \# | Feature |
+|----|----|
+| **OQ11** | Dodge-turn collision avoidance (ship deviates 1 hex sideways) as "rough seas" mode |
+| **OQ12** | True turn-radius / agility ratings |
+| **OQ13** | Sonar pings as alternate probe type (returns distance-to-nearest instead of hit/miss) |
+| **OQ14** | "Ghost cone" inference aid showing all possible positions given uncertainty |
+| **OQ15** | Attacker's own fleet composition affects salvo accuracy (BB tight, DD wide) |
+| **OQ16** | Hardcore mode: no sink notification at all — attacker infers kills from absence of returns |
+
+
+## 11\. Existing Prototype
+
+The current prototype (Sea Battle | Design V3 in reference material) implements:
+
+* ✅ Hex board with flat-top orientation, configurable radius (4–9)
+* ✅ Toroidal wrap with correct offset vectors
+* ✅ Fleet placement UI with heading selection and position sliders
+* ✅ 4 render modes (Ink silhouette / Deck detail / Blueprint / NATO counter)
+* ✅ Running mode with tick-stepping simulation
+* ✅ Size-based cooldown (`interval = max(1, size − 1)`)
+* ✅ Priority-based collision avoidance with turn preference ordering and 4-tick lookahead
+* ✅ Ship wrap rendering (ghost overhang faded beyond board edge, solid clipped to board)
+* ✅ Speed chart showing per-ship actions each tick
+* ✅ Sidebar with collapsible sections, render mode selector, board controls, fleet cards
+* ✅ Compass, coordinate debug overlay, ship labels
+* ✅ Parchment/ink visual aesthetic with Bebas Neue headers, DM Mono data, Raleway body
+
+**Not yet implemented:**
+
+* ❌ Attacker view / probing UI
+* ❌ Hit/miss resolution and probe history
+* ❌ Damage model (HP, cooldown increment)
+* ❌ Contact tracking / inference aids
+* ❌ Firing animation (muzzle flash, splash, burn lifecycle)
+* ❌ Teletype console
+* ❌ Enemy fleet silhouette panel
+* ❌ Sunk reveal animation
+* ❌ Two-player networking
+* ❌ Hit aura (uncertainty radius)
+* ❌ Aim-point + spread-pattern firing
+* ❌ Minimap defender view during attack phase
+
+
+## 12\. Prior Art
+
+The moving-shapes-with-hidden-course direction is **essentially untrodden** in published Battleship variants:
+| Mechanic | Found in any published variant? |
+|----|----|
+| Hex grid | ✅ (2008 Hasbro — but static ships, split board) |
+| Moving ships with hidden course | ❌ (only "announced move" or "free teleport") |
+| Damage slows movement | ❌ |
+| Persistent "footprint" trail as inference signal | ❌ |
+| Torus wrap boundary | ❌ |
+| Salvo with spread patterns | ❌ (Salvo variant exists but fires 3 free probes) |
+
+
+The closest cousin is a variant where ships move in orthogonal directions but **the move must be announced** — the designers seemingly chose announcement because they didn't solve the imperfect-information bookkeeping. The **footprint mechanic** (timestamped hit marks as breadcrumb trail) is exactly the missing piece that lets movement stay hidden while giving the attacker inferential traction.
+
+
+

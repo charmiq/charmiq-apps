@@ -1,0 +1,345 @@
+<h1 style="text-align: center;">
+  Sea Battle | Attacker Progress
+</h1>
+
+Companion to `design.md`. This file tracks **what's being implemented in `sea-battle.html` and why** — running notes for the build, not part of the spec. Update as we go.
+
+---
+
+## 1\. Current Status
+
+* **Stages 0–6 done.** Stage 6b (MANUAL mode + suggester + turning + wrap-aware lines) explicitly skipped per user.
+
+* **Stage 7 redirect:** the original "reveal-on-sink-tick" plan broke ambiguity preservation (which is the whole point — the attacker shouldn't know mid-game *whether* they sunk a ship, let alone which). Reveal moves to **end of game only**.
+
+* **Next up: Stage 6c — Silhouette ↔ Hit Assignment.** Insert before Stage 7. Builds the mid-game mechanism for the player to commit hypotheses: click a silhouette, then click X marks to attribute them to that silhouette. Closes the "but how does the player connect hits to ships in real time?" gap that the EoG-only reveal opens up.
+
+  
+
+## 2\. Stage Plan
+| \# | Stage | Status |
+|----|----|----|
+| 0 | Refactor for clean per-perspective separation | done |
+| 1 | Toggle + bare Attacker board (ships hidden, probe history, click-to-probe) | done |
+| 2 | Cell visual lifecycle (§7.2) — age-based hit/miss treatments + multi-hit stacking | done |
+| 3 | Firing UX (§7.7) — reticle + spread patterns + teletype console | done |
+| 4 | Enemy fleet silhouette panel (§7.5) — 5/4/3/3/2 + declare-sunk | done |
+| 5 | Hit aura (§7.3) — uncertainty rings that grow with elapsed turns | done |
+| 6 | Contact tracks (§7.4) — AUTO inference engine + sidebar + on-board lines | done (MVP) |
+| 6b | Contact tracks polish — MANUAL mode, suggester, turning dynamics, wrap-aware lines | skipped |
+| 6c | Silhouette ↔ hit assignment — click silhouette, click X marks to attribute | done |
+| 7 | EoG perspective — state slot + sub-views (manual entry, not yet flow-triggered) | next |
+| 7b | Auto-trigger EoG + animated reveal sequence + wrap-aware trajectory lines | pending |
+
+**Out of scope** for this arc: §7.6 defender minimap when Attacker active, §7.9 onboarding/tutorial flow, audio cues.
+
+
+## 3\. What Landed
+
+### 3.-6 Stage 7 — End-of-Game perspective (state slot, not yet flow-triggered)
+
+**Why now.** Building the visual STATES before wiring a game flow on top. The user explicitly wants to verify every UX state in isolation. EoG is a third top-level perspective alongside Defender/Attacker, manually selectable from the seg.
+
+**Architecture.** Three top-level perspectives now: `Defender · Attacker · End of Game`. EoG is its own state — NO firing, NO aiming, NO assignment, NO probe-toggle, no shooting from any perspective via any handler. The `body[data-perspective="endgame"]` selector hides every defender-only and attacker-only chrome; new `.endgame-only` pane carries the EoG sidebar content.
+
+**Sub-views inside EoG.** A pill toggle inside the EoG pane: `FROM ATTACKER` vs `FROM DEFENDER`. Same underlying truth, different emphasis. State held in `state.endgameView`.
+| Board element | FROM ATTACKER | FROM DEFENDER |
+|----|----|----|
+| Probe history (X marks, miss dots) | full opacity, prominent | dimmed (\~45%) |
+| Ship hulls + trajectories + wrecks | dimmed (\~50%) | full opacity, prominent |
+| Sidebar | silhouette validation panel | fleet outcome panel |
+
+**Sidebar panels:**
+
+* `FROM ATTACKER` — silhouette validation: for each silhouette idx 0..4 show actual size (now revealed), did the player declare-sunk via assignment, was it actually sunk, verdict (`✓` correct / `✗` false positive / `?` missed an actual sink). Score line at top.
+* `FROM DEFENDER` — fleet outcome: per ship card showing sunk-or-survived, hits taken, distance traveled (from `sim.history`), final heading.
+
+**Gating audit (load-bearing — this is the user's explicit ask).** Every interaction has to be hard-disabled in EoG:
+
+* Hex click handler: `probingEnabled` gate now requires `state.perspective !== "endgame"` (was a latent bug — flipping Probe in Defender then switching to EoG would let clicks fire `probeCell`).
+* Silhouette card click → `toggleAssignmentMode`: card not rendered in EoG (panel is attacker-only). Belt-and-suspenders check inside the handler.
+* `setAim` / `fireDirectSalvo`: already gate on `state.perspective === "attacker"`. Confirm.
+* Spread picker, SHOT 1/2, teletype line: all attacker-only via existing perspective gating. EoG inherits that hiding automatically.
+* `Escape` key: clears aim + exits assignment — harmless no-op in EoG.
+* Step Forward/Back: KEPT functional in EoG. The user can scrub the sim and watch EoG update.
+* Inference aid toggles (Hit aura, Contact tracks): UI is attacker-only, so hidden in EoG. State persists.
+
+**Deferred to Stage 7b / when game flow lands:**
+
+* Auto-trigger EoG when `fleet.filter(s => s.sunk).length === 5` (right now it's manual via the seg button).
+* Animated reveal sequence (trajectory line draw, sequential ship reveals).
+* Wrap-aware trajectory polylines.
+* Click affordances inside EoG (hover wreck → see when, click silhouette → see truth highlight).
+
+### 3.-5 Stage 6c — Silhouette ↔ Hit Assignment
+
+**Why.** Once we decided the sunk reveal is end-of-game only (Stage 7), the player has nothing real-time to push their hypothesis onto. The silhouette panel was static decoration. 6c gives it teeth: the player commits attribution mid-game by tagging X marks to silhouettes. EoG reveal then validates those commitments against truth.
+
+**Mechanic.**
+
+* Click silhouette card body → toggle **assignment mode** for that silhouette. Card visually highlights with the silhouette's color.
+
+* In assignment mode, click any hex on the board:
+
+  * Hex has hit entries → toggle assignment of all hit entries at that cell to current silhouette.
+  * Hex has no hits → exit assignment mode.
+
+* Escape → exit assignment mode.
+
+* Click another silhouette → switch mode to it. Clicking an X that's tagged to silhouette A in B's mode re-tags it to B. **Moving X's between ships is implicit** — no special UI.
+
+**Data.**
+
+* `attacker.assignmentMode: number | null` — silhouette index currently being assigned (one at a time).
+* `hitLog[i].attackerAssignedSilhouette: number | null` — per-entry tag. Renderer reads this to tint the X mark.
+* `attacker.declaredSunk` — kept for manual "hunch" path (existing behavior preserved via a small skull-toggle on each card).
+
+**Visual.**
+
+* Each silhouette card shows: size + `M of N assigned` + a small skull toggle for manual declared-sunk + the cells visual (now tinted with silhouette color when count > 0).
+* Tagged X marks render in the silhouette's color (overrides default red); age treatment opacity still applies.
+* Enemy Fleet header shows total hit count: `2/5 confirmed sunk · 7 hits · 3 declared`.
+* Visually "declared sunk" if EITHER manual flag OR `assignedCount ≥ size`. Dimmed + red ✕ overlay either way.
+
+**Multi-hit cells.** Click on a cell with multiple hit entries → all entries on that cell flip together. Per-entry granularity deferred (rare case of two ships actually transiting one cell).
+
+**Contact tracks interaction.** Assignment color on the X mark and contact-track line color on the connecting segments are independent. If they disagree, that's information for the player.
+
+**Lifecycle.** `attacker.assignmentMode` and per-entry tags clear on resetSim / enterRunningMode / enterPlacementMode alongside the other attacker transient state.
+
+## What Landed
+
+### 3.-4 Stage 6 — Contact Tracks (§7.4) · MVP
+
+* **Inference engine (`inferTrack(hits)`).** Given a set of HIT probes, exhaustively searches `(size ∈ {2,3,4,5}) × (heading 0..5) × (cooldown ∈ {1..5}) × (first-hit body-cell index)` and returns every quadruple whose trajectory places a body cell at every hit's (q,r) at every hit's tick. Torus wrap is folded in: anchor positions are computed in raw axial space and `wrapHex` is applied at the body-cell comparison step (any unwrapped equivalent matches). Straight-line motion only — no turning, no post-hit cooldown bump. Both deferred.
+
+* **AUTO correlation (`computeContactTracks()`).** Greedy single-pass: process hits in tick order; for each new hit, try adding it to each existing track and pick the track whose feasibility set survives best (most constrained = most informative). If no track stays feasible, start a new one. **Inference IS the correlation criterion** — no separate distance/time heuristic.
+
+* **Confidence labels.**
+
+  * `1 HIT` — single-hit track, \~420 hypotheses, no real attribution.
+  * `CONSISTENT` — exactly one hypothesis survives. Heading/cooldown/size known.
+  * `FORCED` — multiple hypotheses survive but the set is constrained. UI shows the ambiguity count.
+  * `INCONSISTENT` — no hypothesis survives. Track glows red on board + sidebar.
+
+* **Sidebar Contacts panel** between Inference Aids and Teletype. One card per track with NATO phonetic name (Alpha/Bravo/Charlie…), hit count, inferred heading/cooldown/size (bold when narrowed to one, `N candidates` otherwise), confidence chip, and the hit list (`T2 (3,5) → T7 (4,5)`). Empty-state hint: `No contacts (toggle on to auto-correlate).`
+
+* **On-board lines** (`#layer-contacts`) — thin colored segments between consecutive hits in each track. One color per track from `TRACK_COLORS`. Inconsistent tracks render red + thicker; `CONSISTENT` tracks are solid, others dashed. Segments where `hexDistance > state.radius` are skipped — those almost certainly cross the torus wrap and a straight line would be misleading.
+
+* **Toggle**: `Auto contact tracks` in Inference Aids. CSS-driven visibility via `body[data-contact-tracks]`. When turning ON, we recompute since we don't maintain `attacker.contacts` while off (saves work in the common-off case). Reset alongside `declaredSunk` on lifecycle transitions.
+
+### 3.-3 Stage 5 — Hit Aura (§7.3)
+
+* **Toggle in a new `Inference Aids` sidebar section** between Enemy Fleet and Teletype. `state.showHitAura` (default `false` — it's an aid, not always wanted).
+* **CSS-driven visibility** via `body[data-hit-aura="on/off"]`. Toggle handler just flips the body attribute — no `renderBoard` call, no DOM rebuild. Layer is always rendered, just hidden when off.
+* **Aura layer position** in the layer stack: right after the vignette, before ships and markers. That way the X mark stays crisp on top of the soft aura ring.
+* **Radius growth.** `auraR = hexR * max(1, 1 + age * 0.7)`. Fresh hit ≈ 1 hex; age 10 ≈ 8 hexes (≈ ⅓ of an R=8 board), matching the spec phrasing.
+* **Stroke / opacity decay** with age too: `stroke = max(0.6, 2.0 - age * 0.08)`, `opacity = max(0.10, 0.32 - age * 0.012)`. Fresh rings are crisp and clearly red; old rings are wide, thin, and faint — natural "cloud" feel without a radial gradient.
+* **Hits only, not misses.** A miss is *confirmed-empty* info, not uncertain ship-position info. Drawing aura on misses would suggest the opposite. (The aura is an inference aid about ship MOTION; a miss tells you nothing about where any ship currently is.)
+
+### 3.-2 Stage 4 — Enemy Fleet Silhouette Panel (§7.5)
+
+* **Silhouettes show sizes only**, never class names (R18). `ENEMY_SILHOUETTES` = `[{idx:0,size:5}, {idx:1,size:4}, {idx:2,size:3}, {idx:3,size:3}, {idx:4,size:2}]`. Player-side identity is "silhouette idx", not "ship id" — the attacker has no truth mapping from one to the other.
+* **State.** `attacker.declaredSunk` is a `Set` of silhouette indices the player has marked. Cleared on `resetSim` / `enterRunningMode` / `enterPlacementMode`.
+* **Header tally.** `<N confirmed sunk> / 5 [· M declared]`. Confirmed count reads `fleet.filter(s => s.sunk).length` — just the count, never *which* (per R18). Declared count is the size of the player's hypothesis set.
+* **Render** via `buildEnemyFleetSilhouettes()` — DOM rebuild, called from `probeCell` (after every probe, so confirmed-count updates), lifecycle transitions, and `toggleDeclaredSunk()`. Each silhouette is a row: size label · inline SVG with N rounded-rect cell pips · status text. Declared-sunk rows dim, get an X overlay, and the left border turns red.
+* **Click to toggle.** Click on any silhouette toggles its membership in `declaredSunk`. Non-destructive — a wrong guess can be reversed by clicking again. (The design's intent is that wrong hypotheses *cost* you turns chasing ghosts; the UI doesn't punish you, the game state does, but that emerges only once contact tracks in Stage 6 surface "this hit can't belong to a declared-sunk silhouette".)
+* **Deferred to Stage 6:** the "Contact" state with hit-count pip (`2/?`). Requires hit→ship attribution from contact tracks, which doesn't exist yet. For now silhouettes are only "at large" or "declared sunk".
+* **Deferred to Stage 7:** the "Confirmed (wreck icon)" reveal — that's part of the sunk-reveal animation flow which renders the trajectory across the attacker's hit history.
+
+### 3.-1.5 Stage 3 redo — Firing UX, take 2 (click-click direct salvo)
+
+Stage 3 v1 (bottom-center 4-pattern picker) tested badly: picker too far from click, gaps between buttons caused hover-flash, no rotation control, clicked-aim cell visually forgotten by the time you reached the picker. Scrapped the picker entirely.
+
+* **No picker, no preset patterns.** The mechanic is *click-click*: first click sets the aim (golden reticle), second click on any other hex fires both as a salvo. The teletype line at the bottom of the board carries all the textual guidance.
+* **Hover preview = the entire UX surface.** On mouseenter into any cell while aim is locked, the cell paints ghost-orange and the teletype updates live: `> TGT (3,5) + (3,4) · TIGHT PAIR · FIRE FOR EFFECT_`. Move the mouse to a different cell → preview + label refresh. There's nothing to navigate to.
+* **Salvo label by hex distance** between the two clicked cells. `dist 1 → TIGHT PAIR`, `dist 2 → WIDE SPREAD`, `dist ≥ 3 → RANGE N`. Same `salvoLabelByDistance()` helper used by both the live teletype prompt and the Teletype console salvo header in the sidebar — one source of language.
+* **Cancel** by clicking the aim cell again or pressing Escape.
+* **Removed**: `SPREAD_PATTERNS`, `patternCells()`, `setPatternHover()`, `fireSalvo()`, `#spreadPicker` HTML/CSS, all picker button event handlers, the `patternKey` field on probe entries. Replaced by `attacker.hoverDestination` (single cell), `fireDirectSalvo(q, r)`, `setHoverDestination()`, mouseenter/leave on hex polygons.
+
+### 3.-1 Stage 3 — Firing UX (§7.7)
+
+* **Patterns.** Four spread patterns (`tight / line / wide / wedge`) defined in `SPREAD_PATTERNS` as axial offsets. Fixed N-axis orientation for v1; rotation is a follow-up if needed. `patternCells(aim, key)` wraps offsets onto the torus.
+
+* **State.** New `attacker` object at module scope holds `aim` + `patternHover`. Cleared on `enterPlacementMode`, `enterRunningMode`, `resetSim`, and on `setPerspective("defender")`. Salvos numbered via a module-scope `nextSalvoId`, reset alongside.
+
+* **Click flow.** In attacker, the hex click handler calls `setAim(q,r)` instead of probing. Clicking the same aim cell again unlocks (toggle). Switching perspective or pressing `Escape` clears.
+
+* **Visual feedback.**
+
+  * Aim reticle: golden double-ring + crosshair drawn at the aim cell.
+  * Preview layer: ghost-orange polygons fill the cells the hovered pattern would probe — wraps over the torus.
+  * Picker: 4 buttons (`TIGHT / LINE / WIDE / WEDGE`) in a row at the bottom-center of the board area; shows/hides via `body[data-aim="locked"]`.
+  * Teletype line: just above the picker, monospace, with a blinking cursor — updates live as the user hovers patterns (`> TGT (q,r) · PATTERN: LINE · FIRE FOR EFFECT_`).
+
+* **Salvo firing.** `fireSalvo(patternKey)` calls `probeCell()` once per cell with `{ salvoId, patternKey }` threaded through. Each probe still goes through the existing hit/miss/animation pipeline; clearAim runs after both cells resolve.
+
+* **Teletype console.** Sidebar `Probe Log` is now `Teletype`. `updateProbeLog()` groups entries by `salvoId` (consecutive entries with the same id collapse into one block). Each salvo header reads `> SALVO N · T# · PATTERN [· REVISIT] [· VESSEL DESTROYED]`; each cell line reads `(q,r) HIT|MISS [(last T#)]`. Single-cell probes from the defender's Probe-toggle tool render as standalone `> PROBE · T#` blocks (no salvoId on those entries).
+
+* **REVISIT detection.** Per entry, indexed once per `updateProbeLog` call — `O(N)` linear scan builds `lastVisitAt[i]`. Salvo headers say `REVISIT` if *any* cell in the salvo had a prior visit.
+
+### 3.0 Stage 2 — Cell Visual Lifecycle (§7.2)
+
+* **Age buckets** instead of a smooth gradient (per spec phrasing). Helpers `attackerHitAgeTreatment(age)` / `attackerMissAgeTreatment(age)` return a treatment object per bucket; rendering reads palette/opacity/font scale off it. Pure functions, module scope, just before section 5.
+* Hits: `Fresh (this turn)` bold + animated · `Recent (1-5)` full saturation · `Aging (6-10)` slight fade · `Stale (>10)` desaturated red-brown, small label.
+* Misses: never disappear — fade to a floor (`fillA: 0.18`, `lblOp: 0.30`).
+* **Cell-history grouping** for attacker (§9.2 "a cell is not a state, it's a history"): entries grouped by `(q, r)`, sorted by tick. Primary = most recent event drives the marker. Up to 3 older events stack as small color-coded badges in the top-right corner; overflow shows `+N`.
+* Defender side **unchanged** — defender markers visualize current damage, not historical timing. Defender doesn't get age fade.
+* **Refactor:** extracted `renderFreshHitBurst(entry)` and `renderFreshMissSplash(missG, slot, entry)` as closures inside `renderBoard()`. Both attacker and defender paths call them for fresh events — removed \~150 lines of duplication risk for Stage 3+.
+
+### 3.1 Perspective scaffolding
+
+* `state.perspective = "defender" | "attacker"` (default `"defender"`).
+* `setPerspective(p)` updates state, `body[data-perspective="..."]`, the seg control, the corner label, the meta text, then re-renders. Resets `sim.probeMode` on the way into Attacker.
+* Sidebar gets a `Perspective` segmented control at the very top. Defender sections are wrapped in `<div class="defender-only">`; Attacker sections in `<div class="attacker-only">`.
+* Visibility is **CSS-driven** by `body[data-perspective="..."] .defender-only / .attacker-only { display: none !important; }` — no JS show/hide churn.
+
+### 3.2 Attacker view (Stage 1)
+
+* Skipped in Attacker: ship hulls, sunk-ship hulls/wrecks, ship-cell highlights, the smoke particle system, ship labels.
+
+* Hit markers render at **probe location** in Attacker (defender keeps the stern→bow body-cell visualization).
+
+* Click-to-probe is automatic in Attacker once sim is Running. Defender retains its Probe toggle as a test tool.
+
+* Auto-promote: switching to Attacker while still in Placement calls `enterRunningMode()` — saves placement as initialPositions, starts the sim.
+
+* Attacker `#probeLog` shows HIT / MISS / "vessel destroyed" — no ship-class reveal (R18).
+
+  
+
+## 4\. Code Map
+
+Top-of-script comment block in `sea-battle.html` mirrors this map.
+| Section | Purpose | Perspective |
+|----|----|----|
+| 1\. DATA MODEL | fleet, sim state, ship speed model, probe logic, mode transitions | shared |
+| 2\. HEX GEOMETRY | axial ↔ px, wrap offsets, in-board, shipCells | shared |
+| 3\. SHIP FEATURE BUILDER | `buildShipFeatures()` (hull/deck/turret geometry) | shared, defender-only at runtime |
+| 4\. RENDERERS | A · Ink / B · Detail / E · Line / F · Counter | shared, defender-only at runtime |
+| 5\. BOARD RENDER | layered SVG pipeline; perspective-gated layers inside | **mixed — gate inline** |
+| 6\. SIDEBAR | `buildFleetList()` etc. | defender-side |
+| 7\. WIRE-UP | `setPerspective()` lives at the top, then all event handlers | shared |
+| 8\. SMOKE FX | rAF particle system reading ship truth | defender — `getSources()` short-circuits on Attacker |
+
+### Layer gating in `renderBoard()`
+| Layer | Defender | Attacker |
+|----|----|----|
+| Hex grid | ✅ | ✅ |
+| Highlights | ✅ (if `showHighlight`) | ❌ (would reveal truth) |
+| Vignette | ✅ | ✅ |
+| Ships (active) | ✅ | ❌ |
+| Sunk ships (hull + wreck icon) | ✅ | ❌ — will reintroduce in Stage 7 as the sunk-reveal animation |
+| Hit/miss markers | hits on body cells | hits at probe location |
+| Click targets | only if `sim.probeMode` | always (probing is the gameplay) |
+| Compass | ✅ | ✅ |
+
+
+## 5\. Decisions Log
+
+Non-obvious choices made during the build — capture the **why** so a stale memory doesn't rot.
+
+* **CSS-driven perspective visibility.** `body[data-perspective]` + `.defender-only` / `.attacker-only` classes. Reason: avoids `if (perspective === "x") show/hide` plumbing in every event handler. Add a class, the CSS handles the rest.
+
+* **Step/Reset/Tick controls are shared between perspectives** (not marked defender-only). Reason: while debugging we want to advance the sim from either side. Only Placement/Running toggle, Probe button, and the Speed Chart are defender-only.
+
+* **`updateLogs()` writes both `#hitLog` and `#probeLog` every time.** Reason: cheap, and avoids tracking which one is currently visible. CSS hides the wrong one.
+
+* **Attacker hit markers go at probe location**, defender uses body-cell index. The defender visualization (X marks filling stern→bow on damaged ships) is *defender semantics*; the attacker only ever knew where they probed, not which body cell hit.
+
+* **Auto-promote Placement → Running on entering Attacker** instead of refusing to probe. Reason: friction. Attacker doesn't care about placement; the user expressed the friction directly the moment they tested.
+
+* **Probe log avoids ship class on sink** ("vessel destroyed", not "DD-03 sunk") — per R18 (Standard difficulty default). When we add ship-class reveal as a difficulty option (Classic tier), it'll be configured here.
+
+* **Smoke is gated at the source.** `smoke.getSources()` returns `[]` in Attacker, so pool particles already in flight finish their lifetimes and no new ones spawn. No state reset needed on switch.
+
+* **Age buckets, not a smooth gradient** for the attacker hit lifecycle. Spec phrasing was bucketed (`Fresh / Recent / Stale`); a continuous fade would erase the cohort cue the spec is going for ("this hit is in the last-5-turns cohort"). If the visual transition looks too crunchy in play, the boundaries (0/5/10) are the dials — don't switch to a continuous interpolation.
+
+* **Cell history > per-marker rendering** for attacker. Each cell renders once, picks a primary marker from its newest event, stacks older ones as badges. Same code naturally handles HIT-after-MISS, MISS-after-HIT, multi-HIT (the inference signals from §6.3) — they're all "this cell has a non-trivial history".
+
+* **Defender markers are not aged.** For the defender they visualize *current damage state*, not historical timing. Stale-fading them would lie about which ships are still wounded. Only attacker reads timing as inference signal.
+
+* **Fresh-event animations extracted** to `renderFreshHitBurst` / `renderFreshMissSplash` closures inside `renderBoard`. They capture `hexR`, `markerLayer`, `defs`, `gridLayer` from the enclosing scope. Both perspectives call them — Stage 3 (salvo) does too.
+
+* **Picker is bottom-center, not radial-around-aim.** Spec says "radial control blooms around the aim cell" — but a radial layout puts the buttons exactly where the preview cells need to be visible, especially for `wide` (cells 2 away from aim) and `wedge`. Bottom-center keeps the preview unobstructed. Revisit if/when the picker grows beyond 4 patterns.
+
+* **Patterns are fixed N-axis** in v1. No rotation control. Easy to add later (mouse direction from aim, or `[`/`]` keys). Holding off until we have play feedback on whether rotation is actually wanted — fixed axis may be fine if the player picks aim deliberately. **Update (Stage 3 redo):** scrapped entirely. The new click-click mechanic lets the player pick any 2 cells in any orientation; no preset patterns means no rotation problem to solve.
+
+* **Click-click direct salvo > preset patterns.** Stage 3 v1's preset patterns came from the spec's "spread pattern" framing — useful as design vocabulary, terrible as UX. The picker created a detached UI surface \~700px from the click, with traverse-flash between buttons, fixed N-axis, and zero on-board feedback about which cell was selected. The redo (Stage 3 v2 / "click-click") drops the picker entirely: every 2-cell salvo is just two clicks on the board. All four original patterns (TIGHT/LINE/WIDE/WEDGE) are still achievable — they're configurations the player composes, not buttons they press. The teletype labels by hex distance (`TIGHT PAIR / WIDE SPREAD / RANGE N`) keeps the spec's vocabulary where it's still meaningful. Rule learned: when the spec describes UI as a list of presets, ask whether the *underlying mechanic* is presets or just one-of-many-configurations. If the latter, expose the configuration space directly.
+
+* **`attacker` is a separate state object** from `state` and `sim`. `state` is UI config (perspective, render mode, board params); `sim` is the persistent simulation state (tick, history, hitLog); `attacker` is *transient interaction state* (aim, patternHover) that's meaningless outside the firing flow. Keeping them separate prevents perspective-switch logic from accidentally clobbering each others' fields.
+
+* **Toggle aim by re-clicking the aim cell** instead of requiring Escape or a click-outside handler. Less new keyboard/click vocabulary for the player to learn. Escape still works.
+
+* **CSS-driven picker visibility via `body[data-aim="locked"]`** — same pattern as `data-perspective`. JS sets the attribute once in `refreshAttackerOverlay()`; CSS handles show/hide. Avoids one-off `.classList.toggle` calls scattered across the firing flow.
+
+* **Salvo-grouped teletype, not chronological flat list.** Spec example showed `> SALVO 3 LANDS · TGT (3,0): HIT (REVISIT, last T=8)`. Grouping in the renderer (`updateProbeLog`) instead of storing a "salvo" entity in `sim.hitLog` keeps the data model flat — every probe is still a single entry; the salvoId on each entry is enough for the grouping at display time.
+
+* **Defender probes (Probe-toggle tool) render as `> PROBE · T#`**, not as 1-cell salvos. They don't have a salvoId. That visually distinguishes "I'm testing as defender" from "I'm playing as attacker" in the teletype.
+
+* **Assignment is the commit; declared-sunk is the hunch — both alive in parallel.** Two paths into the same `appearsSunk` visual: (a) skull-toggle on the card → manual `declaredSunk` flag, hypothesis without evidence; (b) hit assignment via card-body click + X clicks → when `assignedCount ≥ size`, the silhouette is `fulfilled` and auto-appears sunk. Visually they merge (X overlay either way); meta text tells which path lit it up (`DECLARED SUNK` vs `ACCOUNTED FOR` vs `DECLARED · ACCOUNTED FOR`). Removing an X drops back below `size` and the auto-appears bit turns off — but a manual `declaredSunk` flag persists across that. Two paths, one display, predictable rules.
+
+* **Assignment is silhouette-driven, not X-driven.** Considered "click X → pick silhouette" (X-driven) — adds a popover/menu and breaks the existing fast-click rhythm. Silhouette-driven keeps it modal: pick the silhouette you care about, paint X marks until you're done, then click off. Moving X's between silhouettes falls out — enter target silhouette's mode, click the (already-tagged) X, re-tag. No special "move X" affordance.
+
+* **Aim/fire and assignment are mutually exclusive modes.** Entering assignment clears any locked aim (the picker goes away). Entering aim doesn't fire if you're in assignment mode — the click-to-aim branch is gated. Modal feels right because the player IS doing two different things: firing vs analyzing.
+
+* **Clicking empty cell in assignment mode exits.** Not "do nothing" — that felt like dead clicks. Treating non-hit clicks as "I'm done assigning" matches the gesture of clicking-away-to-deselect that's used elsewhere.
+
+* **Silhouette colors are distinct from track colors AND red.** `SILHOUETTE_COLORS = [blue, teal, green, amber, purple]` — deliberately no red. Default unassigned X marks are red (Stage 1 convention); a red silhouette color would make "tagged to silhouette 0" and "unassigned" visually identical on the board. Also distinct from `TRACK_COLORS` so auto-clustered tracks and player-committed attribution don't collide. Whenever a new color-coded signal is added, the rule is: pick from a palette that can't be confused with any pre-existing color signal.
+
+* **Inference IS the correlation criterion for AUTO tracks.** Considered (and rejected) a heuristic clustering first pass — "hits within N hex-distance and M ticks belong together" — because the heuristic constants would have to be picked somehow, and a heuristic that's right would basically be re-deriving the inference. So the engine itself decides: a new hit joins the track whose feasibility set stays best-constrained after the addition; if no track stays feasible, start a new one. One source of truth.
+
+* **Search space deliberately narrow.** `(size ∈ {2,3,4,5}) × (heading 0..5) × (cooldown ∈ {1..5}) × first-hit-body-index`. ≈600 hypotheses per hit. Fast enough to recompute on every probe and on every toggle-on. NOT yet modeling: post-hit cooldown bump (would expand cooldown set per hypothesis), turning (would explode the heading-per-segment space), or `wrapHex` of the *anchor* (handled at the body-cell comparison step instead — unwrapped equivalents are matched there). Each deferred piece is its own future round.
+
+* **Single-hit tracks are `1 HIT`, not `FORCED`.** A single hit has \~420 feasible hypotheses (per §6.2 \~24 in the spec's simpler model, more here because we include size + body-cell index too). Labeling those as `FORCED` would be technically correct but useless; the player gets no information. Special-case the 1-hit confidence label so the UI is honest about what's known.
+
+* **Track lines: skip when `hexDistance > state.radius`.** Straight-line lines between hits in the same track look fine when both are nearby, but wrap-spanning tracks would draw a line right across the board which is visually wrong. Quick threshold catches the "almost certainly wrapped" case. Wrap-aware line rendering (draw segments via the same wrap-offset vectors the ships use) is deferred to a 6b round.
+
+* **CONSISTENT vs FORCED stroke style on board.** Solid for `CONSISTENT`, dashed for `FORCED`/`1 HIT`, red+thicker for `INCONSISTENT`. Mirrors the sidebar confidence chip — the player can read the same answer from either glance.
+
+* **One decay clock for everything attacker-side that ages.** `AURA_FADE_TICKS` is the single knob; `HIT_RECENT_THRU = AURA_FADE_TICKS` and `HIT_AGING_THRU = AURA_FADE_TICKS * 2` derive from it. Hit color buckets (Fresh/Recent/Aging/Stale), miss-dot opacity buckets, and aura fade all decay on the same schedule, so the player reads ONE timeline, not three. If we tune the feel, change `AURA_FADE_TICKS` and the rest tracks automatically.
+
+* **`hexR` is the hex circumradius, NOT the cell-to-cell distance.** Bit me in Stage 5: the hit aura formula used `hexR` as the growth unit and the rings landed at \~1.4 cell radii when the design said "2 hexes at age 2". Cell-to-cell distance for the hex grid is **`√3 · hexR ≈ 1.73 · hexR`** — that's the unit to use whenever a length expresses "N cells away" (aura radii, contact-track distances in Stage 6, sunk-reveal trajectory spans in Stage 7). The strict physics bound for aura growth would be ½ cell/tick (PT cd=2 post-hit) plus a static body-extent term up to 4 cells — but that contradicts "fresh = tight." Aura is aesthetic decay, not reachability; 1 cell per tick is the right rate. Soft-capped at `state.radius` cells so old rings don't grow off-board.
+
+* **Hit aura is on hits only.** A miss tells you "no ship was at this cell at this tick" — that's information, but it's *negative* and *certain*. The aura models *uncertainty about current ship position*; a miss has nothing to do with that. If the design ever wants a "confirmed-empty" decay (the cell *was* empty at T=5, but a ship might be there now), that's a different visual — probably a grey dot that subtly drifts, not a red ring.
+
+* **CSS-driven toggle** for hit aura (and the perspective / aim attrs before it). Pattern: `body[data-X]` + a `display: none` rule. JS just flips the attribute. Avoids the `renderBoard`-on-every-toggle pattern that bit us in Stage 3 (aim change → re-render → animation replay/wipe).
+
+* **Silhouettes carry a `idx`, not a `shipId`.** The attacker has no truth-mapping from "silhouette I see" to "ship the defender placed". Wiring `idx → shipId` would leak ship class on declaration. Stage 6 contact tracks will let the player *correlate* hits to a silhouette themselves; the engine never makes that mapping for them.
+
+* **Silhouette panel rebuilds on every probe**, not just on confirmed-sink events. The "declared" count can change between probes (player toggling), and rebuilding is cheap (5 DOM rows). Avoids tracking dirty state across the per-probe update flow.
+
+* **Confirmed count is from `fleet.filter(s => s.sunk).length`** — reading the truth side directly. The attacker only sees the *count* in the UI, not which ship. This is intentional: the count drives end-of-game ("all 5 sunk = game over") but doesn't leak class. When difficulty tiers land (Stage 4 OQ), Classic tier would additionally reveal the class on each sink; Standard/Hardcore stay count-only.
+
+* **Fresh-event animation needs THREE things working together** (learned the hard way over two passes — see commit history). Stage 3 broke animations because:
+
+  1. **Replay-on-render bug:** `isFresh = entry._idx === freshIndex && entry.tick === sim.tick` stays true the whole tick. Stage 3 added incidental re-renders (aim/hover/perspective) — each replayed the last probe's burst at the previous aim location.
+  2. **Wipe-on-render bug:** Every `renderBoard()` does `svg.innerHTML = ""`. So a salvo that calls `probeCell` twice in a row had the first cell's animation DOM destroyed by the second cell's render before the browser ever painted it. Only the second cell's animation was visible.
+  3. **My first fix introduced a third bug:** A `lastAnimatedEntryIdx` high-water mark stopped replays — but `fireSalvo` ends with `clearAim()` which called `renderBoard()`. That render wiped the just-appended animation DOM AND the guard prevented re-adding it. Net result: zero animations.
+
+  The correct fix is **three pieces in concert**:
+
+  * **`freshIndices` Set** (not single index): every entry `> lastAnimatedEntryIdx` with `tick === sim.tick` animates. Multiple entries can be fresh at once.
+  * **`probeCell(opts.skipRender)` + batched `fireSalvo`:** the first cell of a salvo skips its render; the second cell's `renderBoard` sees both entries in `freshIndices` and animates both at once.
+  * **Surgical `updateAimLayer()` / `updatePreviewLayer()`:** `setAim` / `setPatternHover` / `clearAim` directly mutate `#layer-aim` and `#layer-preview` via a module-scope `renderCache` (cached `svg` / `cellByKey` / `hexR` from the last full render). No `renderBoard()` call → no SVG wipe → in-flight animations survive aim/hover changes. `clearAim` after a salvo is now surgical and doesn't kill the animation DOM that `probeCell` just appended.
+
+  `sim.lastAnimatedEntryIdx` is reset to `-1` on `resetSim` / `enterRunningMode` / `enterPlacementMode`. Bumped to `hitLog.length - 1` at the end of every `renderBoard`. Lesson for future stages: any new interaction handler that *just* updates UI state (without changing sim state) should reach for the surgical pattern, NOT `renderBoard`.
+
+  
+
+## 6\. Open Questions Worth Re-Visiting
+| \# | Question | Surfaces in | Default |
+|----|----|----|----|
+| OQ4 (from design.md) | Salvo dispersion: deterministic or RNG? | Stage 3 (firing UX) | TBD — flag at the time |
+| New | Should Attacker have its own Step/Reset, or is sharing the defender's enough? | TBD | Sharing for now |
+| New | Difficulty tier (Classic / Standard / Hardcore) — where does the config live? | Stage 4 (sink notification) | Standard default; punt until Stage 4 |
+| New | Sunk wreck icon visibility in Attacker — show at the sink location, or only as part of the §7.8 reveal? | Stage 7 | Probably show post-reveal, fade in with the trajectory line |
+
+
+## 7\. Reminders for Next Session
+
+* The file map at top-of-script in `sea-battle.html` is the authoritative quick reference; this doc is for *what we're building and why*.
+* New attacker-only elements go inside `<div class="attacker-only">` in the sidebar; new defender-only inside `<div class="defender-only">`. Same for board overlay (class on the element itself).
+* Probe history shape: `{ tick, q, r, result: 'HIT'|'MISS', shipId?, shipName?, bodyIndex?, sunk? }`. Attacker code must NOT read `shipId`/`shipName`/`bodyIndex` from the entry — those are defender truth. (R18.)
+* `cellByKey[\`${q},${r}\`\]`is the lookup for any hex's`{px, py, cell}`after`renderBoard()\` populates it.
+* Do **not** add new updateHitLog calls — call `updateLogs()` so both panels stay in sync.

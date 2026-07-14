@@ -1,0 +1,1380 @@
+<h1 style="text-align: center;">
+  Sea Battle | Design V1
+</h1>
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part>In the reference material you'll find the spec for our new game. I now want to talk through what the design of it will be. I want to zero in on the gameboard / gameplay since we can derive everything from that.
+
+I want SUPER CLEAN. Almost like a blueprint. But I want the game pieces (whatever they may be. We haven't necessarily locked on ships. Especially given the hexagonal pattern. It might be a little odd. But I can imagine you having a shape on top of the lit up hexagons). It can be "rendered realistic" shapes (i.e. it can be stylized simplistic forms. It just needs to be super clean.) the intent is to have a blueprint like base on which realistic looking things sit on top. So think about an old World War II map with the actual physical things put on top.
+
+Very similar to this:
+
+<img asset-id="BuoGZqRhLX0DluHS6XQ5" asset-source="{&quot;llmConfigurationProvider&quot;:&quot;generative-ai&quot;,&quot;llmModel&quot;:&quot;gemini-2.5-flash-image&quot;,&quot;sourceType&quot;:&quot;code-execution&quot;,&quot;mimeType&quot;:&quot;image/png&quot;}" asset-store-status="stored" src="https://firebasestorage.googleapis.com/v0/b/platform-prod-390720.appspot.com/o/a%2Ff%2FoIAIJz43eqWLDyUxW7CMOYnj0Md2%2FBuoGZqRhLX0DluHS6XQ5?alt=media&amp;token=b16437cf-3c61-4a19-bd83-919ffa216d85" width="370" />
+
+The background is dead-right. (Though we do need to talk about the orientation of the board WRT the user. Top-down? ¾? In 3d so that the user can choose?) We're going to have to render these ships. AND! We have to figure out what it looks like when it's looping. (Do we just "crop" it with a fade out?) Focus on the ships in this round. It doesn't need to be photo realistic. It's fine if it is probably cause then we can just cut them out and mask them and place them on top. But I would really like something that is "rendered" but still somehow realistic. Picture what you could do in GL programmatically but have it still look incredible. 
+
+Focus on the "ships" or whatever we're thinking of doing. I want you to generate in either SVG or any JS library (i.e. as an application). Give me a bunch of options. 
+
+<agent-execution agent-id="5BmKo6FjFmGGT9rfdr1R" execution-id="LyfXdz6x9C0hwYps7JAi" name="Code Execution and Data Viz V2" state="complete" usage-record-id="e9c77ab5835cda7a3932878f1276b95b" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="3uC4n2KbTq" provider="anthropic" reasoning-id="TOffmQ8KwAKMsXomDJKa" status="completed" signature="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" reasoning="%5B%22%22%5D"></agent-reason>Alright Rob, let me push on this. The reference image nails the "operations table" aesthetic — kraft/parchment base, thin hex lines, real objects on top. The interesting tension is that we're going **programmatic-realistic**, not photo. So I'll lean into things that GL/SVG can do *natively* (lighting, gradients, geometry) rather than trying to fake photography.
+
+Before I drop the comparison app, let me name the design axes I'm pulling on, because the choice between these isn't just "which looks coolest" — each one implies a different camera, a different render pipeline, and a different answer to your wrap-edge question:
+| Axis | Endpoints |
+|----|----|
+| **Camera** | Pure top-down ↔ ¾ isometric ↔ orbit-able 3D |
+| **Fidelity** | Pictogram (NATO counter) ↔ Silhouette ↔ Detailed model |
+| **Aesthetic** | "Drawn on the map" (matches blueprint) ↔ "Resting on the map" (contrast against blueprint) |
+| **Renderer** | SVG (cheap, crisp, 2D-only) ↔ Canvas2D ↔ WebGL/Three.js (real lighting, real rotation) |
+
+
+Top-down + WebGL is the sweet spot for your "GL programmatically but looks incredible" instinct, because top-down lets you cheat 3D modeling massively (you only need to see the deck) while still getting real shadows and depth-of-field. I'll show that one alongside SVG-only options so you can feel the tradeoff.
+
+Let me build the comparison.<agent-tool id="ZDJMEYphQj" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_01FFDyd8UDdVU9ksV8HwJ8QG" tool-type="code_execution" name="text_editor_code_execution" is-executable="false" status="completed">
+  <tool-call>
+{"command":"create","path":"/tmp/ship_render_options.html","file_text":"&lt;!DOCTYPE html&gt;\n&lt;html lang=\"en\"&gt;\n&lt;head&gt;\n&lt;meta charset=\"UTF-8\" /&gt;\n&lt;title&gt;Sea Battle — Ship Render Options&lt;/title&gt;\n&lt;style&gt;\n  :root {\n    --paper: #e8dcc0;\n    --paper-2: #d9c89f;\n    --ink: #3a2e1c;\n    --ink-2: #5a4a30;\n    --accent: #1f3a5f;\n    --hex-line: rgba(58,46,28,0.45);\n    --shadow: rgba(0,0,0,0.28);\n  }\n  * { box-sizing: border-box; }\n  body {\n    margin: 0;\n    font-family: -apple-system, \"Segoe UI\", Roboto, sans-serif;\n    background: #2a2620;\n    color: #ddd;\n    padding: 20px;\n  }\n  h1 { margin: 0 0 4px 0; font-weight: 300; letter-spacing: 1px; }\n  .sub { color: #999; margin-bottom: 20px; font-size: 13px; }\n  .controls {\n    display: flex; gap: 14px; align-items: center;\n    background: #1d1a15; padding: 10px 14px; border-radius: 6px;\n    margin-bottom: 20px; flex-wrap: wrap;\n  }\n  .controls label { font-size: 12px; color: #aaa; }\n  .controls select, .controls input[type=range] { vertical-align: middle; }\n  .grid {\n    display: grid;\n    grid-template-columns: repeat(2, 1fr);\n    gap: 18px;\n  }\n  .card {\n    background: linear-gradient(135deg, var(--paper) 0%, var(--paper-2) 100%);\n    border-radius: 4px;\n    overflow: hidden;\n    box-shadow: 0 8px 24px rgba(0,0,0,0.4);\n    position: relative;\n  }\n  .card-header {\n    position: absolute; top: 0; left: 0; right: 0;\n    padding: 10px 14px;\n    background: rgba(0,0,0,0.65);\n    color: #eee;\n    font-size: 12px;\n    letter-spacing: 0.5px;\n    z-index: 10;\n    display: flex; justify-content: space-between; align-items: center;\n  }\n  .card-header b { font-weight: 600; letter-spacing: 1px; }\n  .card-header span { color: #aaa; font-size: 11px; }\n  .stage {\n    position: relative;\n    width: 100%;\n    aspect-ratio: 16 / 10;\n    overflow: hidden;\n  }\n  .stage svg, .stage canvas {\n    position: absolute; inset: 0; width: 100%; height: 100%;\n    display: block;\n  }\n  .legend {\n    position: absolute; bottom: 8px; right: 12px;\n    font-size: 10px; color: var(--ink-2);\n    font-family: \"Courier New\", monospace;\n    text-align: right;\n    line-height: 1.3;\n  }\n  .compass {\n    position: absolute; bottom: 8px; left: 12px;\n    width: 48px; height: 48px;\n    opacity: 0.55;\n  }\n&lt;/style&gt;\n&lt;/head&gt;\n&lt;body&gt;\n\n&lt;h1&gt;Sea Battle · Ship Render Options&lt;/h1&gt;\n&lt;div class=\"sub\"&gt;Same blueprint base in each. Same 4 ships (sizes 5/4/3/2) on the same headings. Different rendering approaches.&lt;/div&gt;\n\n&lt;div class=\"controls\"&gt;\n  &lt;label&gt;Heading: &lt;select id=\"heading\"&gt;\n    &lt;option value=\"0\"&gt;E&lt;/option&gt;\n    &lt;option value=\"60\"&gt;SE&lt;/option&gt;\n    &lt;option value=\"120\"&gt;SW&lt;/option&gt;\n    &lt;option value=\"180\"&gt;W&lt;/option&gt;\n    &lt;option value=\"240\"&gt;NW&lt;/option&gt;\n    &lt;option value=\"300\"&gt;NE&lt;/option&gt;\n  &lt;/select&gt;&lt;/label&gt;\n  &lt;label&gt;Damage: &lt;input id=\"damage\" type=\"range\" min=\"0\" max=\"3\" value=\"0\" step=\"1\"&gt;&lt;/label&gt;\n  &lt;span id=\"dmgLabel\" style=\"font-size:12px;color:#aaa;\"&gt;0 hits&lt;/span&gt;\n  &lt;label style=\"margin-left:auto;\"&gt;&lt;input type=\"checkbox\" id=\"showFootprint\" checked&gt; Show footprint trail&lt;/label&gt;\n&lt;/div&gt;\n\n&lt;div class=\"grid\"&gt;\n\n  &lt;!-- ============ OPTION A: SVG Silhouette (top-down ink) ============ --&gt;\n  &lt;div class=\"card\"&gt;\n    &lt;div class=\"card-header\"&gt;&lt;b&gt;A · INK SILHOUETTE&lt;/b&gt;&lt;span&gt;SVG · top-down · matches the map&lt;/span&gt;&lt;/div&gt;\n    &lt;div class=\"stage\" id=\"stageA\"&gt;&lt;/div&gt;\n  &lt;/div&gt;\n\n  &lt;!-- ============ OPTION B: SVG Detailed Silhouette (top-down miniature) ============ --&gt;\n  &lt;div class=\"card\"&gt;\n    &lt;div class=\"card-header\"&gt;&lt;b&gt;B · DECK DETAIL&lt;/b&gt;&lt;span&gt;SVG · top-down · features visible (turrets, bridge)&lt;/span&gt;&lt;/div&gt;\n    &lt;div class=\"stage\" id=\"stageB\"&gt;&lt;/div&gt;\n  &lt;/div&gt;\n\n  &lt;!-- ============ OPTION C: SVG Faux-3D ¾ view ============ --&gt;\n  &lt;div class=\"card\"&gt;\n    &lt;div class=\"card-header\"&gt;&lt;b&gt;C · ¾ MINIATURE&lt;/b&gt;&lt;span&gt;SVG · isometric · \"wargaming piece\" feel&lt;/span&gt;&lt;/div&gt;\n    &lt;div class=\"stage\" id=\"stageC\"&gt;&lt;/div&gt;\n  &lt;/div&gt;\n\n  &lt;!-- ============ OPTION D: WebGL real 3D ============ --&gt;\n  &lt;div class=\"card\"&gt;\n    &lt;div class=\"card-header\"&gt;&lt;b&gt;D · GL LOW-POLY&lt;/b&gt;&lt;span&gt;Three.js · real lighting &amp; shadow · programmatic&lt;/span&gt;&lt;/div&gt;\n    &lt;div class=\"stage\" id=\"stageD\"&gt;&lt;/div&gt;\n  &lt;/div&gt;\n\n  &lt;!-- ============ OPTION E: Blueprint line drawing ============ --&gt;\n  &lt;div class=\"card\"&gt;\n    &lt;div class=\"card-header\"&gt;&lt;b&gt;E · BLUEPRINT LINE&lt;/b&gt;&lt;span&gt;SVG · ship drawn AS the map · maximally diegetic&lt;/span&gt;&lt;/div&gt;\n    &lt;div class=\"stage\" id=\"stageE\"&gt;&lt;/div&gt;\n  &lt;/div&gt;\n\n  &lt;!-- ============ OPTION F: NATO Counter ============ --&gt;\n  &lt;div class=\"card\"&gt;\n    &lt;div class=\"card-header\"&gt;&lt;b&gt;F · COMMAND COUNTER&lt;/b&gt;&lt;span&gt;SVG · pictogram · max readability&lt;/span&gt;&lt;/div&gt;\n    &lt;div class=\"stage\" id=\"stageF\"&gt;&lt;/div&gt;\n  &lt;/div&gt;\n\n&lt;/div&gt;\n\n&lt;script src=\"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\"&gt;&lt;/script&gt;\n&lt;script&gt;\n/* =====================================================================\n   HEX GEOMETRY (pointy-top, axial coords)\n   ===================================================================== */\nconst HEX_R = 26;                       // hex radius (px)\nconst HEX_W = Math.sqrt(3) * HEX_R;     // pointy-top width\nconst HEX_H = 2 * HEX_R;                // pointy-top height\nconst HEX_VSTEP = 0.75 * HEX_H;         // vertical step between rows\n\n// Axial -&gt; pixel (pointy-top)\nfunction axialToPx(q, r) {\n  const x = HEX_W * (q + r/2);\n  const y = HEX_VSTEP * r;\n  return { x, y };\n}\n\n// 6 neighbor directions for pointy-top (E, SE, SW, W, NW, NE)\nconst HEX_DIRS = [\n  { q: +1, r:  0 },   // E\n  { q:  0, r: +1 },   // SE\n  { q: -1, r: +1 },   // SW\n  { q: -1, r:  0 },   // W\n  { q:  0, r: -1 },   // NW\n  { q: +1, r: -1 },   // NE\n];\n// Heading angles in degrees (for ship rotation, 0 = East/right)\nconst HEAD_ANGLES = [0, 60, 120, 180, 240, 300];\n\n/* =====================================================================\n   BLUEPRINT BASE LAYER (shared)\n   ===================================================================== */\nfunction makeBlueprintBase(width, height, opts={}) {\n  const svgNS = \"http://www.w3.org/2000/svg\";\n  const svg = document.createElementNS(svgNS, \"svg\");\n  svg.setAttribute(\"viewBox\", `0 0 ${width} ${height}`);\n  svg.setAttribute(\"preserveAspectRatio\", \"xMidYMid slice\");\n\n  // Defs: paper texture, shadow filter, ship shadow filter\n  const defs = document.createElementNS(svgNS, \"defs\");\n  defs.innerHTML = `\n    &lt;radialGradient id=\"paperVignette\" cx=\"50%\" cy=\"50%\" r=\"70%\"&gt;\n      &lt;stop offset=\"0%\" stop-color=\"#f0e4c8\" stop-opacity=\"0.0\"/&gt;\n      &lt;stop offset=\"70%\" stop-color=\"#a08858\" stop-opacity=\"0.08\"/&gt;\n      &lt;stop offset=\"100%\" stop-color=\"#5a4628\" stop-opacity=\"0.35\"/&gt;\n    &lt;/radialGradient&gt;\n    &lt;filter id=\"grain\" x=\"0\" y=\"0\" width=\"100%\" height=\"100%\"&gt;\n      &lt;feTurbulence type=\"fractalNoise\" baseFrequency=\"0.9\" numOctaves=\"2\" seed=\"3\"/&gt;\n      &lt;feColorMatrix values=\"0 0 0 0 0.2  0 0 0 0 0.15  0 0 0 0 0.08  0 0 0 0.06 0\"/&gt;\n      &lt;feComposite in2=\"SourceGraphic\" operator=\"in\"/&gt;\n    &lt;/filter&gt;\n    &lt;filter id=\"shipShadow\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"&gt;\n      &lt;feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"1.8\"/&gt;\n      &lt;feOffset dx=\"1.5\" dy=\"2.5\" result=\"off\"/&gt;\n      &lt;feComponentTransfer&gt;&lt;feFuncA type=\"linear\" slope=\"0.55\"/&gt;&lt;/feComponentTransfer&gt;\n      &lt;feMerge&gt;&lt;feMergeNode/&gt;&lt;feMergeNode in=\"SourceGraphic\"/&gt;&lt;/feMerge&gt;\n    &lt;/filter&gt;\n    &lt;filter id=\"hardShadow\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"160%\"&gt;\n      &lt;feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"0.6\"/&gt;\n      &lt;feOffset dx=\"1\" dy=\"1.6\" result=\"off\"/&gt;\n      &lt;feComponentTransfer&gt;&lt;feFuncA type=\"linear\" slope=\"0.7\"/&gt;&lt;/feComponentTransfer&gt;\n      &lt;feMerge&gt;&lt;feMergeNode/&gt;&lt;feMergeNode in=\"SourceGraphic\"/&gt;&lt;/feMerge&gt;\n    &lt;/filter&gt;\n  `;\n  svg.appendChild(defs);\n\n  // Hex grid background\n  const cx = width/2, cy = height/2;\n  const cols = Math.ceil(width / HEX_W) + 2;\n  const rows = Math.ceil(height / HEX_VSTEP) + 2;\n\n  const grid = document.createElementNS(svgNS, \"g\");\n  grid.setAttribute(\"stroke\", \"rgba(58,46,28,0.45)\");\n  grid.setAttribute(\"stroke-width\", \"0.7\");\n  grid.setAttribute(\"fill\", \"none\");\n\n  for (let r = -rows; r &lt;= rows; r++) {\n    for (let q = -cols; q &lt;= cols; q++) {\n      const { x, y } = axialToPx(q, r);\n      const px = x + cx, py = y + cy;\n      if (px &lt; -HEX_R || px &gt; width + HEX_R || py &lt; -HEX_R || py &gt; height + HEX_R) continue;\n      const pts = [];\n      for (let i = 0; i &lt; 6; i++) {\n        const ang = (Math.PI/180) * (60*i - 30); // pointy-top\n        pts.push(`${(px + HEX_R*Math.cos(ang)).toFixed(2)},${(py + HEX_R*Math.sin(ang)).toFixed(2)}`);\n      }\n      const poly = document.createElementNS(svgNS, \"polygon\");\n      poly.setAttribute(\"points\", pts.join(\" \"));\n      grid.appendChild(poly);\n    }\n  }\n  svg.appendChild(grid);\n\n  // Vignette overlay\n  const vig = document.createElementNS(svgNS, \"rect\");\n  vig.setAttribute(\"width\", width); vig.setAttribute(\"height\", height);\n  vig.setAttribute(\"fill\", \"url(#paperVignette)\");\n  svg.appendChild(vig);\n\n  // Compass rose (bottom-left)\n  const compass = document.createElementNS(svgNS, \"g\");\n  compass.setAttribute(\"transform\", `translate(40, ${height-45})`);\n  compass.setAttribute(\"opacity\", \"0.45\");\n  compass.innerHTML = `\n    &lt;circle r=\"22\" fill=\"none\" stroke=\"#3a2e1c\" stroke-width=\"0.6\"/&gt;\n    &lt;circle r=\"16\" fill=\"none\" stroke=\"#3a2e1c\" stroke-width=\"0.4\"/&gt;\n    &lt;path d=\"M0,-22 L3,0 L0,22 L-3,0 Z\" fill=\"#3a2e1c\" opacity=\"0.6\"/&gt;\n    &lt;path d=\"M-22,0 L0,3 L22,0 L0,-3 Z\" fill=\"#3a2e1c\" opacity=\"0.6\"/&gt;\n    &lt;text y=\"-26\" text-anchor=\"middle\" font-size=\"8\" fill=\"#3a2e1c\" font-family=\"Georgia\"&gt;N&lt;/text&gt;\n  `;\n  svg.appendChild(compass);\n\n  return svg;\n}\n\n/* =====================================================================\n   SHIP DEFINITIONS\n   sizes: 5, 4, 3, 2 — placed at different rows\n   Each ship has: size (cells), origin (cx,cy), direction index (0-5)\n   ===================================================================== */\nfunction defaultShips(headingDeg) {\n  // We'll place 4 ships in a comfortable layout\n  return [\n    { size: 5, ax:  -3, ay: -2, head: headingDeg, name: \"BB-01\" },\n    { size: 4, ax:   2, ay: -1, head: headingDeg, name: \"CA-02\" },\n    { size: 3, ax:  -2, ay:  1, head: headingDeg, name: \"DD-03\" },\n    { size: 2, ax:   3, ay:  2, head: headingDeg, name: \"PT-04\" },\n  ];\n}\n\n/* =====================================================================\n   Helper: convert a ship (axial center, heading) into world pixel coords\n   For non-zero rotations on a hex grid the body cells lie along a hex direction,\n   but for the rendered glyph we just rotate a horizontal silhouette.\n   ===================================================================== */\nfunction shipWorldPos(ship, W, H) {\n  const { x, y } = axialToPx(ship.ax, ship.ay);\n  return { x: W/2 + x, y: H/2 + y };\n}\n\n/* =====================================================================\n   FOOTPRINT TRAIL renderer (shared)\n   Draws X marks at past positions to visualize \"what the attacker sees\"\n   ===================================================================== */\nfunction drawFootprints(svg, ship, W, H, opts={}) {\n  if (!opts.show) return;\n  const ns = \"http://www.w3.org/2000/svg\";\n  const { x, y } = shipWorldPos(ship, W, H);\n  const angle = ship.head * Math.PI/180;\n  // 2 fake hits behind the ship\n  for (let i = 1; i &lt;= 2; i++) {\n    const back = (ship.size/2 + i) * HEX_W * 0.9;\n    const hx = x - Math.cos(angle) * back;\n    const hy = y - Math.sin(angle) * back;\n    const g = document.createElementNS(ns, \"g\");\n    g.setAttribute(\"transform\", `translate(${hx},${hy})`);\n    g.setAttribute(\"opacity\", String(0.8 - i*0.2));\n    g.innerHTML = `\n      &lt;path d=\"M-6,-6 L6,6 M-6,6 L6,-6\" stroke=\"#8a1f1f\" stroke-width=\"1.6\" stroke-linecap=\"round\"/&gt;\n      &lt;text y=\"-9\" text-anchor=\"middle\" font-family=\"Courier New\" font-size=\"7\" fill=\"#8a1f1f\"&gt;T-${i*3}&lt;/text&gt;\n    `;\n    svg.appendChild(g);\n  }\n}\n\n/* =====================================================================\n   ============= OPTION A: INK SILHOUETTE =============\n   Top-down naval silhouette in deep ink. Single dark fill with tiny\n   highlight along the deck centerline. Reads as a chart symbol.\n   ===================================================================== */\nfunction renderA(container, state) {\n  container.innerHTML = \"\";\n  const W = container.clientWidth, H = container.clientHeight;\n  const svg = makeBlueprintBase(W, H);\n  const ns = \"http://www.w3.org/2000/svg\";\n\n  const ships = defaultShips(state.heading);\n  ships.forEach(ship =&gt; {\n    drawFootprints(svg, ship, W, H, { show: state.footprint });\n\n    const { x, y } = shipWorldPos(ship, W, H);\n    const g = document.createElementNS(ns, \"g\");\n    g.setAttribute(\"transform\", `translate(${x},${y}) rotate(${ship.head})`);\n    g.setAttribute(\"filter\", \"url(#shipShadow)\");\n\n    // Hull: stretched lens shape, length = size*HEX_W*0.92\n    const L = ship.size * HEX_W * 0.92;\n    const B = HEX_R * 0.85; // beam (width)\n    const bow = L * 0.42, stern = -L * 0.5;\n\n    // Damage = hull made shorter / chipped\n    const dmg = state.damage;\n    const lossL = dmg * L * 0.1;\n\n    const hullPath = `\n      M ${bow-lossL},0\n      C ${bow-lossL},${-B*0.4} ${bow*0.3},${-B*0.95} ${0},${-B*0.95}\n      C ${stern*0.5},${-B*0.95} ${stern},${-B*0.5} ${stern},0\n      C ${stern},${B*0.5} ${stern*0.5},${B*0.95} ${0},${B*0.95}\n      C ${bow*0.3},${B*0.95} ${bow-lossL},${B*0.4} ${bow-lossL},0 Z\n    `;\n\n    const hull = document.createElementNS(ns, \"path\");\n    hull.setAttribute(\"d\", hullPath);\n    hull.setAttribute(\"fill\", \"#1a1410\");\n    hull.setAttribute(\"stroke\", \"#000\");\n    hull.setAttribute(\"stroke-width\", \"0.6\");\n    g.appendChild(hull);\n\n    // Deck highlight (thin lighter centerline)\n    const deck = document.createElementNS(ns, \"path\");\n    deck.setAttribute(\"d\", `M ${stern*0.85},0 L ${(bow-lossL)*0.85},0`);\n    deck.setAttribute(\"stroke\", \"#c9b58a\");\n    deck.setAttribute(\"stroke-width\", \"0.8\");\n    deck.setAttribute(\"opacity\", \"0.35\");\n    g.appendChild(deck);\n\n    // Heading wedge — tiny arrowhead at bow\n    const wedge = document.createElementNS(ns, \"path\");\n    wedge.setAttribute(\"d\", `M ${bow-lossL+2},0 L ${bow-lossL-4},-2 L ${bow-lossL-4},2 Z`);\n    wedge.setAttribute(\"fill\", \"#3a2e1c\");\n    g.appendChild(wedge);\n\n    svg.appendChild(g);\n  });\n\n  container.appendChild(svg);\n}\n\n/* =====================================================================\n   ============= OPTION B: DECK DETAIL =============\n   Top-down with visible deck features (turrets as circles, bridge as\n   trapezoid, stack as small dark dot). Painted-grey naval color.\n   ===================================================================== */\nfunction renderB(container, state) {\n  container.innerHTML = \"\";\n  const W = container.clientWidth, H = container.clientHeight;\n  const svg = makeBlueprintBase(W, H);\n  const ns = \"http://www.w3.org/2000/svg\";\n\n  // Defs for ship gradients\n  const localDefs = document.createElementNS(ns, \"defs\");\n  localDefs.innerHTML = `\n    &lt;linearGradient id=\"hullB\" x1=\"0\" y1=\"-1\" x2=\"0\" y2=\"1\"&gt;\n      &lt;stop offset=\"0%\" stop-color=\"#6a7560\"/&gt;\n      &lt;stop offset=\"50%\" stop-color=\"#4a5444\"/&gt;\n      &lt;stop offset=\"100%\" stop-color=\"#2c332a\"/&gt;\n    &lt;/linearGradient&gt;\n    &lt;linearGradient id=\"deckB\" x1=\"0\" y1=\"-1\" x2=\"0\" y2=\"1\"&gt;\n      &lt;stop offset=\"0%\" stop-color=\"#7a6a4a\"/&gt;\n      &lt;stop offset=\"100%\" stop-color=\"#5a4e36\"/&gt;\n    &lt;/linearGradient&gt;\n  `;\n  svg.appendChild(localDefs);\n\n  const ships = defaultShips(state.heading);\n  ships.forEach(ship =&gt; {\n    drawFootprints(svg, ship, W, H, { show: state.footprint });\n\n    const { x, y } = shipWorldPos(ship, W, H);\n    const g = document.createElementNS(ns, \"g\");\n    g.setAttribute(\"transform\", `translate(${x},${y}) rotate(${ship.head})`);\n    g.setAttribute(\"filter\", \"url(#shipShadow)\");\n\n    const L = ship.size * HEX_W * 0.92;\n    const B = HEX_R * 0.78;\n    const bow = L * 0.42, stern = -L * 0.5;\n\n    // Hull\n    const hullPath = `\n      M ${bow},0\n      C ${bow},${-B*0.4} ${bow*0.35},${-B*0.95} ${0},${-B*0.95}\n      L ${stern*0.6},${-B*0.95}\n      C ${stern},${-B*0.85} ${stern},${-B*0.4} ${stern},0\n      C ${stern},${B*0.4} ${stern},${B*0.85} ${stern*0.6},${B*0.95}\n      L ${0},${B*0.95}\n      C ${bow*0.35},${B*0.95} ${bow},${B*0.4} ${bow},0 Z\n    `;\n    const hull = document.createElementNS(ns, \"path\");\n    hull.setAttribute(\"d\", hullPath);\n    hull.setAttribute(\"fill\", \"url(#hullB)\");\n    hull.setAttribute(\"stroke\", \"#1c1f1a\");\n    hull.setAttribute(\"stroke-width\", \"0.5\");\n    g.appendChild(hull);\n\n    // Deck (slightly inset)\n    const deckPath = `\n      M ${bow*0.85},0\n      C ${bow*0.85},${-B*0.3} ${bow*0.3},${-B*0.72} ${0},${-B*0.72}\n      L ${stern*0.55},${-B*0.72}\n      C ${stern*0.85},${-B*0.6} ${stern*0.85},${-B*0.3} ${stern*0.85},0\n      C ${stern*0.85},${B*0.3} ${stern*0.85},${B*0.6} ${stern*0.55},${B*0.72}\n      L ${0},${B*0.72}\n      C ${bow*0.3},${B*0.72} ${bow*0.85},${B*0.3} ${bow*0.85},0 Z\n    `;\n    const deck = document.createElementNS(ns, \"path\");\n    deck.setAttribute(\"d\", deckPath);\n    deck.setAttribute(\"fill\", \"url(#deckB)\");\n    g.appendChild(deck);\n\n    // Deck features depending on size\n    const features = document.createElementNS(ns, \"g\");\n    features.setAttribute(\"filter\", \"url(#hardShadow)\");\n    // Forward turret (always)\n    const ft = document.createElementNS(ns, \"circle\");\n    ft.setAttribute(\"cx\", bow*0.55); ft.setAttribute(\"cy\", 0); ft.setAttribute(\"r\", B*0.32);\n    ft.setAttribute(\"fill\", \"#3c4438\");\n    features.appendChild(ft);\n    // Aft turret if size &gt;= 3\n    if (ship.size &gt;= 3) {\n      const at = document.createElementNS(ns, \"circle\");\n      at.setAttribute(\"cx\", stern*0.65); at.setAttribute(\"cy\", 0); at.setAttribute(\"r\", B*0.32);\n      at.setAttribute(\"fill\", \"#3c4438\");\n      features.appendChild(at);\n    }\n    // Bridge (rectangle near center)\n    const br = document.createElementNS(ns, \"rect\");\n    br.setAttribute(\"x\", -B*0.55); br.setAttribute(\"y\", -B*0.4); br.setAttribute(\"width\", B*1.1); br.setAttribute(\"height\", B*0.8);\n    br.setAttribute(\"fill\", \"#5a6450\");\n    br.setAttribute(\"stroke\", \"#2c332a\"); br.setAttribute(\"stroke-width\", \"0.3\");\n    features.appendChild(br);\n    // Smoke stack if size &gt;= 4\n    if (ship.size &gt;= 4) {\n      const stk = document.createElementNS(ns, \"circle\");\n      stk.setAttribute(\"cx\", -B*0.05); stk.setAttribute(\"cy\", 0); stk.setAttribute(\"r\", B*0.18);\n      stk.setAttribute(\"fill\", \"#1a1c18\");\n      features.appendChild(stk);\n    }\n    // Gun barrels from forward turret\n    const barrelA = document.createElementNS(ns, \"rect\");\n    barrelA.setAttribute(\"x\", bow*0.55); barrelA.setAttribute(\"y\", -B*0.08);\n    barrelA.setAttribute(\"width\", L*0.08); barrelA.setAttribute(\"height\", B*0.16);\n    barrelA.setAttribute(\"fill\", \"#2a2e26\");\n    features.appendChild(barrelA);\n    g.appendChild(features);\n\n    // Damage indicator — burn marks\n    if (state.damage &gt; 0) {\n      for (let i = 0; i &lt; state.damage; i++) {\n        const burn = document.createElementNS(ns, \"circle\");\n        burn.setAttribute(\"cx\", stern*0.3 + i*8);\n        burn.setAttribute(\"cy\", (i%2 ? -1 : 1) * B*0.35);\n        burn.setAttribute(\"r\", B*0.22);\n        burn.setAttribute(\"fill\", \"#1a0e08\");\n        burn.setAttribute(\"opacity\", \"0.85\");\n        g.appendChild(burn);\n      }\n    }\n    svg.appendChild(g);\n  });\n\n  container.appendChild(svg);\n}\n\n/* =====================================================================\n   ============= OPTION C: ¾ MINIATURE =============\n   Faux-isometric ship: hull as a tilted ellipse with side shading,\n   superstructure as small box stack above. Wargame-piece feel.\n   ===================================================================== */\nfunction renderC(container, state) {\n  container.innerHTML = \"\";\n  const W = container.clientWidth, H = container.clientHeight;\n  const svg = makeBlueprintBase(W, H);\n  const ns = \"http://www.w3.org/2000/svg\";\n\n  const localDefs = document.createElementNS(ns, \"defs\");\n  localDefs.innerHTML = `\n    &lt;linearGradient id=\"hullC-top\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"&gt;\n      &lt;stop offset=\"0%\" stop-color=\"#7a8470\"/&gt;\n      &lt;stop offset=\"100%\" stop-color=\"#4a5444\"/&gt;\n    &lt;/linearGradient&gt;\n    &lt;linearGradient id=\"hullC-side\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"&gt;\n      &lt;stop offset=\"0%\" stop-color=\"#3a4036\"/&gt;\n      &lt;stop offset=\"100%\" stop-color=\"#1a1e18\"/&gt;\n    &lt;/linearGradient&gt;\n    &lt;linearGradient id=\"supC\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"&gt;\n      &lt;stop offset=\"0%\" stop-color=\"#9aa090\"/&gt;\n      &lt;stop offset=\"100%\" stop-color=\"#5a6050\"/&gt;\n    &lt;/linearGradient&gt;\n  `;\n  svg.appendChild(localDefs);\n\n  const ships = defaultShips(state.heading);\n  ships.forEach(ship =&gt; {\n    drawFootprints(svg, ship, W, H, { show: state.footprint });\n\n    const { x, y } = shipWorldPos(ship, W, H);\n    // Iso tilt applied as a parent transform: scaleY(0.6) makes a top-down look ¾\n    const g = document.createElementNS(ns, \"g\");\n    g.setAttribute(\"transform\", `translate(${x},${y}) rotate(${ship.head}) scale(1, 0.62)`);\n    g.setAttribute(\"filter\", \"url(#shipShadow)\");\n\n    const L = ship.size * HEX_W * 0.95;\n    const B = HEX_R * 0.95;\n    const bow = L * 0.42, stern = -L * 0.5;\n    const hullHeight = 8; // pretend \"depth\"\n\n    // Side strip (drawn below deck plane to fake 3D)\n    const side = document.createElementNS(ns, \"path\");\n    side.setAttribute(\"d\", `\n      M ${stern},0 L ${stern},${hullHeight}\n      C ${stern},${hullHeight + B*0.6} ${stern*0.4},${hullHeight + B*1.0} ${0},${hullHeight + B*1.0}\n      C ${bow*0.4},${hullHeight + B*1.0} ${bow},${hullHeight + B*0.6} ${bow},${hullHeight}\n      L ${bow},0\n      C ${bow},${B*0.6} ${bow*0.4},${B*1.0} ${0},${B*1.0}\n      C ${stern*0.4},${B*1.0} ${stern},${B*0.6} ${stern},0 Z\n    `);\n    side.setAttribute(\"fill\", \"url(#hullC-side)\");\n    g.appendChild(side);\n\n    // Deck (top)\n    const deckPath = `\n      M ${bow},0\n      C ${bow},${-B*0.6} ${bow*0.4},${-B*1.0} ${0},${-B*1.0}\n      C ${stern*0.4},${-B*1.0} ${stern},${-B*0.6} ${stern},0\n      C ${stern},${B*0.6} ${stern*0.4},${B*1.0} ${0},${B*1.0}\n      C ${bow*0.4},${B*1.0} ${bow},${B*0.6} ${bow},0 Z\n    `;\n    const deck = document.createElementNS(ns, \"path\");\n    deck.setAttribute(\"d\", deckPath);\n    deck.setAttribute(\"fill\", \"url(#hullC-top)\");\n    deck.setAttribute(\"stroke\", \"#1c1f1a\");\n    deck.setAttribute(\"stroke-width\", \"0.4\");\n    g.appendChild(deck);\n\n    // Superstructure (box) — taller for bigger ships\n    const supH = -10 - ship.size * 1.4;\n    const supW = B * 0.6;\n    const supL = L * 0.22;\n    const sup = document.createElementNS(ns, \"g\");\n    sup.innerHTML = `\n      &lt;rect x=\"${-supL/2}\" y=\"${-supW}\" width=\"${supL}\" height=\"${supW*2}\" fill=\"url(#hullC-side)\"/&gt;\n      &lt;rect x=\"${-supL/2}\" y=\"${-supW + supH}\" width=\"${supL}\" height=\"${supW*2}\" fill=\"url(#supC)\"/&gt;\n      &lt;rect x=\"${-supL/2}\" y=\"${-supW}\" width=\"${supL}\" height=\"${-supH}\" fill=\"#2a2e26\" opacity=\"0.55\"/&gt;\n    `;\n    sup.setAttribute(\"transform\", `translate(0,0)`);\n    g.appendChild(sup);\n\n    // Forward turret as a small cylinder\n    const fturret = document.createElementNS(ns, \"g\");\n    const tx = bow * 0.55;\n    fturret.innerHTML = `\n      &lt;ellipse cx=\"${tx}\" cy=\"0\" rx=\"${B*0.32}\" ry=\"${B*0.28}\" fill=\"#3a4036\"/&gt;\n      &lt;rect x=\"${tx}\" y=\"${-B*0.08}\" width=\"${L*0.09}\" height=\"${B*0.16}\" fill=\"#1c1f1a\"/&gt;\n    `;\n    g.appendChild(fturret);\n\n    if (ship.size &gt;= 3) {\n      const aturret = document.createElementNS(ns, \"g\");\n      const ax = stern * 0.65;\n      aturret.innerHTML = `\n        &lt;ellipse cx=\"${ax}\" cy=\"0\" rx=\"${B*0.32}\" ry=\"${B*0.28}\" fill=\"#3a4036\"/&gt;\n      `;\n      g.appendChild(aturret);\n    }\n\n    svg.appendChild(g);\n  });\n\n  container.appendChild(svg);\n}\n\n/* =====================================================================\n   ============= OPTION D: GL LOW-POLY (Three.js) =============\n   Real 3D ships with directional light. Each card has its own renderer.\n   ===================================================================== */\nfunction renderD(container, state) {\n  container.innerHTML = \"\";\n  const W = container.clientWidth, H = container.clientHeight;\n\n  // Draw blueprint base as SVG behind\n  const base = makeBlueprintBase(W, H);\n  container.appendChild(base);\n\n  // Three.js scene above\n  const scene = new THREE.Scene();\n  const aspect = W / H;\n  const viewSize = 200;\n  const camera = new THREE.OrthographicCamera(\n    -viewSize*aspect, viewSize*aspect, viewSize, -viewSize, 1, 2000\n  );\n  // Slight ¾ tilt\n  camera.position.set(0, 250, 220);\n  camera.lookAt(0, 0, 0);\n\n  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });\n  renderer.setSize(W, H);\n  renderer.setClearColor(0x000000, 0);\n  renderer.shadowMap.enabled = true;\n  renderer.shadowMap.type = THREE.PCFSoftShadowMap;\n  renderer.domElement.style.position = \"absolute\";\n  renderer.domElement.style.inset = \"0\";\n  container.appendChild(renderer.domElement);\n\n  // Lights: warm key + cool fill (like a desk lamp on a paper map)\n  const key = new THREE.DirectionalLight(0xfff0d0, 1.2);\n  key.position.set(120, 220, 80);\n  key.castShadow = true;\n  key.shadow.mapSize.set(1024, 1024);\n  key.shadow.camera.left = -300; key.shadow.camera.right = 300;\n  key.shadow.camera.top = 300; key.shadow.camera.bottom = -300;\n  key.shadow.bias = -0.0005;\n  scene.add(key);\n  scene.add(new THREE.AmbientLight(0xb0c0d0, 0.55));\n  const fill = new THREE.DirectionalLight(0x88aacc, 0.4);\n  fill.position.set(-100, 100, -100);\n  scene.add(fill);\n\n  // Shadow-catcher plane (invisible, just receives shadow)\n  const shadowMat = new THREE.ShadowMaterial({ opacity: 0.35 });\n  const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), shadowMat);\n  shadowPlane.rotation.x = -Math.PI/2;\n  shadowPlane.receiveShadow = true;\n  scene.add(shadowPlane);\n\n  // Helper: build a low-poly ship of given size\n  function buildShip(sizeCells, damage=0) {\n    const group = new THREE.Group();\n    const L = sizeCells * HEX_W * 0.92;\n    const B = HEX_R * 0.85;\n    const hullH = 10;\n\n    // Hull body (lathed/extruded shape)\n    const hullShape = new THREE.Shape();\n    const bow = L * 0.42, stern = -L * 0.5;\n    hullShape.moveTo(bow, 0);\n    hullShape.bezierCurveTo(bow, -B*0.5, bow*0.35, -B, 0, -B);\n    hullShape.lineTo(stern*0.55, -B);\n    hullShape.bezierCurveTo(stern, -B*0.85, stern, -B*0.4, stern, 0);\n    hullShape.bezierCurveTo(stern, B*0.4, stern, B*0.85, stern*0.55, B);\n    hullShape.lineTo(0, B);\n    hullShape.bezierCurveTo(bow*0.35, B, bow, B*0.5, bow, 0);\n\n    const extrudeSettings = { depth: hullH, bevelEnabled: true, bevelThickness: 1.2, bevelSize: 1.2, bevelSegments: 2 };\n    const hullGeo = new THREE.ExtrudeGeometry(hullShape, extrudeSettings);\n    hullGeo.rotateX(-Math.PI/2);\n    hullGeo.translate(0, -hullH/2 + 2, 0);\n    const hullMat = new THREE.MeshStandardMaterial({\n      color: 0x4a5444, roughness: 0.75, metalness: 0.25, flatShading: true\n    });\n    const hull = new THREE.Mesh(hullGeo, hullMat);\n    hull.castShadow = true; hull.receiveShadow = true;\n    group.add(hull);\n\n    // Superstructure (stacked boxes)\n    const supMat = new THREE.MeshStandardMaterial({ color: 0x6a7560, roughness: 0.7, flatShading: true });\n    const supDarkMat = new THREE.MeshStandardMaterial({ color: 0x3a4036, roughness: 0.7, flatShading: true });\n\n    const sup1 = new THREE.Mesh(new THREE.BoxGeometry(L*0.28, 6, B*1.1), supMat);\n    sup1.position.set(-L*0.05, 5, 0);\n    sup1.castShadow = true;\n    group.add(sup1);\n\n    if (sizeCells &gt;= 3) {\n      const sup2 = new THREE.Mesh(new THREE.BoxGeometry(L*0.18, 8, B*0.85), supMat);\n      sup2.position.set(-L*0.02, 12, 0);\n      sup2.castShadow = true;\n      group.add(sup2);\n\n      // Mast\n      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 18, 6), supDarkMat);\n      mast.position.set(-L*0.05, 22, 0);\n      mast.castShadow = true;\n      group.add(mast);\n    }\n\n    // Forward turret\n    const turretGeo = new THREE.CylinderGeometry(B*0.32, B*0.32, 5, 12);\n    const turretMat = new THREE.MeshStandardMaterial({ color: 0x3c4438, roughness: 0.6, metalness: 0.4, flatShading: true });\n    const fturret = new THREE.Mesh(turretGeo, turretMat);\n    fturret.position.set(bow*0.55, 4.5, 0);\n    fturret.castShadow = true;\n    group.add(fturret);\n\n    // Barrels\n    const barrelGeo = new THREE.CylinderGeometry(0.8, 0.8, L*0.14, 6);\n    barrelGeo.rotateZ(Math.PI/2);\n    const barrel = new THREE.Mesh(barrelGeo, supDarkMat);\n    barrel.position.set(bow*0.55 + L*0.08, 5.2, 0);\n    barrel.castShadow = true;\n    group.add(barrel);\n\n    // Aft turret\n    if (sizeCells &gt;= 3) {\n      const aturret = new THREE.Mesh(turretGeo, turretMat);\n      aturret.position.set(stern*0.65, 4.5, 0);\n      aturret.castShadow = true;\n      group.add(aturret);\n    }\n\n    // Smoke stack\n    if (sizeCells &gt;= 4) {\n      const stackGeo = new THREE.CylinderGeometry(B*0.18, B*0.22, 9, 12);\n      const stackMat = new THREE.MeshStandardMaterial({ color: 0x1a1c18, roughness: 0.9, flatShading: true });\n      const stack = new THREE.Mesh(stackGeo, stackMat);\n      stack.position.set(-L*0.05, 11, 0);\n      stack.castShadow = true;\n      group.add(stack);\n    }\n\n    // Damage: scorch/dent — slightly tilt and add black box\n    if (damage &gt; 0) {\n      group.rotation.z = damage * 0.04;\n      for (let i = 0; i &lt; damage; i++) {\n        const scorch = new THREE.Mesh(\n          new THREE.BoxGeometry(B*0.6, 1.2, B*0.6),\n          new THREE.MeshStandardMaterial({ color: 0x150a06, roughness: 0.95, flatShading: true })\n        );\n        scorch.position.set(stern*0.2 + i*8, 4, (i%2?-1:1)*B*0.4);\n        group.add(scorch);\n      }\n    }\n\n    return group;\n  }\n\n  const ships = defaultShips(state.heading);\n  ships.forEach(ship =&gt; {\n    const { x, y } = axialToPx(ship.ax, ship.ay);\n    const s = buildShip(ship.size, state.damage);\n    s.position.set(x, 0, y);\n    s.rotation.y = -ship.head * Math.PI/180;\n    scene.add(s);\n  });\n\n  // Footprint markers as small red dots in 3D\n  if (state.footprint) {\n    ships.forEach(ship =&gt; {\n      const { x, y } = axialToPx(ship.ax, ship.ay);\n      const angle = ship.head * Math.PI/180;\n      for (let i = 1; i &lt;= 2; i++) {\n        const back = (ship.size/2 + i) * HEX_W * 0.9;\n        const hx = x - Math.cos(angle) * back;\n        const hy = y - Math.sin(angle) * back;\n        const dot = new THREE.Mesh(\n          new THREE.CircleGeometry(3.5, 16),\n          new THREE.MeshBasicMaterial({ color: 0x8a1f1f })\n        );\n        dot.rotation.x = -Math.PI/2;\n        dot.position.set(hx, 0.5, hy);\n        scene.add(dot);\n      }\n    });\n  }\n\n  function animate() {\n    renderer.render(scene, camera);\n  }\n  animate();\n\n  // Store for cleanup on re-render\n  container._three = { renderer, scene };\n}\n\n/* =====================================================================\n   ============= OPTION E: BLUEPRINT LINE =============\n   Ships rendered as engineering line drawings — same ink as the grid.\n   Maximally diegetic: feels drawn-on rather than placed-on.\n   ===================================================================== */\nfunction renderE(container, state) {\n  container.innerHTML = \"\";\n  const W = container.clientWidth, H = container.clientHeight;\n  const svg = makeBlueprintBase(W, H);\n  const ns = \"http://www.w3.org/2000/svg\";\n\n  const ships = defaultShips(state.heading);\n  ships.forEach(ship =&gt; {\n    drawFootprints(svg, ship, W, H, { show: state.footprint });\n\n    const { x, y } = shipWorldPos(ship, W, H);\n    const g = document.createElementNS(ns, \"g\");\n    g.setAttribute(\"transform\", `translate(${x},${y}) rotate(${ship.head})`);\n    g.setAttribute(\"fill\", \"none\");\n    g.setAttribute(\"stroke\", \"#3a2e1c\");\n    g.setAttribute(\"stroke-width\", \"0.9\");\n    g.setAttribute(\"stroke-linecap\", \"round\");\n    g.setAttribute(\"stroke-linejoin\", \"round\");\n\n    const L = ship.size * HEX_W * 0.92;\n    const B = HEX_R * 0.85;\n    const bow = L * 0.42, stern = -L * 0.5;\n\n    // Hull outline\n    const hullPath = `\n      M ${bow},0\n      C ${bow},${-B*0.4} ${bow*0.35},${-B*0.95} ${0},${-B*0.95}\n      L ${stern*0.55},${-B*0.95}\n      C ${stern},${-B*0.85} ${stern},${-B*0.4} ${stern},0\n      C ${stern},${B*0.4} ${stern},${B*0.85} ${stern*0.55},${B*0.95}\n      L ${0},${B*0.95}\n      C ${bow*0.35},${B*0.95} ${bow},${B*0.4} ${bow},0 Z\n    `;\n    const hull = document.createElementNS(ns, \"path\");\n    hull.setAttribute(\"d\", hullPath);\n    g.appendChild(hull);\n\n    // Light fill (subtle parchment tint, slightly darker than paper)\n    const fill = document.createElementNS(ns, \"path\");\n    fill.setAttribute(\"d\", hullPath);\n    fill.setAttribute(\"fill\", \"#c9b48a\");\n    fill.setAttribute(\"fill-opacity\", \"0.55\");\n    fill.setAttribute(\"stroke\", \"none\");\n    g.insertBefore(fill, hull);\n\n    // Deck line (inset)\n    const deck = document.createElementNS(ns, \"path\");\n    deck.setAttribute(\"d\", `\n      M ${bow*0.85},0\n      C ${bow*0.85},${-B*0.3} ${bow*0.3},${-B*0.7} ${0},${-B*0.7}\n      L ${stern*0.6},${-B*0.7}\n      C ${stern*0.85},${-B*0.55} ${stern*0.85},${-B*0.3} ${stern*0.85},0\n      C ${stern*0.85},${B*0.3} ${stern*0.85},${B*0.55} ${stern*0.6},${B*0.7}\n      L ${0},${B*0.7}\n      C ${bow*0.3},${B*0.7} ${bow*0.85},${B*0.3} ${bow*0.85},0 Z\n    `);\n    deck.setAttribute(\"stroke-width\", \"0.55\");\n    g.appendChild(deck);\n\n    // Centerline / keel\n    const center = document.createElementNS(ns, \"path\");\n    center.setAttribute(\"d\", `M ${stern*0.92},0 L ${bow*0.92},0`);\n    center.setAttribute(\"stroke-width\", \"0.4\");\n    center.setAttribute(\"stroke-dasharray\", \"2,2\");\n    g.appendChild(center);\n\n    // Cells indicator: dots where each hex-cell center is\n    for (let i = 0; i &lt; ship.size; i++) {\n      const dx = stern + (i + 0.5) * (L / ship.size);\n      const dot = document.createElementNS(ns, \"circle\");\n      dot.setAttribute(\"cx\", dx); dot.setAttribute(\"cy\", 0);\n      dot.setAttribute(\"r\", \"1.2\"); dot.setAttribute(\"fill\", \"#3a2e1c\"); dot.setAttribute(\"stroke\", \"none\");\n      g.appendChild(dot);\n    }\n\n    // Turrets (small circles)\n    const t1 = document.createElementNS(ns, \"circle\");\n    t1.setAttribute(\"cx\", bow*0.55); t1.setAttribute(\"cy\", 0); t1.setAttribute(\"r\", B*0.22);\n    g.appendChild(t1);\n    if (ship.size &gt;= 3) {\n      const t2 = document.createElementNS(ns, \"circle\");\n      t2.setAttribute(\"cx\", stern*0.65); t2.setAttribute(\"cy\", 0); t2.setAttribute(\"r\", B*0.22);\n      g.appendChild(t2);\n    }\n\n    // Bridge (rectangle)\n    const br = document.createElementNS(ns, \"rect\");\n    br.setAttribute(\"x\", -B*0.5); br.setAttribute(\"y\", -B*0.32);\n    br.setAttribute(\"width\", B); br.setAttribute(\"height\", B*0.64);\n    g.appendChild(br);\n\n    // Label below ship\n    const lbl = document.createElementNS(ns, \"text\");\n    lbl.setAttribute(\"x\", 0); lbl.setAttribute(\"y\", B*1.5);\n    lbl.setAttribute(\"text-anchor\", \"middle\");\n    lbl.setAttribute(\"font-family\", \"Courier New, monospace\");\n    lbl.setAttribute(\"font-size\", \"7\");\n    lbl.setAttribute(\"fill\", \"#3a2e1c\");\n    lbl.setAttribute(\"stroke\", \"none\");\n    lbl.setAttribute(\"transform\", `rotate(${-ship.head})`);\n    lbl.textContent = `${ship.name} · ${ship.size}`;\n    g.appendChild(lbl);\n\n    svg.appendChild(g);\n  });\n\n  container.appendChild(svg);\n}\n\n/* =====================================================================\n   ============= OPTION F: COMMAND COUNTER =============\n   Pure pictogram. NATO-style. Maximum readability, minimum theme.\n   ===================================================================== */\nfunction renderF(container, state) {\n  container.innerHTML = \"\";\n  const W = container.clientWidth, H = container.clientHeight;\n  const svg = makeBlueprintBase(W, H);\n  const ns = \"http://www.w3.org/2000/svg\";\n\n  const ships = defaultShips(state.heading);\n  ships.forEach(ship =&gt; {\n    drawFootprints(svg, ship, W, H, { show: state.footprint });\n\n    const { x, y } = shipWorldPos(ship, W, H);\n    const g = document.createElementNS(ns, \"g\");\n    g.setAttribute(\"transform\", `translate(${x},${y}) rotate(${ship.head})`);\n    g.setAttribute(\"filter\", \"url(#shipShadow)\");\n\n    const L = ship.size * HEX_W * 0.92;\n    const B = HEX_R * 0.95;\n\n    // Rounded rect counter\n    const rect = document.createElementNS(ns, \"rect\");\n    rect.setAttribute(\"x\", -L/2); rect.setAttribute(\"y\", -B*0.7);\n    rect.setAttribute(\"width\", L); rect.setAttribute(\"height\", B*1.4);\n    rect.setAttribute(\"rx\", B*0.25);\n    rect.setAttribute(\"fill\", \"#1a3050\");\n    rect.setAttribute(\"stroke\", \"#0a1828\");\n    rect.setAttribute(\"stroke-width\", \"0.8\");\n    g.appendChild(rect);\n\n    // Inner stripe (lighter blue) showing direction\n    const arrow = document.createElementNS(ns, \"path\");\n    arrow.setAttribute(\"d\", `\n      M ${-L/2 + B*0.3},${-B*0.4}\n      L ${L/2 - B*0.7},${-B*0.4}\n      L ${L/2 - B*0.3},0\n      L ${L/2 - B*0.7},${B*0.4}\n      L ${-L/2 + B*0.3},${B*0.4} Z\n    `);\n    arrow.setAttribute(\"fill\", \"#3a6090\");\n    g.appendChild(arrow);\n\n    // Anchor / ship glyph in center\n    const anchor = document.createElementNS(ns, \"g\");\n    anchor.setAttribute(\"transform\", `translate(0, 0) rotate(${-ship.head})`);\n    anchor.innerHTML = `\n      &lt;text y=\"${B*0.25}\" text-anchor=\"middle\" font-family=\"Georgia\" font-weight=\"bold\" font-size=\"${B*0.9}\" fill=\"#f0e8d0\"&gt;${ship.size}&lt;/text&gt;\n    `;\n    g.appendChild(anchor);\n\n    // Pips along the side (one per cell)\n    for (let i = 0; i &lt; ship.size; i++) {\n      const px = -L/2 + (i + 0.5) * (L / ship.size);\n      const pip = document.createElementNS(ns, \"circle\");\n      pip.setAttribute(\"cx\", px); pip.setAttribute(\"cy\", B*0.55);\n      pip.setAttribute(\"r\", 1.6);\n      const lost = i &lt; state.damage &amp;&amp; ship.size - state.damage &gt; 0;\n      pip.setAttribute(\"fill\", lost ? \"#8a1f1f\" : \"#f0e8d0\");\n      g.appendChild(pip);\n    }\n\n    svg.appendChild(g);\n  });\n\n  container.appendChild(svg);\n}\n\n/* =====================================================================\n   WIRE UP\n   ===================================================================== */\nconst state = { heading: 0, damage: 0, footprint: true };\n\nfunction rerenderAll() {\n  renderA(document.getElementById(\"stageA\"), state);\n  renderB(document.getElementById(\"stageB\"), state);\n  renderC(document.getElementById(\"stageC\"), state);\n  renderD(document.getElementById(\"stageD\"), state);\n  renderE(document.getElementById(\"stageE\"), state);\n  renderF(document.getElementById(\"stageF\"), state);\n}\n\ndocument.getElementById(\"heading\").addEventListener(\"change\", e =&gt; {\n  state.heading = parseInt(e.target.value, 10);\n  rerenderAll();\n});\ndocument.getElementById(\"damage\").addEventListener(\"input\", e =&gt; {\n  state.damage = parseInt(e.target.value, 10);\n  document.getElementById(\"dmgLabel\").textContent = `${state.damage} hit${state.damage===1?\"\":\"s\"}`;\n  rerenderAll();\n});\ndocument.getElementById(\"showFootprint\").addEventListener(\"change\", e =&gt; {\n  state.footprint = e.target.checked;\n  rerenderAll();\n});\n\nwindow.addEventListener(\"resize\", rerenderAll);\n// Wait one tick so layout is computed before measuring stages\nrequestAnimationFrame(rerenderAll);\n&lt;/script&gt;\n\n&lt;/body&gt;\n&lt;/html&gt;\n"}
+  </tool-call>
+  <tool-result>
+{"format":"code-execution-result","version":1,"kind":"text-editor.create","isFileUpdate":false}
+  </tool-result>
+</agent-tool><agent-tool id="SIZjHfjDKF" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_017fuYiPQN8s4EtaS9s6rxgq" tool-type="code_execution" name="bash_code_execution" is-executable="false" status="completed">
+  <tool-call>
+{"command":"wc -c /tmp/ship_render_options.html &amp;&amp; head -1 /tmp/ship_render_options.html"}
+  </tool-call>
+  <tool-result>
+{"format":"code-execution-result","version":1,"kind":"bash","stdout":"38770 /tmp/ship_render_options.html\n&lt;!DOCTYPE html&gt;\n","stderr":"","returnCode":0,"generatedAssets":[]}
+  </tool-result>
+</agent-tool><agent-reason id="0QziTbgTl0" provider="anthropic" reasoning-id="QJAqnzd7TnzrSPwMKiDl" status="completed" signature="EucDCmMIDhgCKkBXdBbvZeFTAGApuOuR0PX5BCANX7Y6ztah6f7QgRvyjKhlM5BT3am3WU2DEFJJWI40fovRv4C3Sth69FAXaPGVMg9jbGF1ZGUtb3B1cy00LTc4AEIIdGhpbmtpbmcSDPgXjTNag44wUI28GRoM6oiMGbgET1aUw8PuIjCYjf4XPpO8KUf1LzSENHR9nZr1HBNn2cpiCFyHUaNkrKkDZvDq4AxLvnFHcFuI25QqsQJu82swUKb1y8WDNqRgoe+HHZrGeQzg+tFfF0IeyMlQf27L+3JpmYh4iYMKWb5Zj+VSU2ncdU2Fwrnk7AStIbufgQ/quSV/U8FRG3GON4UtE66XxBaB+Q10hcFKj40Kc7pkYYd2Ckzx5OiWmH4f7yhJS0JaU5wsTVMxG9gvw7wJ13emruNQXlve1MolpAdCZ58PwPixz8R5LaheXQzd8XWZAnhHWgczgtOPuVR39mLPdotqZwrTK3pj/Z8mjbdJJZ2CG0caWd4HApTK95JVttGYL4XDfRxjPs7f/gp78/sM7iXp0mhcNe2lp2MgdhnoUlQhaahteYEjKABZD9FWkvUpIQzV4ElTbzqRC/xJ7rhyx0XxntjhfQbx6XM+jbSPn9MVh8cLvrnGGrCPMyYnsSNyexgB" reasoning="%5B%22%22%5D"></agent-reason><agent-tool id="xbv4TkNQ9D" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_013HhujEfeFe5JCbiJcZFZXe" tool-type="code_execution" name="bash_code_execution" is-executable="false" status="completed">
+  <tool-call>
+{"command":"cat /tmp/ship_render_options.html | tr -d '\\r' &gt; /tmp/clean.html &amp;&amp; wc -l /tmp/clean.html"}
+  </tool-call>
+  <tool-result>
+{"format":"code-execution-result","version":1,"kind":"bash","stdout":"1011 /tmp/clean.html\n","stderr":"","returnCode":0,"generatedAssets":[]}
+  </tool-result>
+</agent-tool>Here are six rendering approaches on the same blueprint base. Each renders the same fleet (5/4/3/2) on the same heading so you can compare apples-to-apples. The controls at the top change all six at once — rotate the heading through all 6 hex directions, apply damage hits, toggle the footprint trail.
+
+<iframe-app height="1400px" in-progress="false" width="100%">
+  <app-source>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sea Battle — Ship Render Options</title>
+<style>
+  :root {
+    --paper: #e8dcc0;
+    --paper-2: #d9c89f;
+    --ink: #3a2e1c;
+    --ink-2: #5a4a30;
+    --accent: #1f3a5f;
+    --hex-line: rgba(58,46,28,0.45);
+    --shadow: rgba(0,0,0,0.28);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #2a2620;
+    color: #ddd;
+    padding: 16px;
+  }
+  h1 { margin: 0 0 4px 0; font-weight: 300; letter-spacing: 1px; font-size: 18px;}
+  .sub { color: #999; margin-bottom: 14px; font-size: 12px; }
+  .controls {
+    display: flex; gap: 14px; align-items: center;
+    background: #1d1a15; padding: 10px 14px; border-radius: 6px;
+    margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .controls label { font-size: 12px; color: #aaa; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .card {
+    background: linear-gradient(135deg, var(--paper) 0%, var(--paper-2) 100%);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    position: relative;
+  }
+  .card-header {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.65);
+    color: #eee;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    z-index: 10;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .card-header b { font-weight: 600; letter-spacing: 1px; }
+  .card-header span { color: #aaa; font-size: 10px; }
+  .stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+  }
+  .stage svg, .stage canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<h1>Sea Battle · Ship Render Options</h1>
+<div class="sub">Same blueprint base. Same fleet (5/4/3/2). Same heading. Six different render approaches.</div>
+
+<div class="controls">
+  <label>Heading: <select id="heading">
+    <option value="0">E</option>
+    <option value="60">SE</option>
+    <option value="120">SW</option>
+    <option value="180">W</option>
+    <option value="240">NW</option>
+    <option value="300">NE</option>
+  </select></label>
+  <label>Damage: <input id="damage" type="range" min="0" max="3" value="0" step="1"></label>
+  <span id="dmgLabel" style="font-size:12px;color:#aaa;">0 hits</span>
+  <label style="margin-left:auto;"><input type="checkbox" id="showFootprint" checked> Footprint trail</label>
+</div>
+
+<div class="grid">
+  <div class="card"><div class="card-header"><b>A · INK SILHOUETTE</b><span>SVG · top-down · diegetic</span></div><div class="stage" id="stageA"></div></div>
+  <div class="card"><div class="card-header"><b>B · DECK DETAIL</b><span>SVG · top-down · features visible</span></div><div class="stage" id="stageB"></div></div>
+  <div class="card"><div class="card-header"><b>C · ¾ MINIATURE</b><span>SVG · isometric · wargame piece</span></div><div class="stage" id="stageC"></div></div>
+  <div class="card"><div class="card-header"><b>D · GL LOW-POLY</b><span>Three.js · real lighting</span></div><div class="stage" id="stageD"></div></div>
+  <div class="card"><div class="card-header"><b>E · BLUEPRINT LINE</b><span>SVG · drawn-on-the-map</span></div><div class="stage" id="stageE"></div></div>
+  <div class="card"><div class="card-header"><b>F · COMMAND COUNTER</b><span>SVG · pictogram · max readability</span></div><div class="stage" id="stageF"></div></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const HEX_R = 26;
+const HEX_W = Math.sqrt(3) * HEX_R;
+const HEX_H = 2 * HEX_R;
+const HEX_VSTEP = 0.75 * HEX_H;
+function axialToPx(q, r) { return { x: HEX_W * (q + r/2), y: HEX_VSTEP * r }; }
+
+function makeBlueprintBase(width, height) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid slice");
+  const defs = document.createElementNS(ns, "defs");
+  defs.innerHTML = `
+    <radialGradient id="paperVignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#f0e4c8" stop-opacity="0.0"/>
+      <stop offset="70%" stop-color="#a08858" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#5a4628" stop-opacity="0.35"/>
+    </radialGradient>
+    <filter id="shipShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.8"/>
+      <feOffset dx="1.5" dy="2.5" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="hardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.6"/>
+      <feOffset dx="1" dy="1.6" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.7"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  `;
+  svg.appendChild(defs);
+  const cx = width/2, cy = height/2;
+  const cols = Math.ceil(width / HEX_W) + 2;
+  const rows = Math.ceil(height / HEX_VSTEP) + 2;
+  const grid = document.createElementNS(ns, "g");
+  grid.setAttribute("stroke", "rgba(58,46,28,0.45)");
+  grid.setAttribute("stroke-width", "0.7");
+  grid.setAttribute("fill", "none");
+  for (let r = -rows; r <= rows; r++) {
+    for (let q = -cols; q <= cols; q++) {
+      const { x, y } = axialToPx(q, r);
+      const px = x + cx, py = y + cy;
+      if (px < -HEX_R || px > width + HEX_R || py < -HEX_R || py > height + HEX_R) continue;
+      const pts = [];
+      for (let i = 0; i < 6; i++) {
+        const ang = (Math.PI/180) * (60*i - 30);
+        pts.push(`${(px + HEX_R*Math.cos(ang)).toFixed(2)},${(py + HEX_R*Math.sin(ang)).toFixed(2)}`);
+      }
+      const poly = document.createElementNS(ns, "polygon");
+      poly.setAttribute("points", pts.join(" "));
+      grid.appendChild(poly);
+    }
+  }
+  svg.appendChild(grid);
+  const vig = document.createElementNS(ns, "rect");
+  vig.setAttribute("width", width); vig.setAttribute("height", height);
+  vig.setAttribute("fill", "url(#paperVignette)");
+  svg.appendChild(vig);
+  const compass = document.createElementNS(ns, "g");
+  compass.setAttribute("transform", `translate(40, ${height-45})`);
+  compass.setAttribute("opacity", "0.45");
+  compass.innerHTML = `
+    <circle r="22" fill="none" stroke="#3a2e1c" stroke-width="0.6"/>
+    <circle r="16" fill="none" stroke="#3a2e1c" stroke-width="0.4"/>
+    <path d="M0,-22 L3,0 L0,22 L-3,0 Z" fill="#3a2e1c" opacity="0.6"/>
+    <path d="M-22,0 L0,3 L22,0 L0,-3 Z" fill="#3a2e1c" opacity="0.6"/>
+    <text y="-26" text-anchor="middle" font-size="8" fill="#3a2e1c" font-family="Georgia">N</text>
+  `;
+  svg.appendChild(compass);
+  return svg;
+}
+
+function defaultShips(headingDeg) {
+  return [
+    { size: 5, ax: -3, ay: -2, head: headingDeg, name: "BB-01" },
+    { size: 4, ax:  2, ay: -1, head: headingDeg, name: "CA-02" },
+    { size: 3, ax: -2, ay:  1, head: headingDeg, name: "DD-03" },
+    { size: 2, ax:  3, ay:  2, head: headingDeg, name: "PT-04" },
+  ];
+}
+function shipWorldPos(ship, W, H) {
+  const { x, y } = axialToPx(ship.ax, ship.ay);
+  return { x: W/2 + x, y: H/2 + y };
+}
+function drawFootprints(svg, ship, W, H, opts={}) {
+  if (!opts.show) return;
+  const ns = "http://www.w3.org/2000/svg";
+  const { x, y } = shipWorldPos(ship, W, H);
+  const angle = ship.head * Math.PI/180;
+  for (let i = 1; i <= 2; i++) {
+    const back = (ship.size/2 + i) * HEX_W * 0.9;
+    const hx = x - Math.cos(angle) * back;
+    const hy = y - Math.sin(angle) * back;
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("transform", `translate(${hx},${hy})`);
+    g.setAttribute("opacity", String(0.8 - i*0.2));
+    g.innerHTML = `
+      <path d="M-6,-6 L6,6 M-6,6 L6,-6" stroke="#8a1f1f" stroke-width="1.6" stroke-linecap="round"/>
+      <text y="-9" text-anchor="middle" font-family="Courier New" font-size="7" fill="#8a1f1f">T-${i*3}</text>
+    `;
+    svg.appendChild(g);
+  }
+}
+
+function renderA(container, state) {
+  container.innerHTML = "";
+  const W = container.clientWidth, H = container.clientHeight;
+  const svg = makeBlueprintBase(W, H);
+  const ns = "http://www.w3.org/2000/svg";
+  defaultShips(state.heading).forEach(ship => {
+    drawFootprints(svg, ship, W, H, { show: state.footprint });
+    const { x, y } = shipWorldPos(ship, W, H);
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("transform", `translate(${x},${y}) rotate(${ship.head})`);
+    g.setAttribute("filter", "url(#shipShadow)");
+    const L = ship.size * HEX_W * 0.92;
+    const B = HEX_R * 0.85;
+    const bow = L * 0.42, stern = -L * 0.5;
+    const lossL = state.damage * L * 0.1;
+    const hullPath = `M ${bow-lossL},0 C ${bow-lossL},${-B*0.4} ${bow*0.3},${-B*0.95} ${0},${-B*0.95} C ${stern*0.5},${-B*0.95} ${stern},${-B*0.5} ${stern},0 C ${stern},${B*0.5} ${stern*0.5},${B*0.95} ${0},${B*0.95} C ${bow*0.3},${B*0.95} ${bow-lossL},${B*0.4} ${bow-lossL},0 Z`;
+    const hull = document.createElementNS(ns, "path");
+    hull.setAttribute("d", hullPath); hull.setAttribute("fill", "#1a1410");
+    hull.setAttribute("stroke", "#000"); hull.setAttribute("stroke-width", "0.6");
+    g.appendChild(hull);
+    const deck = document.createElementNS(ns, "path");
+    deck.setAttribute("d", `M ${stern*0.85},0 L ${(bow-lossL)*0.85},0`);
+    deck.setAttribute("stroke", "#c9b58a"); deck.setAttribute("stroke-width", "0.8");
+    deck.setAttribute("opacity", "0.35");
+    g.appendChild(deck);
+    const wedge = document.createElementNS(ns, "path");
+    wedge.setAttribute("d", `M ${bow-lossL+2},0 L ${bow-lossL-4},-2 L ${bow-lossL-4},2 Z`);
+    wedge.setAttribute("fill", "#3a2e1c");
+    g.appendChild(wedge);
+    svg.appendChild(g);
+  });
+  container.appendChild(svg);
+}
+
+function renderB(container, state) {
+  container.innerHTML = "";
+  const W = container.clientWidth, H = container.clientHeight;
+  const svg = makeBlueprintBase(W, H);
+  const ns = "http://www.w3.org/2000/svg";
+  const localDefs = document.createElementNS(ns, "defs");
+  localDefs.innerHTML = `
+    <linearGradient id="hullB" x1="0" y1="-1" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6a7560"/><stop offset="50%" stop-color="#4a5444"/><stop offset="100%" stop-color="#2c332a"/>
+    </linearGradient>
+    <linearGradient id="deckB" x1="0" y1="-1" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7a6a4a"/><stop offset="100%" stop-color="#5a4e36"/>
+    </linearGradient>`;
+  svg.appendChild(localDefs);
+  defaultShips(state.heading).forEach(ship => {
+    drawFootprints(svg, ship, W, H, { show: state.footprint });
+    const { x, y } = shipWorldPos(ship, W, H);
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("transform", `translate(${x},${y}) rotate(${ship.head})`);
+    g.setAttribute("filter", "url(#shipShadow)");
+    const L = ship.size * HEX_W * 0.92;
+    const B = HEX_R * 0.78;
+    const bow = L * 0.42, stern = -L * 0.5;
+    const hullPath = `M ${bow},0 C ${bow},${-B*0.4} ${bow*0.35},${-B*0.95} ${0},${-B*0.95} L ${stern*0.6},${-B*0.95} C ${stern},${-B*0.85} ${stern},${-B*0.4} ${stern},0 C ${stern},${B*0.4} ${stern},${B*0.85} ${stern*0.6},${B*0.95} L ${0},${B*0.95} C ${bow*0.35},${B*0.95} ${bow},${B*0.4} ${bow},0 Z`;
+    const hull = document.createElementNS(ns, "path");
+    hull.setAttribute("d", hullPath); hull.setAttribute("fill", "url(#hullB)");
+    hull.setAttribute("stroke", "#1c1f1a"); hull.setAttribute("stroke-width", "0.5");
+    g.appendChild(hull);
+    const deckPath = `M ${bow*0.85},0 C ${bow*0.85},${-B*0.3} ${bow*0.3},${-B*0.72} ${0},${-B*0.72} L ${stern*0.55},${-B*0.72} C ${stern*0.85},${-B*0.6} ${stern*0.85},${-B*0.3} ${stern*0.85},0 C ${stern*0.85},${B*0.3} ${stern*0.85},${B*0.6} ${stern*0.55},${B*0.72} L ${0},${B*0.72} C ${bow*0.3},${B*0.72} ${bow*0.85},${B*0.3} ${bow*0.85},0 Z`;
+    const deck = document.createElementNS(ns, "path");
+    deck.setAttribute("d", deckPath); deck.setAttribute("fill", "url(#deckB)");
+    g.appendChild(deck);
+    const features = document.createElementNS(ns, "g");
+    features.setAttribute("filter", "url(#hardShadow)");
+    const ft = document.createElementNS(ns, "circle");
+    ft.setAttribute("cx", bow*0.55); ft.setAttribute("cy", 0); ft.setAttribute("r", B*0.32);
+    ft.setAttribute("fill", "#3c4438");
+    features.appendChild(ft);
+    if (ship.size >= 3) {
+      const at = document.createElementNS(ns, "circle");
+      at.setAttribute("cx", stern*0.65); at.setAttribute("cy", 0); at.setAttribute("r", B*0.32);
+      at.setAttribute("fill", "#3c4438");
+      features.appendChild(at);
+    }
+    const br = document.createElementNS(ns, "rect");
+    br.setAttribute("x", -B*0.55); br.setAttribute("y", -B*0.4);
+    br.setAttribute("width", B*1.1); br.setAttribute("height", B*0.8);
+    br.setAttribute("fill", "#5a6450"); br.setAttribute("stroke", "#2c332a"); br.setAttribute("stroke-width", "0.3");
+    features.appendChild(br);
+    if (ship.size >= 4) {
+      const stk = document.createElementNS(ns, "circle");
+      stk.setAttribute("cx", -B*0.05); stk.setAttribute("cy", 0); stk.setAttribute("r", B*0.18);
+      stk.setAttribute("fill", "#1a1c18");
+      features.appendChild(stk);
+    }
+    const barrelA = document.createElementNS(ns, "rect");
+    barrelA.setAttribute("x", bow*0.55); barrelA.setAttribute("y", -B*0.08);
+    barrelA.setAttribute("width", L*0.08); barrelA.setAttribute("height", B*0.16);
+    barrelA.setAttribute("fill", "#2a2e26");
+    features.appendChild(barrelA);
+    g.appendChild(features);
+    if (state.damage > 0) {
+      for (let i = 0; i < state.damage; i++) {
+        const burn = document.createElementNS(ns, "circle");
+        burn.setAttribute("cx", stern*0.3 + i*8);
+        burn.setAttribute("cy", (i%2 ? -1 : 1) * B*0.35);
+        burn.setAttribute("r", B*0.22);
+        burn.setAttribute("fill", "#1a0e08"); burn.setAttribute("opacity", "0.85");
+        g.appendChild(burn);
+      }
+    }
+    svg.appendChild(g);
+  });
+  container.appendChild(svg);
+}
+
+function renderC(container, state) {
+  container.innerHTML = "";
+  const W = container.clientWidth, H = container.clientHeight;
+  const svg = makeBlueprintBase(W, H);
+  const ns = "http://www.w3.org/2000/svg";
+  const localDefs = document.createElementNS(ns, "defs");
+  localDefs.innerHTML = `
+    <linearGradient id="hullC-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7a8470"/><stop offset="100%" stop-color="#4a5444"/></linearGradient>
+    <linearGradient id="hullC-side" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3a4036"/><stop offset="100%" stop-color="#1a1e18"/></linearGradient>
+    <linearGradient id="supC" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#9aa090"/><stop offset="100%" stop-color="#5a6050"/></linearGradient>`;
+  svg.appendChild(localDefs);
+  defaultShips(state.heading).forEach(ship => {
+    drawFootprints(svg, ship, W, H, { show: state.footprint });
+    const { x, y } = shipWorldPos(ship, W, H);
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("transform", `translate(${x},${y}) rotate(${ship.head}) scale(1, 0.62)`);
+    g.setAttribute("filter", "url(#shipShadow)");
+    const L = ship.size * HEX_W * 0.95;
+    const B = HEX_R * 0.95;
+    const bow = L * 0.42, stern = -L * 0.5;
+    const hullHeight = 8;
+    const side = document.createElementNS(ns, "path");
+    side.setAttribute("d", `M ${stern},0 L ${stern},${hullHeight} C ${stern},${hullHeight + B*0.6} ${stern*0.4},${hullHeight + B*1.0} ${0},${hullHeight + B*1.0} C ${bow*0.4},${hullHeight + B*1.0} ${bow},${hullHeight + B*0.6} ${bow},${hullHeight} L ${bow},0 C ${bow},${B*0.6} ${bow*0.4},${B*1.0} ${0},${B*1.0} C ${stern*0.4},${B*1.0} ${stern},${B*0.6} ${stern},0 Z`);
+    side.setAttribute("fill", "url(#hullC-side)");
+    g.appendChild(side);
+    const deck = document.createElementNS(ns, "path");
+    deck.setAttribute("d", `M ${bow},0 C ${bow},${-B*0.6} ${bow*0.4},${-B*1.0} ${0},${-B*1.0} C ${stern*0.4},${-B*1.0} ${stern},${-B*0.6} ${stern},0 C ${stern},${B*0.6} ${stern*0.4},${B*1.0} ${0},${B*1.0} C ${bow*0.4},${B*1.0} ${bow},${B*0.6} ${bow},0 Z`);
+    deck.setAttribute("fill", "url(#hullC-top)");
+    deck.setAttribute("stroke", "#1c1f1a"); deck.setAttribute("stroke-width", "0.4");
+    g.appendChild(deck);
+    const supH = -10 - ship.size * 1.4;
+    const supW = B * 0.6;
+    const supL = L * 0.22;
+    const sup = document.createElementNS(ns, "g");
+    sup.innerHTML = `
+      <rect x="${-supL/2}" y="${-supW}" width="${supL}" height="${supW*2}" fill="url(#hullC-side)"/>
+      <rect x="${-supL/2}" y="${-supW + supH}" width="${supL}" height="${supW*2}" fill="url(#supC)"/>
+      <rect x="${-supL/2}" y="${-supW}" width="${supL}" height="${-supH}" fill="#2a2e26" opacity="0.55"/>`;
+    g.appendChild(sup);
+    const fturret = document.createElementNS(ns, "g");
+    const tx = bow * 0.55;
+    fturret.innerHTML = `<ellipse cx="${tx}" cy="0" rx="${B*0.32}" ry="${B*0.28}" fill="#3a4036"/><rect x="${tx}" y="${-B*0.08}" width="${L*0.09}" height="${B*0.16}" fill="#1c1f1a"/>`;
+    g.appendChild(fturret);
+    if (ship.size >= 3) {
+      const aturret = document.createElementNS(ns, "g");
+      const ax = stern * 0.65;
+      aturret.innerHTML = `<ellipse cx="${ax}" cy="0" rx="${B*0.32}" ry="${B*0.28}" fill="#3a4036"/>`;
+      g.appendChild(aturret);
+    }
+    svg.appendChild(g);
+  });
+  container.appendChild(svg);
+}
+
+function renderD(container, state) {
+  container.innerHTML = "";
+  const W = container.clientWidth, H = container.clientHeight;
+  if (W === 0 || H === 0) return;
+  const base = makeBlueprintBase(W, H);
+  container.appendChild(base);
+  if (typeof THREE === "undefined") return;
+  const scene = new THREE.Scene();
+  const aspect = W / H;
+  const viewSize = 200;
+  const camera = new THREE.OrthographicCamera(-viewSize*aspect, viewSize*aspect, viewSize, -viewSize, 1, 2000);
+  camera.position.set(0, 250, 220);
+  camera.lookAt(0, 0, 0);
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setSize(W, H);
+  renderer.setClearColor(0x000000, 0);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.domElement.style.position = "absolute";
+  renderer.domElement.style.inset = "0";
+  container.appendChild(renderer.domElement);
+  const key = new THREE.DirectionalLight(0xfff0d0, 1.2);
+  key.position.set(120, 220, 80);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.camera.left = -300; key.shadow.camera.right = 300;
+  key.shadow.camera.top = 300; key.shadow.camera.bottom = -300;
+  key.shadow.bias = -0.0005;
+  scene.add(key);
+  scene.add(new THREE.AmbientLight(0xb0c0d0, 0.55));
+  const fill2 = new THREE.DirectionalLight(0x88aacc, 0.4);
+  fill2.position.set(-100, 100, -100);
+  scene.add(fill2);
+  const shadowMat = new THREE.ShadowMaterial({ opacity: 0.35 });
+  const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), shadowMat);
+  shadowPlane.rotation.x = -Math.PI/2;
+  shadowPlane.receiveShadow = true;
+  scene.add(shadowPlane);
+  function buildShip(sizeCells, damage=0) {
+    const group = new THREE.Group();
+    const L = sizeCells * HEX_W * 0.92;
+    const B = HEX_R * 0.85;
+    const hullH = 10;
+    const hullShape = new THREE.Shape();
+    const bow = L * 0.42, stern = -L * 0.5;
+    hullShape.moveTo(bow, 0);
+    hullShape.bezierCurveTo(bow, -B*0.5, bow*0.35, -B, 0, -B);
+    hullShape.lineTo(stern*0.55, -B);
+    hullShape.bezierCurveTo(stern, -B*0.85, stern, -B*0.4, stern, 0);
+    hullShape.bezierCurveTo(stern, B*0.4, stern, B*0.85, stern*0.55, B);
+    hullShape.lineTo(0, B);
+    hullShape.bezierCurveTo(bow*0.35, B, bow, B*0.5, bow, 0);
+    const extrudeSettings = { depth: hullH, bevelEnabled: true, bevelThickness: 1.2, bevelSize: 1.2, bevelSegments: 2 };
+    const hullGeo = new THREE.ExtrudeGeometry(hullShape, extrudeSettings);
+    hullGeo.rotateX(-Math.PI/2);
+    hullGeo.translate(0, -hullH/2 + 2, 0);
+    const hullMat = new THREE.MeshStandardMaterial({ color: 0x4a5444, roughness: 0.75, metalness: 0.25, flatShading: true });
+    const hull = new THREE.Mesh(hullGeo, hullMat);
+    hull.castShadow = true; hull.receiveShadow = true;
+    group.add(hull);
+    const supMat = new THREE.MeshStandardMaterial({ color: 0x6a7560, roughness: 0.7, flatShading: true });
+    const supDarkMat = new THREE.MeshStandardMaterial({ color: 0x3a4036, roughness: 0.7, flatShading: true });
+    const sup1 = new THREE.Mesh(new THREE.BoxGeometry(L*0.28, 6, B*1.1), supMat);
+    sup1.position.set(-L*0.05, 5, 0); sup1.castShadow = true;
+    group.add(sup1);
+    if (sizeCells >= 3) {
+      const sup2 = new THREE.Mesh(new THREE.BoxGeometry(L*0.18, 8, B*0.85), supMat);
+      sup2.position.set(-L*0.02, 12, 0); sup2.castShadow = true;
+      group.add(sup2);
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 18, 6), supDarkMat);
+      mast.position.set(-L*0.05, 22, 0); mast.castShadow = true;
+      group.add(mast);
+    }
+    const turretGeo = new THREE.CylinderGeometry(B*0.32, B*0.32, 5, 12);
+    const turretMat = new THREE.MeshStandardMaterial({ color: 0x3c4438, roughness: 0.6, metalness: 0.4, flatShading: true });
+    const fturret = new THREE.Mesh(turretGeo, turretMat);
+    fturret.position.set(bow*0.55, 4.5, 0); fturret.castShadow = true;
+    group.add(fturret);
+    const barrelGeo = new THREE.CylinderGeometry(0.8, 0.8, L*0.14, 6);
+    barrelGeo.rotateZ(Math.PI/2);
+    const barrel = new THREE.Mesh(barrelGeo, supDarkMat);
+    barrel.position.set(bow*0.55 + L*0.08, 5.2, 0); barrel.castShadow = true;
+    group.add(barrel);
+    if (sizeCells >= 3) {
+      const aturret = new THREE.Mesh(turretGeo, turretMat);
+      aturret.position.set(stern*0.65, 4.5, 0); aturret.castShadow = true;
+      group.add(aturret);
+    }
+    if (sizeCells >= 4) {
+      const stackGeo = new THREE.CylinderGeometry(B*0.18, B*0.22, 9, 12);
+      const stackMat = new THREE.MeshStandardMaterial({ color: 0x1a1c18, roughness: 0.9, flatShading: true });
+      const stack = new THREE.Mesh(stackGeo, stackMat);
+      stack.position.set(-L*0.05, 11, 0); stack.castShadow = true;
+      group.add(stack);
+    }
+    if (damage > 0) {
+      group.rotation.z = damage * 0.04;
+      for (let i = 0; i < damage; i++) {
+        const scorch = new THREE.Mesh(new THREE.BoxGeometry(B*0.6, 1.2, B*0.6),
+          new THREE.MeshStandardMaterial({ color: 0x150a06, roughness: 0.95, flatShading: true }));
+        scorch.position.set(stern*0.2 + i*8, 4, (i%2?-1:1)*B*0.4);
+        group.add(scorch);
+      }
+    }
+    return group;
+  }
+  defaultShips(state.heading).forEach(ship => {
+    const { x, y } = axialToPx(ship.ax, ship.ay);
+    const s = buildShip(ship.size, state.damage);
+    s.position.set(x, 0, y);
+    s.rotation.y = -ship.head * Math.PI/180;
+    scene.add(s);
+  });
+  if (state.footprint) {
+    defaultShips(state.heading).forEach(ship => {
+      const { x, y } = axialToPx(ship.ax, ship.ay);
+      const angle = ship.head * Math.PI/180;
+      for (let i = 1; i <= 2; i++) {
+        const back = (ship.size/2 + i) * HEX_W * 0.9;
+        const hx = x - Math.cos(angle) * back;
+        const hy = y - Math.sin(angle) * back;
+        const dot = new THREE.Mesh(new THREE.CircleGeometry(3.5, 16), new THREE.MeshBasicMaterial({ color: 0x8a1f1f }));
+        dot.rotation.x = -Math.PI/2;
+        dot.position.set(hx, 0.5, hy);
+        scene.add(dot);
+      }
+    });
+  }
+  renderer.render(scene, camera);
+}
+
+function renderE(container, state) {
+  container.innerHTML = "";
+  const W = container.clientWidth, H = container.clientHeight;
+  const svg = makeBlueprintBase(W, H);
+  const ns = "http://www.w3.org/2000/svg";
+  defaultShips(state.heading).forEach(ship => {
+    drawFootprints(svg, ship, W, H, { show: state.footprint });
+    const { x, y } = shipWorldPos(ship, W, H);
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("transform", `translate(${x},${y}) rotate(${ship.head})`);
+    g.setAttribute("fill", "none");
+    g.setAttribute("stroke", "#3a2e1c");
+    g.setAttribute("stroke-width", "0.9");
+    g.setAttribute("stroke-linecap", "round");
+    g.setAttribute("stroke-linejoin", "round");
+    const L = ship.size * HEX_W * 0.92;
+    const B = HEX_R * 0.85;
+    const bow = L * 0.42, stern = -L * 0.5;
+    const hullPath = `M ${bow},0 C ${bow},${-B*0.4} ${bow*0.35},${-B*0.95} ${0},${-B*0.95} L ${stern*0.55},${-B*0.95} C ${stern},${-B*0.85} ${stern},${-B*0.4} ${stern},0 C ${stern},${B*0.4} ${stern},${B*0.85} ${stern*0.55},${B*0.95} L ${0},${B*0.95} C ${bow*0.35},${B*0.95} ${bow},${B*0.4} ${bow},0 Z`;
+    const fill = document.createElementNS(ns, "path");
+    fill.setAttribute("d", hullPath);
+    fill.setAttribute("fill", "#c9b48a");
+    fill.setAttribute("fill-opacity", "0.55");
+    fill.setAttribute("stroke", "none");
+    g.appendChild(fill);
+    const hull = document.createElementNS(ns, "path");
+    hull.setAttribute("d", hullPath);
+    g.appendChild(hull);
+    const deck = document.createElementNS(ns, "path");
+    deck.setAttribute("d", `M ${bow*0.85},0 C ${bow*0.85},${-B*0.3} ${bow*0.3},${-B*0.7} ${0},${-B*0.7} L ${stern*0.6},${-B*0.7} C ${stern*0.85},${-B*0.55} ${stern*0.85},${-B*0.3} ${stern*0.85},0 C ${stern*0.85},${B*0.3} ${stern*0.85},${B*0.55} ${stern*0.6},${B*0.7} L ${0},${B*0.7} C ${bow*0.3},${B*0.7} ${bow*0.85},${B*0.3} ${bow*0.85},0 Z`);
+    deck.setAttribute("stroke-width", "0.55");
+    g.appendChild(deck);
+    const center = document.createElementNS(ns, "path");
+    center.setAttribute("d", `M ${stern*0.92},0 L ${bow*0.92},0`);
+    center.setAttribute("stroke-width", "0.4");
+    center.setAttribute("stroke-dasharray", "2,2");
+    g.appendChild(center);
+    for (let i = 0; i < ship.size; i++) {
+      const dx = stern + (i + 0.5) * (L / ship.size);
+      const dot = document.createElementNS(ns, "circle");
+      dot.setAttribute("cx", dx); dot.setAttribute("cy", 0);
+      dot.setAttribute("r", "1.2"); dot.setAttribute("fill", "#3a2e1c"); dot.setAttribute("stroke", "none");
+      g.appendChild(dot);
+    }
+    const t1 = document.createElementNS(ns, "circle");
+    t1.setAttribute("cx", bow*0.55); t1.setAttribute("cy", 0); t1.setAttribute("r", B*0.22);
+    g.appendChild(t1);
+    if (ship.size >= 3) {
+      const t2 = document.createElementNS(ns, "circle");
+      t2.setAttribute("cx", stern*0.65); t2.setAttribute("cy", 0); t2.setAttribute("r", B*0.22);
+      g.appendChild(t2);
+    }
+    const br = document.createElementNS(ns, "rect");
+    br.setAttribute("x", -B*0.5); br.setAttribute("y", -B*0.32);
+    br.setAttribute("width", B); br.setAttribute("height", B*0.64);
+    g.appendChild(br);
+    const lbl = document.createElementNS(ns, "text");
+    lbl.setAttribute("x", 0); lbl.setAttribute("y", B*1.5);
+    lbl.setAttribute("text-anchor", "middle");
+    lbl.setAttribute("font-family", "Courier New, monospace");
+    lbl.setAttribute("font-size", "7");
+    lbl.setAttribute("fill", "#3a2e1c");
+    lbl.setAttribute("stroke", "none");
+    lbl.setAttribute("transform", `rotate(${-ship.head})`);
+    lbl.textContent = `${ship.name} · ${ship.size}`;
+    g.appendChild(lbl);
+    svg.appendChild(g);
+  });
+  container.appendChild(svg);
+}
+
+function renderF(container, state) {
+  container.innerHTML = "";
+  const W = container.clientWidth, H = container.clientHeight;
+  const svg = makeBlueprintBase(W, H);
+  const ns = "http://www.w3.org/2000/svg";
+  defaultShips(state.heading).forEach(ship => {
+    drawFootprints(svg, ship, W, H, { show: state.footprint });
+    const { x, y } = shipWorldPos(ship, W, H);
+    const g = document.createElementNS(ns, "g");
+    g.setAttribute("transform", `translate(${x},${y}) rotate(${ship.head})`);
+    g.setAttribute("filter", "url(#shipShadow)");
+    const L = ship.size * HEX_W * 0.92;
+    const B = HEX_R * 0.95;
+    const rect = document.createElementNS(ns, "rect");
+    rect.setAttribute("x", -L/2); rect.setAttribute("y", -B*0.7);
+    rect.setAttribute("width", L); rect.setAttribute("height", B*1.4);
+    rect.setAttribute("rx", B*0.25);
+    rect.setAttribute("fill", "#1a3050");
+    rect.setAttribute("stroke", "#0a1828"); rect.setAttribute("stroke-width", "0.8");
+    g.appendChild(rect);
+    const arrow = document.createElementNS(ns, "path");
+    arrow.setAttribute("d", `M ${-L/2 + B*0.3},${-B*0.4} L ${L/2 - B*0.7},${-B*0.4} L ${L/2 - B*0.3},0 L ${L/2 - B*0.7},${B*0.4} L ${-L/2 + B*0.3},${B*0.4} Z`);
+    arrow.setAttribute("fill", "#3a6090");
+    g.appendChild(arrow);
+    const anchor = document.createElementNS(ns, "g");
+    anchor.setAttribute("transform", `rotate(${-ship.head})`);
+    anchor.innerHTML = `<text y="${B*0.25}" text-anchor="middle" font-family="Georgia" font-weight="bold" font-size="${B*0.9}" fill="#f0e8d0">${ship.size}</text>`;
+    g.appendChild(anchor);
+    for (let i = 0; i < ship.size; i++) {
+      const px = -L/2 + (i + 0.5) * (L / ship.size);
+      const pip = document.createElementNS(ns, "circle");
+      pip.setAttribute("cx", px); pip.setAttribute("cy", B*0.55);
+      pip.setAttribute("r", 1.6);
+      const lost = i < state.damage;
+      pip.setAttribute("fill", lost ? "#8a1f1f" : "#f0e8d0");
+      g.appendChild(pip);
+    }
+    svg.appendChild(g);
+  });
+  container.appendChild(svg);
+}
+
+const state = { heading: 0, damage: 0, footprint: true };
+function rerenderAll() {
+  renderA(document.getElementById("stageA"), state);
+  renderB(document.getElementById("stageB"), state);
+  renderC(document.getElementById("stageC"), state);
+  renderD(document.getElementById("stageD"), state);
+  renderE(document.getElementById("stageE"), state);
+  renderF(document.getElementById("stageF"), state);
+}
+document.getElementById("heading").addEventListener("change", e => { state.heading = parseInt(e.target.value, 10); rerenderAll(); });
+document.getElementById("damage").addEventListener("input", e => { state.damage = parseInt(e.target.value, 10); document.getElementById("dmgLabel").textContent = `${state.damage} hit${state.damage===1?"":"s"}`; rerenderAll(); });
+document.getElementById("showFootprint").addEventListener("change", e => { state.footprint = e.target.checked; rerenderAll(); });
+window.addEventListener("resize", rerenderAll);
+setTimeout(rerenderAll, 100);
+</script>
+
+</body>
+</html>
+  </app-source>
+</iframe-app>
+
+---
+
+### My read on each option
+
+**A · Ink Silhouette** — Pure chart symbology. This is what a naval staff officer would *draw* on the map at midnight. Reads instantly. Risk: too flat, may feel "Battleship Lite" rather than the deeper game you're building.
+
+**B · Deck Detail** — Top-down with discernible turrets, bridge, stack. **My favorite SVG-only option.** Hits your "looks rendered but is programmatic" target without ever needing a third dimension. Damage state has somewhere to go (scorched cells visibly destroyed). Cheap to render thousands of times for animation.
+
+**C · ¾ Miniature** — Faked isometric in pure SVG (just a `scaleY(0.62)` and a stack of layered rects). Cheap-feeling vs real 3D, but ships have *presence*. Good middle ground if WebGL is off the table.
+
+**D · GL Low-Poly** — **The "incredible" answer.** Real ExtrudeGeometry hulls, real PCFSoft shadows, warm key + cool fill lighting. Mounted on the same SVG blueprint base — so the *board stays paper*, and only the ships are 3D. This is the architecture I'd recommend: SVG for the diegetic blueprint layer (cheap, crisp, infinite zoom), WebGL only for the 17 ship objects (fully orbit-able later if you want). Note the orthographic camera — it preserves the top-down hex math while giving the ships shadows that anchor them on paper.
+
+**E · Blueprint Line** — Ships drawn in the *same ink* as the grid. This is the most "World War II ops table" answer in a different direction: the ships aren't *on* the map, they *are* part of the map. Compelling for the defender's setup view (where ships are your own) but probably wrong for the attacker view (where hits should feel like striking a real thing).
+
+**F · Command Counter** — NATO-style. Showed it so you can see what you're *not* doing. Reads instantly but feels like a strategy spreadsheet.
+
+### My recommendation
+
+**Layered hybrid: D on top of A's base, with E used for the defender's "own ships" view.**
+
+The defender is looking at a *plan* (blueprint line drawings of their own fleet, all info visible). The attacker is looking at a *real ocean* (rendered 3D ships, but only where probes have landed — the rest of the fleet is invisible). The two players literally see different art styles of the same game state. That doubles down on the asymmetric-information core of the design.
+
+### Three things to decide next (to unblock the next iteration)
+
+1. **Camera fix vs free.** Top-down orthographic is the cleanest match for hex math. ¾ fixed is prettier but adds parallax problems near the wrap edges. Orbit-able is gorgeous but disorienting for an inference game where spatial reasoning matters. I'd lock to top-down orthographic and earn the right to tilt later.
+2. **Wrap rendering.** Your open question. My instinct: **don't fade**. Draw the ship simultaneously on both sides, fully solid, with a thin dashed "continuity line" through off-board space (rendered in the margin). Fade implies *uncertainty*; the ship's position isn't uncertain — only its identity/heading is. Asteroids didn't fade. Crop-and-clone is correct.
+3. **Hex orientation.** I built these pointy-top because the reference photo has vertical hex edges. Flat-top hexes give cleaner straight-east trajectories but odd-shaped ships. Worth confirming before we bake more art.
+
+Want me to push on (D) specifically — wire up an orbit camera, real wave displacement on the paper, animated ship motion across a wrap edge — or branch off and prototype the wrap-edge rendering as its own study?
+
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part>I think you friggen nailed it. Unfortunately too well 😊 So we're going to allow the User to choose between A, B, E and F 😊 Default it to "B". Make sure that it's trivially swappable. I would make "A" just the core version of "B" (to make it easier and so that it's clear which end is the front). "E" will be just the "outlines" of "B". "F" is different. Bottom line: A, B and E are just "E" with different rendering. Yeah?
+
+Like the picture, I also want color on the hexes that the ship is on to make it unambiguous.
+
+We'll figure out if pointy-top is the right orientation once you draw the grid.
+
+So do this: draw just one game board and have a sidebar where we can choose the stuff that we want to turn on and off. For example, switch which render we're using, etc. I want to get a feel for what the whole outline looks like. I also want to be able to move the boats. So allow me in the sidebar to choose which boat then to choose what size then to choose where it sits easily with a couple of scrubbers or something to make it easy for me to just see all possible positions. So in this one, I want you to specifically focus on the game board and the sidebar and allow me to swap the render. I want to mail all that down. In your code make sure you have good separation between the render and stuff like that. Again, I just wanna keep it clean so it's easy for us to iterate. 
+
+<agent-execution agent-id="5BmKo6FjFmGGT9rfdr1R" execution-id="o2fwohNLyXQsgaa6SlSy" name="Code Execution and Data Viz V2" state="complete" usage-record-id="db8a6d1989a0a04e16c3439dc2d3e407" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="gayIfJR3Xp" provider="anthropic" reasoning-id="iqtzLMrW7YnxoUNl7r9x" status="completed" signature="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" reasoning="%5B%22%22%5D"></agent-reason>Got it. Yes — A/B/E are literally the same ship "anatomy" (hull, deck, turrets, bridge, stack, barrel) rendered three ways: filled-dark, gradient-with-details, and line-only. F is its own beast. I'll factor it so the ship-features function is shared, and each renderer just *styles* those features. Swapping renderers = changing one string.
+
+For the highlighted cells: yeah, the blue tint in the reference photo is doing a lot of work — it makes the abstract hex grid feel like a concrete claim ("this ship is *here*"). I'll bake that in as the foundation layer that any renderer sits on top of.<agent-tool id="eyBkA2MwsE" agent-id="5BmKo6FjFmGGT9rfdr1R" provider="anthropic" tool-use-id="srvtoolu_01JEasqHdYmE6NVUvdQiV5jx" tool-type="code_execution" name="text_editor_code_execution" is-executable="false" status="completed">
+  <tool-call>
+{"command":"create","path":"/tmp/sea_battle_board.html","file_text":"&lt;!-- placeholder: will be inlined into iframe --&gt;\n"}
+  </tool-call>
+  <tool-result>
+{"format":"code-execution-result","version":1,"kind":"text-editor.create","isFileUpdate":false}
+  </tool-result>
+</agent-tool>Here's the board with sidebar. Five ships from the spec (5/4/3/3/2), each independently positionable. Render mode is a single dropdown — try B (default), then click through A / E / F to compare on the *same* board state.
+
+<iframe-app height="900px" in-progress="false" width="100%">
+  <app-source>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sea Battle · Board</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #1a1612; color: #ddd; overflow: hidden; }
+  #app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+  /* --- sidebar --- */
+  #sidebar { background: #20191180; background: linear-gradient(180deg, #221b14 0%, #1a140d 100%); border-right: 1px solid #3a2e1c; overflow-y: auto; padding: 16px; font-size: 13px; }
+  #sidebar h2 { font-size: 11px; letter-spacing: 1.5px; color: #9a8866; text-transform: uppercase; margin: 18px 0 8px 0; font-weight: 600; border-bottom: 1px solid #3a2e1c; padding-bottom: 4px; }
+  #sidebar h2:first-of-type { margin-top: 0; }
+  .row { display: flex; align-items: center; justify-content: space-between; margin: 6px 0; gap: 8px; }
+  .row label { color: #c9b88a; font-size: 12px; }
+  .row select, .row input[type="range"] { background: #2a2218; color: #e8dcc0; border: 1px solid #3a2e1c; border-radius: 3px; padding: 4px 6px; font-size: 12px; font-family: inherit; }
+  .row select { min-width: 120px; }
+  .row input[type="range"] { flex: 1; min-width: 0; }
+  .row .val { color: #9a8866; font-family: "SF Mono", "Courier New", monospace; font-size: 11px; min-width: 24px; text-align: right; }
+  .toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .toggle input { margin: 0; }
+  .seg { display: flex; gap: 2px; background: #1a1410; border-radius: 4px; padding: 2px; }
+  .seg button { flex: 1; background: transparent; color: #9a8866; border: 0; padding: 6px 4px; font-size: 11px; font-family: inherit; cursor: pointer; border-radius: 3px; letter-spacing: 0.5px; }
+  .seg button.active { background: #3a6090; color: #e8dcc0; }
+  .seg button:hover:not(.active) { background: #2a2218; color: #c9b88a; }
+  .ship-card { background: #1a14104d; border: 1px solid #2a2218; border-radius: 4px; padding: 8px; margin: 6px 0; cursor: pointer; transition: all 0.15s; }
+  .ship-card.active { border-color: #3a6090; background: #1f3a5f2a; }
+  .ship-card .ship-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #c9b88a; }
+  .ship-card .ship-head .badge { font-family: "SF Mono", monospace; font-size: 10px; color: #9a8866; }
+  .ship-card.active .ship-head { color: #e8dcc0; }
+  .ship-controls { margin-top: 8px; display: none; }
+  .ship-card.active .ship-controls { display: block; }
+  .heading-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; }
+  .heading-grid button { background: #2a2218; color: #9a8866; border: 1px solid #3a2e1c; border-radius: 3px; padding: 4px 0; font-size: 10px; cursor: pointer; font-family: inherit; }
+  .heading-grid button.active { background: #3a6090; color: #e8dcc0; border-color: #3a6090; }
+  .meta { color: #6a5a40; font-size: 11px; margin-top: 4px; font-family: "SF Mono", monospace; }
+  /* --- board --- */
+  #board-wrap { position: relative; overflow: hidden; background: #2a2620; }
+  #board { width: 100%; height: 100%; background: linear-gradient(135deg, #e8dcc0 0%, #d9c89f 100%); }
+  #hud { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.55); color: #c9b88a; padding: 8px 12px; font-family: "SF Mono", monospace; font-size: 11px; border-radius: 3px; line-height: 1.5; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============== SIDEBAR ============== -->
+  <aside id="sidebar">
+
+    <h2>Render Mode</h2>
+    <div class="seg" id="renderSeg">
+      <button data-r="A">A · Ink</button>
+      <button data-r="B" class="active">B · Detail</button>
+      <button data-r="E">E · Line</button>
+      <button data-r="F">F · Counter</button>
+    </div>
+    <div class="meta" id="renderMeta">B — gradient hull, deck features, default</div>
+
+    <h2>Board</h2>
+    <div class="row">
+      <label>Hex orientation</label>
+      <select id="orient">
+        <option value="pointy">Pointy-top</option>
+        <option value="flat">Flat-top</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Radius</label>
+      <input id="radius" type="range" min="4" max="9" value="7"/>
+      <span class="val" id="radiusVal">7</span>
+    </div>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="showHighlight" checked/> Highlight ship cells</label>
+    </div>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="showLabels" checked/> Ship labels</label>
+    </div>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="showCoords"/> Debug: hex coords</label>
+    </div>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="showCompass" checked/> Compass</label>
+    </div>
+
+    <h2>Fleet</h2>
+    <div id="fleetList"></div>
+
+  </aside>
+
+  <!-- ============== BOARD ============== -->
+  <div id="board-wrap">
+    <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="hud">
+      <div>render: <span id="hudRender">B</span></div>
+      <div>active: <span id="hudActive">—</span></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+   1. DATA MODEL  (no rendering knowledge)
+   ===================================================================== */
+
+const HEX_DIRS_POINTY = [
+  { name: "E",  dq:+1, dr: 0, angle:   0 },
+  { name: "SE", dq: 0, dr:+1, angle:  60 },
+  { name: "SW", dq:-1, dr:+1, angle: 120 },
+  { name: "W",  dq:-1, dr: 0, angle: 180 },
+  { name: "NW", dq: 0, dr:-1, angle: 240 },
+  { name: "NE", dq:+1, dr:-1, angle: 300 },
+];
+const HEX_DIRS_FLAT = [
+  { name: "NE", dq:+1, dr:-1, angle: -30 },
+  { name: "SE", dq:+1, dr: 0, angle:  30 },
+  { name: "S",  dq: 0, dr:+1, angle:  90 },
+  { name: "SW", dq:-1, dr:+1, angle: 150 },
+  { name: "NW", dq:-1, dr: 0, angle: 210 },
+  { name: "N",  dq: 0, dr:-1, angle: 270 },
+];
+
+const fleet = [
+  { id: "BB-01", size: 5, q: -3, r: -2, head: 0 },
+  { id: "CA-02", size: 4, q:  1, r: -3, head: 1 },
+  { id: "DD-03", size: 3, q:  3, r:  1, head: 2 },
+  { id: "DD-04", size: 3, q: -4, r:  2, head: 5 },
+  { id: "PT-05", size: 2, q:  0, r:  3, head: 0 },
+];
+
+let activeShipId = fleet[0].id;
+
+const state = {
+  render: "B",
+  orient: "pointy",          // "pointy" | "flat"
+  radius: 7,
+  showHighlight: true,
+  showLabels: true,
+  showCoords: false,
+  showCompass: true,
+};
+
+/* =====================================================================
+   2. HEX GEOMETRY  (math only — no DOM)
+   ===================================================================== */
+
+function hexDirs() { return state.orient === "pointy" ? HEX_DIRS_POINTY : HEX_DIRS_FLAT; }
+
+function axialToPx(q, r, hexR) {
+  if (state.orient === "pointy") {
+    const w = Math.sqrt(3) * hexR;
+    const h = 1.5 * hexR;
+    return { x: w * (q + r/2), y: h * r };
+  } else {
+    const w = 1.5 * hexR;
+    const h = Math.sqrt(3) * hexR;
+    return { x: w * q, y: h * (r + q/2) };
+  }
+}
+
+function hexCorners(cx, cy, hexR) {
+  const pts = [];
+  const offset = state.orient === "pointy" ? -30 : 0;
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI/180) * (60*i + offset);
+    pts.push([cx + hexR*Math.cos(a), cy + hexR*Math.sin(a)]);
+  }
+  return pts;
+}
+
+function inBoard(q, r, R) {
+  return Math.abs(q) <= R && Math.abs(r) <= R && Math.abs(q + r) <= R;
+}
+
+// Ship occupies `size` contiguous cells from (q,r) in heading direction
+function shipCells(ship) {
+  const dir = hexDirs()[ship.head];
+  const cells = [];
+  for (let i = 0; i < ship.size; i++) {
+    cells.push({ q: ship.q + i * dir.dq, r: ship.r + i * dir.dr });
+  }
+  return cells;
+}
+
+function centroidPx(cells, hexR) {
+  let x = 0, y = 0;
+  cells.forEach(c => { const p = axialToPx(c.q, c.r, hexR); x += p.x; y += p.y; });
+  return { x: x / cells.length, y: y / cells.length };
+}
+
+/* =====================================================================
+   3. SHIP FEATURE BUILDER  (single source of truth for A / B / E)
+   Returns geometric primitives in ship-local coords (bow toward +x).
+   ===================================================================== */
+
+function buildShipFeatures(ship, hexR) {
+  const cellSpan = state.orient === "pointy" ? Math.sqrt(3) * hexR : 1.5 * hexR;
+  const L = ship.size * cellSpan * 0.92;
+  const B = hexR * 0.78;
+  const bow = L * 0.42, stern = -L * 0.5;
+  const hullPath = `
+    M ${bow},0
+    C ${bow},${-B*0.4} ${bow*0.35},${-B*0.95} ${0},${-B*0.95}
+    L ${stern*0.6},${-B*0.95}
+    C ${stern},${-B*0.85} ${stern},${-B*0.4} ${stern},0
+    C ${stern},${B*0.4} ${stern},${B*0.85} ${stern*0.6},${B*0.95}
+    L ${0},${B*0.95}
+    C ${bow*0.35},${B*0.95} ${bow},${B*0.4} ${bow},0 Z
+  `;
+  const deckPath = `
+    M ${bow*0.85},0
+    C ${bow*0.85},${-B*0.3} ${bow*0.3},${-B*0.72} ${0},${-B*0.72}
+    L ${stern*0.55},${-B*0.72}
+    C ${stern*0.85},${-B*0.6} ${stern*0.85},${-B*0.3} ${stern*0.85},0
+    C ${stern*0.85},${B*0.3} ${stern*0.85},${B*0.6} ${stern*0.55},${B*0.72}
+    L ${0},${B*0.72}
+    C ${bow*0.3},${B*0.72} ${bow*0.85},${B*0.3} ${bow*0.85},0 Z
+  `;
+  return {
+    L, B, bow, stern, hullPath, deckPath,
+    fwdTurret:  { x: bow * 0.55, r: B * 0.32 },
+    aftTurret:  ship.size >= 3 ? { x: stern * 0.65, r: B * 0.32 } : null,
+    bridge:     { x: -B*0.55, y: -B*0.4, w: B*1.1, h: B*0.8 },
+    stack:      ship.size >= 4 ? { x: -B*0.05, r: B*0.18 } : null,
+    barrel:     { x: bow*0.55, y: -B*0.08, w: L*0.08, h: B*0.16 },
+    bowWedge:   `M ${bow+2},0 L ${bow-5},-3 L ${bow-5},3 Z`,
+  };
+}
+
+/* =====================================================================
+   4. RENDERERS  (each: (svgGroup, ship, feat) => void)
+   A / B / E share buildShipFeatures(). F has its own geometry.
+   ===================================================================== */
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs = {}) => {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+};
+
+const renderers = {
+
+  // ---- A · INK SILHOUETTE ----------------------------------------
+  // Same anatomy as B, but everything is the same dark fill.
+  A(g, ship, feat) {
+    g.appendChild(el("path", { d: feat.hullPath, fill: "#1a1410", stroke: "#000", "stroke-width": 0.6 }));
+    g.appendChild(el("path", { d: feat.bowWedge, fill: "#5a4a30" }));   // tiny wedge marks the bow
+    // Subtle deck centerline so orientation is unambiguous
+    g.appendChild(el("path", {
+      d: `M ${feat.stern*0.85},0 L ${feat.bow*0.85},0`,
+      stroke: "#c9b58a", "stroke-width": 0.8, opacity: 0.4, fill: "none"
+    }));
+  },
+
+  // ---- B · DECK DETAIL (default) ---------------------------------
+  B(g, ship, feat) {
+    g.appendChild(el("path", { d: feat.hullPath, fill: "url(#hullGrad)", stroke: "#1c1f1a", "stroke-width": 0.5 }));
+    g.appendChild(el("path", { d: feat.deckPath, fill: "url(#deckGrad)" }));
+
+    const features = el("g", { filter: "url(#hardShadow)" });
+    features.appendChild(el("circle", { cx: feat.fwdTurret.x, cy: 0, r: feat.fwdTurret.r, fill: "#3c4438" }));
+    if (feat.aftTurret) features.appendChild(el("circle", { cx: feat.aftTurret.x, cy: 0, r: feat.aftTurret.r, fill: "#3c4438" }));
+    features.appendChild(el("rect", { x: feat.bridge.x, y: feat.bridge.y, width: feat.bridge.w, height: feat.bridge.h, fill: "#5a6450", stroke: "#2c332a", "stroke-width": 0.3 }));
+    if (feat.stack)     features.appendChild(el("circle", { cx: feat.stack.x, cy: 0, r: feat.stack.r, fill: "#1a1c18" }));
+    features.appendChild(el("rect", { x: feat.barrel.x, y: feat.barrel.y, width: feat.barrel.w, height: feat.barrel.h, fill: "#2a2e26" }));
+    g.appendChild(features);
+  },
+
+  // ---- E · BLUEPRINT LINE ----------------------------------------
+  // Same anatomy, outlines only, light parchment fill.
+  E(g, ship, feat) {
+    const stroke = { fill: "none", stroke: "#3a2e1c", "stroke-width": 0.9, "stroke-linejoin": "round" };
+    g.appendChild(el("path", { d: feat.hullPath, fill: "#c9b48a", "fill-opacity": 0.55, stroke: "none" }));
+    g.appendChild(el("path", { d: feat.hullPath, ...stroke }));
+    g.appendChild(el("path", { d: feat.deckPath, ...stroke, "stroke-width": 0.55 }));
+    // Keel dashed line
+    g.appendChild(el("path", { d: `M ${feat.stern*0.92},0 L ${feat.bow*0.92},0`, ...stroke, "stroke-width": 0.4, "stroke-dasharray": "2,2" }));
+    // Hex-cell dots
+    for (let i = 0; i < ship.size; i++) {
+      const dx = feat.stern + (i + 0.5) * (feat.L / ship.size);
+      g.appendChild(el("circle", { cx: dx, cy: 0, r: 1.2, fill: "#3a2e1c" }));
+    }
+    g.appendChild(el("circle", { cx: feat.fwdTurret.x, cy: 0, r: feat.fwdTurret.r, ...stroke }));
+    if (feat.aftTurret) g.appendChild(el("circle", { cx: feat.aftTurret.x, cy: 0, r: feat.aftTurret.r, ...stroke }));
+    g.appendChild(el("rect", { x: feat.bridge.x, y: feat.bridge.y, width: feat.bridge.w, height: feat.bridge.h, ...stroke }));
+  },
+
+  // ---- F · COMMAND COUNTER (own geometry) ------------------------
+  F(g, ship, feat) {
+    const L = feat.L, B = feat.B * 1.15;
+    g.appendChild(el("rect", { x: -L/2, y: -B*0.7, width: L, height: B*1.4, rx: B*0.25, fill: "#1a3050", stroke: "#0a1828", "stroke-width": 0.8 }));
+    const arrow = el("path", {
+      d: `M ${-L/2 + B*0.3},${-B*0.4} L ${L/2 - B*0.7},${-B*0.4} L ${L/2 - B*0.3},0 L ${L/2 - B*0.7},${B*0.4} L ${-L/2 + B*0.3},${B*0.4} Z`,
+      fill: "#3a6090"
+    });
+    g.appendChild(arrow);
+    // Size number (counter-rotated so it's always upright)
+    const text = el("text", {
+      y: B*0.22, "text-anchor": "middle", "font-family": "Georgia",
+      "font-weight": "bold", "font-size": B*0.75, fill: "#f0e8d0",
+      transform: `rotate(${-(hexDirs()[ship.head].angle)})`
+    });
+    text.textContent = ship.size;
+    g.appendChild(text);
+    // Pips — one per cell, running stern→bow (left→right in local coords)
+    for (let i = 0; i < ship.size; i++) {
+      const px = -L/2 + (i + 0.5) * (L / ship.size);
+      g.appendChild(el("circle", { cx: px, cy: B*0.55, r: 1.6, fill: "#f0e8d0" }));
+    }
+  },
+};
+
+/* =====================================================================
+   5. BOARD RENDER  (layered pipeline)
+   ===================================================================== */
+
+function computeHexR(boardW, boardH, R) {
+  // Fit the board (2R+1 hexes across, ~similar tall) with margin.
+  const margin = 40;
+  if (state.orient === "pointy") {
+    const wCells = 2*R + 1, hCells = (3*R)/2 + 1;
+    const wByW = (boardW - 2*margin) / (wCells * Math.sqrt(3));
+    const wByH = (boardH - 2*margin) / (hCells * 1.5);
+    return Math.min(wByW, wByH);
+  } else {
+    const wCells = (3*R)/2 + 1, hCells = 2*R + 1;
+    const wByW = (boardW - 2*margin) / (wCells * 1.5);
+    const wByH = (boardH - 2*margin) / (hCells * Math.sqrt(3));
+    return Math.min(wByW, wByH);
+  }
+}
+
+function renderBoard() {
+  const svg = document.getElementById("board");
+  const wrap = document.getElementById("board-wrap");
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = "";
+
+  const hexR = computeHexR(W, H, state.radius);
+  const cx = W/2, cy = H/2;
+
+  // ---- DEFS ----------------------------------------------------------
+  const defs = el("defs");
+  defs.innerHTML = `
+    <radialGradient id="paperVignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#f0e4c8" stop-opacity="0.0"/>
+      <stop offset="70%" stop-color="#a08858" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#5a4628" stop-opacity="0.40"/>
+    </radialGradient>
+    <linearGradient id="hullGrad" x1="0" y1="-1" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6a7560"/>
+      <stop offset="50%" stop-color="#4a5444"/>
+      <stop offset="100%" stop-color="#2c332a"/>
+    </linearGradient>
+    <linearGradient id="deckGrad" x1="0" y1="-1" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7a6a4a"/>
+      <stop offset="100%" stop-color="#5a4e36"/>
+    </linearGradient>
+    <filter id="shipShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.8"/>
+      <feOffset dx="1.5" dy="2.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="hardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.6"/>
+      <feOffset dx="1" dy="1.6"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.7"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  `;
+  svg.appendChild(defs);
+
+  // ---- LAYER: hex grid (all in-board cells) -------------------------
+  const gridLayer = el("g", { id: "layer-grid" });
+  svg.appendChild(gridLayer);
+
+  const cellByKey = {};
+  for (let q = -state.radius; q <= state.radius; q++) {
+    for (let r = -state.radius; r <= state.radius; r++) {
+      if (!inBoard(q, r, state.radius)) continue;
+      const p = axialToPx(q, r, hexR);
+      const px = cx + p.x, py = cy + p.y;
+      const corners = hexCorners(px, py, hexR).map(c => c.join(",")).join(" ");
+      const cell = el("polygon", { points: corners, fill: "transparent", stroke: "rgba(58,46,28,0.50)", "stroke-width": 0.8 });
+      gridLayer.appendChild(cell);
+      cellByKey[`${q},${r}`] = { px, py, cell };
+
+      if (state.showCoords) {
+        const t = el("text", { x: px, y: py + 3, "text-anchor": "middle", "font-family": "SF Mono, monospace", "font-size": Math.max(6, hexR*0.28), fill: "#8a7350", opacity: 0.55 });
+        t.textContent = `${q},${r}`;
+        gridLayer.appendChild(t);
+      }
+    }
+  }
+
+  // ---- LAYER: ship-cell highlights ----------------------------------
+  const highlightLayer = el("g", { id: "layer-highlight" });
+  svg.appendChild(highlightLayer);
+
+  if (state.showHighlight) {
+    fleet.forEach(ship => {
+      const isActive = ship.id === activeShipId;
+      shipCells(ship).forEach(c => {
+        const key = `${c.q},${c.r}`;
+        const slot = cellByKey[key];
+        if (!slot) return;  // off-board cell (wrap to be handled later)
+        const corners = hexCorners(slot.px, slot.py, hexR).map(p => p.join(",")).join(" ");
+        highlightLayer.appendChild(el("polygon", {
+          points: corners,
+          fill: isActive ? "#3a6090" : "#5a7a9a",
+          "fill-opacity": isActive ? 0.55 : 0.35,
+          stroke: isActive ? "#1f3a5f" : "#3a5a7a",
+          "stroke-width": isActive ? 1.4 : 0.9,
+        }));
+      });
+    });
+  }
+
+  // ---- LAYER: vignette --------------------------------------------
+  svg.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#paperVignette)", "pointer-events": "none" }));
+
+  // ---- LAYER: ships -----------------------------------------------
+  const shipLayer = el("g", { id: "layer-ships" });
+  svg.appendChild(shipLayer);
+
+  const renderer = renderers[state.render];
+
+  fleet.forEach(ship => {
+    const cells = shipCells(ship);
+    const onBoardCells = cells.filter(c => inBoard(c.q, c.r, state.radius));
+    if (onBoardCells.length === 0) return;
+
+    const ctr = centroidPx(onBoardCells, hexR);
+    const px = cx + ctr.x, py = cy + ctr.y;
+    const angle = hexDirs()[ship.head].angle;
+
+    const g = el("g", { transform: `translate(${px},${py}) rotate(${angle})`, filter: "url(#shipShadow)" });
+    const feat = buildShipFeatures(ship, hexR);
+    renderer(g, ship, feat);
+    shipLayer.appendChild(g);
+
+    if (state.showLabels) {
+      const label = el("text", {
+        x: px, y: py + hexR * 1.4,
+        "text-anchor": "middle", "font-family": "SF Mono, monospace",
+        "font-size": Math.max(8, hexR*0.32), fill: "#3a2e1c",
+        opacity: ship.id === activeShipId ? 1 : 0.6,
+        "font-weight": ship.id === activeShipId ? 700 : 400
+      });
+      label.textContent = `${ship.id}`;
+      svg.appendChild(label);
+    }
+  });
+
+  // ---- LAYER: compass ---------------------------------------------
+  if (state.showCompass) {
+    const compass = el("g", { transform: `translate(40, ${H-45})`, opacity: 0.55, "pointer-events": "none" });
+    compass.innerHTML = `
+      <circle r="22" fill="none" stroke="#3a2e1c" stroke-width="0.6"/>
+      <circle r="16" fill="none" stroke="#3a2e1c" stroke-width="0.4"/>
+      <path d="M0,-22 L3,0 L0,22 L-3,0 Z" fill="#3a2e1c" opacity="0.6"/>
+      <path d="M-22,0 L0,3 L22,0 L0,-3 Z" fill="#3a2e1c" opacity="0.6"/>
+      <text y="-26" text-anchor="middle" font-size="8" fill="#3a2e1c" font-family="Georgia">N</text>
+    `;
+    svg.appendChild(compass);
+  }
+
+  // ---- HUD --------------------------------------------------------
+  document.getElementById("hudRender").textContent = state.render;
+  const active = fleet.find(s => s.id === activeShipId);
+  document.getElementById("hudActive").textContent =
+    active ? `${active.id} · size ${active.size} · (${active.q},${active.r}) · ${hexDirs()[active.head].name}` : "—";
+}
+
+/* =====================================================================
+   6. SIDEBAR  (state -> DOM, event wiring)
+   ===================================================================== */
+
+function buildFleetList() {
+  const root = document.getElementById("fleetList");
+  root.innerHTML = "";
+  fleet.forEach(ship => {
+    const card = document.createElement("div");
+    card.className = "ship-card" + (ship.id === activeShipId ? " active" : "");
+    card.dataset.id = ship.id;
+    const dir = hexDirs()[ship.head];
+    card.innerHTML = `
+      <div class="ship-head">
+        <b>${ship.id}</b>
+        <span class="badge">size ${ship.size} · ${dir.name}</span>
+      </div>
+      <div class="ship-controls">
+        <div class="row">
+          <label>Size</label>
+          <input type="range" min="1" max="5" value="${ship.size}" data-prop="size"/>
+          <span class="val">${ship.size}</span>
+        </div>
+        <div class="row">
+          <label>q</label>
+          <input type="range" min="-${state.radius}" max="${state.radius}" value="${ship.q}" data-prop="q"/>
+          <span class="val">${ship.q}</span>
+        </div>
+        <div class="row">
+          <label>r</label>
+          <input type="range" min="-${state.radius}" max="${state.radius}" value="${ship.r}" data-prop="r"/>
+          <span class="val">${ship.r}</span>
+        </div>
+        <div class="row" style="margin-top:6px;">
+          <label>Heading</label>
+        </div>
+        <div class="heading-grid">
+          ${hexDirs().map((d, i) =>
+            `<button data-head="${i}" class="${i===ship.head?'active':''}">${d.name}</button>`
+          ).join("")}
+        </div>
+      </div>
+    `;
+    card.addEventListener("click", (e) => {
+      if (e.target.closest(".ship-controls")) return;  // don't re-select on control interaction
+      activeShipId = ship.id;
+      buildFleetList();
+      renderBoard();
+    });
+    card.querySelectorAll('input[type="range"]').forEach(inp => {
+      inp.addEventListener("input", () => {
+        const prop = inp.dataset.prop;
+        ship[prop] = parseInt(inp.value, 10);
+        inp.parentElement.querySelector(".val").textContent = ship[prop];
+        // also update the badge
+        card.querySelector(".badge").textContent = `size ${ship.size} · ${hexDirs()[ship.head].name}`;
+        renderBoard();
+      });
+    });
+    card.querySelectorAll('.heading-grid button').forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        ship.head = parseInt(btn.dataset.head, 10);
+        buildFleetList();
+        renderBoard();
+      });
+    });
+    root.appendChild(card);
+  });
+}
+
+/* =====================================================================
+   7. WIRE-UP
+   ===================================================================== */
+
+const RENDER_LABELS = {
+  A: "A — dark ink silhouette (same anatomy as B)",
+  B: "B — gradient hull + deck features (default)",
+  E: "E — outlines only (same anatomy as B)",
+  F: "F — NATO command counter (own geometry)",
+};
+
+document.querySelectorAll("#renderSeg button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#renderSeg button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.render = btn.dataset.r;
+    document.getElementById("renderMeta").textContent = RENDER_LABELS[state.render];
+    renderBoard();
+  });
+});
+
+document.getElementById("orient").addEventListener("change", e => { state.orient = e.target.value; buildFleetList(); renderBoard(); });
+document.getElementById("radius").addEventListener("input", e => {
+  state.radius = parseInt(e.target.value, 10);
+  document.getElementById("radiusVal").textContent = state.radius;
+  // re-clamp ship positions so they don't go nuts
+  fleet.forEach(s => { s.q = Math.max(-state.radius, Math.min(state.radius, s.q)); s.r = Math.max(-state.radius, Math.min(state.radius, s.r)); });
+  buildFleetList(); renderBoard();
+});
+["showHighlight","showLabels","showCoords","showCompass"].forEach(id => {
+  document.getElementById(id).addEventListener("change", e => { state[id] = e.target.checked; renderBoard(); });
+});
+
+window.addEventListener("resize", renderBoard);
+
+buildFleetList();
+setTimeout(renderBoard, 50);
+</script>
+</body>
+</html>
+  </app-source>
+</iframe-app>
+
+---
+
+### What I did with the architecture
+
+The separation you asked for, in one picture:
+
+``` d2rJO9vhs9
+┌─────────────────────────────────────────────────────┐
+│  DATA MODEL       fleet[], state{}                  │  ← pure data
+├─────────────────────────────────────────────────────┤
+│  HEX GEOMETRY     axialToPx, hexCorners, shipCells  │  ← pure math
+├─────────────────────────────────────────────────────┤
+│  buildShipFeatures(ship)  →  { hullPath, deckPath,  │  ← single source
+│                                turrets, bridge, … }  │    of ship anatomy
+├─────────────────────────────────────────────────────┤
+│  renderers.A(g, ship, feat)  ← filled dark           │
+│  renderers.B(g, ship, feat)  ← gradient + details   │  ← style only
+│  renderers.E(g, ship, feat)  ← outlines              │
+│  renderers.F(g, ship, feat)  ← NATO counter (own)   │
+├─────────────────────────────────────────────────────┤
+│  renderBoard()    layered SVG pipeline:              │
+│    1. grid  →  2. cell highlights  →  3. ships       │
+└─────────────────────────────────────────────────────┘
+```
+
+
+To swap a renderer it's literally `state.render = "A"` then `renderBoard()`. To add a new render mode "G", you write `renderers.G(g, ship, feat)` and add one button.
+
+A and E are now exactly what you described: B's anatomy with different "ink." A is just the hull silhouette with a deck centerline + bow wedge so the front is unambiguous. E is the same shapes drawn as outlines on parchment.
+
+### What I did with the board
+
+* **Highlighted cells under each ship** (blue, like the reference photo). The active ship gets a darker, opaque highlight; the others get a paler one so you can see them all but know which one you're editing.
+* **Sidebar workflow**: click a ship card to make it active → use the size / q / r sliders + heading buttons inside the expanded card to move it. The heading buttons re-label themselves automatically when you switch hex orientation.
+* **Hex orientation toggle** in the sidebar so you can A/B pointy-top vs flat-top before we lock it. I left pointy-top as default since it matches the reference image's vertical edges.
+* **Debug toggles**: hex coords (handy for confirming wrap math later), compass, labels.
+
+### A couple of things I noticed while building it
+
+1. **Pointy-top has a quirk.** Headings 0/180 (E/W) move along a *horizontal* row, so the ship sits flat — looks great. But headings 60/120/240/300 are *diagonal*, and the ship's body bridges cells that are offset by half a hex vertically. The silhouette still reads correctly because the centroid math handles it, but you'll see the hull sitting at a slight tilt across staggered rows. **With flat-top, three of the six headings (NE/SE/N or NW/SW/S depending on which) are axis-aligned vertically, but none are horizontal.** Flip the toggle and you'll see it. I have a mild preference for pointy-top because *east/west reads as "sailing"* — a horizontally-oriented ship feels nautical.
+2. **The size slider for each ship** is in there because you asked, but our spec says fixed 5/4/3/3/2. I'd treat the size slider as a *design-time tool* (us iterating) and remove it for the actual game. Easy to gate.
+3. **Wrap isn't visualized yet.** If you slide a ship near an edge, the off-board cells just don't highlight. That's deliberately the next study — I want to do the wrap rendering as its own focused round (your "fade vs crop vs ghost" question deserves its own iframe with side-by-side comparisons).
+
+### What to look at / decide
+
+* **Render mode** — flip through A / B / E / F. Does B still feel right as the default, or does E feel more on-brand given the blueprint aesthetic?
+* **Orientation** — flip pointy ↔ flat. The diagonal headings will look very different. Which feels more "naval"?
+* **Highlight intensity** — too saturated? The reference photo's blue is quite muted. I can dial it down.
+* **Ship card UX** — is the click-to-expand pattern working, or would you rather see all controls always visible (more scrolling but no clicks)?
+
+Once these are locked, the next iterations I'd queue up are: (1) wrap-edge rendering study, (2) attacker view with hit/miss footprints and trajectory ruler, (3) defender placement UI with the 10-turn preview from the spec.
+
+

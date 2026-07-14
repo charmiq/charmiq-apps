@@ -1,0 +1,663 @@
+<h1 style="text-align: center;">
+  Sea Battle Reimagined | Design Spec V3
+</h1>
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part> in the reference material is the entire history of going through and working on a reimagined version of the sea battle game. I need you to distill that down into a spec. So go through and extract all of the requirements so that we have all of them in one place. We've contradicted ourselves a couple of times, etc. but you should get a feel for where we're going. Separate the core requirements from some nice to have like around how we're gonna do explosions and colors and things like that. The requirement section should really get somebody in the right headspace as how to think about what we're talking about. Then give me a bunch of other sections around some of the logic and coding work that we've done to try to understand all of this. Then have a section on the UX and what we're going to do. And then have a section on the open questions that will tackle. The result of what you produce should give somebody the complete overview that they would get by trying to dissect, whatever is in all the rest of these documents.
+
+<agent-execution agent-id="ZQnQfEYTrBClL44zUvgi" execution-id="0VQfnWPeD3zpreBgyI6o" name="All Purpose Charm (A)" state="complete" usage-record-id="cab2bd2c19d44351615d243d5e2f6198" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></agent-execution><agent-reason id="GNDgAw97HM" provider="anthropic" reasoning-id="UJHFY9KS1fmpb7LWQ6AW" status="completed" signature="Er0GCmMIDhgCKkDTiJphlmJWQUf9yhCXJTOQciZAz3shEOETyFifhlcHhbNlAlyKs3UB8gSWnBXnc3N19p71UFkIYNC89NUuSfwSMg9jbGF1ZGUtb3B1cy00LTY4AEIIdGhpbmtpbmcSDNL1Hq+j+gcwNmJvShoMuGYOeCmuhpK3O6+JIjBxURUb0ciqVw3BQ5fMPiEaCylWOigCIZwtmHJPQKnCpyufax8wGIz73LwivasBT70qhwVLp8HfVhHPUdDpXkrXKAthMvO5bJYdQqfU28fDuv4hMpOfAI59B4l0qx+R0YuaiyXL7OYtbLKLF+Vbzo+yDK86EGEDs7fmXiBJTKHsTA7PpYopf4Y5eEeQkRvP8BZzCCfw1ivjD9bKyXayywTYkL8ndF9I2nhEtW8PiSgzVhKbVau55OrLTFzsC2mlMNgRa1HhWFb7EaYxSX5qJAah+aBzuQEZRoVlqIXXRdHyMkMV+N8pe/AjRMru6uUhvK0isRWam+6MAmTZoBQjHO07ShJd9rBiL/nsFblRg/jNXMzpNi8Hn5GXh2GPstudVq2z2gghdg/4HGVkVfPBlrTIZH9K2o688x0VOGESKPzymkmRqHP/2EOvaUj41WNxAGVDRF02wXBSTfbcLmfFhJ9at0CAcEs5R6kYgLbaxhDh7vF0T4CZIoTGkE6vpEfHvLGcy1zE8ejqGLnQ+rBMmDXDnE6oDPTH3TtxLC7jMGtJdHI/ynSiu0gqrpIu6auvVrgyRZRSlmEwBZDgRLtQ5ols273/n4sw5Uz8+9/7k+JlnSxj1XHcX84l05TLtH/wHpaLlm8fHjs0W1cDw2wHQf6A+kQjSZJ7259qsCcMXFs0k8JeYbt5aE035bvp+zxDKi7Vf6Fh2rMEFDLcz6remFgtym1vYv8ALqQQpyVi8q+GCwwlTZW6VLG/L24wg+OWuXg9EAOTVEevxilbquZuCjg5I5dxd+c9qDzi5xpbHMgnQSk95xkUa2YrZhVRJwJZ3Wg9V+TtmtDQ1WPCnRYOmQorP6zl9l5rTQ5hH0RQQta4yyeyTjl0UqFa2zFt+JUdv5G3hBr5XoRnLeP0rSldaZOjUCbOFd2NJCNQ5xgB">
+The user wants me to distill the entire conversation history from the reference materials into a comprehensive design spec for the Sea Battle reimagined game. Let me go through everything carefully and organize it into the requested sections.
+
+Let me parse through all the key decisions, requirements, contradictions, and open questions from the conversation.
+
+Key areas to cover:
+1. Core requirements (consolidated from R1-R13 plus all subsequent decisions)
+2. Game mechanics (movement, damage, collision, wrap, etc.)
+3. Math/simulation findings
+4. UX design decisions
+
+
+5. Unresolved questions and edge cases that still need clarification
+
+Let me be thorough and organize this well.
+</agent-reason>
+
+# Sea Battle Reimagined — Design Specification
+
+## 1\. Vision Statement
+
+Classic Battleship is a **static-belief Bayesian inference puzzle** — the prior never moves, you just refine the posterior. This game replaces that with a **state-space estimation problem with hidden dynamics**: ships move on hidden courses across a hex torus, damage degrades speed, and the attacker reconstructs trajectories from sparse, timestamped observations. The result is a two-player, turn-based, hidden-information **computer game** where inference *is* the gameplay.
+
+> The metaphor: you are a WWII captain on the bridge of a warship, in fog or moonless dark, ordering fire into the void. You see flashes when shells land. Your XO marks hits and misses on a plotting sheet by candle-lamp. The parchment remembers everything.
+
+
+## 2\. Core Requirements
+
+These are **non-negotiable** constraints that define what the game *is*.
+| \# | Requirement | Source | Status |
+|----|----|----|----|
+| **R1** | Two-player, turn-based, hidden-information core | Original | ✅ Locked |
+| **R2** | One player probes (attacker); the other has placed shapes to find (defender) | Original | ✅ Locked |
+| **R3** | Known, fixed shapes (multi-cell pieces of defined sizes) | Original | ✅ Locked |
+| **R4** | Multiple shapes per player (fleet of 5 ships: sizes 5/4/3/3/2) | Original | ✅ Locked |
+| **R5** | Probing a cell has lasting meaning — information persists | Original | ✅ Locked |
+| **R6** | **Hex grid** (6-neighbor adjacency, flat-top orientation) | Original | ✅ Locked |
+| **R7** | Something **changes over time** — ships move on hidden courses | Original | ✅ Locked |
+| **R8** | Intuitive — no graph-theory primer required; the renderer does the topology work | Original | ✅ Locked — computer game, not board game |
+| **R9** | **Imperfect information preserved** even as time evolves; attacker must *infer* trajectories from sparse observations | Original | ✅ Locked |
+| **R10** | **Shapes move; damage affects movement** (slows them via cooldown increase) | Original | ✅ Locked |
+| **R11** | Board sized appropriately for the dynamics | Original | ✅ Locked — R=7 or R=8 |
+| **R12** | Hit/miss feedback on individual cells (preserved from classic) | Original | ✅ Locked |
+| **R13** | Hit affects the shape's movement — each hit increments cooldown by +1 | Original | ✅ Locked |
+| **R14** | **Wrap (torus) boundary** — ships going off one edge reappear on the opposite side; renderer handles the twist invisibly | Evolved | ✅ Locked |
+| **R15** | **Computer game** — not a board game; the renderer handles all topology/wrap math for the player | Evolved | ✅ Locked |
+| **R16** | **Damage = HP decrement only, no cell removal.** A ship has `hp = size`. Each hit decrements HP by 1 and increments cooldown by 1. Ship is sunk when HP = 0. Body footprint stays full-size until sunk. | Evolved | ✅ Locked |
+| **R17** | **Salvo firing (click-click)** — attacker fires a 2-cell salvo: first click locks aim, second click on any other hex fires both. No preset spread patterns — the player composes any 2-cell configuration directly on the board. | Evolved | ✅ Locked |
+| **R18** | **No ship-class reveal on sink** (Standard difficulty default) — defender says "enemy vessel destroyed," not which class | Evolved | ✅ Locked as default |
+
+
+## 3\. Board & Topology
+
+### 3.1 Hex Grid Specifications
+| Parameter | Value | Rationale |
+|----|----|----|
+| **Shape** | Regular hexagonal region, radius R | Standard hex board |
+| **Recommended R** | **7** (169 cells, 10.1% density) or **8** (217 cells, 7.8% density) | Sim-validated sweet spot: 8–14% ship-cell density, first-hit in 4–10 turns |
+| **Orientation** | Flat-top | Matches existing prototype |
+| **Coordinate system** | Axial (q, r) | Standard; `inBoard(q,r,R)` iff `max(|q|, |r|, |q+r|) ≤ R` |
+| **Cell count formula** | `N = 3R² + 3R + 1` | R=7→169, R=8→217 |
+
+
+### 3.2 Torus Wrap
+
+Ships that exit one edge reappear on the opposite side. The hex torus uses **6 translation vectors**:
+
+``` Y5Z363yidw
+wrapOffsets(R) = [
+  (-(2R+1),  R),  (2R+1, -R),
+  (-(R+1),  -R),  (R+1,   R),
+  ( R, -(2R+1)), (-R,  2R+1)
+]
+```
+
+
+**Key simulation findings:**
+
+* Wrap gives **statistically perfect occupancy uniformity** (cv = 0.003 at R=8) — no edge exploits
+
+* Straight-line trajectories on the torus form **closed loops** whose length depends on heading:
+
+  * Some headings (e.g., S at R=8) produce **Hamiltonian cycles** visiting all 217 cells
+  * Others (e.g., SE at R=8) produce shorter sub-cycles (\~26 cells)
+  * This is a **meaningful defender strategy axis** — heading choice determines cycle coverage
+
+**Why wrap over reverse:**
+| Criterion | Reverse | Wrap |
+|----|----|----|
+| Occupancy uniformity | Good (cv ≈ 0.05, mild center bias) | **Perfect** (cv ≈ 0.003) |
+| Imperfect info | Good | **Excellent** (longer non-repeating cycles) |
+| Intuitive (computer) | Good | **Equivalent** — renderer shows ships appearing on opposite edge |
+| Spatial strategy | Has it (edge vs center) | None (homogeneous) — **this is a feature**: forces strategy into heading/speed, not position |
+| Trajectory inference | Linear, bounded | Requires wrap-aware rendering — **trivially handled by renderer** |
+
+
+### 3.3 Boundary Policy Comparison (Sim Results)
+| Policy | Occupancy edge-ring rate | Verdict |
+|----|----|----|
+| Despawn | Ships exit in \~R+1 turns | ❌ Dead game |
+| Reflect (naive) | Edge ring at **4.4× interior** | ❌ Broken — attacker shoots edges |
+| Reverse (180°) | <sub>0.71× at edge,</sub> 1.1× at center | ✅ Viable but creates positional asymmetry |
+| **Wrap (torus)** | **1.000 ± 0.001 everywhere** | ✅ **Selected** — perfect uniformity |
+
+
+## 4\. Fleet & Movement Model
+
+### 4.1 Fleet Composition
+| Ship | ID | Size (cells) | HP | Base Cooldown | Speed Description |
+|----|----|----|----|----|----|
+| Battleship | BB-01 | 5 | 5 | 4 | Moves every 4th tick — lumbering |
+| Cruiser | CA-02 | 4 | 4 | 3 | Moves every 3rd tick |
+| Destroyer | DD-03 | 3 | 3 | 2 | Moves every 2nd tick |
+| Destroyer | DD-04 | 3 | 3 | 2 | Moves every 2nd tick |
+| PT Boat | PT-05 | 2 | 2 | 1 | Moves every tick — nimble |
+
+
+**Cooldown formula:** `base_cooldown = max(1, size − 1)`
+
+**Defender band (nice-to-have for v2):** Allow defender to set cooldown within ±1 of base during placement.
+
+### 4.2 Movement Rules
+
+Each ship is defined by the tuple: **(anchor_position, heading, cooldown, hp, since_last_move)**
+
+**Per-tick movement logic:**
+
+1. Increment `since_last_move` by 1
+
+2. If `since_last_move ≥ cooldown`:
+
+   * Attempt to advance 1 cell in the current heading direction
+   * Apply wrap if the new position exits the board
+   * Reset `since_last_move = 0`
+
+4. Otherwise, the ship holds position
+
+**Damage effect:** Each hit increments `cooldown` by +1. A PT boat (base cd 1) hit once becomes cd 2. A BB (base cd 4) hit twice becomes cd 6. This creates **compounding positive feedback** for the attacker: damaged ships are slower → easier to track → easier to hit again.
+
+### 4.3 Ship Shape & Body
+
+* A ship's body is a **rigid line of `size` contiguous hex cells** extending from the anchor along the heading direction
+* The body does **not** shrink when hit (R16) — a damaged size-5 still occupies 5 cells
+* The body persists at full size until HP reaches 0 (sunk), at which point all cells are removed
+
+### 4.4 Collision / Avoidance (Turning Mechanics)
+
+**Collision frequency is high** — simulations show **31% of turns** have at least one multi-ship cell overlap with random headings. Only 1% of 80-turn games have zero collisions. This is structural, not edge-case.
+
+**Selected approach — Priority-based avoidance with turning:**
+
+* **Priority:** Largest ships move first; they lock their cells; smaller ships must work around them
+
+* **Pivot point:** Stern (cell 0 = anchor at q, r). When a ship turns, anchor stays fixed — only heading changes, swinging the bow to a new hex direction
+
+* **Turn cadence:** Identical to movement — governed by `SHIP_SPEED.interval(size)`. A size-5 BB can only turn every 4th tick. A size-2 PT can turn every tick.
+
+* **Decision AI per eligible ship each tick:**
+
+  1. Try all 6 heading options in preference order: **straight → ±60° → ±120° → 180°**
+  2. For each option, simulate move-forward-one and check cells against all locked cells
+  3. Among collision-free options, **score by lookahead** (4 ticks of straight-line projection) — prefer the heading with the most open road ahead
+  4. Ties broken by smallest turn angle
+  5. If *every* option collides → **emergency stop** (⚠ blocked)
+
+**Known issue:** After sufficient turns, ships may converge to parallel headings. A randomizer (periodic forced turn on larger ships) may be needed — flagged as open question.
+
+
+## 5\. Probe & Damage Model
+
+### 5.1 Attacker's Turn
+
+1. **Click to aim** — click any hex to lock the aim (golden reticle). Click the aim cell again or press Escape to cancel.
+
+2. **Click to fire** — with aim locked, click any *other* hex. Both cells are probed as a 2-cell salvo. As the mouse hovers, the candidate second cell previews in ghost-orange and the teletype updates live with the salvo label.
+
+3. **Resolution** — each probed cell is evaluated independently:
+
+   * **HIT**: a surviving ship has a body-segment at this cell on this turn. HP decrements by 1; cooldown increments by 1.
+   * **MISS**: no ship body at this cell.
+
+**Salvo labeling by hex distance** between the two cells: `dist 1 → TIGHT PAIR`, `dist 2 → WIDE SPREAD`, `dist ≥ 3 → RANGE N`. These labels are cosmetic vocabulary in the teletype — the player composes any 2-cell geometry directly, there are no preset patterns.
+
+**Design note:** An earlier iteration used a radial picker with 4 preset spread patterns (tight/line/wide/wedge). It tested badly — the picker was too far from the click, had traverse-flash between buttons, fixed N-axis orientation, and zero on-board spatial feedback. Click-click exposes the full configuration space directly: every preset pattern is still achievable, but as a composed pair of clicks, not a button press.
+
+### 5.2 Multi-Ship Cell Probes
+
+If a world-cell has 2+ ships' body-segments, a probe results in a **single HIT** — the ship with the lowest body-index (closest to bow) on the highest-priority (largest) ship is hit. **The attacker sees only "HIT"** — no indication of multi-ship overlap.
+
+### 5.3 Same-Cell-Hit-Twice
+
+This is **structural, not edge-case**. A ship cycling on the torus will revisit the same world-cells after `(cycle_length − size) × cooldown` turns. Simulation at R=8 shows:
+
+* Each cell on a ship's path is occupied for `size × cooldown` consecutive turns
+* Then empty for `(cycle_len − size) × cooldown` turns (e.g., 44 turns for a size-4, cd-2 ship on a 26-step cycle)
+* **17 out of 26** trajectory cells get multi-visited in an 80-turn game
+
+The hit-count rule (R16) handles this cleanly: hit the same world cell 3 times on a size-3 ship = sunk, regardless of *where* on the body the probes landed.
+
+### 5.4 Sinking
+
+* **Condition:** HP reaches 0
+* **Mid-game notification: NONE.** The attacker receives **no** on-sink notification — not which ship, not even *that* a ship was sunk. The only mid-game signal is the confirmed-sunk *count* shown in the Enemy Fleet header (e.g. "2/5 confirmed sunk"), derived from `fleet.filter(s → s.sunk).length`. The attacker sees the count; they never see *which* silhouette the count corresponds to.
+
+**Design note:** An earlier design had configurable per-tier on-sink notifications (Classic: "Enemy destroyer sunk"; Standard: "Enemy vessel destroyed"; Hardcore: nothing). This was scrapped because any at-sink-tick reveal — even a generic "vessel destroyed" — tells the attacker *that their last salvo sank something*, which breaks the ambiguity preservation that is the entire point of R9/R18. If difficulty tiers are revisited, they would modulate the End-of-Game reveal detail, not mid-game notifications.
+
+* **All reveal is End-of-Game only** (see §7.10). Trajectory animation, wreck placement, silhouette validation — all deferred to the EoG perspective. This is the **dopamine moment**, concentrated at game's end rather than distributed across sinks.
+* **Mid-game hypothesis:** Because the attacker gets no sink confirmation, §7.5's Silhouette ↔ Hit Assignment mechanic lets the player commit attributions during play. EoG then validates those commitments against truth.
+
+
+## 6\. Information Model & Inference
+
+### 6.1 What the Attacker Knows
+
+The attacker's **only** data source is a list of probe records:
+
+``` bI7crikpG6
+Probe = { turn: number, cell: {q, r}, result: HIT | MISS }
+```
+
+Everything else — heading, cooldown, ship identity, body-index — is hidden. The attacker infers trajectories by correlating timestamped hits.
+
+### 6.2 Belief Pruning (Simulation Results)
+
+From a prior space of 5,208 hypotheses (217 starts × 6 headings × 4 cooldowns):
+| After... | Consistent hypotheses | % of prior |
+|----|----|----|
+| 1 hit | \~24 | 0.46% |
+| **2 hits** | **\~1** | **0.02%** |
+| 3 hits | 1 | 0.02% |
+
+
+**Two hits with known timestamps are typically sufficient to uniquely identify a ship's trajectory** — heading, cooldown, and position are all determined. However, the player must correctly attribute both hits to the *same* ship — which is the core inferential challenge.
+
+**⚠ Caveat — turning dynamics invalidate these numbers.** The belief-pruning table above assumes straight-line motion only. The collision-avoidance system (§4.4) introduces turning, which explodes the heading-per-segment search space — a ship that turned between two hits has far more feasible hypotheses than one on a fixed course. The current inference engine (as built) searches `(size ∈ {2,3,4,5}) × (heading 0..5) × (cooldown ∈ {1..5}) × (first-hit body-cell index)` ≈ 600 hypotheses per hit, **straight-line only**. Post-hit cooldown bumps and turning are not yet modeled. The 5,208 → \~24 → \~1 pruning cascade is therefore a *lower bound on ambiguity* — real games with turning will be harder to resolve from 2 hits alone.
+
+### 6.3 Same-Cell Hit Pairs Are Highest-Information Events
+
+The gap between two hits on the same cell constrains (heading, cooldown) tightly:
+
+* Gap \< `size × cooldown`: same continuous occupancy window
+* Gap ≈ `(cycle_len − size) × cooldown`: full wrap revisit — **pins heading and cooldown**
+* Gap doesn't fit any legal (heading, cooldown): **two different ships**
+
+The UI must make same-cell revisits **impossible to miss**.
+
+
+## 7\. UX Design
+
+### 7.1 Layout
+
+* **Primary canvas**: Attacker board (hex grid with probe history) — 95% of screen time
+* **Sidebar**: Fleet panels, inference aids, fire-order teletype, controls
+* **Defender board**: Demoted to a **\~200px corner minimap** once placement locks; click-to-expand; pulses/flashes on incoming hits
+
+### 7.2 Attacker Board — Cell Visual Lifecycle
+
+All rendering stays **inside the hex's clip path** — nothing leaks outside the cell boundary.
+| Age | Visual Treatment |
+|----|----|
+| **Fresh hit (this turn)** | Bright orange/red burn animation, bold turn-number badge, brief ship-fragment silhouette flash that fades to X |
+| **Recent (last 3–5 turns)** | Full-saturation X, large turn label, slight glow if part of an active contact track |
+| **Tracked (correlated to contact)** | Colored to that contact's track color, connected to siblings by faint vector arrow |
+| **Stale (>10 turns)** | Desaturated X, smaller turn label — **never removed** |
+| **Closed (ship sunk)** | Recolored to sunk-ship "case-closed" hue |
+| **Miss (any age)** | Small grey dot, fading slightly over time, never disappearing |
+
+
+**Multi-hit cells** show the most recent timestamp prominently with up to 3 older events stacked as small color-coded badges in the top-right corner; overflow shows `+N`. Hover reveals full history in sidebar popover.
+
+**Concrete age boundaries (as built):** `Fresh = tick 0 (this turn)`, `Recent = 1–5`, `Aging = 6–10`, `Stale = >10`. These are discrete buckets, not a smooth gradient — the bucketed feel preserves cohort cues ("this hit is in the last-5-turns group"). Miss dots follow the same decay schedule (opacity floor 0.18, label opacity floor 0.30). All age boundaries derive from a single `AURA_FADE_TICKS` constant: `HIT_RECENT_THRU = AURA_FADE_TICKS`, `HIT_AGING_THRU = AURA_FADE_TICKS × 2`. Tune the one knob; hit buckets, miss opacity, and aura growth all track automatically.
+
+**Attacker vs Defender rendering:** Attacker hit markers render at **probe location** (the cell the attacker clicked). Defender markers render at **body-cell index** (stern→bow damage visualization). The attacker never knew which body cell was hit — only where they probed. Defender markers are **not aged**; they visualize current damage state, not historical timing.
+
+### 7.3 Hit Aura (Inference Aid — Toggle)
+
+A single hit generates a faint red ring around the cell representing uncertainty. The ring **grows with elapsed turns** — the ship has had time to wander further. A fresh hit = tight circle. A 10-turn-old hit = huge soft cloud covering a third of the board. **The player sees their information decaying in real time.**
+
+**Concrete formula (as built):**
+
+* **Radius:** `auraR = hexR × max(1, 1 + age × 0.7)`, growth rate \~1 cell/tick, soft-capped at `state.radius` cells so old rings don't grow off-board.
+* **Stroke:** `max(0.6, 2.0 − age × 0.08)` — fresh rings are crisp, old rings are thin.
+* **Opacity:** `max(0.10, 0.32 − age × 0.012)` — natural "cloud" feel without a radial gradient.
+* **Hits only, not misses.** A miss is *confirmed-empty* info — certain and negative. The aura models *uncertainty about current ship position*; a miss has nothing to do with that.
+
+**Toggle:** Sidebar section "Inference Aids" between Enemy Fleet and Teletype. `state.showHitAura` (default `false`). Visibility is CSS-driven via `body[data-hit-aura="on/off"]` — the layer is always rendered, just hidden when off. No re-render needed on toggle.
+
+**⚠ Unit gotcha:** `hexR` is the hex **circumradius**, NOT the cell-to-cell distance. Cell-to-cell distance = `√3 × hexR ≈ 1.73 × hexR`. Any length that expresses "N cells away" (aura radii, contact-track distances, trajectory spans) must use the cell-to-cell unit.
+
+### 7.4 Contact Tracks
+
+**AUTO mode only (v1).** Toggled via "Auto contact tracks" in the Inference Aids sidebar section. Visibility is CSS-driven via `body[data-contact-tracks]`. When toggled on, the engine recomputes; tracks are not maintained while the toggle is off (saves work in the common-off case). Reset alongside `declaredSunk` on lifecycle transitions.
+
+**Inference engine (`inferTrack(hits)`).** Given a set of HIT probes, exhaustively searches `(size ∈ {2,3,4,5}) × (heading 0..5) × (cooldown ∈ {1..5}) × (first-hit body-cell index)` and returns every hypothesis whose trajectory places a body cell at every hit's (q,r) at every hit's tick. Torus wrap is folded in at the body-cell comparison step. **Straight-line motion only** — no turning, no post-hit cooldown bump (both deferred). \~600 hypotheses per hit, fast enough to recompute on every probe.
+
+**AUTO correlation (`computeContactTracks()`).** Greedy single-pass: process hits in tick order; for each new hit, try adding it to each existing track and pick the track whose feasibility set survives best (most constrained = most informative). If no track stays feasible, start a new one. **Inference IS the correlation criterion** — no separate distance/time heuristic.
+
+**Track confidence scoring** — four levels:
+| Label | Meaning | Board visual |
+|----|----|----|
+| **1 HIT** | Single-hit track, \~420 hypotheses — no real attribution yet | Dashed line (trivially, just a point) |
+| **CONSISTENT** | Exactly one hypothesis survives — heading/cooldown/size known | Solid line |
+| **FORCED** | Multiple hypotheses survive but the set is constrained — UI shows ambiguity count | Dashed line |
+| **INCONSISTENT** | No hypothesis survives — timestamps can't belong to one ship | Red + thicker line; glows red in sidebar |
+
+
+**Sidebar Contacts panel.** Between Inference Aids and Teletype. One card per track with NATO phonetic name (Alpha/Bravo/Charlie…), hit count, inferred heading/cooldown/size (bold when narrowed to one, `N candidates` otherwise), confidence chip, and hit list (`T2 (3,5) → T7 (4,5)`). Empty state: `No contacts (toggle on to auto-correlate).`
+
+**On-board lines** (`#layer-contacts`): thin colored segments between consecutive hits in each track. One color per track from `TRACK_COLORS`. Segments where `hexDistance > state.radius` are skipped — those almost certainly cross the torus wrap and a straight line would be misleading. Wrap-aware line rendering is deferred.
+
+**MANUAL mode (deferred to v2):** The original design called for a dual AUTO/MANUAL toggle where hits drop as orphans and the player drag-selects or shift-clicks to form tracks, with an optional "💡 3 hits might be one ship — apply?" suggester. This was explicitly skipped alongside turning dynamics and wrap-aware lines (Stage 6b).
+
+### 7.5 Enemy Fleet Silhouette Panel & Hit Assignment
+
+Five ship silhouettes in the sidebar (5/4/3/3/2). Silhouettes show **sizes only**, never class names (R18). Player-side identity is "silhouette index" (0–4), not ship ID — the attacker has no truth mapping. `ENEMY_SILHOUETTES = [{idx:0, size:5}, {idx:1, size:4}, {idx:2, size:3}, {idx:3, size:3}, {idx:4, size:2}]`.
+
+**Header tally:** `<N confirmed sunk> / 5 [· M hits · K declared]`. Confirmed count reads `fleet.filter(s → s.sunk).length` — just the count, never *which* (R18).
+
+Each silhouette card shows: size label · inline SVG with N rounded-rect cell pips · `M of N assigned` · a small skull toggle for manual declared-sunk · status text.
+
+**Silhouette states:**
+| State | Visual |
+|----|----|
+| **At large** | Full ink silhouette, no marks |
+| **Contact** | Silhouette + hit-count pip ("2/?") — requires hit→silhouette attribution via assignment |
+| **Appears sunk** | Silhouette overlaid with ✕, dimmed, red left border — *player's hypothesis* via one of two paths (see below) |
+| **Confirmed** | Wreck icon — End-of-Game only (§7.10) |
+
+
+### 7.5.1 Silhouette ↔ Hit Assignment (Mid-Game Hypothesis Commitment)
+
+**Why this exists:** Once sink-reveal moved to end-of-game only (§5.4), the silhouette panel was static decoration. Assignment gives it teeth — the player commits attribution mid-game by tagging X marks to silhouettes. EoG then validates those commitments against truth.
+
+**Mechanic:**
+
+* Click silhouette card body → toggle **assignment mode** for that silhouette. Card visually highlights with the silhouette's color.
+
+* In assignment mode, click any hex on the board:
+
+  * Hex has hit entries → toggle assignment of all hit entries at that cell to current silhouette.
+  * Hex has no hits → exit assignment mode (click-away-to-deselect gesture).
+
+* Escape → exit assignment mode.
+
+* Click another silhouette → switch to its mode. Clicking an X tagged to silhouette A while in B's mode re-tags it to B. **Moving X's between ships is implicit** — no special UI.
+
+* Multi-hit cells: all entries at that cell flip together (per-entry granularity deferred).
+
+**Two paths to "appears sunk" — both alive in parallel:**
+| Path | Trigger | Meta text |
+|----|----|----|
+| **Hunch** (manual) | Skull-toggle on the card — `declaredSunk` flag, hypothesis without evidence | DECLARED SUNK |
+| **Evidence** (assignment) | `assignedCount ≥ size` — silhouette is "fulfilled" | ACCOUNTED FOR |
+| **Both** | Manual flag AND fulfilled | DECLARED · ACCOUNTED FOR |
+
+
+Removing an X drops below `size` and the auto-appears bit turns off — but a manual `declaredSunk` flag persists across that.
+
+**Visual:** Tagged X marks render in the silhouette's color (overrides default red); age treatment opacity still applies. `SILHOUETTE_COLORS = [blue, teal, green, amber, purple]` — deliberately no red (would collide with unassigned X marks) and distinct from `TRACK_COLORS` (so auto-track clustering and player-committed attribution never collide visually).
+
+**Mutual exclusion with firing:** Entering assignment mode clears any locked aim. Entering aim mode does not fire if assignment mode is active — the click-to-aim branch is gated. Modal because the player is doing two different things: firing vs analyzing.
+
+**Lifecycle:** `attacker.assignmentMode` and per-entry tags clear on `resetSim` / `enterRunningMode` / `enterPlacementMode`.
+
+### 7.6 Defender Fleet Panel (Own Ships)
+
+Compact sidebar panel, always visible:
+
+``` 1doG65ICCP
+▰▰▰▰▰  BB-01  cd 4→6  ●●●○○    ← 2 hits, 3 hp left
+         heading N · turn 31
+
+▰▰▰▰   CA-02  cd 3    ○○○○     ← undamaged
+
+💀      PT-05  SUNK turn 47      ← dimmed
+```
+
+
+Click any card to temporarily overlay that ship's actual trajectory on the main board (\~3 seconds).
+
+### 7.7 Firing UX — Click-Click Direct Salvo
+
+1. **Hover** hex → subtle targeting reticle follows the cursor.
+2. **First click** → aim locks on the cell (golden double-ring + crosshair reticle). Click the same cell again or press Escape to cancel.
+3. **Hover preview** — with aim locked, hovering any other cell paints it ghost-orange and the teletype line updates live:
+
+> `> TGT (3,5) + (3,4) · TIGHT PAIR · FIRE FOR EFFECT_`
+
+4. **Second click** → fires both cells as a 2-cell salvo. Resolution:
+
+   * **Miss**: white-ink splash blooms, fades to grey dot.
+   * **Hit**: orange/red flash, brief silhouette flicker, settles into persistent X.
+
+6. **Teletype console** (bottom of sidebar, scrollable, \~4-line visible) narrates each salvo with timestamp and result, including explicit **REVISIT** callouts:
+
+> `> SALVO 3 · T12 · TIGHT PAIR [· REVISIT] [· VESSEL DESTROYED]`
+>
+> `(3,0) HIT (last T=8)`
+>
+> `(3,1) MISS`
+
+Salvos are grouped by `salvoId` in the display; data model stays flat (each probe is a single entry with a shared `salvoId`). Defender probes (from the Probe-toggle test tool) render as standalone `> PROBE · T#` blocks — no salvoId, visually distinct from attacker salvos.
+
+### 7.8 Animation Language
+
+All animations match the parchment/ink aesthetic:
+
+* **Splash** = spreading wet circle that dries to a stain
+* **Hit** = scorch mark that smolders for a turn then cools to ink
+* **Sunk reveal** = ink line tracing the true trajectory across the board
+* **Cell burn** = perfectly radial within the hex (no directional bias that would leak heading info)
+
+### 7.9 Onboarding (Deferred)
+
+* **Pre-game intro animation** (\~20 seconds): 3–4 ghost-ships looping the board under wrap so the player pattern-matches "ships wrap around"
+* **First match is a tutorial** with slowed-down opponent ship and visible trajectory
+* **Post-game replay**: shows each ship's actual path so the player retroactively evaluates their inference (now part of EoG flow, §7.10)
+
+### 7.10 End-of-Game Perspective
+
+**Architecture.** Three top-level perspectives: `Defender · Attacker · End of Game`. EoG is a third state — manually selectable via the perspective segmented control (auto-trigger when `fleet.filter(s → s.sunk).length === 5` is deferred). `body[data-perspective="endgame"]` hides all defender-only and attacker-only chrome.
+
+**Sub-views.** A pill toggle inside the EoG pane: `FROM ATTACKER` vs `FROM DEFENDER`. Same underlying truth, different emphasis. State held in `state.endgameView`.
+| Board element | FROM ATTACKER | FROM DEFENDER |
+|----|----|----|
+| Probe history (X marks, miss dots) | Full opacity, prominent | Dimmed (\~45%) |
+| Ship hulls + trajectories + wrecks | Dimmed (\~50%) | Full opacity, prominent |
+| Sidebar | Silhouette validation panel | Fleet outcome panel |
+
+
+**Sidebar panels:**
+
+* **FROM ATTACKER** — silhouette validation: for each silhouette (idx 0–4) shows actual size (now revealed), whether the player declared-sunk via assignment, whether it was actually sunk, and verdict: `✓` correct / `✗` false positive / `?` missed an actual sink. Score line at top.
+* **FROM DEFENDER** — fleet outcome: per-ship card showing sunk-or-survived, hits taken, distance traveled (from `sim.history`), final heading.
+
+**Interaction gating (load-bearing).** Every gameplay interaction is hard-disabled in EoG:
+
+* Hex click → `probeCell`: gated by `state.perspective !== "endgame"`
+* Silhouette card → `toggleAssignmentMode`: panel not rendered in EoG
+* `setAim` / `fireDirectSalvo`: gated on `state.perspective === "attacker"`
+* Spread picker, SHOT indicators, teletype line: all attacker-only, hidden by CSS
+* Inference aid toggles (Hit aura, Contact tracks): UI hidden; state persists
+* **Step Forward/Back: KEPT functional** — the user can scrub the sim and watch the EoG view update
+
+**Deferred to Stage 7b:**
+
+* Auto-trigger EoG when all 5 ships are sunk (currently manual via perspective button)
+* Animated reveal sequence (trajectory line draw, sequential ship reveals)
+* Wrap-aware trajectory polylines
+* Click affordances inside EoG (hover wreck → see turn-of-sinking, click silhouette → truth highlight)
+
+
+## 8\. Simulation Findings & Constants
+
+### 8.1 Board Sizing
+| R | Cells | Ship density | First-hit (turns, salvo=2) | Verdict |
+|----|----|----|----|----|
+| 5 | 91 | 18.7% | \~3 | Too cramped |
+| 6 | 127 | 13.4% | \~4 | Borderline |
+| **7** | **169** | **10.1%** | **\~5** | ✅ **Recommended** |
+| **8** | **217** | **7.8%** | **\~6** | ✅ Alternate |
+| 9 | 271 | 6.3% | \~7 | Borderline sparse |
+| 10 | 331 | 5.1% | \~10 | Too sparse |
+
+
+### 8.2 Cycle Lengths Under Wrap (R=8)
+| Heading | Cycle length | % of board covered |
+|----|----|----|
+| S (0, +1) | **217** (Hamiltonian) | 100% |
+| SE (+1, 0) | 26 | 12% |
+| NE (+1, -1) | 25–42 (varies by start) | 12–19% |
+
+
+**Design implication:** Heading choice is a meaningful defender strategy axis. Long-cycle headings give better board coverage but more predictable returns. Short-cycle headings are stealthier but revisit sooner.
+
+### 8.3 Collision Frequency
+
+With 5-ship fleet, random headings, R=8, cd=2:
+
+* **31% of turns** have ≥1 collision (multi-ship cell overlap)
+* Only **1% of games** have zero collisions across 80 turns
+* With size-based cooldowns: rises to **34%**
+
+### 8.4 Same-Cell Revisit Timing
+
+For a size-4, cooldown-2 ship on a 26-step cycle at R=8:
+
+* Occupancy window per cell: **8 consecutive turns** (`size × cooldown`)
+* Gap between revisits: **44 turns** (`(cycle_len − size) × cooldown`)
+* 17 of 26 trajectory cells get multi-visited in 80 turns
+
+
+## 9\. Data Model
+
+### 9.1 Ship State (Defender-Side, Full Truth)
+
+```typescript UPjaJUQCTl
+interface Ship {
+  id: string;           // "BB-01", "DD-03", etc.
+  size: number;         // 2–5, immutable
+  hp: number;           // starts = size, decrements on hit, sunk at 0
+  anchor: { q: number, r: number };  // stern position
+  heading: number;      // index into HEX_DIRS (0–5)
+  cooldown: number;     // base + hits_taken
+  sinceMoved: number;   // ticks since last movement
+}
+```
+
+### 9.2 Probe Record (Attacker-Side)
+
+```typescript ESOa9G4Y97
+interface ProbeRecord {
+  turn: number;
+  cell: { q: number, r: number };
+  result: 'HIT' | 'MISS';
+  salvoId?: number;                    // groups 2-cell salvos; absent for defender test probes
+  attackerAssignedSilhouette?: number; // silhouette idx (0–4) if player tagged this hit
+  // attacker does NOT know: shipId, bodyIndex
+}
+```
+
+**A cell is not a state, it's a history.** The board accumulates probe records. The same cell can have many. Display is a function of the cell's full history.
+
+### 9.3 Attacker Transient State
+
+```typescript ri5qePVyVN
+interface AttackerState {
+  aim: { q: number, r: number } | null;      // locked aim cell
+  hoverDestination: { q: number, r: number } | null;  // preview second cell
+  assignmentMode: number | null;              // silhouette idx being assigned (0–4)
+  declaredSunk: Set<number>;                  // silhouette indices manually declared sunk
+  contacts: ContactTrack[];                   // auto-computed track list
+}
+```
+
+**Separation from `state` and `sim`:** `state` is UI config (perspective, render mode, board params); `sim` is persistent simulation state (tick, history, hitLog); `attacker` is *transient interaction state* (aim, assignment, hover) that's meaningless outside the firing/analysis flow. Cleared on `resetSim` / `enterRunningMode` / `enterPlacementMode` / `setPerspective("defender")`.
+
+### 9.4 Contact Track (Attacker-Side Hypothesis)
+
+```typescript THmTh6DJnB
+interface ContactTrack {
+  id: string;           // "Alpha", "Bravo", etc. (NATO phonetic)
+  hits: ProbeRecord[];  // attributed hits
+  inferredHeading?: number;
+  inferredCooldown?: number;
+  inferredSize?: number;
+  confidence: '1hit' | 'consistent' | 'forced' | 'inconsistent';
+  feasibleCount: number; // number of surviving hypotheses
+}
+```
+
+### 9.5 End-of-Game State
+
+```typescript 9qcCYuEz9e
+// state.perspective = "defender" | "attacker" | "endgame"
+// state.endgameView = "attacker" | "defender"  // sub-view within EoG
+```
+
+
+## 10\. Open Questions
+
+### 10.1 High Priority (Must resolve before coding gameplay)
+| \# | Question | Options | Status |
+|----|----|----|----|
+| **OQ1** | **Board radius: 7 or 8?** | R=7 (169 cells, tighter) vs R=8 (217, more room) | Open — leaning R=8 |
+| **OQ2** | **Heading-cycle disclosure at placement** — do we tell the defender which headings are Hamiltonian vs short-cycle? | Show it / hide it / show after first game | Open — leaning show it |
+| **OQ3** | **Convergence problem** — after many turns with avoidance AI, ships may converge to parallel headings. Mitigation? | Periodic randomizer / bounded-corridor rule / accept it | Open — needs sim testing |
+| **OQ4** | **Salvo dispersion: deterministic or RNG scatter?** Reframed by click-click: with no preset patterns, the question is now about random scatter on the player's chosen 2 cells, not pattern shape. | Exact placement / small random scatter on second cell | Open — reframed by Stage 3 redo |
+| **OQ5** | **Probe records as source of truth** — confirm the cell-history model over per-cell-state? | History model / state model | ✅ **Resolved** — history model implemented and validated |
+
+
+### 10.2 Medium Priority (Before beta)
+| \# | Question | Status |
+|----|----|----|
+| **OQ6** | **Track persistence after declared sink** — stay as "closed case" or release to orphan pool? | ✅ **Resolved** — reversible. Both `declaredSunk` and assignment tags toggle freely; un-declaring is one click. |
+| **OQ7** | **Teletype console** — ephemeral (current order only) or scrollable history? | ✅ **Resolved** — scrollable, \~4-line visible window, salvo-grouped with REVISIT callouts. |
+| **OQ8** | **Multi-hit pip on revisit cells** — show a small "N" badge for N hits? | ✅ **Resolved** — up to 3 older events stack as corner badges; overflow shows `+N`. |
+| **OQ9** | **Defender cooldown band** — allow ±1 from base at placement? | Open — v2 feature, keep uniform for v1 |
+| **OQ10** | **Fleet composition affects attacker salvo** — losing ships degrades your own fire quality? | Open — v2 feature, compelling but complex |
+| **OQ17** | **Inference engine vs turning dynamics** — the engine searches straight-line only; turning (§4.4) is a locked movement mechanic. When/how to extend the engine? | Open — the §6.2 belief-pruning numbers are invalidated by turning; engine needs expansion |
+| **OQ18** | **Difficulty tiers (Classic / Standard / Hardcore)** — where does the config live? Original design had per-tier on-sink notifications; with EoG-only reveal, tiers would modulate EoG detail instead. | Open — reframed by §5.4 EoG-only change |
+
+
+### 10.3 Low Priority / v2 Features
+| \# | Feature |
+|----|----|
+| **OQ11** | Dodge-turn collision avoidance (ship deviates 1 hex sideways) as "rough seas" mode |
+| **OQ12** | True turn-radius / agility ratings |
+| **OQ13** | Sonar pings as alternate probe type (returns distance-to-nearest instead of hit/miss) |
+| **OQ14** | "Ghost cone" inference aid showing all possible positions given uncertainty |
+| **OQ15** | Attacker's own fleet composition affects salvo accuracy (BB tight, DD wide) |
+| **OQ16** | Hardcore mode: no sink notification at all — attacker infers kills from absence of returns |
+
+
+## 11\. Implementation Status
+
+Current state of the prototype after Stages 0–6c + Stage 7 (EoG state slot):
+
+### 11.1 Implemented
+
+* ✅ Hex board with flat-top orientation, configurable radius (4–9)
+* ✅ Toroidal wrap with correct offset vectors
+* ✅ Fleet placement UI with heading selection and position sliders
+* ✅ 4 render modes (Ink silhouette / Deck detail / Blueprint / NATO counter)
+* ✅ Running mode with tick-stepping simulation
+* ✅ Size-based cooldown (`interval = max(1, size − 1)`)
+* ✅ Priority-based collision avoidance with turn preference ordering and 4-tick lookahead
+* ✅ Ship wrap rendering (ghost overhang faded beyond board edge, solid clipped to board)
+* ✅ Speed chart showing per-ship actions each tick
+* ✅ Sidebar with collapsible sections, render mode selector, board controls, fleet cards
+* ✅ Compass, coordinate debug overlay, ship labels
+* ✅ Parchment/ink visual aesthetic with Bebas Neue headers, DM Mono data, Raleway body
+* ✅ **Perspective scaffolding** — Defender / Attacker / End of Game toggle with CSS-driven visibility
+* ✅ **Attacker board** — ships hidden, probe history visible, click-to-probe, auto-promote from Placement
+* ✅ **Cell visual lifecycle** — age-based hit/miss treatments (Fresh/Recent/Aging/Stale buckets) + multi-hit stacking with corner badges
+* ✅ **Click-click firing UX** — aim lock + second-click salvo, golden reticle, ghost-orange hover preview, live teletype updates, salvo-grouped teletype console with REVISIT callouts
+* ✅ **Enemy fleet silhouette panel** — 5/4/3/3/2 silhouettes with size-only display (no class names), confirmed-sunk count header, declare-sunk toggle
+* ✅ **Hit aura** — togglable uncertainty rings that grow with elapsed turns, CSS-driven visibility, hits-only
+* ✅ **Contact tracks (AUTO)** — inference engine, greedy correlation, 4-level confidence, sidebar cards with NATO names, on-board colored lines
+* ✅ **Silhouette ↔ Hit Assignment** — click silhouette to enter assignment mode, click X marks to attribute, two-path sunk (hunch + accounted-for), silhouette color tinting
+* ✅ **End-of-Game perspective** — state slot with FROM ATTACKER / FROM DEFENDER sub-views, silhouette validation panel, fleet outcome panel, all interactions gated
+* ✅ **Hit/miss resolution and probe history** — damage model (HP decrement, cooldown increment on hit)
+* ✅ **Fresh-event animations** — hit burst + miss splash with batched salvo rendering, surgical aim/preview layer updates to avoid wipe-on-render
+* ✅ **Smoke particle system** — defender-only, gated at source (returns \[\] in Attacker so in-flight particles finish naturally)
+
+### 11.2 Not Yet Implemented
+
+* ❌ **Auto-trigger EoG** when all 5 ships sunk (currently manual via perspective button)
+* ❌ **Animated reveal sequence** — trajectory line draw, sequential ship reveals at EoG
+* ❌ **Wrap-aware trajectory/track polylines** — currently skips segments where hexDistance > radius
+* ❌ **MANUAL contact track mode** — drag-select, shift-click, suggester (skipped, v2)
+* ❌ **Turning dynamics in inference engine** — engine is straight-line only; turning in movement model not reflected in track computation
+* ❌ **EoG click affordances** — hover wreck → see turn-of-sinking, click silhouette → truth highlight
+* ❌ **Defender minimap** during attack phase (§7.6)
+* ❌ **Onboarding/tutorial flow** (§7.9)
+* ❌ **Audio cues** — muzzle flash, splash sounds, crump on hit
+* ❌ **Two-player networking**
+* ❌ **Difficulty tiers** (Classic / Standard / Hardcore) — config system
+
+
+## 12\. Prior Art
+
+The moving-shapes-with-hidden-course direction is **essentially untrodden** in published Battleship variants:
+| Mechanic | Found in any published variant? |
+|----|----|
+| Hex grid | ✅ (2008 Hasbro — but static ships, split board) |
+| Moving ships with hidden course | ❌ (only "announced move" or "free teleport") |
+| Damage slows movement | ❌ |
+| Persistent "footprint" trail as inference signal | ❌ |
+| Torus wrap boundary | ❌ |
+| Salvo with spread patterns | ❌ (Salvo variant exists but fires 3 free probes) |
+
+
+The closest cousin is a variant where ships move in orthogonal directions but **the move must be announced** — the designers seemingly chose announcement because they didn't solve the imperfect-information bookkeeping. The **footprint mechanic** (timestamped hit marks as breadcrumb trail) is exactly the missing piece that lets movement stay hidden while giving the attacker inferential traction.
+
+
+

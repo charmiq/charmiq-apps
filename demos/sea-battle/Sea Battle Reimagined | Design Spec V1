@@ -1,0 +1,211 @@
+<h1 style="text-align: center;">
+  Sea Battle Reimagined | Design Spec V1
+</h1>
+
+## 1\. Core Concept
+
+A two-player, turn-based game of **hidden trajectory inference**. Each player places a small fleet of ships on a hex board. Ships **move continuously on hidden courses**. The attacker fires probes; hits leave a persistent breadcrumb trail that lets the attacker reconstruct ship trajectories over time. Damaged ships move slower, becoming easier to track but harder to hit.
+
+> **Mental model**: classic Battleship is static Bayesian search (refine a posterior over fixed cells). This game is **sparse state estimation on a known dynamical system with hidden parameters** — a Kalman-filter-shaped puzzle. Two well-placed hits uniquely pin down a ship's course.
+
+
+## 2\. Requirements
+| \# | Requirement |
+|----|----|
+| R1 | Two-player, turn-based, hidden-information core |
+| R2 | One player probes; the other has placed something to find |
+| R3 | Known, fixed shapes (multi-cell pieces) |
+| R4 | Multiple shapes per player |
+| R5 | Probing a cell has lasting meaning |
+| R6 | Hex grid (6-neighbor adjacency) |
+| R7 | Something changes over time in a known, understandable way |
+| R8 | Intuitive — no graph theory primer required |
+| R9 | Imperfect information preserved even as time evolves |
+| R10 | Shapes move; damage slows movement |
+| R11 | Board sized appropriately for the dynamics |
+| R12 | Hit/miss feedback on individual cells |
+| R13 | Hit affects shape's movement |
+
+
+## 3\. Rules
+
+### 3.1 Board
+
+* **Hex grid, radius R = 8** (217 cells).
+* **Boundary policy: WRAP (toroidal).** A ship leaving one edge reappears on the opposite edge.
+* Renderer makes the wrap visually obvious: ships that straddle the edge are drawn on both sides simultaneously.
+
+### 3.2 Fleet
+
+* Standard 5/4/3/3/2 fleet (17 ship cells, \~7.8% board density).
+* Each ship is a contiguous line of hexes on placement.
+
+### 3.3 Ship State
+
+Each ship carries a **(shape, position, heading, cooldown)** tuple:
+
+* **shape**: the cells currently alive (degrades with damage)
+* **position**: where its body is right now
+* **heading**: one of 6 hex directions (hidden from opponent)
+* **cooldown**: turns between moves (starts at 2 — "moves every 2 turns")
+
+### 3.4 Placement (Defender)
+
+* Defender chooses **heading + cooldown** for each ship.
+* Position is auto-assigned or random — under wrap, all cells are strategically equivalent, so position alone carries no information.
+* Defender's choices: where on the **course-design** axis (slow & predictable vs fast & elusive) to place each ship.
+
+### 3.5 Movement
+
+* Each turn, every ship's `since_move` counter increments.
+* When `since_move ≥ cooldown`, the ship moves 1 hex in its heading and resets the counter.
+* If a step would leave the board, the move **wraps** to the opposite edge.
+* Headings do **not** change during play (defender doesn't pilot).
+
+### 3.6 Probing & Combat
+
+* **Salvo**: each turn the attacker fires **2 shots** (single-shot cadence is too slow vs moving targets).
+* Each shot reveals **hit** or **miss** on that cell, for that turn.
+* On hit: the affected cell is removed from the ship's shape, and the ship's **cooldown increases by 1** (each hit permanently slows the ship).
+* When a ship's last cell is destroyed, it is **sunk** and the defender is notified.
+
+### 3.7 Damage Mechanics (the critical innovation)
+| Mechanism | Effect |
+|----|----|
+| Cell removed | Smaller target — *harder to hit again* |
+| Cooldown +1 | Moves less often — *easier to track* |
+
+
+
+This compound damage creates a genuine strategic tension for both players. Hits compound: a 5-ship that has taken 2 hits moves every 4 turns instead of every 2 — the attacker has bought time to triangulate.
+
+### 3.8 Footprint Trail
+
+* All past hits remain visible on the attacker's view as persistent X marks with **timestamps** (or whatever visual equivalent).
+* The trail of timestamped hits is what the attacker uses to infer heading & speed.
+* Misses are also persistent (greyed out) so the attacker doesn't waste shots.
+
+### 3.9 Win Condition
+
+* First player to sink the opponent's entire fleet wins.
+* Optional turn cap (e.g., 200 turns) to prevent stalled games.
+
+
+## 4\. Tuning Parameters (validated by simulation)
+| Parameter | Value | Rationale |
+|----|----|----|
+| Board radius R | **8** (217 cells) | 7.8% density, first hit in 4-10 turns |
+| Boundary | **WRAP** | Statistically perfect uniformity (cv ≈ 0.003); no degenerate strategies |
+| Fleet | 5/4/3/3/2 | Familiar; balanced |
+| Base cooldown | 2 turns/move | Fast enough to matter, slow enough to track |
+| Damage→cooldown | +1 per hit | Compounds tracking advantage |
+| Salvo size | 2 shots/turn | Required to keep up with movement |
+
+
+
+## 5\. Why Wrap (and not Reverse-180° or Despawn)
+
+Three boundary policies were considered:
+| Policy | Outcome | Verdict |
+|----|----|----|
+| **Despawn** (ship leaves and is gone) | Ship lifetime ≈ R+1 turns → entire fleet evaporates before attacker fires 17 shots | Dead game |
+| **Reverse** (180° flip on edge) | Near-uniform occupancy, but degenerate "hide in center, bounce off walls" defender strategies | Playable, but less elegant |
+| **Wrap** (torus) | Perfect uniformity, all cells strategically equivalent, longer trajectories with more genuine novelty | **Selected** |
+
+
+
+The original concern about wrap — hex-board toroidal identification requires a "twist" that's mathematically real but visually invisible — **disappears entirely in a computer game** where the renderer handles the geometry. The player never sees the twist; they just see "ships exit one edge and enter the other," exactly like Asteroids.
+
+
+## 6\. UX Principles
+
+### 6.1 First-Game Onboarding
+
+* **Intro animation**: before the first game, show 3-4 ghost ships looping the empty board for \~20 seconds. The wrap behavior becomes self-evident through observation.
+* **Tutorial first match**: a slowed-down AI opponent with one ship whose trajectory becomes visible after sinking, so the new player retroactively understands the inference loop they were doing.
+* **Post-game replay**: after any ship is sunk, show that ship's complete trajectory (including all wraps) — so the player sees what their hits were actually tracking.
+
+### 6.2 Rendering the Wrap
+
+* When a ship's body straddles the edge, draw it **on both sides simultaneously**.
+* When a ship is fully crossing, animate the transition continuously rather than teleporting.
+* Footprint trails (X marks) that span a wrap should render as **two connected segments** with subtle continuity — same color, optional faint connector through off-board space.
+
+### 6.3 Information Display
+| What | How |
+|----|----|
+| Hit | Bright X with turn-number label |
+| Miss | Greyed-out dot, optionally fading over many turns |
+| Recent hits | Slightly larger / brighter than older ones |
+| Inferred course | (Optional aid) faint arrow from last 2 hits showing implied heading & speed |
+| Predicted next position | (Optional aid) crosshair on cell where last-hit ship is predicted to be next turn |
+
+
+
+The optional aids should be **toggleable** — competitive players want raw signal; new players benefit from training wheels.
+
+### 6.4 Defender Setup UI
+
+* Defender places ships by **rotating each ship's heading arrow** (6 detent positions) and choosing cooldown (a small slider: 1-3).
+* No position choice needed (under wrap, position is irrelevant) — just press *Randomize* to scatter.
+* Optional: show a 10-turn preview of where each ship will be, so the defender understands their own configuration before locking in.
+
+### 6.5 Attacker Tools
+
+* **Trajectory ruler**: hold-and-drag a probe-line across the board, with wrap-continuation drawn live, so the attacker can sanity-check "if the ship is on this heading, would these timestamps make sense?"
+* **Probe history sidebar**: scrollable list of (turn, cell, hit/miss) — sortable, filterable.
+* **Active contact tracker**: when 2+ hits look correlated (same ship), the UI groups them and shows the inferred (heading, cooldown) explicitly.
+
+### 6.6 Pacing
+
+* Median first hit: 4-10 turns
+* Median game length: 40-100 turns (target)
+* Each turn should resolve in seconds, not minutes — this is a brisk inference game, not chess.
+
+
+## 7\. Key Design Insights
+
+<ol style="--ol-counter: cr-gpa2Aclbjd; counter-reset: var(--ol-counter) 0;">
+  <li>
+    <p>
+      <b>Damage-as-cooldown is the central mechanic.</b> The classic "remove cells" Battleship damage rule alone doesn't work with moving ships (smaller target, less to find). The compound "remove cell + slow ship" rule creates positive feedback that <i>rewards</i> finding a ship a second time — the trail gets easier to follow as the ship gets harder to kill.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Wrap turns position into noise and elevates course design.</b> Under wrap there is no "good place to hide." Defender strategy collapses to the fundamentals: heading and speed. This simplifies setup and deepens midgame.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>The renderer is the rulebook.</b> Most objections to wrap-style boundaries assume a static printed board. A computer game can express toroidal topology visually with zero player-side math.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>Two hits = full trajectory reconstruction.</b> Simulation showed that under either wrap or reverse, <b>two timestamped hits collapse ~5,000 prior hypotheses to a single trajectory</b> (for noise-free observations on a length-1 ship). The game's tension is therefore in <b>getting the first two hits</b>, not in solving the inference puzzle once they exist. Tune the search difficulty accordingly.
+    </p>
+  </li>
+  <li>
+    <p>
+      <b>All cells equal = no degenerate strategies.</b> Under reverse, sophisticated defenders learn to exploit the geometry of bouncing trajectories near walls. Under wrap, no such exploits exist. The game is fairer and more about pure inference skill.
+    </p>
+  </li>
+</ol>
+
+
+## 8\. Open Questions
+
+* **Which R values give single-Hamiltonian-cycle trajectories?** This is number-theoretic — at some radii, straight-line wrap trajectories visit every cell before repeating; at others they form smaller subcycles. Worth picking R with intention.
+* **Should headings be allowed to change mid-game?** Constant-heading is the cleanest version. Optional "captain's turn" abilities (one heading change per ship per game) could add tactical depth at the cost of inference difficulty.
+* **Optimal-attacker game-length floor.** A proper Bayesian belief-tracking attacker would give a hard lower bound on game length. Heuristic attackers in simulation can't finish games at the speeds we want; needs verification with a stronger AI.
+* **Asymmetric ship anatomy.** Should specific cells (engine, bow) carry specific stats so attacker targeting matters beyond "any cell of any ship"? Possible v2 expansion.
+* **Multi-shot economy.** Salvo of 2 was chosen; some configurations may benefit from 3 or from "salvo size depends on remaining fleet" (classic Battleship variant precedent).
+
+
+
+
+# Distillation Prompt
+
+<user-part actor-type="user" name="Rob" user-id="oIAIJz43eqWLDyUxW7CMOYnj0Md2"></user-part> in the reference material is the entire history of going through and working on a reimagined version of the sea battle game. I need you to distill that down into a spec. So go through and extract all of the requirements so that we have all of them in one place. We've contradicted ourselves a couple of times, etc. but you should get a feel for where we're going. Separate the core requirements from some nice to have like around how we're gonna do explosions and colors and things like that. The requirement section should really get somebody in the right headspace as how to think about what we're talking about. Then give me a bunch of other sections around some of the logic and coding work that we've done to try to understand all of this. Then have a section on the UX and what we're going to do. And then have a section on the open questions that will tackle. The result of what you produce should give somebody the complete overview that they would get by trying to dissect, whatever is in all the rest of these documents.
+

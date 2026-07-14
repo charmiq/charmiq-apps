@@ -1,0 +1,3754 @@
+<h1 style="text-align: center;">
+  Sea Battle | Design V6
+</h1>
+
+## Setup Mode
+
+
+<iframe-app height="900px" in-progress="false" width="100%">
+  <app-source>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sea Battle · Board</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Raleway:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: #1a1612; color: #ddd; overflow: hidden; }
+  #app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
+  /* --- sidebar --- */
+  #sidebar { background: #f0e8d4; border-right: 3px solid #8a7a4a; overflow-y: auto; padding: 0; font-size: 13px; font-family: "Raleway", "Segoe UI", sans-serif; position: relative; }
+  #sidebar::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #8a7a4a 0%, #c4a84a 30%, #e8cc6a 50%, #c4a84a 70%, #8a7a4a 100%); z-index: 10; }
+  #sidebar::after { content: ""; position: absolute; inset: 0; background: url("data:image/svg+xml,%3Csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 10h20M10 0v20' stroke='%23c4b088' stroke-width='0.2' opacity='0.3'/%3E%3C/svg%3E"); pointer-events: none; z-index: 0; opacity: 0.5; }
+  #sidebar > * { position: relative; z-index: 2; }
+  #sidebar h2 { font-family: "Bebas Neue", "Arial Narrow", sans-serif; font-size: 16px; letter-spacing: 4px; color: #3a3020; text-transform: uppercase; margin: 0; padding: 12px 16px 8px; font-weight: 400; border-top: 2px solid #8a7a4a; position: relative; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; }
+  #sidebar h2::after { content: ""; position: absolute; bottom: 0; left: 16px; right: 16px; height: 1px; background: linear-gradient(90deg, #c4a84a, transparent); }
+  #sidebar h2:first-of-type { border-top: none; margin-top: 8px; }
+  #sidebar h2 .chev { font-size: 10px; color: #8a7a5a; transition: transform 0.2s ease; line-height: 1; }
+  #sidebar h2.collapsed .chev { transform: rotate(-90deg); }
+  .sidebar-section { padding: 8px 16px 14px; }
+  .sidebar-section.collapsed { display: none; }
+  .row { display: flex; align-items: center; justify-content: space-between; margin: 5px 0; gap: 8px; }
+  .row label { color: #5a4e38; font-size: 11px; font-weight: 500; letter-spacing: 0.5px; }
+  .row select, .row input[type="range"] { background: #faf4e6; color: #3a3020; border: 1px solid #c4b088; border-radius: 0; padding: 4px 8px; font-size: 11px; font-family: "DM Mono", "Courier New", monospace; }
+  .row select { min-width: 120px; }
+  .row select:focus { border-color: #8a7a4a; outline: none; box-shadow: 0 0 0 2px rgba(196,168,74,0.25); }
+  .row input[type="range"] { flex: 1; min-width: 0; accent-color: #8a6a2a; }
+  .row .val { color: #6a4a1a; font-family: "DM Mono", monospace; font-size: 12px; min-width: 24px; text-align: right; font-weight: 500; }
+  .toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .toggle input { margin: 0; accent-color: #8a6a2a; }
+  .seg { display: flex; gap: 0; background: #e4d8be; border-radius: 0; padding: 0; border: 2px solid #8a7a4a; }
+  .seg button { flex: 1; background: transparent; color: #6a5e44; border: 0; border-right: 1px solid #c4b088; padding: 8px 4px; font-size: 10px; font-family: "Bebas Neue", sans-serif; cursor: pointer; border-radius: 0; letter-spacing: 2px; text-transform: uppercase; transition: all 0.15s; }
+  .seg button:last-child { border-right: 0; }
+  .seg button.active { background: #3a3020; color: #e8dcc0; }
+  .seg button:hover:not(.active) { background: #d8c8a4; color: #3a3020; }
+  .ship-card { background: #faf4e6; border: 1px solid #c4b088; border-left: 4px solid #c4b088; border-radius: 0; padding: 8px 10px; margin: 5px 0; cursor: pointer; transition: all 0.12s; position: relative; }
+  .ship-card::before { content: ""; position: absolute; top: 0; right: 0; width: 0; height: 0; border-top: 12px solid #c4b088; border-left: 12px solid transparent; opacity: 0; transition: opacity 0.12s; }
+  .ship-card:hover { background: #fff8ea; border-color: #a09060; border-left-color: #a09060; }
+  .ship-card.active { border-left-color: #8a6a2a; border-color: #8a6a2a; background: #fff8ea; box-shadow: 2px 2px 0 #c4b088; }
+  .ship-card.active::before { opacity: 1; border-top-color: #8a6a2a; }
+  .ship-card .ship-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #4a3e28; }
+  .ship-card .ship-head b { font-family: "Bebas Neue", sans-serif; font-weight: 400; font-size: 15px; letter-spacing: 2px; }
+  .ship-card .ship-head .badge { font-family: "DM Mono", monospace; font-size: 10px; color: #8a7a5a; }
+  .ship-card.active .ship-head { color: #2a2010; }
+  .ship-card.active .ship-head .badge { color: #6a4a1a; }
+  .meta { color: #8a7a5a; font-size: 10px; margin-top: 6px; font-family: "DM Mono", monospace; letter-spacing: 0.3px; }
+  /* --- board --- */
+  #board-wrap { position: relative; overflow: hidden; background: #2a2620; }
+  #board { width: 100%; height: 100%; background: linear-gradient(135deg, #e8dcc0 0%, #d9c89f 100%); }
+  #hud { position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.55); color: #c9b88a; padding: 8px 12px; font-family: "SF Mono", monospace; font-size: 11px; border-radius: 3px; line-height: 1.5; pointer-events: none; }
+  /* --- perspective panes ---
+     Each pane is visible only when its perspective is active. Other panes hide. */
+  body:not([data-perspective="setup"])    .setup-only    { display: none !important; }
+  body:not([data-perspective="defender"]) .defender-only { display: none !important; }
+  body:not([data-perspective="attacker"]) .attacker-only { display: none !important; }
+  body:not([data-perspective="endgame"])  .endgame-only  { display: none !important; }
+  /* Setup is pre-sim: hide the run controls (step / reset / probe / chart).
+     Setup is purely ship arrangement; the sim doesn't tick here. */
+  body[data-perspective="setup"] #runControls,
+  body[data-perspective="setup"] #speedChart { display: none !important; }
+  #sidebar h2.first-section { border-top: none; }
+  /* setup pane styling */
+  .setup-btn { display: block; width: 100%; margin: 8px 0 0; padding: 8px 12px; background: #3a3020; color: #e8dcc0; font-family: "Bebas Neue", sans-serif; font-size: 13px; letter-spacing: 2px; border: 1px solid #5a4e38; cursor: pointer; transition: all 0.15s; text-align: center; }
+  .setup-btn:hover { background: #5a4628; border-color: #a09060; }
+  .setup-btn:active { background: #2a2010; }
+  .section-count { font-family: "DM Mono", monospace; font-size: 11px; color: #8a7a5a; letter-spacing: 1px; font-weight: 400; text-transform: none; margin-left: 6px; }
+  /* Fixed min-height stops the card from changing height between placed /
+     unplaced states (avoiding the layout jitter that comes with that). The
+     value matches a typical 2-line content + padding so the silhouette has
+     room without driving height differences.
+     user-select:none prevents text from highlighting when the user drags. */
+  .setup-ship-card { min-height: 32px; background: #faf4e6; border: 1px solid #c4b088; border-left: 4px solid #c4b088; padding: 6px 10px; margin: 4px 0; cursor: grab; display: grid; grid-template-columns: auto auto 1fr; column-gap: 8px; align-items: center; transition: all 0.12s; user-select: none; -webkit-user-select: none; }
+  .setup-ship-card:hover { background: #fff8ea; border-color: #8a6a2a; border-left-color: #8a6a2a; }
+  .setup-ship-card:active { cursor: grabbing; }
+  /* Unplaced = the actionable state. Full opacity, prominent. The user's
+     attention should be drawn to ships still needing placement. */
+  .setup-ship-card.unplaced { border-left-color: #c4a84a; background: #fff8ea; }
+  .unplaced-hint { font-style: italic; color: #8a6a2a; font-weight: 700; }
+  /* Placed = done, no action needed from the sidebar. Ghost it out. */
+  .setup-ship-card.placed { opacity: 0.55; background: #ede0c4; border-left-color: #8a7a5a; cursor: default; }
+  .setup-ship-card.placed .setup-ship-silhouette { filter: grayscale(1) opacity(0.7); }
+  .setup-ship-card.placed:hover { opacity: 0.85; background: #f5e9d0; }
+  .setup-ship-card.selected { background: #fff4d0; border-color: #c4a84a; border-left-color: #c4a84a; box-shadow: 0 0 0 1px #c4a84a; opacity: 1; }
+  .setup-ship-card.selected .setup-ship-silhouette { filter: none; }
+  .setup-ship-card.overlap { border-left-color: #a03020; background: rgba(160,48,32,0.06); opacity: 1; }
+  .setup-ship-card.overlap .setup-ship-silhouette { filter: none; }
+  .setup-ship-card.dragging { opacity: 0.3; cursor: grabbing; }
+  /* Meta line stays single-line so card height doesn't shift on long values. */
+  .setup-ship-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .setup-ship-size { grid-column: 1; font-family: "Bebas Neue", sans-serif; font-size: 16px; letter-spacing: 1px; color: #4a3e28; min-width: 14px; text-align: center; }
+  .setup-ship-silhouette { grid-column: 2; display: block; }
+  .setup-ship-meta { grid-column: 3; font-family: "DM Mono", monospace; font-size: 9.5px; color: #6a5e44; letter-spacing: 0.5px; }
+  .setup-ship-meta .overlap-chip { color: #a03020; font-weight: 700; }
+  #setupInvalidList { font-family: "DM Mono", monospace; font-size: 11px; color: #a03020; line-height: 1.6; }
+  #setupInvalidList .invalid-row { padding: 2px 0; }
+  /* hit aura + contact tracks — toggle visibility without re-render */
+  body[data-hit-aura="off"] #layer-aura { display: none; }
+  body[data-contact-tracks="off"] #layer-contacts { display: none; }
+  body[data-contact-tracks="off"] #contactsList { display: none; }
+  body[data-contact-tracks="off"] #contactsList + .meta { display: none; }
+  /* --- firing UX: teletype line (visible only when aim is locked) --- */
+  #teletypeLine { display: none; }
+  body[data-perspective="attacker"][data-aim="locked"] #teletypeLine { display: block; }
+  #teletypeLine {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-family: "DM Mono", monospace; font-size: 12px; color: #e8cc6a;
+    background: rgba(0,0,0,0.7); padding: 6px 14px; border: 1px solid rgba(196,168,74,0.45);
+    letter-spacing: 1px; z-index: 11; white-space: nowrap;
+  }
+  #teletypeLine .cur { animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+  /* --- mode controls overlay --- */
+  #mode-controls { position: absolute; top: 12px; left: 12px; z-index: 10; display: flex; flex-direction: column; gap: 8px; }
+  .run-controls { display: flex; align-items: center; gap: 6px; }
+  .run-controls button { background: rgba(0,0,0,0.5); color: #c9b88a; border: 1px solid rgba(138,122,74,0.5); padding: 5px 10px; font-size: 14px; cursor: pointer; font-family: "Bebas Neue", sans-serif; letter-spacing: 1px; transition: all 0.15s; line-height: 1; }
+  .run-controls button:hover { background: rgba(196,168,74,0.25); color: #f0e8d0; border-color: #c4a84a; }
+  .run-controls button:active { background: rgba(196,168,74,0.4); }
+  .run-controls button:disabled { opacity: 0.35; cursor: default; }
+  #tickDisplay { color: #c9b88a; font-family: "DM Mono", monospace; font-size: 12px; background: rgba(0,0,0,0.5); padding: 5px 10px; border: 1px solid rgba(138,122,74,0.3); min-width: 70px; text-align: center; }
+  #speedChart { background: rgba(0,0,0,0.5); border: 1px solid rgba(138,122,74,0.3); padding: 6px 10px; font-family: "DM Mono", monospace; font-size: 10px; color: #a09070; line-height: 1.6; }
+  #speedChart .moves { color: #e8cc6a; }
+  #speedChart b { color: #c9b88a; font-weight: 600; }
+  /* --- mini-board (PIP, opposite perspective) ---
+     Hidden in EoG (review already shows everything). Click to swap. */
+  #miniboard-wrap {
+    position: absolute; bottom: 12px; right: 12px; z-index: 9;
+    width: 20%; max-width: 205px; min-width: 150px;
+    aspect-ratio: 1 / 1;
+    background: linear-gradient(135deg, #e8dcc0 0%, #d9c89f 100%);
+    border: 2px solid rgba(58,46,28,0.55);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    overflow: hidden;
+  }
+  #miniboard-wrap:hover { border-color: #2a6f9c; box-shadow: 0 4px 18px rgba(42,111,156,0.55); }
+  #miniboard-wrap #miniboard { width: 100%; height: 100%; display: block; }
+  /* Hide every SVG <text> in the mini — labels (ship ids, tick numbers,
+     coords, etc) are unreadable at mini scale and just become visual noise. */
+  #miniboard text { display: none; }
+  #miniboard-label {
+    position: absolute; top: 4px; left: 6px; z-index: 1;
+    font-family: "Bebas Neue", sans-serif; font-size: 11px; letter-spacing: 2px;
+    color: #3a2e1c; background: rgba(232,220,192,0.85);
+    /* Asymmetric padding to balance two typography quirks WITHOUT moving the
+       glyphs themselves: letter-spacing adds ~2px of phantom space after the
+       last character (right side), and Bebas Neue's line-box has more leading
+       below the baseline than above (bottom side). Trim 2px from each. */
+    padding: 2px 4px 0 6px;
+    border: 1px solid rgba(58,46,28,0.35); pointer-events: none;
+    text-transform: uppercase;
+  }
+  body[data-perspective="endgame"] #miniboard-wrap { display: none; }
+  /* --- perspective label (top-right corner) --- */
+  #perspectiveLabel { position: absolute; top: 12px; right: 12px; font-family: "Bebas Neue", sans-serif; font-size: 18px; letter-spacing: 6px; color: #c9b88a; background: rgba(0,0,0,0.55); padding: 7px 16px; pointer-events: none; text-transform: uppercase; border: 1px solid rgba(138,122,74,0.4); }
+  body[data-perspective="attacker"] #perspectiveLabel { color: #f0c8b0; border-color: rgba(160,80,48,0.6); }
+  /* --- hit / probe log --- */
+  #hitLog, #probeLog { max-height: 180px; overflow-y: auto; font-family: "DM Mono", monospace; font-size: 10px; color: #5a4e38; line-height: 1.7; }
+  #hitLog:empty::after { content: "No incoming fire yet."; color: #a09878; font-style: italic; }
+  #probeLog:empty::after { content: "Awaiting fire orders."; color: #a09878; font-style: italic; }
+  .log-entry { padding: 2px 0; border-bottom: 1px solid #e4d8be; }
+  .log-hit { color: #a03020; font-weight: 600; }
+  .log-miss { color: #708060; }
+  .log-sunk { color: #6a1a10; font-weight: 700; background: rgba(160,48,32,0.08); padding: 2px 4px; }
+  /* teletype salvo grouping */
+  .teletype-salvo { padding: 4px 0; transition: background 0.12s; cursor: default; }
+  .teletype-salvo:hover { background: rgba(64,180,220,0.12); }
+  .teletype-salvo .teletype-header { color: #4a3e20; font-weight: 700; letter-spacing: 0.5px; }
+  .log-revisit { color: #b07020; font-weight: 700; }
+  .log-revisit-tag { color: #b07020; font-size: 9px; }
+  .log-sunk-inline { color: #6a1a10; font-weight: 700; }
+  /* enemy fleet silhouette panel (§7.5) */
+  .enemy-tally { font-family: "DM Mono", monospace; font-size: 11px; color: #5a4e38; padding: 4px 0 8px; letter-spacing: 0.5px; }
+  .enemy-tally .tally-confirmed { color: #6a1a10; font-weight: 700; }
+  .enemy-tally .tally-declared { color: #a06020; font-weight: 600; }
+  .enemy-silhouette { display: grid; grid-template-columns: auto auto 1fr; grid-template-rows: auto auto; column-gap: 8px; row-gap: 2px; align-items: center; padding: 6px 10px; margin: 4px 0; background: #faf4e6; border: 1px solid #c4b088; border-left: 4px solid #c4b088; cursor: pointer; transition: all 0.12s; }
+  .enemy-silhouette:hover { background: #fff8ea; border-color: #8a6a2a; border-left-color: #8a6a2a; }
+  .enemy-silhouette.declared-sunk { opacity: 0.55; background: #e4d8be; border-left-color: #a03020; }
+  .enemy-silhouette.declared-sunk:hover { opacity: 0.85; }
+  .silhouette-size { grid-column: 1; grid-row: 1; font-family: "Bebas Neue", sans-serif; font-size: 16px; letter-spacing: 1px; color: #4a3e28; min-width: 14px; text-align: center; }
+  .silhouette-cells { grid-column: 2; grid-row: 1; display: block; }
+  .silhouette-ship { grid-column: 3; grid-row: 1; justify-self: end; display: block; }
+  .silhouette-meta { grid-column: 1 / -1; grid-row: 2; font-family: "DM Mono", monospace; font-size: 9.5px; color: #6a5e44; letter-spacing: 0.5px; }
+  .silhouette-assigning { color: var(--silhouette-color); font-weight: 700; letter-spacing: 1px; }
+  .silhouette-status-sunk { color: #a03020; font-weight: 700; letter-spacing: 1px; }
+  /* hit-assignment mode (§6c) — highlight the active card */
+  .enemy-silhouette.assigning { background: #fff8ea; border-color: var(--silhouette-color); border-left-color: var(--silhouette-color); box-shadow: 0 0 0 2px var(--silhouette-color); }
+  /* assignment instruction banner — always rendered; greyed when idle so the
+     panel layout is stable when toggling assignment mode. */
+  .enemy-assignment-banner { padding: 8px 10px; margin: 6px 0 8px; font-family: "DM Mono", monospace; font-size: 10.5px; line-height: 1.4; letter-spacing: 0.3px; border-radius: 2px; background: #ede0c4; color: #8a7a5a; border: 1px dashed #c4b088; }
+  .enemy-assignment-banner.active { background: var(--silhouette-color); color: #ffffff; border: 1px solid var(--silhouette-color); }
+  .enemy-assignment-banner b { font-family: "Bebas Neue", sans-serif; font-size: 13px; letter-spacing: 2px; display: block; margin-bottom: 3px; color: #4a3e28; }
+  .enemy-assignment-banner.active b { color: #ffffff; }
+  /* deprecated — older code path */
+  .silhouette-status { display: none; }
+  /* contacts panel (§7.4) */
+  #contactsList:empty::after { content: "No contacts (toggle on to auto-correlate)."; color: #a09878; font-style: italic; font-family: "DM Mono", monospace; font-size: 10px; }
+  .contact-card { background: #faf4e6; border: 1px solid #c4b088; border-left: 4px solid var(--track-color, #c4b088); padding: 6px 10px; margin: 5px 0; font-family: "DM Mono", monospace; font-size: 10px; color: #4a3e28; }
+  .contact-card.confidence-inconsistent { border-left-color: #a03020; background: rgba(160,48,32,0.06); }
+  .contact-card.confidence-consistent { border-left-color: #4a8a3a; }
+  .contact-card .contact-head { display: flex; align-items: center; justify-content: space-between; font-family: "Bebas Neue", sans-serif; font-size: 14px; letter-spacing: 2px; color: var(--track-color, #3a3020); }
+  .contact-card .contact-confidence { font-family: "DM Mono", monospace; font-size: 9px; letter-spacing: 1px; padding: 2px 5px; border: 1px solid currentColor; }
+  .contact-card .contact-meta { margin-top: 4px; color: #6a5e44; font-size: 10px; }
+  .contact-card .contact-meta b { color: #3a3020; }
+  .contact-card .contact-meta .ambiguous { color: #a06020; }
+  /* end-of-game panels (Stage 7) */
+  .endgame-score { background: #3a3020; color: #e8dcc0; font-family: "Bebas Neue", sans-serif; font-size: 14px; letter-spacing: 2px; padding: 8px 12px; margin: 4px 0 8px; }
+  .endgame-score b { color: #ffd060; font-size: 18px; }
+  .endgame-validation-card, .endgame-outcome-card { background: #faf4e6; border: 1px solid #c4b088; border-left: 4px solid var(--silhouette-color, #c4b088); padding: 6px 10px; margin: 4px 0; font-family: "DM Mono", monospace; font-size: 10px; color: #4a3e28; }
+  .endgame-validation-card.verdict-correct { border-left-color: #3a8030; background: rgba(58,128,48,0.08); }
+  .endgame-validation-card.verdict-false { border-left-color: #a03020; background: rgba(160,48,32,0.08); }
+  .endgame-validation-card.verdict-missed { border-left-color: #b87014; background: rgba(184,112,20,0.08); }
+  .endgame-validation-card.verdict-neutral { opacity: 0.7; }
+  .endgame-outcome-card.outcome-sunk { opacity: 0.6; border-left-color: #6a1a10; background: #e4d8be; }
+  .endgame-outcome-card.outcome-alive { border-left-color: #3a8030; }
+  .endgame-card-head { display: flex; justify-content: space-between; align-items: center; font-family: "Bebas Neue", sans-serif; font-size: 13px; letter-spacing: 2px; color: #3a3020; }
+  .endgame-card-id { color: #3a3020; }
+  .endgame-card-verdict { font-family: "DM Mono", monospace; font-size: 10px; letter-spacing: 1px; }
+  .verdict-correct .endgame-card-verdict { color: #2a6020; }
+  .verdict-false .endgame-card-verdict { color: #6a1a10; }
+  .verdict-missed .endgame-card-verdict { color: #8a5014; }
+  .outcome-sunk .endgame-card-verdict { color: #6a1a10; }
+  .outcome-alive .endgame-card-verdict { color: #2a6020; }
+  .endgame-card-body { margin-top: 3px; color: #5a4e38; }
+  .endgame-card-body b { color: #3a3020; }
+  /* End-of-game sub-view emphasizes either probe history or ship truth */
+  body[data-endgame-view="attacker"] #endgameFleetOutcome { opacity: 0.5; }
+  body[data-endgame-view="defender"] #endgameValidation { opacity: 0.5; }
+  /* EoG board emphasis: dim ships when FROM ATTACKER, dim probe markers and
+     attacker-side aids (aura, contact lines) when FROM DEFENDER. */
+  body[data-perspective="endgame"][data-endgame-view="attacker"] #layer-ships { opacity: 0.5; }
+  body[data-perspective="endgame"][data-endgame-view="defender"] #layer-markers { opacity: 0.45; }
+  body[data-perspective="endgame"][data-endgame-view="defender"] #layer-aura { opacity: 0.3; }
+  body[data-perspective="endgame"][data-endgame-view="defender"] #layer-contacts { opacity: 0.4; }
+  /* --- hp pips --- */
+  .hp-pips { display: flex; gap: 3px; margin-top: 4px; }
+  .hp-pip { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #8a7a5a; }
+  .hp-pip.full { background: #4a8a3a; border-color: #3a6a2a; }
+  .hp-pip.lost { background: #a03020; border-color: #802818; }
+  .ship-card.sunk { opacity: 0.5; border-left-color: #a03020 !important; }
+  .ship-card.sunk .ship-head b { text-decoration: line-through; }
+  .ship-status { font-family: "DM Mono", monospace; font-size: 10px; color: #6a5a3a; margin-top: 4px; }
+  .ship-status .cd-change { color: #a06020; font-weight: 600; }
+  .ship-status .sunk-label { color: #a03020; font-weight: 700; font-size: 12px; }
+  /* --- hit markers on board --- */
+  .hit-marker-glow { animation: hitPulse 1.5s ease-out; }
+  @keyframes hitPulse { 0% { opacity: 1; } 100% { opacity: 0; } }
+  /* --- smoke particles --- */
+  @keyframes smokeDrift {
+    0%   { transform: translate(0, 0) scale(1); opacity: var(--smoke-o); }
+    25%  { transform: translate(calc(var(--sx) * 0.3), calc(var(--sy) * 0.5 - 4px)) scale(1.15); opacity: calc(var(--smoke-o) * 0.9); }
+    50%  { transform: translate(calc(var(--sx) * 0.7), calc(var(--sy) * 1.0 - 8px)) scale(1.35); opacity: calc(var(--smoke-o) * 0.65); }
+    75%  { transform: translate(calc(var(--sx) * 0.5), calc(var(--sy) * 1.3 - 12px)) scale(1.5); opacity: calc(var(--smoke-o) * 0.35); }
+    100% { transform: translate(0, 0) scale(1); opacity: var(--smoke-o); }
+  }
+  @keyframes smokeWander {
+    0%   { transform: translate(0, 0); }
+    33%  { transform: translate(calc(var(--wx) * 1px), calc(var(--wy) * 1px)); }
+    66%  { transform: translate(calc(var(--wx) * -0.7px), calc(var(--wy) * 0.5px)); }
+    100% { transform: translate(0, 0); }
+  }
+  @keyframes hitFlashBurst {
+    0%   { r: 2; opacity: 1; fill: #fff8e0; }
+    15%  { r: var(--burst-r); opacity: 0.95; fill: #ffaa30; }
+    40%  { r: calc(var(--burst-r) * 1.6); opacity: 0.6; fill: #e04010; }
+    70%  { r: calc(var(--burst-r) * 2.0); opacity: 0.25; fill: #801808; }
+    100% { r: calc(var(--burst-r) * 2.2); opacity: 0; fill: #400800; }
+  }
+  @keyframes hitRingExpand {
+    0%   { r: 2; stroke-width: 3; opacity: 1; }
+    50%  { opacity: 0.7; }
+    100% { r: var(--ring-r); stroke-width: 0.5; opacity: 0; }
+  }
+  @keyframes emberFloat {
+    0%   { opacity: 1; transform: translate(0, 0); }
+    100% { opacity: 0; transform: translate(calc(var(--ex) * 1px), calc(var(--ey) * 1px)); }
+  }
+  /* --- MISS SPLASH ANIMATIONS --- */
+  @keyframes splashFlash {
+    0%   { r: 2; opacity: 0.9; }
+    25%  { r: var(--flash-r); opacity: 0.65; }
+    100% { r: calc(var(--flash-r) * 0.3); opacity: 0; }
+  }
+  @keyframes splashRipple {
+    0%   { r: 3; stroke-width: 2.2; opacity: 0; }
+    8%   { opacity: 0.5; }
+    50%  { opacity: 0.25; }
+    100% { r: var(--ripple-r); stroke-width: 0.2; opacity: 0; }
+  }
+  @keyframes splashPlume {
+    0%   { opacity: 0; transform: translateY(0) scale(1); }
+    12%  { opacity: 0.6; }
+    35%  { opacity: 0.4; transform: translateY(var(--py)) scale(0.8); }
+    100% { opacity: 0; transform: translateY(calc(var(--py) * 1.4)) scale(0.3); }
+  }
+  @keyframes splashDrop {
+    0%   { opacity: 0; transform: translate(0, 0); }
+    10%  { opacity: 0.7; }
+    45%  { opacity: 0.4; transform: translate(calc(var(--dx) * 0.5), var(--peak)); }
+    100% { opacity: 0; transform: translate(var(--dx), var(--fall)); }
+  }
+  @keyframes rippleDistortFade {
+    0%   { opacity: 0.75; }
+    50%  { opacity: 0.4; }
+    100% { opacity: 0; }
+  }
+  /* --- probe button --- */
+  #probeToggle { background: rgba(160,48,32,0.6); color: #f0d8c0; border: 1px solid rgba(160,48,32,0.8); padding: 5px 10px; font-size: 12px; cursor: pointer; font-family: "Bebas Neue", sans-serif; letter-spacing: 2px; transition: all 0.15s; }
+  #probeToggle:hover { background: rgba(160,48,32,0.8); }
+  #probeToggle.active { background: rgba(160,48,32,0.9); box-shadow: 0 0 8px rgba(160,48,32,0.5); }
+  /* --- inline icons --- */
+  .ico { display: inline-block; vertical-align: middle; width: 14px; height: 14px; fill: currentColor; flex-shrink: 0; }
+  .ico-sm { width: 11px; height: 13px; }
+  .run-controls button .ico, #perspectiveLabel .ico { margin-right: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============== SIDEBAR ============== -->
+  <aside id="sidebar">
+
+    <h2 class="first-section">Perspective</h2>
+    <div class="sidebar-section">
+      <div class="seg" id="perspectiveSeg">
+        <button data-p="setup">Setup</button>
+        <button data-p="defender" class="active">Defender</button>
+        <button data-p="attacker">Attacker</button>
+        <button data-p="endgame">End of Game</button>
+      </div>
+      <div class="meta" id="perspectiveMeta">Defender — full truth (ships, placement, sim)</div>
+    </div>
+
+    <!-- ============== SETUP PANE ============== -->
+    <div class="setup-only">
+
+      <h2 class="first-section">How to Place</h2>
+      <div class="sidebar-section">
+        <div class="meta" id="setupInstructions">
+          Drag a ship onto the board. Click a placed ship to select it.
+          Selected: <b>← →</b> / <b>Q E</b> / <b>1-6</b> rotate, <b>Delete</b> removes.
+        </div>
+        <button id="autoPlaceBtn" class="setup-btn">▶ Auto-Place All</button>
+      </div>
+
+      <h2 id="setupInvalidHeader" style="display:none">Invalid Positions</h2>
+      <div class="sidebar-section" id="setupInvalidSection" style="display:none">
+        <div id="setupInvalidList"></div>
+      </div>
+
+      <h2>Fleet <span class="section-count" id="setupFleetCount"></span></h2>
+      <div class="sidebar-section">
+        <div id="setupFleetList"></div>
+      </div>
+
+    </div>
+
+    <!-- ============== DEFENDER PANE ============== -->
+    <div class="defender-only">
+
+      <h2>Render Mode</h2>
+      <div class="sidebar-section">
+        <div class="seg" id="renderSeg">
+          <button data-r="ink">Ink</button>
+          <button data-r="detail" class="active">Detail</button>
+          <button data-r="line">Line</button>
+          <button data-r="counter">Counter</button>
+        </div>
+        <div class="meta" id="renderMeta">Detail — gradient hull, deck features, default</div>
+      </div>
+
+      <h2>Board</h2>
+      <div class="sidebar-section">
+        <div class="row">
+          <label>Hex orientation</label>
+          <select id="orient">
+            <option value="pointy">Pointy-top</option>
+            <option value="flat" selected>Flat-top</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>Radius</label>
+          <input id="radius" type="range" min="4" max="9" value="7"/>
+          <span class="val" id="radiusVal">7</span>
+        </div>
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="showHighlight" checked/> Highlight ship cells</label>
+        </div>
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="showLabels" checked/> Ship labels</label>
+        </div>
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="showCoords"/> Debug: hex coords</label>
+        </div>
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="showCompass" checked/> Compass</label>
+        </div>
+      </div>
+
+      <h2>Fleet</h2>
+      <div class="sidebar-section">
+        <div id="fleetList"></div>
+      </div>
+
+      <h2>Hit Log</h2>
+      <div class="sidebar-section">
+        <div id="hitLog"></div>
+      </div>
+
+    </div>
+
+    <!-- ============== ATTACKER PANE ============== -->
+    <div class="attacker-only">
+
+      <h2>Enemy Fleet</h2>
+      <div class="sidebar-section">
+        <div id="enemyFleet"></div>
+      </div>
+
+      <h2>Inference Aids</h2>
+      <div class="sidebar-section">
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="showHitAura" checked/> Hit aura</label>
+        </div>
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="showContactTracks" checked/> Auto contact tracks</label>
+        </div>
+        <div class="meta">Hit aura: rings around hits grow with elapsed turns. Contact tracks: hits auto-correlate into trajectories; sidebar shows inferred heading/cooldown.</div>
+      </div>
+
+      <h2>Contacts</h2>
+      <div class="sidebar-section">
+        <div id="contactsList"></div>
+      </div>
+
+      <h2>Teletype</h2>
+      <div class="sidebar-section">
+        <div id="probeLog"></div>
+      </div>
+
+    </div>
+
+    <!-- ============== END OF GAME PANE ============== -->
+    <div class="endgame-only">
+
+      <h2 class="first-section">EoG View</h2>
+      <div class="sidebar-section">
+        <div class="seg" id="endgameViewSeg">
+          <button data-v="attacker" class="active">From Attacker</button>
+          <button data-v="defender">From Defender</button>
+        </div>
+        <div class="meta" id="endgameViewMeta">From attacker — probes prominent, ship truth dimmed</div>
+      </div>
+
+      <h2>Validation</h2>
+      <div class="sidebar-section">
+        <div id="endgameValidation"></div>
+      </div>
+
+      <h2>Fleet Outcome</h2>
+      <div class="sidebar-section">
+        <div id="endgameFleetOutcome"></div>
+      </div>
+
+    </div>
+
+  </aside>
+
+  <!-- ============== BOARD ============== -->
+  <div id="board-wrap">
+    <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+    <!-- Run controls overlay. The Placement / Running mode-toggle is gone —
+         Setup perspective handles ship arrangement, Defender is always in
+         running mode. Probe stays as the defender's debug fire tool. -->
+    <div id="mode-controls">
+      <div id="runControls" class="run-controls">
+        <button id="stepBack" title="Step back" disabled>◀</button>
+        <button id="stepFwd" title="Step forward">▶ Step</button>
+        <span id="tickDisplay">Tick 0</span>
+        <button id="resetTick" title="Reset to start">↺ Reset</button>
+        <button id="probeToggle" class="defender-only" title="Click board to probe cells"><svg class="ico" viewBox="0 0 17 17"><path d="M17.020 8h-2.045c-0.245-3.194-2.806-5.745-6.004-5.977v-2.062h-1v2.065c-3.172 0.258-5.702 2.799-5.946 5.974h-2.045v1h2.045c0.244 3.175 2.774 5.716 5.945 5.974v2.026h1v-2.023c3.198-0.231 5.759-2.782 6.004-5.977h2.045v-1zM8.971 13.977v-1.977h-1v1.974c-2.621-0.252-4.708-2.35-4.946-4.974h1.955v-1h-1.955c0.238-2.624 2.325-4.722 4.946-4.974v1.935h1v-1.938c2.647 0.227 4.764 2.333 5.004 4.977h-1.955v1h1.955c-0.24 2.644-2.357 4.75-5.004 4.977z"/></svg> Probe</button>
+      </div>
+      <div id="speedChart" class="defender-only"></div>
+    </div>
+    <!-- Mini-board (PIP): renders the opposite perspective. Hidden in EoG. -->
+    <div id="miniboard-wrap" title="Click to swap perspectives">
+      <div id="miniboard-label">Defender</div>
+      <svg id="miniboard" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="perspectiveLabel"><svg class="ico" id="perspectiveLabelIcon" viewBox="0 0 24 24"><path d="m17 15 1.55 1.55c-.96 1.69-3.33 3.04-5.55 3.37V11h3V9h-3V7.82C14.16 7.4 15 6.3 15 5c0-1.65-1.35-3-3-3S9 3.35 9 5c0 1.3.84 2.4 2 2.82V9H8v2h3v8.92c-2.22-.33-4.59-1.68-5.55-3.37L7 15l-4-3v3c0 3.88 4.92 7 9 7s9-3.12 9-7v-3l-4 3zM12 4c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg> <span id="perspectiveLabelText">Defender</span></div>
+
+    <!-- Firing UX: teletype line only — no picker. Second click on the board
+         IS the salvo pattern selection. -->
+    <div id="teletypeLine" class="attacker-only"></div>
+  </div>
+
+</div>
+
+<script>
+/* =====================================================================
+   FILE STRUCTURE
+   ---------------------------------------------------------------------
+   1–5  SHARED        data model · geometry · ship features · renderers · board
+   6    DEFENDER UI   sidebar (fleet list, render mode, board controls)
+   7    WIRE-UP       perspective switch + event handlers
+   8    DEFENDER FX   smoke particle system (hidden in attacker view)
+   ===================================================================== */
+
+/* =====================================================================
+   1. DATA MODEL  (shared · no rendering knowledge)
+   ===================================================================== */
+
+const ICO_SKULL_HTML = `<svg class="ico ico-sm" viewBox="0 0 448 512"><path fill="currentColor" d="M368 128c0 44.4-25.4 83.5-64 106.4l0 21.6c0 17.7-14.3 32-32 32l-96 0c-17.7 0-32-14.3-32-32l0-21.6c-38.6-23-64-62.1-64-106.4C80 57.3 144.5 0 224 0s144 57.3 144 128zM168 176a32 32 0 1 0 0-64 32 32 0 1 0 0 64zm144-32a32 32 0 1 0-64 0 32 32 0 1 0 64 0zM3.4 273.7c7.9-15.8 27.1-22.2 42.9-14.3L224 348.2l177.7-88.8c15.8-7.9 35-1.5 42.9 14.3s1.5 35-14.3 42.9L295.6 384l134.8 67.4c15.8 7.9 22.2 27.1 14.3 42.9s-27.1 22.2-42.9 14.3L224 419.8 46.3 508.6c-15.8 7.9-35 1.5-42.9-14.3s-1.5-35 14.3-42.9L152.4 384 17.7 316.6C1.9 308.7-4.5 289.5 3.4 273.7z"/></svg>`;
+const ICO_SKULL_SVG_PATH = "M368 128c0 44.4-25.4 83.5-64 106.4l0 21.6c0 17.7-14.3 32-32 32l-96 0c-17.7 0-32-14.3-32-32l0-21.6c-38.6-23-64-62.1-64-106.4C80 57.3 144.5 0 224 0s144 57.3 144 128zM168 176a32 32 0 1 0 0-64 32 32 0 1 0 0 64zm144-32a32 32 0 1 0-64 0 32 32 0 1 0 64 0zM3.4 273.7c7.9-15.8 27.1-22.2 42.9-14.3L224 348.2l177.7-88.8c15.8-7.9 35-1.5 42.9 14.3s1.5 35-14.3 42.9L295.6 384l134.8 67.4c15.8 7.9 22.2 27.1 14.3 42.9s-27.1 22.2-42.9 14.3L224 419.8 46.3 508.6c-15.8 7.9-35 1.5-42.9-14.3s-1.5-35 14.3-42.9L152.4 384 17.7 316.6C1.9 308.7-4.5 289.5 3.4 273.7z";
+
+const HEX_DIRS_POINTY = [
+  { name: "E",  dq:+1, dr: 0, angle:   0 },
+  { name: "SE", dq: 0, dr:+1, angle:  60 },
+  { name: "SW", dq:-1, dr:+1, angle: 120 },
+  { name: "W",  dq:-1, dr: 0, angle: 180 },
+  { name: "NW", dq: 0, dr:-1, angle: 240 },
+  { name: "NE", dq:+1, dr:-1, angle: 300 },
+];
+const HEX_DIRS_FLAT = [
+  { name: "NE", dq:+1, dr:-1, angle: -30 },
+  { name: "SE", dq:+1, dr: 0, angle:  30 },
+  { name: "S",  dq: 0, dr:+1, angle:  90 },
+  { name: "SW", dq:-1, dr:+1, angle: 150 },
+  { name: "NW", dq:-1, dr: 0, angle: 210 },
+  { name: "N",  dq: 0, dr:-1, angle: 270 },
+];
+
+function makeShip(id, size, q, r, head) {
+  const baseCooldown = Math.max(1, size - 1);
+  return { id, size, hp: size, baseCooldown, cooldown: baseCooldown, hitsTaken: 0, sunk: false, q, r, head };
+}
+
+const fleet = [
+  makeShip("BB-01", 5, -3, -2, 0),
+  makeShip("CA-02", 4,  1, -3, 1),
+  makeShip("DD-03", 3,  3,  1, 2),
+  makeShip("DD-04", 3, -4,  2, 5),
+  makeShip("PT-05", 2,  0,  3, 0),
+];
+
+let activeShipId = fleet[0].id;
+
+const state = {
+  perspective: "defender",    // "setup" | "defender" | "attacker" | "endgame" — top-level UI mode
+  peekingPerspective: null,   // null | "defender" | "attacker" — temporary peek override (C, design-mini-views.md)
+  endgameView: "attacker",    // "attacker" | "defender" — emphasis sub-view inside EoG
+  render: "detail",
+  orient: "flat",             // "pointy" | "flat"
+  radius: 7,
+  showHighlight: true,
+  showLabels: true,
+  showCoords: false,
+  showCompass: true,
+  mode: "placement",          // "placement" | "running" — defender sub-mode
+  showHitAura: true,          // attacker inference aid (§7.3) — uncertainty rings
+  showContactTracks: true,    // attacker inference aid (§7.4) — auto-correlated contact tracks
+};
+
+/* ---- ATTACKER FIRING STATE ---- */
+// Transient interaction state for the attacker's aim → pick-pattern → fire flow.
+// Separate from `sim` (which is the sim's persistent state) and `state` (UI config).
+const attacker = {
+  aim: null,                // { q, r } | null — locked aim cell after first click
+  hoverDestination: null,   // { q, r } | null — second-cell hover preview (board)
+  declaredSunk: new Set(),  // silhouette indices the player has manually declared sunk
+  contacts: [],             // contact tracks from auto-correlation (§7.4)
+  assignmentMode: null,     // silhouette idx in active assignment mode (§6c), or null
+};
+
+/* ---- SETUP STATE (design-setup.md) ----
+ * Defender's ship-arrangement perspective. Selection is sticky once a ship is
+ * placed; rotation keys act on the selected ship. Drag is positional only. */
+const setup = {
+  selectedShipId: null,    // id of currently selected ship on the board, or null
+  drag: null,              // { shipId, fromSidebar, originalAnchor, originalHeading, currentAnchor, currentHeading } | null
+  unplaced: new Set(),     // Set<shipId> — ships currently in the sidebar's UNPLACED section
+};
+const DRAG_THRESHOLD_PX = 3;     // mouse movement above this = drag, below = click
+const AUTO_PLACE_TRIES = 50;
+
+// Enemy fleet silhouettes for the attacker (§7.5). Sizes only — no class names
+// per R18. Indices 0..4 map to the slot in the panel, not to actual ship ids.
+const ENEMY_SILHOUETTES = [
+  { idx: 0, size: 5 },
+  { idx: 1, size: 4 },
+  { idx: 2, size: 3 },
+  { idx: 3, size: 3 },
+  { idx: 4, size: 2 },
+];
+// Distinct, saturated colors per silhouette slot. Used as the tint on X marks
+// when a hit is assigned (§6c) and as the highlight color on the silhouette
+// card while in assignment mode. Deliberately *no red* — the default hit X is
+// red, and a red silhouette color would make "assigned to silhouette 0" and
+// "unassigned" visually indistinguishable. Also distinct from TRACK_COLORS.
+const SILHOUETTE_COLORS = [
+  "#1e6fa8", // BB-5: deep blue
+  "#2a9080", // CA-4: teal
+  "#3a8030", // DD-3a: forest green
+  "#b8701c", // DD-3b: amber
+  "#7032a8", // PT-2: purple
+];
+
+// Contact-track inference (§7.4). Search space for the trajectory solver.
+// Sizes come from the fleet definition (BB 5, CA 4, DD 3/3, PT 2).
+// Cooldowns span 1 (PT base) up to 5 (BB after a hit).
+const SHIP_SIZES_FOR_INFERENCE = [2, 3, 4, 5];
+const POSSIBLE_COOLDOWNS       = [1, 2, 3, 4, 5];
+const TRACK_NAMES = ["Alpha","Bravo","Charlie","Delta","Echo","Foxtrot","Golf","Hotel","India","Juliet","Kilo","Lima"];
+
+// Axial hex distance — used to skip drawing track lines across the torus wrap.
+function hexDistance(q1, r1, q2, r2) {
+  const dq = q1 - q2, dr = r1 - r2;
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
+}
+
+/* Inference engine. Given a list of HIT probe entries (each {tick, q, r}),
+ * search the hypothesis space (size, heading, cooldown, initial-anchor) for
+ * every trajectory that could have placed a ship body cell at every hit cell
+ * at every hit tick. Returns the feasible set.
+ *
+ * Movement model: anchor moves 1 cell in `heading` direction every `cd` ticks,
+ * starting from tick 0. Body = anchor + i·dir for i ∈ [0, size-1]. Torus wrap.
+ * Straight-line only — no turning, no post-hit cooldown bump. (Both deferred.)
+ *
+ * Cost per call: |sizes| × |headings| × |cd| × max(size) × |hits| × |bodyJ|.
+ *   ≈ 4 × 6 × 5 × 5 × |hits| × 5  ≈  3000 · |hits| ops. Fast.
+ */
+function inferTrack(hits) {
+  if (hits.length === 0) return [];
+  const sorted = hits.slice().sort((a, b) => a.tick - b.tick);
+  const dirs = hexDirs();
+  const results = [];
+
+  for (const size of SHIP_SIZES_FOR_INFERENCE) {
+    for (let headingIdx = 0; headingIdx < dirs.length; headingIdx++) {
+      const dir = dirs[headingIdx];
+      for (const cd of POSSIBLE_COOLDOWNS) {
+        // The first hit might be at any body-cell index; iterate.
+        for (let firstBodyIdx = 0; firstBodyIdx < size; firstBodyIdx++) {
+          const firstHit = sorted[0];
+          const movesAtFirst = Math.floor(firstHit.tick / cd);
+          // anchor_at_tick_0 = firstHit - (firstBodyIdx + movesAtFirst) · dir
+          const anchor0Q = firstHit.q - (firstBodyIdx + movesAtFirst) * dir.dq;
+          const anchor0R = firstHit.r - (firstBodyIdx + movesAtFirst) * dir.dr;
+
+          let allFit = true;
+          for (const hit of sorted) {
+            const movesAtT = Math.floor(hit.tick / cd);
+            const anchorTQ = anchor0Q + movesAtT * dir.dq;
+            const anchorTR = anchor0R + movesAtT * dir.dr;
+            let fitsBody = false;
+            for (let j = 0; j < size; j++) {
+              const wrapped = wrapHex(anchorTQ + j * dir.dq, anchorTR + j * dir.dr, state.radius);
+              if (wrapped.q === hit.q && wrapped.r === hit.r) { fitsBody = true; break; }
+            }
+            if (!fitsBody) { allFit = false; break; }
+          }
+          if (allFit) results.push({ size, headingIdx, cd, anchor0Q, anchor0R });
+        }
+      }
+    }
+  }
+  return results;
+}
+
+/* AUTO correlation (§7.4). Greedy single-pass: each new HIT is added to the
+ * existing track whose feasibility set survives best after the addition (most
+ * constrained = most informative); if no track stays feasible, start a new
+ * one. Inference IS the correlation criterion. */
+function computeContactTracks() {
+  const tracks = [];
+  const hits = sim.hitLog
+    .filter(e => e.result === 'HIT')
+    .slice()
+    .sort((a, b) => a.tick - b.tick);
+
+  for (const hit of hits) {
+    let bestTrack = null;
+    let bestFeasibleCount = Infinity;
+    for (const track of tracks) {
+      const candidate = [...track.hits, hit];
+      const feasible = inferTrack(candidate);
+      if (feasible.length > 0 && feasible.length < bestFeasibleCount) {
+        bestTrack = track;
+        bestFeasibleCount = feasible.length;
+      }
+    }
+    if (bestTrack) {
+      bestTrack.hits.push(hit);
+      bestTrack.feasible = inferTrack(bestTrack.hits);
+    } else {
+      tracks.push({
+        id: TRACK_NAMES[tracks.length] || `Track${tracks.length}`,
+        hits: [hit],
+        feasible: inferTrack([hit]),
+      });
+    }
+  }
+
+  // Confidence + summary stats per track.
+  for (const t of tracks) {
+    if (t.hits.length === 1)                   t.confidence = 'unattributed';
+    else if (t.feasible.length === 0)          t.confidence = 'inconsistent';
+    else if (t.feasible.length === 1)          t.confidence = 'consistent';
+    else                                       t.confidence = 'forced';
+    t.possibleHeadings = [...new Set(t.feasible.map(f => f.headingIdx))];
+    t.possibleCooldowns = [...new Set(t.feasible.map(f => f.cd))];
+    t.possibleSizes     = [...new Set(t.feasible.map(f => f.size))];
+  }
+  return tracks;
+}
+
+// Salvo firing (§7.7 / R17 — 2 cells per turn). NEW UX: no preset patterns.
+// Click 1 = aim cell. Click 2 = destination. Both probe-fire as one salvo.
+// The teletype line at the bottom of the board carries the textual guidance
+// (SELECT SECOND CELL, then "(a) + (b) · LABEL · FIRE FOR EFFECT" on hover).
+
+let nextSalvoId = 1;
+
+// Label a 2-cell salvo by hex distance between the two cells. Keeps the
+// "TIGHT" / "WIDE" language from the old preset patterns where it fits.
+function salvoLabelByDistance(d) {
+  if (d <= 1) return "TIGHT PAIR";
+  if (d === 2) return "WIDE SPREAD";
+  return `RANGE ${d}`;
+}
+
+function setAim(q, r) {
+  if (state.peekingPerspective) return;  // peek (C) — observational only
+  if (state.perspective !== "attacker" || state.mode !== "running") return;
+  // Click the same cell twice → unlock (toggle off).
+  if (attacker.aim && attacker.aim.q === q && attacker.aim.r === r) {
+    clearAim();
+    return;
+  }
+  attacker.aim = { q, r };
+  attacker.hoverDestination = null;
+  refreshAttackerOverlay();
+  // Surgical — do NOT call renderBoard. Wiping the SVG would kill any
+  // in-flight fresh-hit animation from the previous salvo.
+  updateAimLayer();
+  updatePreviewLayer();
+}
+
+function clearAim() {
+  if (attacker.aim === null && attacker.hoverDestination === null) return;
+  attacker.aim = null;
+  attacker.hoverDestination = null;
+  refreshAttackerOverlay();
+  updateAimLayer();
+  updatePreviewLayer();
+}
+
+function setHoverDestination(q, r) {
+  // Only meaningful when aim is locked.
+  if (!attacker.aim) return;
+  if (q === null) {
+    if (attacker.hoverDestination === null) return;
+    attacker.hoverDestination = null;
+  } else {
+    // Don't preview the aim cell as a destination.
+    if (attacker.aim.q === q && attacker.aim.r === r) {
+      if (attacker.hoverDestination === null) return;
+      attacker.hoverDestination = null;
+    } else {
+      if (attacker.hoverDestination
+        && attacker.hoverDestination.q === q
+        && attacker.hoverDestination.r === r) return;
+      attacker.hoverDestination = { q, r };
+    }
+  }
+  refreshAttackerOverlay();
+  updatePreviewLayer();
+}
+
+function fireDirectSalvo(secondQ, secondR) {
+  if (state.peekingPerspective) return;          // peek (C) — observational only
+  if (state.perspective !== "attacker") return;  // EoG must never fire
+  if (!attacker.aim) return;
+  const salvoId = nextSalvoId++;
+  // Batch: first probe skips its render, so the second probe's renderBoard
+  // sees both new entries in freshIndices and animates both bursts at once.
+  probeCell(attacker.aim.q, attacker.aim.r, { salvoId, skipRender: true });
+  probeCell(secondQ, secondR, { salvoId, skipRender: false });
+  clearAim();
+}
+
+/* ---- ENEMY FLEET SILHOUETTES (§7.5) + HIT ASSIGNMENT (§6c) ---- */
+function toggleDeclaredSunk(idx) {
+  if (attacker.declaredSunk.has(idx)) attacker.declaredSunk.delete(idx);
+  else attacker.declaredSunk.add(idx);
+  buildEnemyFleetSilhouettes();
+  buildContactsList();
+  buildEndgamePanels();
+  buildSetupSidebar();
+}
+
+// Counts of HIT entries currently tagged to a given silhouette idx.
+function assignedHitCount(silhouetteIdx) {
+  return sim.hitLog.filter(e => e.result === 'HIT' && e.attackerAssignedSilhouette === silhouetteIdx).length;
+}
+// Visually "declared sunk" = manual flag OR fully accounted-for via assignment.
+function silhouetteFulfilled(silhouetteIdx) {
+  return assignedHitCount(silhouetteIdx) >= ENEMY_SILHOUETTES[silhouetteIdx].size;
+}
+function silhouetteAppearsSunk(silhouetteIdx) {
+  return attacker.declaredSunk.has(silhouetteIdx) || silhouetteFulfilled(silhouetteIdx);
+}
+
+// Enter/exit assignment mode for a silhouette. Clicking the same silhouette
+// exits; clicking a different one switches. Entering also clears any locked
+// aim — aim/fire and assignment are mutually exclusive interaction modes.
+function toggleAssignmentMode(silhouetteIdx) {
+  if (state.peekingPerspective) return;          // peek (C) — observational only
+  if (state.perspective !== "attacker") return;  // EoG: no assignment changes
+  const entering = attacker.assignmentMode !== silhouetteIdx;
+  attacker.assignmentMode = entering ? silhouetteIdx : null;
+  if (entering && attacker.aim) {
+    attacker.aim = null;
+    attacker.hoverDestination = null;
+    refreshAttackerOverlay();
+    updateAimLayer();
+    updatePreviewLayer();
+  }
+  buildEnemyFleetSilhouettes();
+  renderBoard();
+}
+function exitAssignmentMode() {
+  if (attacker.assignmentMode === null) return;
+  attacker.assignmentMode = null;
+  buildEnemyFleetSilhouettes();
+  renderBoard();
+}
+
+// Toggle assignment of all HIT entries at (q,r) to the active silhouette.
+// If all entries at the cell are already tagged to that silhouette, this
+// un-tags them all. Otherwise, every entry at the cell gets tagged.
+function toggleCellAssignment(q, r) {
+  if (state.peekingPerspective) return;          // peek (C) — observational only
+  if (state.perspective !== "attacker") return;  // EoG: assignment frozen
+  if (attacker.assignmentMode === null) return;
+  const sidx = attacker.assignmentMode;
+  const entries = sim.hitLog.filter(e => e.result === 'HIT' && e.q === q && e.r === r);
+  if (entries.length === 0) return;
+  const allTagged = entries.every(e => e.attackerAssignedSilhouette === sidx);
+  entries.forEach(e => { e.attackerAssignedSilhouette = allTagged ? null : sidx; });
+  buildEnemyFleetSilhouettes();
+  renderBoard();
+}
+
+function buildEnemyFleetSilhouettes() {
+  const root = document.getElementById("enemyFleet");
+  if (!root) return;
+  root.innerHTML = "";
+
+  // Header tally — strictly what the attacker knows. NO "confirmed sunk"
+  // (truth leak — they don't get told mid-game). Just their hit count and
+  // their own declared count via assignment.
+  const declaredCount = ENEMY_SILHOUETTES.filter(s => silhouetteAppearsSunk(s.idx)).length;
+  const totalHits = sim.hitLog.filter(e => e.result === 'HIT').length;
+  const total = ENEMY_SILHOUETTES.length;
+  const tally = document.createElement("div");
+  tally.className = "enemy-tally";
+  tally.innerHTML = `${totalHits} hit${totalHits === 1 ? '' : 's'}`
+    + ` · <span class="tally-declared">${declaredCount} of ${total} declared sunk</span>`;
+  root.appendChild(tally);
+
+  // Instruction banner is ALWAYS rendered — greyed when idle, lit when in
+  // assignment mode. Keeps the panel layout stable so clicking a silhouette
+  // doesn't push the cards downward.
+  const banner = document.createElement("div");
+  banner.className = "enemy-assignment-banner";
+  if (attacker.assignmentMode !== null) {
+    const sidx = attacker.assignmentMode;
+    const sz = ENEMY_SILHOUETTES[sidx].size;
+    const assigned = assignedHitCount(sidx);
+    banner.classList.add("active");
+    banner.style.setProperty("--silhouette-color", SILHOUETTE_COLORS[sidx]);
+    banner.innerHTML = `<b>ASSIGNING TO SIZE ${sz} · ${assigned}/${sz}</b>`
+      + `Click an X mark to tag it. Click another silhouette to switch. Click empty cell or Esc to finish.`;
+  } else {
+    banner.innerHTML = `<b>HIT ASSIGNMENT</b>`
+      + `Click a silhouette to start tagging X marks to it. Helps you track which hits go with which ship.`;
+  }
+  root.appendChild(banner);
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  ENEMY_SILHOUETTES.forEach(silhouette => {
+    const sidx = silhouette.idx;
+    const manualSunk = attacker.declaredSunk.has(sidx);
+    const fulfilled = silhouetteFulfilled(sidx);
+    const appearsSunk = manualSunk || fulfilled;
+    const inAssignmentMode = attacker.assignmentMode === sidx;
+    const assigned = assignedHitCount(sidx);
+    const color = SILHOUETTE_COLORS[sidx];
+
+    const card = document.createElement("div");
+    card.className = "enemy-silhouette"
+      + (appearsSunk ? " declared-sunk" : "")
+      + (inAssignmentMode ? " assigning" : "");
+    card.dataset.idx = sidx;
+    card.style.setProperty("--silhouette-color", color);
+
+    const sizeLbl = document.createElement("span");
+    sizeLbl.className = "silhouette-size";
+    sizeLbl.textContent = silhouette.size;
+    card.appendChild(sizeLbl);
+
+    // Row of N hex-cell pips. Each pip fills individually left-to-right with
+    // the silhouette color as hits get assigned. crispEdges + integer pixel
+    // positions + uniform 1px stroke avoid the subpixel rendering that gave
+    // mixed 1/2px verticals in v1.
+    const cellW = 14, cellH = 16, gap = 2;
+    const totalW = silhouette.size * (cellW + gap) - gap;
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("width", totalW);
+    svg.setAttribute("height", cellH);
+    svg.setAttribute("class", "silhouette-cells");
+    svg.setAttribute("shape-rendering", "crispEdges");
+    for (let i = 0; i < silhouette.size; i++) {
+      const r = document.createElementNS(SVG_NS, "rect");
+      r.setAttribute("x", i * (cellW + gap));
+      r.setAttribute("y", 0);
+      r.setAttribute("width", cellW);
+      r.setAttribute("height", cellH);
+      // Cells stay in their assignment state regardless of sunk. When fulfilled,
+      // assigned == size so all pips fill in the silhouette color naturally.
+      // The "down" signal moves to the silhouette (red X over the hull) below.
+      let fill, stroke;
+      if (i < assigned) { fill = color; stroke = "#1a1410"; }
+      else              { fill = "#faf4e6"; stroke = "#3a3020"; }
+      r.setAttribute("fill", fill);
+      r.setAttribute("stroke", stroke);
+      r.setAttribute("stroke-width", "1");
+      svg.appendChild(r);
+    }
+    card.appendChild(svg);
+
+    // Ship silhouette — small ink-style hull rendered with the same geometry
+    // as Render Mode A. Length scales with ship size so the visual itself
+    // communicates "this is a 5" vs "this is a 2".
+    const sHexR = 9;
+    const sFeat = buildShipFeatures({ size: silhouette.size }, sHexR);
+    const sHullPadX = 4, sHullPadY = 3;
+    const sW = Math.ceil((sFeat.bow + 2) - sFeat.stern + sHullPadX * 2);
+    const sH = Math.ceil(sFeat.B * 1.9 + sHullPadY * 2);
+    const sSvg = document.createElementNS(SVG_NS, "svg");
+    sSvg.setAttribute("class", "silhouette-ship");
+    sSvg.setAttribute("width", sW);
+    sSvg.setAttribute("height", sH);
+    sSvg.setAttribute("viewBox", `${sFeat.stern - sHullPadX} ${-sH / 2} ${sW} ${sH}`);
+    sSvg.appendChild(el("path", { d: sFeat.hullPath, fill: "#1a1410", stroke: "#000", "stroke-width": 0.6 }));
+    sSvg.appendChild(el("path", { d: sFeat.bowWedge, fill: "#5a4a30" }));
+    sSvg.appendChild(el("path", { d: `M ${sFeat.stern*0.85},0 L ${sFeat.bow*0.85},0`, stroke: "#c9b58a", "stroke-width": 0.8, opacity: 0.4, fill: "none" }));
+    // "Down" indicator: red X struck through the hull when the silhouette is
+    // accounted-for. Lives on the ship — cell pips just show assignment progress.
+    if (appearsSunk) {
+      const xExt = sFeat.B * 1.6;
+      const xColor = "#c81e1e";
+      const xW = 2.4;
+      sSvg.appendChild(el("line", { x1: -xExt, y1: -xExt, x2: xExt, y2: xExt, stroke: xColor, "stroke-width": xW, "stroke-linecap": "round" }));
+      sSvg.appendChild(el("line", { x1: -xExt, y1: xExt, x2: xExt, y2: -xExt, stroke: xColor, "stroke-width": xW, "stroke-linecap": "round" }));
+    }
+    card.appendChild(sSvg);
+
+    const meta = document.createElement("div");
+    meta.className = "silhouette-meta";
+    if (appearsSunk) {
+      const why = fulfilled && manualSunk ? "DECLARED · ACCOUNTED FOR"
+        : fulfilled ? "ACCOUNTED FOR"
+        : "DECLARED SUNK";
+      meta.innerHTML = `<span class="silhouette-status-sunk">${why}</span>`;
+    } else if (inAssignmentMode) {
+      meta.innerHTML = `<span class="silhouette-assigning">ASSIGNING</span> · ${assigned}/${silhouette.size}`;
+    } else if (assigned > 0) {
+      meta.innerHTML = `${assigned}/${silhouette.size} assigned`;
+    } else {
+      meta.innerHTML = `click to assign hits`;
+    }
+    card.appendChild(meta);
+
+    // Click on card body → enter/exit assignment mode for this silhouette.
+    // (Manual "declared sunk" hunch path removed — only path to "appears sunk"
+    // is now via assignment reaching size. `attacker.declaredSunk` retained in
+    // the data model but no UI surface.)
+    card.addEventListener("click", () => toggleAssignmentMode(sidx));
+    root.appendChild(card);
+  });
+}
+
+/* ---- CONTACT TRACKS (§7.4) ---- */
+const TRACK_COLORS = ["#a03020", "#3060a0", "#60a030", "#a06030", "#6030a0", "#208080", "#a02080", "#506070"];
+
+function buildContactsList() {
+  const root = document.getElementById("contactsList");
+  if (!root) return;
+  root.innerHTML = "";
+  if (!state.showContactTracks) return;
+  if (attacker.contacts.length === 0) return;
+
+  const dirs = hexDirs();
+  attacker.contacts.forEach((t, idx) => {
+    const color = TRACK_COLORS[idx % TRACK_COLORS.length];
+    const card = document.createElement("div");
+    card.className = "contact-card confidence-" + t.confidence;
+    card.style.setProperty("--track-color", color);
+
+    const confLabel = ({
+      consistent: "CONSISTENT",
+      forced: "FORCED",
+      inconsistent: "INCONSISTENT",
+      unattributed: "1 HIT",
+    })[t.confidence];
+
+    // Inferred heading: single value if narrowed, else 'multi'.
+    const headingStr = t.possibleHeadings.length === 1
+      ? `<b>${dirs[t.possibleHeadings[0]].name}</b>`
+      : t.possibleHeadings.length === 0
+        ? '—'
+        : `<span class="ambiguous">${t.possibleHeadings.length} candidates</span>`;
+    const cdStr = t.possibleCooldowns.length === 1
+      ? `<b>${t.possibleCooldowns[0]}</b>`
+      : t.possibleCooldowns.length === 0
+        ? '—'
+        : `<span class="ambiguous">${t.possibleCooldowns.map(c => c).join('/')}</span>`;
+    const sizeStr = t.possibleSizes.length === 1
+      ? `<b>${t.possibleSizes[0]}</b>`
+      : t.possibleSizes.length === 0
+        ? '—'
+        : `<span class="ambiguous">${t.possibleSizes.map(s => s).join('/')}</span>`;
+
+    card.innerHTML = `
+      <div class="contact-head">
+        <span>${t.id} · ${t.hits.length} hit${t.hits.length > 1 ? 's' : ''}</span>
+        <span class="contact-confidence" style="color: ${color};">${confLabel}</span>
+      </div>
+      <div class="contact-meta">
+        heading ${headingStr} · cd ${cdStr} · size ${sizeStr}
+      </div>
+      <div class="contact-meta">
+        ${t.hits.map(h => `T${h.tick} (${h.q},${h.r})`).join(' → ')}
+      </div>
+    `;
+    root.appendChild(card);
+  });
+}
+
+/* ---- END-OF-GAME PANELS (Stage 7) ---- */
+// Stable silhouette-idx → ship mapping by descending size order in the fleet.
+// Truth revelation at EoG: silhouette 0 is the largest ship (BB), 4 is the
+// smallest (PT). The two size-3 DDs map to silhouettes 2 and 3 in fleet order.
+function endgameSilhouetteToShip() {
+  // ENEMY_SILHOUETTES is in size order [5,4,3,3,2]. Sort fleet the same way
+  // and zip; ties (the two DDs) take fleet definition order.
+  const sortedFleet = fleet.slice().sort((a, b) => b.size - a.size);
+  const map = {};
+  ENEMY_SILHOUETTES.forEach((s, i) => { map[s.idx] = sortedFleet[i]; });
+  return map;
+}
+
+/* ---- SETUP SIDEBAR (design-setup.md) ---- */
+function buildSetupSidebar() {
+  const fleetRoot = document.getElementById("setupFleetList");
+  if (!fleetRoot) return;
+  fleetRoot.innerHTML = "";
+
+  const placedCount = fleet.filter(s => !setup.unplaced.has(s.id)).length;
+  const fc = document.getElementById("setupFleetCount");
+  if (fc) fc.textContent = `(${placedCount} / ${fleet.length} placed)`;
+
+  const overlapShips = computeOverlapShipIds();
+
+  // Single list, fleet declaration order. The card's visual state (placed /
+  // unplaced / selected / overlap) communicates everything that two separate
+  // sections used to — without cards jumping when you place/remove them.
+  fleet.forEach(ship => {
+    const isPlaced = !setup.unplaced.has(ship.id);
+    fleetRoot.appendChild(buildSetupShipCard(ship, isPlaced, overlapShips));
+  });
+
+  // Invalid Positions section
+  const invalidHeader = document.getElementById("setupInvalidHeader");
+  const invalidSection = document.getElementById("setupInvalidSection");
+  const invalidList = document.getElementById("setupInvalidList");
+  if (overlapShips.size > 0) {
+    if (invalidHeader) invalidHeader.style.display = "";
+    if (invalidSection) invalidSection.style.display = "";
+    if (invalidList) {
+      invalidList.innerHTML = "";
+      const pairs = computeOverlapPairs();
+      pairs.forEach(([a, b]) => {
+        const row = document.createElement("div");
+        row.className = "invalid-row";
+        row.textContent = `⚠ ${a} overlaps ${b}`;
+        invalidList.appendChild(row);
+      });
+    }
+  } else {
+    if (invalidHeader) invalidHeader.style.display = "none";
+    if (invalidSection) invalidSection.style.display = "none";
+  }
+}
+
+function buildSetupShipCard(ship, isPlaced, overlapShips) {
+  const card = document.createElement("div");
+  const isSelected = setup.selectedShipId === ship.id;
+  const isOverlap = overlapShips.has(ship.id);
+  const isDragging = setup.drag && setup.drag.shipId === ship.id;
+  card.className = "setup-ship-card"
+    + (isPlaced ? " placed" : " unplaced")
+    + (isSelected ? " selected" : "")
+    + (isOverlap ? " overlap" : "")
+    + (isDragging ? " dragging" : "");
+  card.dataset.shipId = ship.id;
+
+  const size = document.createElement("span");
+  size.className = "setup-ship-size";
+  size.textContent = ship.size;
+  card.appendChild(size);
+
+  // Small ink silhouette (reuse same trick as the Enemy Fleet panel)
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const sHexR = 9;
+  const sFeat = buildShipFeatures({ size: ship.size }, sHexR);
+  const sHullPadX = 4, sHullPadY = 3;
+  const sW = Math.ceil((sFeat.bow + 2) - sFeat.stern + sHullPadX * 2);
+  const sH = Math.ceil(sFeat.B * 1.9 + sHullPadY * 2);
+  const sSvg = document.createElementNS(SVG_NS, "svg");
+  sSvg.setAttribute("class", "setup-ship-silhouette");
+  sSvg.setAttribute("width", sW);
+  sSvg.setAttribute("height", sH);
+  sSvg.setAttribute("viewBox", `${sFeat.stern - sHullPadX} ${-sH / 2} ${sW} ${sH}`);
+  sSvg.appendChild(el("path", { d: sFeat.hullPath, fill: "#1a1410", stroke: "#000", "stroke-width": 0.6 }));
+  sSvg.appendChild(el("path", { d: sFeat.bowWedge, fill: "#5a4a30" }));
+  card.appendChild(sSvg);
+
+  const meta = document.createElement("div");
+  meta.className = "setup-ship-meta";
+  const dir = hexDirs()[ship.head];
+  if (isPlaced) {
+    meta.innerHTML = `<b>${ship.id}</b> · (${ship.q},${ship.r}) ${dir.name}`
+      + (isOverlap ? ` · <span class="overlap-chip">OVERLAP</span>` : "");
+  } else {
+    meta.innerHTML = `<b>${ship.id}</b> · <span class="unplaced-hint">drag onto board</span>`;
+  }
+  card.appendChild(meta);
+
+  return card;
+}
+
+// Overlap detection — returns the Set of ship ids that share at least one cell
+// with another placed ship.
+function computeOverlapShipIds() {
+  const placed = fleet.filter(s => !setup.unplaced.has(s.id));
+  const cellOwners = new Map(); // "q,r" -> [shipId, ...]
+  placed.forEach(ship => {
+    shipCells(ship).forEach(c => {
+      const k = `${c.q},${c.r}`;
+      const list = cellOwners.get(k) || [];
+      list.push(ship.id);
+      cellOwners.set(k, list);
+    });
+  });
+  const overlapping = new Set();
+  cellOwners.forEach(list => {
+    if (list.length > 1) list.forEach(id => overlapping.add(id));
+  });
+  return overlapping;
+}
+
+// Pairs of ships that share at least one cell, formatted for the Invalid list.
+function computeOverlapPairs() {
+  const placed = fleet.filter(s => !setup.unplaced.has(s.id));
+  const cellOwners = new Map();
+  placed.forEach(ship => {
+    shipCells(ship).forEach(c => {
+      const k = `${c.q},${c.r}`;
+      const list = cellOwners.get(k) || [];
+      list.push(ship.id);
+      cellOwners.set(k, list);
+    });
+  });
+  const seenPairs = new Set();
+  const pairs = [];
+  cellOwners.forEach(list => {
+    if (list.length < 2) return;
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const key = list[i] < list[j] ? `${list[i]}|${list[j]}` : `${list[j]}|${list[i]}`;
+        if (seenPairs.has(key)) continue;
+        seenPairs.add(key);
+        pairs.push([list[i], list[j]]);
+      }
+    }
+  });
+  return pairs;
+}
+
+function buildEndgamePanels() {
+  const validationRoot = document.getElementById("endgameValidation");
+  const outcomeRoot = document.getElementById("endgameFleetOutcome");
+  if (!validationRoot || !outcomeRoot) return;
+  validationRoot.innerHTML = "";
+  outcomeRoot.innerHTML = "";
+
+  // --- Validation panel (silhouettes vs truth) ---
+  const sToShip = endgameSilhouetteToShip();
+  let correct = 0, falsePositive = 0, missed = 0;
+  ENEMY_SILHOUETTES.forEach(silhouette => {
+    const sidx = silhouette.idx;
+    const ship = sToShip[sidx];
+    const actuallySunk = !!(ship && ship.sunk);
+    const playerDeclared = silhouetteAppearsSunk(sidx);
+    let verdict, verdictClass;
+    if (actuallySunk && playerDeclared)       { verdict = "✓ CORRECT";        verdictClass = "verdict-correct"; correct++; }
+    else if (actuallySunk && !playerDeclared) { verdict = "? MISSED";         verdictClass = "verdict-missed"; missed++; }
+    else if (!actuallySunk && playerDeclared) { verdict = "✗ FALSE POSITIVE"; verdictClass = "verdict-false"; falsePositive++; }
+    else                                       { verdict = "— AT LARGE";      verdictClass = "verdict-neutral"; }
+    const assigned = assignedHitCount(sidx);
+    const hits = ship ? ship.size - ship.hp : 0;
+    const card = document.createElement("div");
+    card.className = "endgame-validation-card " + verdictClass;
+    card.style.setProperty("--silhouette-color", SILHOUETTE_COLORS[sidx]);
+    card.innerHTML = `
+      <div class="endgame-card-head">
+        <span class="endgame-card-id">${ship ? ship.id : `Silhouette ${sidx}`}</span>
+        <span class="endgame-card-verdict">${verdict}</span>
+      </div>
+      <div class="endgame-card-body">
+        size <b>${silhouette.size}</b> · actual: <b>${actuallySunk ? "SUNK" : "ALIVE"}</b> · hits: <b>${hits}</b>
+      </div>
+      <div class="endgame-card-body">
+        you declared: <b>${playerDeclared ? "SUNK" : "at large"}</b> · ${assigned}/${silhouette.size} assigned
+      </div>
+    `;
+    validationRoot.appendChild(card);
+  });
+  // Score summary at top of validation
+  const scoreCard = document.createElement("div");
+  scoreCard.className = "endgame-score";
+  scoreCard.innerHTML = `<b>${correct}/5</b> correct · ${falsePositive} false positive · ${missed} missed`;
+  validationRoot.prepend(scoreCard);
+
+  // --- Fleet outcome panel (defender side) ---
+  // Distance traveled = unique-cell footprint count across sim.history per ship.
+  fleet.forEach(ship => {
+    const sunk = ship.sunk;
+    const hits = ship.size - ship.hp;
+    const dir = hexDirs()[ship.head] || hexDirs()[0];
+    let distance = 0;
+    if (sim.history && sim.history.length > 0) {
+      // Anchor positions per tick from history; count tick-to-tick moves (q,r changed).
+      let prev = null;
+      sim.history.forEach(snap => {
+        const s = snap.find(x => x.id === ship.id);
+        if (!s) return;
+        if (prev && (prev.q !== s.q || prev.r !== s.r)) distance++;
+        prev = s;
+      });
+      // Final motion to current state
+      if (prev && (prev.q !== ship.q || prev.r !== ship.r)) distance++;
+    }
+    const card = document.createElement("div");
+    card.className = "endgame-outcome-card " + (sunk ? "outcome-sunk" : "outcome-alive");
+    card.innerHTML = `
+      <div class="endgame-card-head">
+        <span class="endgame-card-id">${ship.id}</span>
+        <span class="endgame-card-verdict">${sunk ? "✕ SUNK" : "● ALIVE"}</span>
+      </div>
+      <div class="endgame-card-body">
+        size <b>${ship.size}</b> · hp <b>${ship.hp}/${ship.size}</b> · ${hits} hit${hits === 1 ? '' : 's'}
+      </div>
+      <div class="endgame-card-body">
+        heading <b>${dir.name}</b> · moved <b>${distance}</b> tick${distance === 1 ? '' : 's'} · final (${ship.q},${ship.r})
+      </div>
+    `;
+    outcomeRoot.appendChild(card);
+  });
+}
+// interval = how many ticks between moves. Smaller ships are faster.
+// size 1 → every 1 tick, size 2 → every 1, size 3 → every 2, size 4 → every 3, size 5 → every 4
+const SHIP_SPEED = {
+  interval(ship) { return ship.cooldown; },
+  movesOnTick(ship, tick) {
+    if (tick <= 0 || ship.sunk) return false;
+    return tick % this.interval(ship) === 0;
+  },
+  label(ship) {
+    const iv = this.interval(ship);
+    return iv === 1 ? "every tick" : `every ${iv} ticks`;
+  },
+};
+
+/* ---- SIMULATION STATE ---- */
+const sim = {
+  tick: 0,
+  history: [],               // history[i] = fleet snapshot BEFORE tick i+1 was applied
+  initialPositions: null,     // saved on entering running mode
+  actions: {},                // last tick's action per ship (for display)
+  hitLog: [],                 // { tick, q, r, result: 'HIT'|'MISS', shipId?, shipName? }
+  probeMode: false,           // when true, clicking board probes a cell
+  lastAnimatedEntryIdx: -1,  // highest hitLog idx whose fresh-event animation has played;
+                              // guards against replay on incidental re-renders (hover/aim/etc)
+};
+
+function saveFleetSnapshot() {
+  return fleet.map(s => ({ id: s.id, q: s.q, r: s.r, head: s.head, size: s.size, hp: s.hp, cooldown: s.cooldown, hitsTaken: s.hitsTaken, sunk: s.sunk, baseCooldown: s.baseCooldown }));
+}
+function restoreFleetSnapshot(snap) {
+  snap.forEach(ss => {
+    const ship = fleet.find(s => s.id === ss.id);
+    if (ship) { ship.q = ss.q; ship.r = ss.r; ship.head = ss.head; ship.size = ss.size; ship.hp = ss.hp; ship.cooldown = ss.cooldown; ship.hitsTaken = ss.hitsTaken; ship.sunk = ss.sunk; ship.baseCooldown = ss.baseCooldown; }
+  });
+}
+
+/* ---- TURN PREFERENCE (delta from current heading) ---- */
+// Prefer: straight, gentle port/starboard, harder turns, reverse as last resort
+const TURN_PREFERENCE = [0, 1, -1, 2, -2, 3];
+
+/* Given a hypothetical ship position + heading, return its wrapped cells */
+function cellsForShipAt(q, r, head, size) {
+  const dir = hexDirs()[head];
+  const cells = [];
+  for (let i = 0; i < size; i++) {
+    cells.push(wrapHex(q + i * dir.dq, r + i * dir.dr, state.radius));
+  }
+  return cells;
+}
+
+function cellsOverlap(cells, lockedSet) {
+  return cells.some(c => lockedSet.has(`${c.q},${c.r}`));
+}
+
+/* Score a candidate heading by simulating N ticks of straight-line travel
+   and counting how many steps before a collision with locked cells.
+   Also penalizes going off-board (cells that wrap = less desirable). */
+function scoreHeading(shipQ, shipR, newHead, size, lockedCells, depth) {
+  const dirs = hexDirs();
+  const dir = dirs[newHead];
+  let q = shipQ, r = shipR;
+  let score = 0;
+  for (let d = 0; d < depth; d++) {
+    const nq = q + dir.dq, nr = r + dir.dr;
+    const wrapped = wrapHex(nq, nr, state.radius);
+    q = wrapped.q; r = wrapped.r;
+    const cells = cellsForShipAt(q, r, newHead, size);
+    if (cellsOverlap(cells, lockedCells)) break;
+    score++;
+  }
+  return score;
+}
+
+const LOOKAHEAD_DEPTH = 4;
+
+function stepForward() {
+  sim.history.push(saveFleetSnapshot());
+  sim.tick++;
+  sim.actions = {};  // track what each ship did this tick
+
+  // Sort fleet: largest first (priority)
+  const sorted = [...fleet].sort((a, b) => b.size - a.size);
+  const lockedCells = new Set();
+  const dirs = hexDirs();
+  const numDirs = dirs.length;
+
+  // First, lock cells of ships that DON'T act this tick
+  sorted.forEach(ship => {
+    if (ship.sunk) { sim.actions[ship.id] = ICO_SKULL_HTML + " sunk"; return; }
+    if (!SHIP_SPEED.movesOnTick(ship, sim.tick)) {
+      shipCells(ship).forEach(c => lockedCells.add(`${c.q},${c.r}`));
+      sim.actions[ship.id] = "—";
+    }
+  });
+
+  // Process ships that DO act (largest first)
+  sorted.forEach(ship => {
+    if (ship.sunk) return;
+    if (!SHIP_SPEED.movesOnTick(ship, sim.tick)) return;
+
+    let bestHead = ship.head;
+    let bestQ = ship.q, bestR = ship.r;
+    let bestScore = -1;
+    let bestDelta = 999;
+    let found = false;
+
+    for (const delta of TURN_PREFERENCE) {
+      const candidateHead = ((ship.head + delta) % numDirs + numDirs) % numDirs;
+      const dir = dirs[candidateHead];
+      // Move one cell forward in candidate heading
+      const nq = ship.q + dir.dq, nr = ship.r + dir.dr;
+      const wrapped = wrapHex(nq, nr, state.radius);
+      const newCells = cellsForShipAt(wrapped.q, wrapped.r, candidateHead, ship.size);
+
+      if (!cellsOverlap(newCells, lockedCells)) {
+        // Score by lookahead
+        const score = scoreHeading(wrapped.q, wrapped.r, candidateHead, ship.size, lockedCells, LOOKAHEAD_DEPTH);
+        const absDelta = Math.abs(delta);
+        // Prefer: higher lookahead score, then smaller turn delta
+        if (score > bestScore || (score === bestScore && absDelta < bestDelta)) {
+          bestScore = score;
+          bestDelta = absDelta;
+          bestHead = candidateHead;
+          bestQ = wrapped.q;
+          bestR = wrapped.r;
+          found = true;
+        }
+      }
+    }
+
+    if (found) {
+      const turned = bestHead !== ship.head;
+      const turnDir = turned ? (() => {
+        let d = bestHead - ship.head;
+        if (d > numDirs / 2) d -= numDirs;
+        if (d < -numDirs / 2) d += numDirs;
+        return d > 0 ? "⟳" : "⟲";
+      })() : "";
+      const oldDirName = dirs[ship.head].name;
+      const newDirName = dirs[bestHead].name;
+      ship.head = bestHead;
+      ship.q = bestQ;
+      ship.r = bestR;
+      sim.actions[ship.id] = turned
+        ? `${turnDir} ${oldDirName}→${newDirName} + fwd`
+        : "fwd";
+    } else {
+      // Emergency all-stop: can't move anywhere
+      sim.actions[ship.id] = "[!] blocked";
+    }
+
+    // Lock this ship's final cells
+    shipCells(ship).forEach(c => lockedCells.add(`${c.q},${c.r}`));
+  });
+
+  updateSimUI();
+  buildFleetList();
+  renderBoard();
+}
+
+function stepBack() {
+  if (sim.tick <= 0 || sim.history.length === 0) return;
+  const snap = sim.history.pop();
+  restoreFleetSnapshot(snap);
+  sim.tick--;
+  updateSimUI();
+  buildFleetList();
+  renderBoard();
+}
+
+function resetSim() {
+  if (sim.initialPositions) restoreFleetSnapshot(sim.initialPositions);
+  sim.tick = 0;
+  sim.history = [];
+  sim.hitLog = [];
+  sim.lastAnimatedEntryIdx = -1;
+  nextSalvoId = 1;
+  attacker.declaredSunk.clear();
+  attacker.contacts = [];
+  attacker.assignmentMode = null;
+  clearAim();
+  updateSimUI();
+  updateLogs();
+  buildFleetList();
+  buildEnemyFleetSilhouettes();
+  buildContactsList();
+  buildEndgamePanels();
+  buildSetupSidebar();
+  renderBoard();
+}
+
+/* ---- PROBE / HIT LOGIC ---- */
+function probeCell(q, r, opts = {}) {
+  if (state.mode !== "running") return;
+  // Check all non-sunk ships for occupancy at (q,r)
+  let hitShip = null;
+  let hitBodyIndex = -1;
+  // Priority: largest ship first, then lowest body-index
+  const sorted = [...fleet].filter(s => !s.sunk).sort((a, b) => b.size - a.size);
+  for (const ship of sorted) {
+    const cells = shipCells(ship);
+    for (let i = 0; i < cells.length; i++) {
+      if (cells[i].q === q && cells[i].r === r) {
+        hitShip = ship;
+        hitBodyIndex = i;
+        break;
+      }
+    }
+    if (hitShip) break;
+  }
+
+  const entry = { tick: sim.tick, q, r };
+  if (hitShip) {
+    hitShip.hp--;
+    hitShip.hitsTaken++;
+    hitShip.cooldown = hitShip.baseCooldown + hitShip.hitsTaken;
+    entry.result = 'HIT';
+    entry.shipId = hitShip.id;
+    entry.shipName = hitShip.id;
+    entry.bodyIndex = hitBodyIndex;
+    if (hitShip.hp <= 0) {
+      hitShip.sunk = true;
+      hitShip.hp = 0;
+      entry.sunk = true;
+    }
+  } else {
+    entry.result = 'MISS';
+  }
+  if (opts.salvoId) entry.salvoId = opts.salvoId;
+  sim.hitLog.push(entry);
+  // skipRender lets a caller (fireDirectSalvo) batch multiple probes into ONE render,
+  // so both salvo cells live in the same freshIndices set and both animate.
+  if (opts.skipRender) return;
+  updateLogs();
+  buildFleetList();
+  buildEnemyFleetSilhouettes();
+  if (state.showContactTracks) attacker.contacts = computeContactTracks();
+  buildContactsList();
+  buildEndgamePanels();
+  buildSetupSidebar();
+  renderBoard();
+  updateSpeedChart();
+}
+
+function updateHitLog() {
+  // Defender's view of incoming fire: reveals which ship was struck.
+  const log = document.getElementById("hitLog");
+  if (!log) return;
+  log.innerHTML = "";
+  const entries = [...sim.hitLog].reverse();
+  entries.forEach(e => {
+    const div = document.createElement("div");
+    div.className = "log-entry";
+    const cellStr = `(${e.q},${e.r})`;
+    if (e.sunk) {
+      div.className += " log-sunk";
+      div.innerHTML = `T${e.tick} · ${cellStr} · <b>HIT — ${e.shipName} SUNK!</b>`;
+    } else if (e.result === 'HIT') {
+      div.innerHTML = `T${e.tick} · ${cellStr} · <span class="log-hit">HIT</span> · ${e.shipName}`;
+    } else {
+      div.innerHTML = `T${e.tick} · ${cellStr} · <span class="log-miss">MISS</span>`;
+    }
+    log.appendChild(div);
+  });
+}
+
+function updateProbeLog() {
+  // Attacker's teletype console (§7.7). Renders fire history grouped by salvo
+  // — one header per salvo + a line per probed cell. REVISIT cells call out the
+  // tick they were last touched. No ship-class reveal (R18).
+  const log = document.getElementById("probeLog");
+  if (!log) return;
+  log.innerHTML = "";
+
+  // Index every cell's earlier-tick visits so REVISIT lookup is cheap.
+  // (For each entry index i, the most recent prior visit to (q,r), if any.)
+  const lastVisitAt = new Array(sim.hitLog.length).fill(null);
+  const seenByCell = new Map(); // "q,r" -> last entry index
+  sim.hitLog.forEach((e, i) => {
+    const key = `${e.q},${e.r}`;
+    if (seenByCell.has(key)) lastVisitAt[i] = sim.hitLog[seenByCell.get(key)].tick;
+    seenByCell.set(key, i);
+  });
+
+  // Group consecutive entries with the same salvoId. Entries without salvoId
+  // (defender-side Probe tool) render as standalone single-cell "probes".
+  const groups = [];
+  sim.hitLog.forEach((e, i) => {
+    const sid = e.salvoId || null;
+    const last = groups[groups.length - 1];
+    if (sid && last && last.salvoId === sid) {
+      last.entries.push({ ...e, _idx: i, lastVisit: lastVisitAt[i] });
+    } else {
+      groups.push({
+        salvoId: sid, tick: e.tick,
+        entries: [{ ...e, _idx: i, lastVisit: lastVisitAt[i] }]
+      });
+    }
+  });
+
+  // Newest first.
+  groups.reverse().forEach(g => {
+    const div = document.createElement("div");
+    div.className = "log-entry teletype-salvo";
+    const anyRevisit = g.entries.some(e => e.lastVisit !== null);
+    const anySunk = g.entries.some(e => e.sunk);
+    // Salvo label derived from the hex distance between the two cells. Same
+    // mapping the teletype line uses during firing — keeps the log readable
+    // with the same language ("TIGHT PAIR" / "WIDE SPREAD" / "RANGE N").
+    let salvoLabel = null;
+    if (g.entries.length >= 2) {
+      const a = g.entries[0], b = g.entries[1];
+      salvoLabel = salvoLabelByDistance(hexDistance(a.q, a.r, b.q, b.r));
+    }
+    const header = g.salvoId
+      ? `&gt; SALVO ${g.salvoId} · T${g.tick}${salvoLabel ? ` · ${salvoLabel}` : ""}${anyRevisit ? ` · <span class="log-revisit">REVISIT</span>` : ""}${anySunk ? ` · <span class="log-sunk-inline">VESSEL DESTROYED</span>` : ""}`
+      : `&gt; PROBE · T${g.tick}`;
+    const lines = g.entries.map(e => {
+      const cellStr = `(${e.q},${e.r})`;
+      const revisitTag = e.lastVisit !== null ? ` <span class="log-revisit-tag">(last T${e.lastVisit})</span>` : "";
+      const sunkTag = e.sunk ? ` <span class="log-sunk-inline">VESSEL DOWN</span>` : "";
+      if (e.result === 'HIT') return `&nbsp;&nbsp;· ${cellStr} <span class="log-hit">HIT</span>${revisitTag}${sunkTag}`;
+      return `&nbsp;&nbsp;· ${cellStr} <span class="log-miss">MISS</span>${revisitTag}`;
+    });
+    div.innerHTML = `<div class="teletype-header">${header}</div>` + lines.map(l => `<div>${l}</div>`).join("");
+    // Cross-panel hover: highlight this salvo's cells on the board.
+    const cells = g.entries.map(e => ({ q: e.q, r: e.r }));
+    div.addEventListener("mouseenter", () => highlightCellsOnBoard(cells));
+    div.addEventListener("mouseleave", () => highlightCellsOnBoard(null));
+    log.appendChild(div);
+  });
+}
+
+function updateLogs() {
+  // Cheap to update both — visibility is CSS-driven by perspective.
+  updateHitLog();
+  updateProbeLog();
+}
+
+/* enterRunningMode + enterPlacementMode stay as INTERNAL lifecycle hooks even
+ * though the UI mode-toggle is gone. setPerspective drives them: switching to
+ * Defender/Attacker/EoG promotes to running; switching to Setup demotes to
+ * placement. They handle the sim-state plumbing (initialPositions snapshot,
+ * reset of tick/history/hitLog, attacker transient state clearing). */
+function enterRunningMode() {
+  state.mode = "running";
+  sim.tick = 0;
+  sim.history = [];
+  sim.hitLog = [];
+  sim.lastAnimatedEntryIdx = -1;
+  sim.probeMode = false;
+  sim.initialPositions = saveFleetSnapshot();
+  nextSalvoId = 1;
+  attacker.aim = null;
+  attacker.hoverDestination = null;
+  attacker.declaredSunk.clear();
+  attacker.contacts = [];
+  attacker.assignmentMode = null;
+  updateLogs();
+  buildEnemyFleetSilhouettes();
+  buildContactsList();
+  buildEndgamePanels();
+  buildSetupSidebar();
+  updateSimUI();
+  updateSpeedChart();
+  renderBoard();
+}
+
+function enterPlacementMode() {
+  // Restore initial positions when leaving running mode
+  if (sim.initialPositions) restoreFleetSnapshot(sim.initialPositions);
+  state.mode = "placement";
+  sim.tick = 0;
+  sim.history = [];
+  sim.hitLog = [];
+  sim.lastAnimatedEntryIdx = -1;
+  sim.probeMode = false;
+  sim.initialPositions = null;
+  attacker.aim = null;
+  attacker.hoverDestination = null;
+  attacker.declaredSunk.clear();
+  attacker.contacts = [];
+  attacker.assignmentMode = null;
+  updateLogs();
+  buildFleetList();
+  buildEnemyFleetSilhouettes();
+  buildContactsList();
+  buildEndgamePanels();
+  buildSetupSidebar();
+  renderBoard();
+}
+
+function updateSimUI() {
+  document.getElementById("tickDisplay").textContent = `Tick ${sim.tick}`;
+  document.getElementById("stepBack").disabled = sim.tick <= 0;
+}
+
+function updateSpeedChart() {
+  const chart = document.getElementById("speedChart");
+  const dirs = hexDirs();
+  const lines = fleet.map(s => {
+    if (s.sunk) return `<b>${s.id}</b> <span style="color:#a03020">${ICO_SKULL_HTML} SUNK</span>`;
+    const willMove = SHIP_SPEED.movesOnTick(s, sim.tick + 1);
+    const action = sim.actions && sim.actions[s.id] ? sim.actions[s.id] : "";
+    const nextMark = willMove ? ' · <span style="color:#90c060">▸ next</span>' : '';
+    const actionMark = action ? ` · <span style="color:#e8cc6a">${action}</span>` : '';
+    const cdStr = s.hitsTaken > 0 ? ` cd${s.baseCooldown}→<span style="color:#e8a040">${s.cooldown}</span>` : ` cd${s.cooldown}`;
+    return `<b>${s.id}</b> sz${s.size} ${dirs[s.head].name}${cdStr} <span class="moves">${SHIP_SPEED.label(s)}</span>${actionMark}${nextMark}`;
+  });
+  chart.innerHTML = lines.join('<br>');
+}
+
+/* =====================================================================
+   2. HEX GEOMETRY  (math only — no DOM)
+   ===================================================================== */
+
+function hexDirs() { return state.orient === "pointy" ? HEX_DIRS_POINTY : HEX_DIRS_FLAT; }
+
+function axialToPx(q, r, hexR) {
+  if (state.orient === "pointy") {
+    const w = Math.sqrt(3) * hexR;
+    const h = 1.5 * hexR;
+    return { x: w * (q + r/2), y: h * r };
+  } else {
+    const w = 1.5 * hexR;
+    const h = Math.sqrt(3) * hexR;
+    return { x: w * q, y: h * (r + q/2) };
+  }
+}
+
+function hexCorners(cx, cy, hexR) {
+  const pts = [];
+  const offset = state.orient === "pointy" ? -30 : 0;
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI/180) * (60*i + offset);
+    pts.push([cx + hexR*Math.cos(a), cy + hexR*Math.sin(a)]);
+  }
+  return pts;
+}
+
+function inBoard(q, r, R) {
+  return Math.abs(q) <= R && Math.abs(r) <= R && Math.abs(q + r) <= R;
+}
+
+// Wrap an axial coordinate back onto the board (toroidal hex grid).
+// Uses the 6 edge-to-edge translation vectors for a hexagonal region.
+function hexWrapOffsets(R) {
+  return [
+    [-(2*R+1),  R      ],  // edge q=+R  → q=-R
+    [  2*R+1,  -R      ],  // edge q=-R  → q=+R
+    [-(R+1),   -R      ],  // edge s=-R  → s=+R  (q+r>R, diagonal)
+    [  R+1,     R      ],  // edge s=+R  → s=-R  (q+r<-R, diagonal)
+    [  R,      -(2*R+1)],  // edge r=+R  → r=-R
+    [ -R,       2*R+1  ],  // edge r=-R  → r=+R
+  ];
+}
+
+function wrapHex(q, r, R) {
+  if (inBoard(q, r, R)) return { q, r };
+  const offsets = hexWrapOffsets(R);
+  for (const [dq, dr] of offsets) {
+    if (inBoard(q + dq, r + dr, R)) return { q: q + dq, r: r + dr };
+  }
+  // Double offset for corner cases
+  for (let i = 0; i < offsets.length; i++) {
+    for (let j = i + 1; j < offsets.length; j++) {
+      const wq = q + offsets[i][0] + offsets[j][0];
+      const wr = r + offsets[i][1] + offsets[j][1];
+      if (inBoard(wq, wr, R)) return { q: wq, r: wr };
+    }
+  }
+  return { q, r };
+}
+
+// Raw (unwrapped) cells — the "true" trajectory
+function shipCellsRaw(ship) {
+  const dir = hexDirs()[ship.head];
+  const cells = [];
+  for (let i = 0; i < ship.size; i++) {
+    cells.push({ q: ship.q + i * dir.dq, r: ship.r + i * dir.dr });
+  }
+  return cells;
+}
+
+// Wrapped cells — for board display (highlighting, hit detection)
+function shipCells(ship) {
+  return shipCellsRaw(ship).map(c => wrapHex(c.q, c.r, state.radius));
+}
+
+function centroidPx(cells, hexR) {
+  let x = 0, y = 0;
+  cells.forEach(c => { const p = axialToPx(c.q, c.r, hexR); x += p.x; y += p.y; });
+  return { x: x / cells.length, y: y / cells.length };
+}
+
+/* =====================================================================
+   3. SHIP FEATURE BUILDER  (single source of truth for A / B / E)
+   Returns geometric primitives in ship-local coords (bow toward +x).
+   ===================================================================== */
+
+function buildShipFeatures(ship, hexR) {
+  // Distance between adjacent hex centers is always sqrt(3)*hexR regardless of orientation
+  const cellSpan = Math.sqrt(3) * hexR;
+  const L = ship.size * cellSpan * 1.02;
+  const B = hexR * 0.78;
+  const bow = L * 0.42, stern = -L * 0.5;
+  const hullPath = `
+    M ${bow},0
+    C ${bow},${-B*0.4} ${bow*0.35},${-B*0.95} ${0},${-B*0.95}
+    L ${stern*0.6},${-B*0.95}
+    C ${stern},${-B*0.85} ${stern},${-B*0.4} ${stern},0
+    C ${stern},${B*0.4} ${stern},${B*0.85} ${stern*0.6},${B*0.95}
+    L ${0},${B*0.95}
+    C ${bow*0.35},${B*0.95} ${bow},${B*0.4} ${bow},0 Z
+  `;
+  const deckPath = `
+    M ${bow*0.85},0
+    C ${bow*0.85},${-B*0.3} ${bow*0.3},${-B*0.72} ${0},${-B*0.72}
+    L ${stern*0.55},${-B*0.72}
+    C ${stern*0.85},${-B*0.6} ${stern*0.85},${-B*0.3} ${stern*0.85},0
+    C ${stern*0.85},${B*0.3} ${stern*0.85},${B*0.6} ${stern*0.55},${B*0.72}
+    L ${0},${B*0.72}
+    C ${bow*0.3},${B*0.72} ${bow*0.85},${B*0.3} ${bow*0.85},0 Z
+  `;
+
+  // Bridge position: scale with L so features spread properly on longer ships
+  // BB (5): push bridge well aft to make room for dual forward turrets
+  // PT (2): push bridge aft a bit for compact look
+  const bridgeX = ship.size >= 5 ? -L * 0.10
+                : ship.size <= 2 ? -L * 0.14
+                : -L * 0.06;
+
+  return {
+    L, B, bow, stern, hullPath, deckPath,
+    fwdTurret:  { x: bow * 0.55, r: B * 0.32 },
+    fwdTurret2: ship.size >= 5 ? { x: bow * 0.20, r: B * 0.30 } : null,
+    aftTurret:  ship.size >= 3 ? { x: stern * 0.55, r: B * 0.32 } : null,
+    bridge:     { x: bridgeX, y: -B*0.4, w: B*1.1, h: B*0.8 },
+    stack:      ship.size >= 4 ? { x: bridgeX + B * 0.78, r: B*0.18 } : null,
+    barrel:     { x: bow*0.55, y: -B*0.08, w: L*0.06, h: B*0.16 },
+    bowWedge:   `M ${bow+2},0 L ${bow-5},-3 L ${bow-5},3 Z`,
+  };
+}
+
+/* =====================================================================
+   4. RENDERERS  (each: (svgGroup, ship, feat) => void)
+   A / B / E share buildShipFeatures(). F has its own geometry.
+   ===================================================================== */
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs = {}) => {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+};
+
+const renderers = {
+
+  // ---- INK SILHOUETTE --------------------------------------------
+  // Same anatomy as Detail, but everything is the same dark fill.
+  ink(g, ship, feat) {
+    g.appendChild(el("path", { d: feat.hullPath, fill: "#1a1410", stroke: "#000", "stroke-width": 0.6 }));
+    g.appendChild(el("path", { d: feat.bowWedge, fill: "#5a4a30" }));   // tiny wedge marks the bow
+    // Subtle deck centerline so orientation is unambiguous
+    g.appendChild(el("path", {
+      d: `M ${feat.stern*0.85},0 L ${feat.bow*0.85},0`,
+      stroke: "#c9b58a", "stroke-width": 0.8, opacity: 0.4, fill: "none"
+    }));
+  },
+
+  // ---- DECK DETAIL (default) -------------------------------------
+  detail(g, ship, feat) {
+    g.appendChild(el("path", { d: feat.hullPath, fill: "url(#hullGrad)", stroke: "#1c1f1a", "stroke-width": 0.5 }));
+    g.appendChild(el("path", { d: feat.deckPath, fill: "url(#deckGrad)" }));
+
+    const features = el("g", { filter: "url(#hardShadow)" });
+    features.appendChild(el("circle", { cx: feat.fwdTurret.x, cy: 0, r: feat.fwdTurret.r, fill: "#3c4438" }));
+    if (feat.fwdTurret2) features.appendChild(el("circle", { cx: feat.fwdTurret2.x, cy: 0, r: feat.fwdTurret2.r, fill: "#3c4438" }));
+    if (feat.aftTurret) features.appendChild(el("circle", { cx: feat.aftTurret.x, cy: 0, r: feat.aftTurret.r, fill: "#3c4438" }));
+    features.appendChild(el("rect", { x: feat.bridge.x, y: feat.bridge.y, width: feat.bridge.w, height: feat.bridge.h, fill: "#5a6450", stroke: "#2c332a", "stroke-width": 0.3 }));
+    if (feat.stack)     features.appendChild(el("circle", { cx: feat.stack.x, cy: 0, r: feat.stack.r, fill: "#1a1c18" }));
+    features.appendChild(el("rect", { x: feat.barrel.x, y: feat.barrel.y, width: feat.barrel.w, height: feat.barrel.h, fill: "#2a2e26" }));
+    g.appendChild(features);
+  },
+
+  // ---- BLUEPRINT LINE --------------------------------------------
+  // Same anatomy, outlines only, light parchment fill.
+  line(g, ship, feat) {
+    const stroke = { fill: "none", stroke: "#3a2e1c", "stroke-width": 0.9, "stroke-linejoin": "round" };
+    g.appendChild(el("path", { d: feat.hullPath, fill: "#c9b48a", "fill-opacity": 0.55, stroke: "none" }));
+    g.appendChild(el("path", { d: feat.hullPath, ...stroke }));
+    g.appendChild(el("path", { d: feat.deckPath, ...stroke, "stroke-width": 0.55 }));
+    // Keel dashed line
+    g.appendChild(el("path", { d: `M ${feat.stern*0.92},0 L ${feat.bow*0.92},0`, ...stroke, "stroke-width": 0.4, "stroke-dasharray": "2,2" }));
+    // Hex-cell dots
+    for (let i = 0; i < ship.size; i++) {
+      const dx = feat.stern + (i + 0.5) * (feat.L / ship.size);
+      g.appendChild(el("circle", { cx: dx, cy: 0, r: 1.2, fill: "#3a2e1c" }));
+    }
+    g.appendChild(el("circle", { cx: feat.fwdTurret.x, cy: 0, r: feat.fwdTurret.r, ...stroke }));
+    if (feat.fwdTurret2) g.appendChild(el("circle", { cx: feat.fwdTurret2.x, cy: 0, r: feat.fwdTurret2.r, ...stroke }));
+    if (feat.aftTurret) g.appendChild(el("circle", { cx: feat.aftTurret.x, cy: 0, r: feat.aftTurret.r, ...stroke }));
+    g.appendChild(el("rect", { x: feat.bridge.x, y: feat.bridge.y, width: feat.bridge.w, height: feat.bridge.h, ...stroke }));
+  },
+
+  // ---- COMMAND COUNTER (own geometry) ----------------------------
+  counter(g, ship, feat) {
+    const L = feat.L, B = feat.B * 1.15;
+    g.appendChild(el("rect", { x: -L/2, y: -B*0.7, width: L, height: B*1.4, rx: B*0.25, fill: "#1a3050", stroke: "#0a1828", "stroke-width": 0.8 }));
+    const arrow = el("path", {
+      d: `M ${-L/2 + B*0.3},${-B*0.4} L ${L/2 - B*0.7},${-B*0.4} L ${L/2 - B*0.3},0 L ${L/2 - B*0.7},${B*0.4} L ${-L/2 + B*0.3},${B*0.4} Z`,
+      fill: "#3a6090"
+    });
+    g.appendChild(arrow);
+    // Size number (counter-rotated so it's always upright)
+    const text = el("text", {
+      y: B*0.22, "text-anchor": "middle", "font-family": "Georgia",
+      "font-weight": "bold", "font-size": B*0.75, fill: "#f0e8d0",
+      transform: `rotate(${-(hexDirs()[ship.head].angle)})`
+    });
+    text.textContent = ship.size;
+    g.appendChild(text);
+    // Pips — one per cell, running stern→bow (left→right in local coords)
+    for (let i = 0; i < ship.size; i++) {
+      const px = -L/2 + (i + 0.5) * (L / ship.size);
+      g.appendChild(el("circle", { cx: px, cy: B*0.55, r: 1.6, fill: "#f0e8d0" }));
+    }
+  },
+};
+
+/* =====================================================================
+   5. BOARD RENDER  (layered pipeline)
+   ===================================================================== */
+
+/* Attacker decay clock (§7.2 / §7.3). Everything that ages on the attacker
+ * side — hit color, miss dot opacity, hit aura — decays on the same schedule
+ * so the player reads one timeline, not three.
+ *   AURA_FADE_TICKS  : aura is gone AT this age (ages 0…AURA_FADE_TICKS-1 render)
+ *   HIT_RECENT_THRU  : "Recent" bucket ends here     (= last visible aura age)
+ *   HIT_AGING_THRU   : "Aging" bucket ends here      (= 2 × HIT_RECENT_THRU); past this, "Stale"
+ */
+const AURA_FADE_TICKS = 6;
+const HIT_RECENT_THRU = AURA_FADE_TICKS - 1;
+const HIT_AGING_THRU  = HIT_RECENT_THRU * 2;
+
+/* Age-based hit/miss treatments for the attacker view (§7.2).
+ * The defender's hit markers are NOT aged — for the defender they visualize
+ * current damage state, not historical timing. Buckets, not a smooth gradient:
+ * Fresh (this turn) · Recent · Aging · Stale.
+ * Misses never disappear — they fade to a floor. */
+function attackerHitAgeTreatment(age) {
+  if (age <= 0)               return { x: "#c03020", xOp: 1.00, xW: 2.4, scorch: 1.00, lblSize: 1.10, lblOp: 1.00, lblW: 700 };
+  if (age <= HIT_RECENT_THRU) return { x: "#c03020", xOp: 1.00, xW: 2.2, scorch: 1.00, lblSize: 1.00, lblOp: 1.00, lblW: 600 };
+  if (age <= HIT_AGING_THRU)  return { x: "#a04030", xOp: 0.85, xW: 2.0, scorch: 0.65, lblSize: 0.90, lblOp: 0.85, lblW: 500 };
+  return                             { x: "#8a5040", xOp: 0.60, xW: 1.6, scorch: 0.35, lblSize: 0.75, lblOp: 0.55, lblW: 400 };
+}
+function attackerMissAgeTreatment(age) {
+  if (age <= 0)               return { fillA: 0.40, strokeA: 0.55, lblSize: 1.00, lblOp: 0.80 };
+  if (age <= HIT_RECENT_THRU) return { fillA: 0.35, strokeA: 0.50, lblSize: 1.00, lblOp: 0.65 };
+  if (age <= HIT_AGING_THRU)  return { fillA: 0.25, strokeA: 0.35, lblSize: 0.90, lblOp: 0.45 };
+  return                             { fillA: 0.18, strokeA: 0.25, lblSize: 0.75, lblOp: 0.30 };
+}
+
+/* renderBoard caches its (cellByKey, hexR, svg) here so the surgical aim/preview
+ * updaters below can re-use them without a full re-render. Re-populated every
+ * renderBoard. Stays valid until the next renderBoard (no entries are removed).
+ */
+const renderCache = { svg: null, cellByKey: null, hexR: 0 };
+
+function ensureSvgLayer(id) {
+  const svg = renderCache.svg;
+  if (!svg) return null;
+  let layer = svg.querySelector(`#${id}`);
+  if (!layer) {
+    layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    layer.setAttribute("id", id);
+    layer.setAttribute("pointer-events", "none");
+    svg.appendChild(layer);
+  }
+  return layer;
+}
+
+// Surgical updaters — called by both renderBoard (post-render) AND directly by
+// setAim / setHoverDestination / clearAim so those handlers don't trigger a full
+// SVG wipe (which would destroy any in-flight fresh-hit animation).
+function updateAimLayer() {
+  const layer = ensureSvgLayer("layer-aim");
+  if (!layer) return;
+  while (layer.firstChild) layer.removeChild(layer.firstChild);
+  if (state.perspective !== "attacker" || !attacker.aim) return;
+  const { cellByKey, hexR } = renderCache;
+  const slot = cellByKey && cellByKey[`${attacker.aim.q},${attacker.aim.r}`];
+  if (!slot) return;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const mk = (tag, attrs) => {
+    const e = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  };
+  // 1. Cell background — yellow fill so the locked aim cell is obviously
+  // marked even before the reticle is read.
+  const corners = hexCorners(slot.px, slot.py, hexR).map(p => p.join(",")).join(" ");
+  layer.appendChild(mk("polygon", {
+    points: corners,
+    fill: "rgba(232,204,106,0.55)",
+    stroke: "rgba(184,154,60,0.95)",
+    "stroke-width": 1.8
+  }));
+  // 2. Reticle on top in dark slate for strong contrast against the yellow.
+  const reticleColor = "#3a2e1c";
+  const g = mk("g", { transform: `translate(${slot.px},${slot.py})` });
+  g.appendChild(mk("circle", { cx: 0, cy: 0, r: hexR * 0.78, fill: "none", stroke: reticleColor, "stroke-width": 1.6, opacity: 0.85 }));
+  g.appendChild(mk("circle", { cx: 0, cy: 0, r: hexR * 0.45, fill: "none", stroke: reticleColor, "stroke-width": 1.0, opacity: 0.65 }));
+  const cr = hexR * 0.42, cri = hexR * 0.13;
+  [[-cr,0,-cri,0], [cri,0,cr,0], [0,-cr,0,-cri], [0,cri,0,cr]].forEach(([x1,y1,x2,y2]) => {
+    g.appendChild(mk("line", { x1, y1, x2, y2, stroke: reticleColor, "stroke-width": 1.5, opacity: 0.9 }));
+  });
+  layer.appendChild(g);
+  // 3. Small "SHOT 1/2" hint right below the cell so the player sees what
+  // state they're in without having to scan to the teletype at the bottom.
+  // Layer is pointer-events:none, so this never intercepts a click on the
+  // south-neighbor cell that this text visually overlaps.
+  const fontSize = Math.max(9, hexR * 0.30);
+  const labelText = mk("text", {
+    x: slot.px,
+    y: slot.py + hexR * 1.05 + fontSize,
+    "text-anchor": "middle",
+    "font-family": "'DM Mono', monospace",
+    "font-size": fontSize,
+    fill: "#3a2e1c",
+    "font-weight": "700",
+    "letter-spacing": "1.5px",
+    opacity: 0.85
+  });
+  labelText.textContent = "SHOT 1/2";
+  layer.appendChild(labelText);
+}
+
+function updatePreviewLayer() {
+  const layer = ensureSvgLayer("layer-preview");
+  if (!layer) return;
+  while (layer.firstChild) layer.removeChild(layer.firstChild);
+  if (state.perspective !== "attacker" || !attacker.aim || !attacker.hoverDestination) return;
+  const { cellByKey, hexR } = renderCache;
+  if (!cellByKey) return;
+  // Single ghost-orange poly on the hover-destination cell. The aim reticle
+  // is on the aim cell separately (updateAimLayer). Together they show the
+  // 2-cell salvo that the next click will fire.
+  const ps = cellByKey[`${attacker.hoverDestination.q},${attacker.hoverDestination.r}`];
+  if (!ps) return;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const corners = hexCorners(ps.px, ps.py, hexR).map(p => p.join(",")).join(" ");
+  const poly = document.createElementNS(SVG_NS, "polygon");
+  poly.setAttribute("points", corners);
+  poly.setAttribute("fill", "rgba(255,136,48,0.35)");
+  poly.setAttribute("stroke", "rgba(255,136,48,0.85)");
+  poly.setAttribute("stroke-width", "1.8");
+  layer.appendChild(poly);
+}
+
+// Cross-panel hover highlight (teletype row → cells on board). Cyan to read
+// as "informational lookup" — distinct from the warm-toned aim/preview/aura.
+// Surgical layer update, no full renderBoard, so in-flight animations survive.
+function highlightCellsOnBoard(cells) {
+  const layer = ensureSvgLayer("layer-temp-highlight");
+  if (!layer) return;
+  while (layer.firstChild) layer.removeChild(layer.firstChild);
+  if (!cells || cells.length === 0) return;
+  const { cellByKey, hexR } = renderCache;
+  if (!cellByKey) return;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  cells.forEach(({ q, r }) => {
+    const slot = cellByKey[`${q},${r}`];
+    if (!slot) return;
+    const corners = hexCorners(slot.px, slot.py, hexR).map(p => p.join(",")).join(" ");
+    const poly = document.createElementNS(SVG_NS, "polygon");
+    poly.setAttribute("points", corners);
+    poly.setAttribute("fill", "rgba(64,180,220,0.22)");
+    poly.setAttribute("stroke", "#1a78b0");
+    poly.setAttribute("stroke-width", "2.5");
+    layer.appendChild(poly);
+  });
+}
+
+function seededRand(seed) {
+  let s = seed;
+  return () => { s = (s * 16807 + 0) % 2147483647; return (s - 1) / 2147483646; };
+}
+
+function computeHexR(boardW, boardH, R, marginOverride) {
+  // Fit the board (2R+1 hexes across, ~similar tall) with margin.
+  // marginOverride is used by the mini-board so its grid fills the tiny
+  // container without the main board's generous chrome margin shrinking it.
+  const margin = marginOverride != null ? marginOverride : 40;
+  if (state.orient === "pointy") {
+    const wCells = 2*R + 1, hCells = (3*R)/2 + 1;
+    const wByW = (boardW - 2*margin) / (wCells * Math.sqrt(3));
+    const wByH = (boardH - 2*margin) / (hCells * 1.5);
+    return Math.min(wByW, wByH);
+  } else {
+    const wCells = (3*R)/2 + 1, hCells = 2*R + 1;
+    const wByW = (boardW - 2*margin) / (wCells * 1.5);
+    const wByH = (boardH - 2*margin) / (hCells * Math.sqrt(3));
+    return Math.min(wByW, wByH);
+  }
+}
+
+/* renderBoard(opts):
+ *   opts.svg          target SVG element (default: #board, the main board)
+ *   opts.perspective  perspective to render ("defender" | "attacker" | "endgame")
+ *                     (default: state.perspective)
+ *   opts.mini         skip interaction layers + animations + renderCache update
+ *                     (default: false)
+ * The mini-board (Stage M1) renders into a separate #miniboard SVG with the
+ * opposite perspective; see design-mini-views.md. */
+function renderBoard(opts) {
+  opts = opts || {};
+  const svg = opts.svg || document.getElementById("board");
+  // Effective perspective: peek (C) wins over the user-selected one for
+  // rendering. Mini-board passes its own explicit perspective, so peek doesn't
+  // change the mini's perspective directly — but renderMiniBoard reads peek too
+  // and picks the opposite, so during peek the mini shows the original side.
+  const perspective = opts.perspective || state.peekingPerspective || state.perspective;
+  const mini = !!opts.mini;
+  // Mini-board sizes from its OWN bounding rect; main board sizes from its
+  // wrap parent (board-wrap) so it fills available space.
+  let W, H;
+  if (mini) {
+    const rect = svg.getBoundingClientRect();
+    W = rect.width || 200;
+    H = rect.height || 200;
+  } else {
+    const wrap = document.getElementById("board-wrap");
+    W = wrap.clientWidth; H = wrap.clientHeight;
+  }
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = "";
+
+  // Mini wants a tight margin so the small container's grid stays the same
+  // visual size as the main board's hexes (otherwise the fixed 40px main-board
+  // margin eats most of the mini's 200px box).
+  const hexR = computeHexR(W, H, state.radius, mini ? 4 : undefined);
+  const cx = W/2, cy = H/2;
+
+  // ---- DEFS ----------------------------------------------------------
+  const defs = el("defs");
+  defs.innerHTML = `
+    <radialGradient id="paperVignette" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#f0e4c8" stop-opacity="0.0"/>
+      <stop offset="70%" stop-color="#a08858" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#5a4628" stop-opacity="0.40"/>
+    </radialGradient>
+    <linearGradient id="hullGrad" x1="0" y1="-1" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6a7560"/>
+      <stop offset="50%" stop-color="#4a5444"/>
+      <stop offset="100%" stop-color="#2c332a"/>
+    </linearGradient>
+    <linearGradient id="deckGrad" x1="0" y1="-1" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7a6a4a"/>
+      <stop offset="100%" stop-color="#5a4e36"/>
+    </linearGradient>
+    <filter id="shipShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.8"/>
+      <feOffset dx="1.5" dy="2.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.55"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="hardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.6"/>
+      <feOffset dx="1" dy="1.6"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.7"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  `;
+  // Board clip-path: union of all hex cell polygons (exact boundary)
+  const boardClip = el("clipPath", { id: "boardClip" });
+  defs.appendChild(boardClip);
+
+  // Fade mask: blurred white hex region → fades at board edge
+  const fadeMaskFilter = el("filter", { id: "fadeMaskBlur", x: "-20%", y: "-20%", width: "140%", height: "140%" });
+  fadeMaskFilter.appendChild(el("feGaussianBlur", { in: "SourceGraphic", stdDeviation: String(hexR * 0.8) }));
+  defs.appendChild(fadeMaskFilter);
+
+  const fadeMask = el("mask", { id: "boardFadeMask" });
+  fadeMask.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, fill: "black" }));
+  const fadeMaskHexes = el("g", { filter: "url(#fadeMaskBlur)" });
+  fadeMask.appendChild(fadeMaskHexes);
+  defs.appendChild(fadeMask);
+
+  svg.appendChild(defs);
+
+  // ---- LAYER: hex grid (all in-board cells) -------------------------
+  const gridLayer = el("g", { id: "layer-grid" });
+  svg.appendChild(gridLayer);
+
+  const cellByKey = {};
+  for (let q = -state.radius; q <= state.radius; q++) {
+    for (let r = -state.radius; r <= state.radius; r++) {
+      if (!inBoard(q, r, state.radius)) continue;
+      const p = axialToPx(q, r, hexR);
+      const px = cx + p.x, py = cy + p.y;
+      const corners = hexCorners(px, py, hexR).map(c => c.join(",")).join(" ");
+      const cell = el("polygon", { points: corners, fill: "transparent", stroke: "rgba(58,46,28,0.50)", "stroke-width": 0.8 });
+      gridLayer.appendChild(cell);
+      cellByKey[`${q},${r}`] = { px, py, cell };
+      // Also add to clip-path and fade mask
+      boardClip.appendChild(el("polygon", { points: corners }));
+      fadeMaskHexes.appendChild(el("polygon", { points: corners, fill: "white" }));
+
+      if (state.showCoords) {
+        const t = el("text", { x: px, y: py + 3, "text-anchor": "middle", "font-family": "SF Mono, monospace", "font-size": Math.max(6, hexR*0.28), fill: "#8a7350", opacity: 0.55 });
+        t.textContent = `${q},${r}`;
+        gridLayer.appendChild(t);
+      }
+    }
+  }
+
+  // ---- LAYER: ship-cell highlights (defender · reveals ship truth) ---
+  const highlightLayer = el("g", { id: "layer-highlight" });
+  svg.appendChild(highlightLayer);
+
+  // Setup always shows ship-cell highlights — they make ship positions
+  // unambiguous, which is the entire point of setup. Defender keeps its
+  // user-toggleable showHighlight.
+  if ((perspective === "defender" && state.showHighlight) || perspective === "setup") {
+    const isSetup = perspective === "setup";
+    fleet.forEach(ship => {
+      // Setup: don't render highlights for unplaced ships (they're in the
+      // sidebar's UNPLACED section, not on the board).
+      if (isSetup && setup.unplaced.has(ship.id)) return;
+      // Setup: hide the ship being actively dragged (the ghost preview at the
+      // cursor position takes its place below).
+      if (isSetup && setup.drag && setup.drag.shipId === ship.id) return;
+      const isActive = ship.id === activeShipId;
+      const isSelected = isSetup && setup.selectedShipId === ship.id;
+      if (ship.sunk) {
+        shipCells(ship).forEach(c => {
+          const slot = cellByKey[`${c.q},${c.r}`];
+          if (!slot) return;
+          const corners = hexCorners(slot.px, slot.py, hexR).map(p => p.join(",")).join(" ");
+          highlightLayer.appendChild(el("polygon", { points: corners, fill: "#6a2020", "fill-opacity": 0.25, stroke: "#4a1010", "stroke-width": 0.7 }));
+        });
+        return;
+      }
+      const damaged = ship.hitsTaken > 0;
+      shipCells(ship).forEach(c => {
+        const slot = cellByKey[`${c.q},${c.r}`];
+        if (!slot) return;
+        const corners = hexCorners(slot.px, slot.py, hexR).map(p => p.join(",")).join(" ");
+        let fill, stroke, fillOp, strokeW;
+        if (isSelected) {
+          // Selected ship in Setup: golden yellow, like the aim cell elsewhere
+          fill = "#e8cc6a"; stroke = "#8a6a14"; fillOp = 0.55; strokeW = 1.8;
+        } else if (damaged && isActive) { fill = "#8a5020"; stroke = "#6a3a10"; fillOp = 0.55; strokeW = 1.4; }
+        else if (damaged) { fill = "#7a6040"; stroke = "#5a4020"; fillOp = 0.35; strokeW = 0.9; }
+        else if (isActive) { fill = "#3a6090"; stroke = "#1f3a5f"; fillOp = 0.55; strokeW = 1.4; }
+        else { fill = "#5a7a9a"; stroke = "#3a5a7a"; fillOp = 0.35; strokeW = 0.9; }
+        highlightLayer.appendChild(el("polygon", { points: corners, fill, "fill-opacity": fillOp, stroke, "stroke-width": strokeW }));
+      });
+    });
+    // Setup: red overlay on cells that two or more placed ships share.
+    if (isSetup) {
+      const cellOwners = new Map(); // "q,r" -> count
+      fleet.forEach(ship => {
+        if (setup.unplaced.has(ship.id)) return;
+        shipCells(ship).forEach(c => {
+          const k = `${c.q},${c.r}`;
+          cellOwners.set(k, (cellOwners.get(k) || 0) + 1);
+        });
+      });
+      cellOwners.forEach((count, key) => {
+        if (count < 2) return;
+        const slot = cellByKey[key];
+        if (!slot) return;
+        const corners = hexCorners(slot.px, slot.py, hexR).map(p => p.join(",")).join(" ");
+        highlightLayer.appendChild(el("polygon", { points: corners, fill: "#a03020", "fill-opacity": 0.45, stroke: "#6a1a10", "stroke-width": 1.5 }));
+      });
+    }
+  }
+
+  // ---- LAYER: vignette --------------------------------------------
+  svg.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#paperVignette)", "pointer-events": "none" }));
+
+  // ---- LAYER: hit aura (attacker · inference aid §7.3) -------------
+  // A faint red ring around each HIT cell. Radius grows with elapsed turns —
+  // the ship has had time to wander further, so the player's certainty about
+  // where it CURRENTLY is decays in real time. Visibility is CSS-driven
+  // by body[data-hit-aura], so toggling the checkbox is free (no re-render).
+  // Always drawn; just hidden when off. Misses don't get an aura — a miss is
+  // confirmed-empty info, not uncertain ship-position info.
+  const auraLayer = el("g", { id: "layer-aura", "pointer-events": "none" });
+  svg.appendChild(auraLayer);
+  if (perspective === "attacker" || perspective === "endgame") {
+    // Aura growth: 1 hex per tick of age, with a "tight" floor at age 0.
+    // Units matter — center-to-center distance is √3·hexR (NOT hexR itself,
+    // which is the hex's circumradius). Soft cap at state.radius cells so the
+    // ring doesn't keep growing off-board indefinitely.
+    // Opacity ramps from 0.32 down to 0 over AURA_FADE_TICKS, then we skip
+    // the entry entirely (no DOM node).
+    const cellDistance = Math.sqrt(3) * hexR;
+    sim.hitLog.forEach(entry => {
+      if (entry.result !== 'HIT') return;
+      const slot = cellByKey[`${entry.q},${entry.r}`];
+      if (!slot) return;
+      const age = sim.tick - entry.tick;
+      if (age >= AURA_FADE_TICKS) return;       // fully faded — skip
+      const fadeT = age / AURA_FADE_TICKS;       // 0 at fresh, 1 at gone
+      // Fresh-hit floor at 0.5 cells (tight around the X). Age 1+ tracks 1:1.
+      const cellsOut = Math.min(state.radius, Math.max(0.5, age));
+      const auraR = cellDistance * cellsOut;
+      const stroke = Math.max(0.4, 2.0 * (1 - fadeT));
+      const opacity = 0.32 * (1 - fadeT);
+      auraLayer.appendChild(el("circle", {
+        cx: slot.px, cy: slot.py, r: auraR,
+        fill: "none",
+        stroke: "rgba(160,48,32,1)", "stroke-width": stroke,
+        opacity
+      }));
+    });
+  }
+
+  // ---- LAYER: contact tracks (attacker · inference aid §7.4) ------
+  // Connects hits in the same auto-correlated track with a thin colored line.
+  // Visibility is CSS-driven by body[data-contact-tracks]. We skip drawing
+  // segments where the two hits are far apart in hex distance — those almost
+  // certainly span the torus wrap, and the resulting line would cross the
+  // entire board visually. Wrap-aware rendering is deferred (Stage 7-ish).
+  const contactsLayer = el("g", { id: "layer-contacts", "pointer-events": "none" });
+  svg.appendChild(contactsLayer);
+  if ((perspective === "attacker" || perspective === "endgame") && attacker.contacts.length > 0) {
+    const WRAP_SKIP_THRESHOLD = state.radius; // hex distance above which we assume wrap
+    attacker.contacts.forEach((track, idx) => {
+      if (track.hits.length < 2) return;
+      const color = TRACK_COLORS[idx % TRACK_COLORS.length];
+      const sorted = track.hits.slice().sort((a, b) => a.tick - b.tick);
+      const stroke = track.confidence === "inconsistent" ? "rgba(160,48,32,1)" : color;
+      const strokeWidth = track.confidence === "inconsistent" ? 2.0 : 1.5;
+      for (let i = 1; i < sorted.length; i++) {
+        const a = sorted[i - 1], b = sorted[i];
+        if (hexDistance(a.q, a.r, b.q, b.r) > WRAP_SKIP_THRESHOLD) continue;
+        const sa = cellByKey[`${a.q},${a.r}`];
+        const sb = cellByKey[`${b.q},${b.r}`];
+        if (!sa || !sb) continue;
+        contactsLayer.appendChild(el("line", {
+          x1: sa.px, y1: sa.py, x2: sb.px, y2: sb.py,
+          stroke, "stroke-width": strokeWidth,
+          opacity: 0.6,
+          "stroke-dasharray": track.confidence === "consistent" ? "" : "4,3",
+        }));
+      }
+    });
+  }
+
+  // ---- LAYER: ships (defender · reveals ship truth) ---------------
+  const shipLayer = el("g", { id: "layer-ships" });
+  svg.appendChild(shipLayer);
+
+  const renderer = renderers[state.render];
+
+  // Defender + Setup + EoG show ship truth. Attacker hides ships.
+  if (perspective !== "attacker") fleet.forEach(ship => {
+    if (ship.sunk) return; // sunk ships rendered separately below
+    // Setup: don't render hulls for unplaced or actively-dragged ships.
+    if (perspective === "setup" && setup.unplaced.has(ship.id)) return;
+    if (perspective === "setup" && setup.drag && setup.drag.shipId === ship.id) return;
+    const rawCells = shipCellsRaw(ship);
+    const wrappedCells = shipCells(ship);
+    if (wrappedCells.length === 0) return;
+
+    // "True" centroid of the unwrapped cells (may be off-board)
+    const rawCtr = centroidPx(rawCells, hexR);
+    const angle = hexDirs()[ship.head].angle;
+    const feat = buildShipFeatures(ship, hexR);
+
+    // Render a clipped copy at each wrap offset that has on-board cells
+    const wrapVecs = [[0, 0], ...hexWrapOffsets(state.radius)];
+
+    wrapVecs.forEach(([dq, dr]) => {
+      const onBoard = rawCells.some(c => inBoard(c.q + dq, c.r + dr, state.radius));
+      if (!onBoard) return;
+
+      const wOff = axialToPx(dq, dr, hexR);
+      const px = cx + rawCtr.x + wOff.x;
+      const py = cy + rawCtr.y + wOff.y;
+
+      // Ghost layer: faded overhang beyond board edge
+      const ghostG = el("g", { mask: "url(#boardFadeMask)", opacity: 0.25 });
+      const gGhost = el("g", { transform: `translate(${px},${py}) rotate(${angle})` });
+      renderer(gGhost, ship, feat);
+      ghostG.appendChild(gGhost);
+      shipLayer.appendChild(ghostG);
+
+      // Solid layer: clipped to board
+      const clipG = el("g", { "clip-path": "url(#boardClip)" });
+      const g = el("g", { transform: `translate(${px},${py}) rotate(${angle})`, filter: "url(#shipShadow)" });
+      renderer(g, ship, feat);
+      clipG.appendChild(g);
+      shipLayer.appendChild(clipG);
+    });
+
+    // Label at anchor cell (always on-board)
+    if (state.showLabels) {
+      const anchorPx = axialToPx(ship.q, ship.r, hexR);
+      const labelX = cx + anchorPx.x;
+      const labelY = cy + anchorPx.y + hexR * 1.4;
+      const label = el("text", {
+        x: labelX, y: labelY,
+        "text-anchor": "middle", "font-family": "SF Mono, monospace",
+        "font-size": Math.max(8, hexR*0.32), fill: "#3a2e1c",
+        opacity: ship.id === activeShipId ? 1 : 0.6,
+        "font-weight": ship.id === activeShipId ? 700 : 400
+      });
+      label.textContent = `${ship.id}`;
+      svg.appendChild(label);
+    }
+  });
+
+  // ---- LAYER: setup drag ghost --------------------------------------
+  // When a ship is being dragged in Setup, render a faded preview at the
+  // current cursor-hex with the ship's current heading. The original ship's
+  // hull and highlight are suppressed above so this is the only rendering.
+  if (perspective === "setup" && setup.drag && setup.drag.currentAnchor) {
+    const ship = fleet.find(s => s.id === setup.drag.shipId);
+    if (ship) {
+      const ghostShip = { ...ship, q: setup.drag.currentAnchor.q, r: setup.drag.currentAnchor.r, head: setup.drag.currentHeading };
+      const ghostCells = shipCells(ghostShip);
+      // Highlight ghost cells in yellow (selected look) so the player sees
+      // exactly which hexes will be occupied if they release here.
+      ghostCells.forEach(c => {
+        const slot = cellByKey[`${c.q},${c.r}`];
+        if (!slot) return;
+        const corners = hexCorners(slot.px, slot.py, hexR).map(p => p.join(",")).join(" ");
+        svg.appendChild(el("polygon", { points: corners, fill: "#e8cc6a", "fill-opacity": 0.45, stroke: "#8a6a14", "stroke-width": 1.6 }));
+      });
+      // Faded hull
+      const rawCells = shipCellsRaw(ghostShip);
+      const rawCtr = centroidPx(rawCells, hexR);
+      const angle = hexDirs()[ghostShip.head].angle;
+      const feat = buildShipFeatures(ghostShip, hexR);
+      const wrapVecs = [[0, 0], ...hexWrapOffsets(state.radius)];
+      const renderer = renderers[state.render];
+      wrapVecs.forEach(([dq, dr]) => {
+        const onBoard = rawCells.some(c => inBoard(c.q + dq, c.r + dr, state.radius));
+        if (!onBoard) return;
+        const wOff = axialToPx(dq, dr, hexR);
+        const px = cx + rawCtr.x + wOff.x;
+        const py = cy + rawCtr.y + wOff.y;
+        const clipG = el("g", { "clip-path": "url(#boardClip)", opacity: "0.55" });
+        const g = el("g", { transform: `translate(${px},${py}) rotate(${angle})` });
+        renderer(g, ghostShip, feat);
+        clipG.appendChild(g);
+        svg.appendChild(clipG);
+      });
+    }
+  }
+
+  // ---- LAYER: sunk ships (defender · ghosted hull + wreck icon) ----
+  if (perspective !== "attacker") fleet.filter(s => s.sunk).forEach(ship => {
+    const rawCells = shipCellsRaw(ship);
+    const rawCtr = centroidPx(rawCells, hexR);
+    const angle = hexDirs()[ship.head].angle;
+    const feat = buildShipFeatures(ship, hexR);
+    const wrapVecs = [[0, 0], ...hexWrapOffsets(state.radius)];
+    wrapVecs.forEach(([dq, dr]) => {
+      const onBoard = rawCells.some(c => inBoard(c.q + dq, c.r + dr, state.radius));
+      if (!onBoard) return;
+      const wOff = axialToPx(dq, dr, hexR);
+      const px = cx + rawCtr.x + wOff.x;
+      const py = cy + rawCtr.y + wOff.y;
+      const clipG = el("g", { "clip-path": "url(#boardClip)", opacity: "0.25" });
+      const g = el("g", { transform: `translate(${px},${py}) rotate(${angle})` });
+      // Render as dark silhouette
+      g.appendChild(el("path", { d: feat.hullPath, fill: "#4a2020", stroke: "#2a0a0a", "stroke-width": 0.8 }));
+      clipG.appendChild(g);
+      shipLayer.appendChild(clipG);
+    });
+    // Wreck icon at anchor
+    const anchorPx = axialToPx(ship.q, ship.r, hexR);
+    const wx = cx + anchorPx.x, wy = cy + anchorPx.y;
+    const wreckG = el("g", { transform: `translate(${wx},${wy})` });
+    const wr = hexR * 0.35;
+    wreckG.appendChild(el("line", { x1: -wr, y1: -wr, x2: wr, y2: wr, stroke: "#a03020", "stroke-width": 2.5, "stroke-linecap": "round" }));
+    wreckG.appendChild(el("line", { x1: wr, y1: -wr, x2: -wr, y2: wr, stroke: "#a03020", "stroke-width": 2.5, "stroke-linecap": "round" }));
+    if (state.showLabels) {
+      const skullSize = Math.max(8, hexR * 0.35);
+      const skullIcon = el("g", { transform: `translate(${-skullSize * 0.7},${hexR * 1.15})` });
+      const skullPath = el("path", { d: ICO_SKULL_SVG_PATH, fill: "#a03020", opacity: "0.8", transform: `scale(${skullSize / 512})` });
+      skullIcon.appendChild(skullPath);
+      wreckG.appendChild(skullIcon);
+      const label = el("text", { x: skullSize * 0.5, y: hexR * 1.4, "text-anchor": "middle", "font-family": "'DM Mono', monospace", "font-size": Math.max(8, hexR * 0.28), fill: "#a03020", opacity: 0.8 });
+      label.textContent = ship.id;
+      wreckG.appendChild(label);
+    }
+    shipLayer.appendChild(wreckG);
+  });
+
+  // ---- LAYER: hit/miss markers ------------------------------------
+  // Defender: per-ship body-cell visualization (X count IS the damage).
+  // Attacker: per-cell history (§7.2) — primary marker reflects the latest
+  //   event with age-based treatment; older events stack as small badges.
+  const markerLayer = el("g", { id: "layer-markers" });
+  svg.appendChild(markerLayer);
+
+  // Animate each new probe ONCE. Every entry above sim.lastAnimatedEntryIdx
+  // whose tick matches the current tick is "fresh" and gets the burst/splash.
+  // (A SET, not a single index, so a batched salvo's two cells both animate.)
+  // Bumped to hitLog.length-1 after rendering — incidental re-renders within
+  // the same tick (aim/hover/perspective) then see an empty fresh set.
+  // Mini-board never animates (it'd compete with the main board's fresh-event
+  // animations playing at the exact same instant, and the bump on
+  // lastAnimatedEntryIdx would steal the main render's "needs animation" set).
+  const freshIndices = new Set();
+  if (!mini) {
+    for (let i = sim.lastAnimatedEntryIdx + 1; i < sim.hitLog.length; i++) {
+      if (sim.hitLog[i].tick === sim.tick) freshIndices.add(i);
+    }
+  }
+
+  // Shared fresh-event animations — closures over hexR, markerLayer, defs, gridLayer.
+  function renderFreshHitBurst(entry) {
+    const probeSlot = cellByKey[`${entry.q},${entry.r}`];
+    if (!probeSlot) return;
+    const boomG = el("g", { transform: `translate(${probeSlot.px},${probeSlot.py})` });
+    const burstR = hexR * 0.6;
+    boomG.appendChild(el("circle", {
+      cx: 0, cy: 0, r: 2, fill: "#ffcc40",
+      style: `--burst-r:${burstR}px;animation:hitFlashBurst 0.8s ease-out forwards;`
+    }));
+    boomG.appendChild(el("circle", {
+      cx: 0, cy: 0, r: 2, fill: "#ff6020",
+      style: `--burst-r:${burstR*0.7}px;animation:hitFlashBurst 0.6s 0.05s ease-out forwards;`
+    }));
+    boomG.appendChild(el("circle", {
+      cx: 0, cy: 0, r: 2, fill: "none", stroke: "#ff8830", "stroke-width": 3,
+      style: `--ring-r:${hexR * 0.9}px;animation:hitRingExpand 0.7s ease-out forwards;`
+    }));
+    const emberRng = seededRand(entry.tick * 1000 + entry.q * 100 + entry.r);
+    for (let e = 0; e < 10; e++) {
+      const angle = emberRng() * Math.PI * 2;
+      const dist = hexR * (0.3 + emberRng() * 0.7);
+      const ex = Math.cos(angle) * dist;
+      const ey = Math.sin(angle) * dist - (emberRng() * hexR * 0.3);
+      const er = 0.8 + emberRng() * 1.5;
+      const dur = 0.4 + emberRng() * 0.5;
+      const emberColor = emberRng() > 0.5 ? "#ffaa30" : "#ff6818";
+      boomG.appendChild(el("circle", {
+        cx: 0, cy: 0, r: er, fill: emberColor,
+        style: `--ex:${ex.toFixed(1)};--ey:${ey.toFixed(1)};animation:emberFloat ${dur.toFixed(2)}s ease-out forwards;`
+      }));
+    }
+    markerLayer.appendChild(boomG);
+  }
+
+  function renderFreshMissSplash(missG, slot, entry) {
+    const splashRng = seededRand(entry.tick * 3001 + entry.q * 197 + entry.r * 53);
+
+    // 1. Central flash
+    const flashR = hexR * 0.35;
+    missG.appendChild(el("circle", {
+      cx: 0, cy: 0, r: 2, fill: "#e8f0f8",
+      style: `--flash-r:${flashR}px; animation: splashFlash 0.6s ease-out forwards;`
+    }));
+    missG.appendChild(el("circle", {
+      cx: 0, cy: 0, r: 2, fill: "#c0d4e4", opacity: "0.5",
+      style: `--flash-r:${flashR * 1.3}px; animation: splashFlash 0.75s 0.04s ease-out forwards;`
+    }));
+
+    // 2. Ripple rings
+    for (let i = 0; i < 3; i++) {
+      const rr = hexR * (0.4 + i * 0.25);
+      const delay = i * 0.12;
+      const dur = 1.0 + i * 0.25;
+      const colors = ["#b0c8d8", "#90aec4", "#7a9ab4"];
+      missG.appendChild(el("circle", {
+        cx: 0, cy: 0, r: 3,
+        fill: "none", stroke: colors[i], "stroke-width": 1.8 - i * 0.3,
+        style: `--ripple-r:${rr}px; animation: splashRipple ${dur}s ${delay}s ease-out forwards;`
+      }));
+    }
+
+    // 3. Plume particles
+    for (let p = 0; p < 5; p++) {
+      const py = -(hexR * (0.12 + p * 0.12));
+      const pr = hexR * (0.05 + splashRng() * 0.04);
+      const delay = p * 0.05;
+      const ox = (splashRng() - 0.5) * hexR * 0.15;
+      const colors = ["#dce8f0", "#c8d8e4", "#b0c4d4"];
+      missG.appendChild(el("circle", {
+        cx: ox, cy: 0, r: pr,
+        fill: colors[p % 3],
+        style: `--py:${py.toFixed(1)}px; animation: splashPlume ${(0.7 + p * 0.1).toFixed(2)}s ${delay.toFixed(3)}s ease-out forwards;`
+      }));
+    }
+
+    // 4. Droplets
+    for (let d = 0; d < 8; d++) {
+      const angle = splashRng() * Math.PI * 2;
+      const dist = hexR * (0.12 + splashRng() * 0.3);
+      const dx = Math.cos(angle) * dist;
+      const peakY = -(hexR * (0.1 + splashRng() * 0.35));
+      const fallY = hexR * (0.02 + splashRng() * 0.08);
+      const dr = 0.5 + splashRng() * 1.0;
+      const dur = 0.6 + splashRng() * 0.5;
+      const delay = splashRng() * 0.15;
+      const dropColors = ["#d0dce8", "#b8ccd8", "#a0b4c4", "#e0eaf2"];
+      missG.appendChild(el("circle", {
+        cx: 0, cy: 0, r: dr,
+        fill: dropColors[d % 4],
+        style: `--dx:${dx.toFixed(1)}px; --peak:${peakY.toFixed(1)}px; --fall:${fallY.toFixed(1)}px; animation: splashDrop ${dur.toFixed(2)}s ${delay.toFixed(3)}s ease-out forwards;`
+      }));
+    }
+
+    // 5. Grid distortion via canvas displacement map.
+    // R = -cos(θ)·wave(d), G = -sin(θ)·wave(d). Negated because feDisplacementMap
+    // defines sample-from offset, not push-to offset.
+    const distortId = `splashDistort-${entry.tick}-${entry.q}-${entry.r}`;
+    const rippleSize = 256;
+    const rippleCanvas = document.createElement('canvas');
+    rippleCanvas.width = rippleSize;
+    rippleCanvas.height = rippleSize;
+    const rctx = rippleCanvas.getContext('2d');
+    const imgData = rctx.createImageData(rippleSize, rippleSize);
+    const pxData = imgData.data;
+    const rHalf = rippleSize / 2;
+    const rippleFreq = 0.35;
+    for (let iy = 0; iy < rippleSize; iy++) {
+      for (let ix = 0; ix < rippleSize; ix++) {
+        const ddx = ix - rHalf;
+        const ddy = iy - rHalf;
+        const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+        const norm = dist / rHalf;
+        // Ripple decays at ~40% of map radius — only the center cell + 6 neighbors
+        // get displacement; outer cells are padding to avoid sampling tearing.
+        const envelope = Math.max(0, 1 - Math.pow(norm / 0.4, 2));
+        const wave = Math.sin(dist * rippleFreq) * envelope;
+        const angle = Math.atan2(ddy, ddx);
+        const rx = dist > 1 ? -Math.cos(angle) * wave : 0;
+        const ry = dist > 1 ? -Math.sin(angle) * wave : 0;
+        const idx = (iy * rippleSize + ix) * 4;
+        pxData[idx]     = 128 + Math.round(127 * rx);
+        pxData[idx + 1] = 128 + Math.round(127 * ry);
+        pxData[idx + 2] = 128;
+        pxData[idx + 3] = 255;
+      }
+    }
+    rctx.putImageData(imgData, 0, 0);
+    const filterR = hexR * 5;
+    const filterEl = el("filter", {
+      id: distortId, filterUnits: "userSpaceOnUse",
+      x: String(slot.px - filterR), y: String(slot.py - filterR),
+      width: String(filterR * 2), height: String(filterR * 2)
+    });
+    const feImg = el("feImage", {
+      href: rippleCanvas.toDataURL(),
+      result: "rippleMap", preserveAspectRatio: "none",
+      x: String(slot.px - filterR), y: String(slot.py - filterR),
+      width: String(filterR * 2), height: String(filterR * 2)
+    });
+    filterEl.appendChild(feImg);
+    const disp = el("feDisplacementMap", {
+      in: "SourceGraphic", in2: "rippleMap",
+      scale: "18", xChannelSelector: "R", yChannelSelector: "G"
+    });
+    filterEl.appendChild(disp);
+    defs.appendChild(filterEl);
+
+    const distortG = el("g", { filter: `url(#${distortId})` });
+    for (let dq = -3; dq <= 3; dq++) {
+      for (let dr = -3; dr <= 3; dr++) {
+        const hd = Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr));
+        if (hd > 3) continue;
+        const tq = entry.q + dq, tr = entry.r + dr;
+        if (!inBoard(tq, tr, state.radius)) continue;
+        const cs = cellByKey[`${tq},${tr}`];
+        if (!cs || !cs.cell) continue;
+        distortG.appendChild(cs.cell);
+      }
+    }
+    gridLayer.appendChild(distortG);
+
+    // Animate displacement scale 18 → 0 (quadratic ease-out).
+    const rippleStart = performance.now();
+    (function animateRipple() {
+      if (!disp.isConnected) return;
+      const t = Math.min(1, (performance.now() - rippleStart) / 1400);
+      disp.setAttribute("scale", (18 * (1 - t) * (1 - t)).toFixed(1));
+      if (t < 1) requestAnimationFrame(animateRipple);
+    })();
+  }
+
+  if (perspective === "attacker" || perspective === "endgame") {
+    // === ATTACKER / EOG ===
+    // Group by world-cell — the visual of each cell is a function of its full
+    // history (§9.2): primary marker = most recent event with age treatment;
+    // older events stack as small badges in the top-right corner. EoG uses
+    // the same rendering path so the probe history is identical to what the
+    // attacker has been seeing all game.
+    const byCell = new Map();
+    sim.hitLog.forEach((entry, idx) => {
+      const key = `${entry.q},${entry.r}`;
+      if (!byCell.has(key)) byCell.set(key, []);
+      byCell.get(key).push({ ...entry, _idx: idx });
+    });
+
+    byCell.forEach((entries, key) => {
+      entries.sort((a, b) => a.tick - b.tick);
+      const primary = entries[entries.length - 1];
+      const older = entries.slice(0, -1);
+      const slot = cellByKey[key];
+      if (!slot) return;
+
+      const age = sim.tick - primary.tick;
+      const isFreshPrimary = freshIndices.has(primary._idx);
+      const mr = hexR * 0.25;
+      const cellG = el("g", { transform: `translate(${slot.px},${slot.py})` });
+
+      if (primary.result === 'HIT') {
+        const t = attackerHitAgeTreatment(age);
+        // §6c: if assigned to a silhouette, tint the X stroke and label with
+        // that silhouette's color. Age-treatment opacity/weight still apply.
+        const sidx = primary.attackerAssignedSilhouette;
+        const xColor = (sidx != null && SILHOUETTE_COLORS[sidx]) || t.x;
+        if (t.scorch > 0) {
+          cellG.appendChild(el("circle", { cx: 0, cy: 0, r: mr * 2.0, fill: `rgba(80,20,10,${(0.12 * t.scorch).toFixed(3)})`, stroke: "none" }));
+          cellG.appendChild(el("circle", { cx: 0, cy: 0, r: mr * 1.2, fill: `rgba(160,48,32,${(0.18 * t.scorch).toFixed(3)})`, stroke: "none" }));
+        }
+        cellG.appendChild(el("line", { x1: -mr, y1: -mr, x2: mr, y2: mr, stroke: xColor, "stroke-width": t.xW, "stroke-linecap": "round", opacity: t.xOp }));
+        cellG.appendChild(el("line", { x1: mr, y1: -mr, x2: -mr, y2: mr, stroke: xColor, "stroke-width": t.xW, "stroke-linecap": "round", opacity: t.xOp }));
+        const fontSize = Math.max(7, hexR * 0.22 * t.lblSize);
+        const tl = el("text", { x: mr + 3, y: mr + fontSize + 1, "font-family": "'DM Mono', monospace", "font-size": fontSize, fill: xColor, "font-weight": String(t.lblW), opacity: t.lblOp });
+        tl.textContent = `T${primary.tick}`;
+        cellG.appendChild(tl);
+      } else {
+        const t = attackerMissAgeTreatment(age);
+        cellG.appendChild(el("circle", { cx: 0, cy: 0, r: mr * 0.6, fill: `rgba(80,70,50,${t.fillA})`, stroke: `rgba(80,70,50,${t.strokeA})`, "stroke-width": 0.5 }));
+        const fontSize = Math.max(6, hexR * 0.18 * t.lblSize);
+        const tl = el("text", { x: mr, y: -mr * 0.5, "font-family": "'DM Mono', monospace", "font-size": fontSize, fill: "#8a7a5a", opacity: t.lblOp });
+        tl.textContent = `T${primary.tick}`;
+        cellG.appendChild(tl);
+      }
+
+      // Stack of older events: top-right corner. Show last 3, "+N" if more.
+      // Color codes the result (red = HIT, grey = MISS).
+      if (older.length > 0) {
+        const stackG = el("g", { transform: `translate(${hexR * 0.6},${-hexR * 0.55})` });
+        const stackFont = Math.max(5, hexR * 0.14);
+        const maxShow = 3;
+        const show = older.slice(-maxShow);
+        const more = older.length - show.length;
+        show.forEach((e, i) => {
+          const sidx = e.attackerAssignedSilhouette;
+          const color = e.result === 'HIT'
+            ? (sidx != null ? SILHOUETTE_COLORS[sidx] : "#a03020")
+            : "#8a7a5a";
+          const tl = el("text", { x: 0, y: i * (stackFont + 1), "font-family": "'DM Mono', monospace", "font-size": stackFont, fill: color, opacity: 0.7, "text-anchor": "end" });
+          tl.textContent = `T${e.tick}`;
+          stackG.appendChild(tl);
+        });
+        if (more > 0) {
+          const tl = el("text", { x: 0, y: show.length * (stackFont + 1), "font-family": "'DM Mono', monospace", "font-size": stackFont, fill: "#6a5a3a", opacity: 0.6, "text-anchor": "end" });
+          tl.textContent = `+${more}`;
+          stackG.appendChild(tl);
+        }
+        cellG.appendChild(stackG);
+      }
+
+      markerLayer.appendChild(cellG);
+
+      // Fresh animation only for the latest event (only one event can be fresh per tick).
+      if (isFreshPrimary) {
+        if (primary.result === 'HIT') renderFreshHitBurst(primary);
+        else renderFreshMissSplash(cellG, slot, primary);
+      }
+    });
+  } else {
+    // === DEFENDER ===
+    // HITs grouped by ship → placed on body cells 0..N-1 (stern→bow).
+    const hitsByShip = new Map();
+    const missEntries = [];
+    sim.hitLog.forEach((entry, entryIdx) => {
+      if (entry.result === 'MISS') { missEntries.push({ ...entry, _idx: entryIdx }); return; }
+      const key = entry.shipId || `unknown`;
+      if (!hitsByShip.has(key)) hitsByShip.set(key, []);
+      hitsByShip.get(key).push({ ...entry, _idx: entryIdx });
+    });
+
+    hitsByShip.forEach((entries, shipId) => {
+      const ship = fleet.find(s => s.id === shipId);
+      const cells = ship ? shipCells(ship) : null;
+      entries.forEach((entry, hitIndex) => {
+        let px, py;
+        if (cells && hitIndex < cells.length) {
+          const cell = cells[hitIndex];
+          const slot = cellByKey[`${cell.q},${cell.r}`];
+          if (slot) { px = slot.px; py = slot.py; }
+        }
+        if (px === undefined) {
+          const slot = cellByKey[`${entry.q},${entry.r}`];
+          if (!slot) return;
+          px = slot.px; py = slot.py;
+        }
+        const mr = hexR * 0.25;
+        const isFresh = freshIndices.has(entry._idx);
+        const hitG = el("g", { transform: `translate(${px},${py})` });
+        hitG.appendChild(el("circle", { cx: 0, cy: 0, r: mr * 2.0, fill: "rgba(80,20,10,0.12)", stroke: "none" }));
+        hitG.appendChild(el("circle", { cx: 0, cy: 0, r: mr * 1.2, fill: "rgba(160,48,32,0.18)", stroke: "none" }));
+        hitG.appendChild(el("line", { x1: -mr, y1: -mr, x2: mr, y2: mr, stroke: "#c03020", "stroke-width": 2.2, "stroke-linecap": "round" }));
+        hitG.appendChild(el("line", { x1: mr, y1: -mr, x2: -mr, y2: mr, stroke: "#c03020", "stroke-width": 2.2, "stroke-linecap": "round" }));
+        const fontSize = Math.max(7, hexR * 0.22);
+        const tl = el("text", { x: mr + 3, y: mr + fontSize + 1, "font-family": "'DM Mono', monospace", "font-size": fontSize, fill: "#a03020", "font-weight": "600" });
+        tl.textContent = `T${entry.tick}`;
+        hitG.appendChild(tl);
+        markerLayer.appendChild(hitG);
+        if (isFresh) renderFreshHitBurst(entry);
+      });
+    });
+
+    missEntries.forEach(entry => {
+      const mr = hexR * 0.25;
+      const slot = cellByKey[`${entry.q},${entry.r}`];
+      if (!slot) return;
+      const isFreshMiss = freshIndices.has(entry._idx);
+      const missG = el("g", { transform: `translate(${slot.px},${slot.py})` });
+      missG.appendChild(el("circle", { cx: 0, cy: 0, r: mr * 0.6, fill: "rgba(80,70,50,0.35)", stroke: "rgba(80,70,50,0.5)", "stroke-width": 0.5 }));
+      const tl = el("text", { x: mr, y: -mr * 0.5, "font-family": "'DM Mono', monospace", "font-size": Math.max(6, hexR * 0.18), fill: "#8a7a5a", opacity: 0.6 });
+      tl.textContent = `T${entry.tick}`;
+      missG.appendChild(tl);
+      if (isFreshMiss) renderFreshMissSplash(missG, slot, entry);
+      markerLayer.appendChild(missG);
+    });
+  }
+
+  // Mark every entry up to and including the latest as animated; subsequent
+  // renderBoard calls in the same tick see an empty freshIndices set.
+  // Mini never animates, so it never bumps — that's the main board's job.
+  if (!mini && sim.hitLog.length - 1 > sim.lastAnimatedEntryIdx) {
+    sim.lastAnimatedEntryIdx = sim.hitLog.length - 1;
+  }
+
+  // ---- LAYER: aim reticle + spread preview (attacker, when aim locked) ---
+  // Stage 3 quirk: setAim / setHoverDestination / clearAim DON'T call renderBoard
+  // — they directly manipulate these two layers (see updateAimLayer / updatePreviewLayer
+  // below). That preserves in-flight fresh-hit animations across aim/hover changes.
+  // The cache (board cellByKey + hexR + svg root) lives at module scope so the
+  // surgical updaters can re-use what this render just computed.
+  // Mini-board skips: no aim, no preview, no cache mutation (cache belongs to
+  // the main board so the surgical updaters keep targeting it).
+  if (!mini) {
+    renderCache.svg = svg;
+    renderCache.cellByKey = cellByKey;
+    renderCache.hexR = hexR;
+    updateAimLayer();
+    updatePreviewLayer();
+  }
+
+  // ---- LAYER: click targets (for probing/aiming) ------------------
+  // Defender: opt-in via the Probe toggle (test tool) → click probes immediately.
+  // Attacker: always on once sim is running → click LOCKS AIM; firing happens
+  //   from the spread picker. Click the same aim cell again to unlock.
+  // EoG kills probing entirely. Defender Probe-toggle stays opt-in (was a
+  // latent bug: probeMode true + switching to EoG would let clicks fire).
+  // Mini-board never gets click targets — clicks on the mini swap perspectives
+  // via a different handler bound to the SVG element itself.
+  const probingEnabled = !mini
+    && state.mode === "running"
+    && perspective !== "endgame"
+    && (perspective === "attacker" || sim.probeMode);
+  if (probingEnabled) {
+    const clickLayer = el("g", { id: "layer-click", style: "cursor: crosshair;" });
+    svg.appendChild(clickLayer);
+    for (let q = -state.radius; q <= state.radius; q++) {
+      for (let r = -state.radius; r <= state.radius; r++) {
+        if (!inBoard(q, r, state.radius)) continue;
+        const slot = cellByKey[`${q},${r}`];
+        if (!slot) continue;
+        const corners = hexCorners(slot.px, slot.py, hexR).map(c => c.join(",")).join(" ");
+        const clickHex = el("polygon", { points: corners, fill: "transparent", stroke: "none", "pointer-events": "all" });
+        const cq = q, cr = r;
+        clickHex.addEventListener("mouseenter", () => {
+          clickHex.setAttribute("fill", "rgba(160,48,32,0.12)");
+          clickHex.setAttribute("stroke", "rgba(160,48,32,0.4)");
+          clickHex.setAttribute("stroke-width", "1.5");
+          // While aim is locked (attacker), update the second-cell preview +
+          // teletype on hover. Surgical — no full re-render.
+          if (state.perspective === "attacker"
+            && attacker.aim
+            && attacker.assignmentMode === null) {
+            setHoverDestination(cq, cr);
+          }
+        });
+        clickHex.addEventListener("mouseleave", () => {
+          clickHex.setAttribute("fill", "transparent");
+          clickHex.setAttribute("stroke", "none");
+          // Only clear if WE were the hovered destination (covers fast hops).
+          if (attacker.hoverDestination
+            && attacker.hoverDestination.q === cq
+            && attacker.hoverDestination.r === cr) {
+            setHoverDestination(null, null);
+          }
+        });
+        clickHex.addEventListener("click", () => {
+          if (state.perspective === "attacker") {
+            // Assignment mode (§6c) intercepts the click. If the cell has any
+            // HIT entries, toggle their tag to the active silhouette. If it
+            // doesn't (empty cell or only misses), the click exits assignment
+            // mode entirely.
+            if (attacker.assignmentMode !== null) {
+              const hasHit = sim.hitLog.some(e => e.result === 'HIT' && e.q === cq && e.r === cr);
+              if (hasHit) toggleCellAssignment(cq, cr);
+              else exitAssignmentMode();
+              return;
+            }
+            // No aim yet → click 1 of 2: set aim.
+            if (attacker.aim === null) {
+              setAim(cq, cr);
+              return;
+            }
+            // Aim already on this cell → click cancels.
+            if (attacker.aim.q === cq && attacker.aim.r === cr) {
+              clearAim();
+              return;
+            }
+            // Aim set + different cell → click 2 of 2: fire salvo.
+            fireDirectSalvo(cq, cr);
+          } else {
+            probeCell(cq, cr);
+          }
+        });
+        clickLayer.appendChild(clickHex);
+      }
+    }
+  }
+
+  // ---- LAYER: setup click + drag targets --------------------------
+  // Per-cell click polygons that handle the setup interaction model. mousedown
+  // on a ship cell starts a potential drag for that ship. mousedown on an
+  // empty cell sets up the deselect-on-mouseup behavior. The document-level
+  // mousemove/mouseup handlers below take over once the press lands.
+  if (perspective === "setup" && !mini) {
+    // Layer default cursor is the OS default; ship cells override to pointer
+    // per-polygon below so the finger only appears over a draggable ship.
+    const setupLayer = el("g", { id: "layer-setup-click" });
+    svg.appendChild(setupLayer);
+    // Map cell key → shipId (placed-ship lookup). If multiple ships share a
+    // cell (overlap), the largest ship wins — same rule probeCell uses.
+    const cellShip = new Map();
+    const placedSorted = fleet
+      .filter(s => !setup.unplaced.has(s.id))
+      .sort((a, b) => b.size - a.size);
+    placedSorted.forEach(ship => {
+      shipCells(ship).forEach(c => {
+        const k = `${c.q},${c.r}`;
+        if (!cellShip.has(k)) cellShip.set(k, ship.id);
+      });
+    });
+    for (let q = -state.radius; q <= state.radius; q++) {
+      for (let r = -state.radius; r <= state.radius; r++) {
+        if (!inBoard(q, r, state.radius)) continue;
+        const slot = cellByKey[`${q},${r}`];
+        if (!slot) continue;
+        const corners = hexCorners(slot.px, slot.py, hexR).map(c => c.join(",")).join(" ");
+        const cq = q, cr = r;
+        const shipId = cellShip.get(`${q},${r}`) || null;
+        const hex = el("polygon", {
+          points: corners,
+          fill: "transparent",
+          stroke: "none",
+          "pointer-events": "all",
+          style: shipId ? "cursor: pointer;" : "",
+        });
+        hex.addEventListener("mousedown", (ev) => onSetupBoardMousedown(ev, cq, cr, shipId));
+        setupLayer.appendChild(hex);
+      }
+    }
+  }
+
+  // ---- LAYER: compass ---------------------------------------------
+  if (state.showCompass && !mini) {
+    const compass = el("g", { transform: `translate(40, ${H-45})`, opacity: 0.55, "pointer-events": "none" });
+    compass.innerHTML = `
+      <circle r="22" fill="none" stroke="#3a2e1c" stroke-width="0.6"/>
+      <circle r="16" fill="none" stroke="#3a2e1c" stroke-width="0.4"/>
+      <path d="M0,-22 L3,0 L0,22 L-3,0 Z" fill="#3a2e1c" opacity="0.6"/>
+      <path d="M-22,0 L0,3 L22,0 L0,-3 Z" fill="#3a2e1c" opacity="0.6"/>
+      <text y="-26" text-anchor="middle" font-size="8" fill="#3a2e1c" font-family="Georgia">N</text>
+    `;
+    svg.appendChild(compass);
+  }
+
+  // Whenever the main board re-renders, the mini-board re-renders too with
+  // the opposite perspective. Hidden in EoG (CSS-driven).
+  if (!mini) renderMiniBoard();
+}
+
+/* Mini-board (PIP). Renders the OPPOSITE perspective of state.perspective.
+ * No interaction layers, no animations, no smoke — purely observational.
+ * Hidden in EoG via CSS; we still render so swapping back from EoG is fresh. */
+function renderMiniBoard() {
+  const miniSvg = document.getElementById("miniboard");
+  if (!miniSvg) return;
+  // Mini shows the opposite of whatever the main is showing — including
+  // during peek, so the mini "swaps" along with the main flip.
+  const main = state.peekingPerspective || state.perspective;
+  const opposite = main === "defender" ? "attacker" : "defender";
+  const labelEl = document.getElementById("miniboard-label");
+  if (labelEl) labelEl.textContent = opposite;
+  renderBoard({ svg: miniSvg, perspective: opposite, mini: true });
+}
+
+/* =====================================================================
+   6. SIDEBAR  (defender · state -> DOM, event wiring)
+   The attacker sidebar is just a Probe Log today (see updateProbeLog).
+   ===================================================================== */
+
+/* Defender's Fleet panel — READ-ONLY status display.
+ * All editing (size, position, heading) now happens in the Setup perspective
+ * via drag-and-drop + cursor keys. This panel just reads ship state.
+ * Click to make a ship the "active" one (highlights it on the board). */
+function buildFleetList() {
+  const root = document.getElementById("fleetList");
+  if (!root) return;
+  root.innerHTML = "";
+  fleet.forEach(ship => {
+    const card = document.createElement("div");
+    const isActive = ship.id === activeShipId;
+    card.className = "ship-card" + (isActive ? " active" : "") + (ship.sunk ? " sunk" : "");
+    card.dataset.id = ship.id;
+    const dir = hexDirs()[ship.head];
+
+    // HP pips
+    let hpPips = '';
+    for (let i = 0; i < ship.size; i++) {
+      hpPips += `<div class="hp-pip ${i < ship.hp ? 'full' : 'lost'}"></div>`;
+    }
+
+    // Status line — sunk / damaged / healthy
+    let statusLine;
+    if (ship.sunk) {
+      statusLine = `<span class="sunk-label">${ICO_SKULL_HTML} SUNK</span>`;
+    } else if (ship.hitsTaken > 0) {
+      statusLine = `cd <span class="cd-change">${ship.baseCooldown}→${ship.cooldown}</span> · ${ship.hp}/${ship.size} HP`;
+    } else {
+      statusLine = `cd ${ship.cooldown} · ${ship.hp}/${ship.size} HP`;
+    }
+
+    const shipHits = sim.hitLog.filter(e => e.shipId === ship.id);
+    const hitInfo = shipHits.length > 0 ? ` · ${shipHits.length} hit${shipHits.length > 1 ? 's' : ''}` : '';
+
+    card.innerHTML = `
+      <div class="ship-head">
+        <b>${ship.id}</b>
+        <span class="badge">size ${ship.size} · ${dir.name}${hitInfo}</span>
+      </div>
+      <div class="hp-pips">${hpPips}</div>
+      <div class="ship-status">${statusLine} · (${ship.q},${ship.r})</div>
+    `;
+    card.addEventListener("click", () => {
+      activeShipId = ship.id;
+      buildFleetList();
+      renderBoard();
+    });
+    root.appendChild(card);
+  });
+}
+
+/* =====================================================================
+   7. WIRE-UP
+   ===================================================================== */
+
+/* ---- PERSPECTIVE SWITCH ---- */
+const PERSPECTIVE_META = {
+  setup:    "Setup — arrange the defender's fleet (drag + cursor keys)",
+  defender: "Defender — full truth (ships, placement, sim)",
+  attacker: "Attacker — only sees probe history (hits + misses)",
+  endgame:  "End of Game — review mode; no firing, no aiming, no assigning",
+};
+const PERSPECTIVE_LABEL = {
+  setup:    "Setup",
+  defender: "Defender",
+  attacker: "Attacker",
+  endgame:  "End of Game",
+};
+
+function setPerspective(p) {
+  if (p !== "setup" && p !== "defender" && p !== "attacker" && p !== "endgame") return;
+  state.perspective = p;
+  document.body.setAttribute("data-perspective", p);
+  document.querySelectorAll("#perspectiveSeg button").forEach(b => {
+    b.classList.toggle("active", b.dataset.p === p);
+  });
+  document.getElementById("perspectiveMeta").textContent = PERSPECTIVE_META[p];
+  document.getElementById("perspectiveLabelText").textContent = PERSPECTIVE_LABEL[p];
+  // Defender's Probe-toggle test tool doesn't belong on the attacker or EoG
+  // side; clear it on the way out so we don't carry stale state.
+  if (p !== "defender" && sim.probeMode) {
+    sim.probeMode = false;
+    document.getElementById("probeToggle").classList.remove("active");
+  }
+  // Switching away from attacker clears any in-flight aim / assignment.
+  if (p !== "attacker") {
+    attacker.aim = null;
+    attacker.hoverDestination = null;
+    attacker.assignmentMode = null;
+  }
+  // Switching away from setup clears its transient state (selection + drag).
+  if (p !== "setup") {
+    setup.selectedShipId = null;
+    setup.drag = null;
+  }
+  refreshAttackerOverlay();
+  // Attacker / EoG need a running sim; Setup needs placement mode.
+  if ((p === "attacker" || p === "endgame") && state.mode === "placement") {
+    enterRunningMode();
+    return; // enterRunningMode already re-renders
+  }
+  if (p === "setup" && state.mode === "running") {
+    enterPlacementMode();
+    return; // enterPlacementMode already re-renders
+  }
+  buildEnemyFleetSilhouettes();
+  buildContactsList();
+  buildEndgamePanels();
+  buildSetupSidebar();
+  renderBoard();
+}
+
+document.querySelectorAll("#perspectiveSeg button").forEach(btn => {
+  btn.addEventListener("click", () => setPerspective(btn.dataset.p));
+});
+
+/* ---- SETUP: auto-place ---- */
+function autoPlaceAll() {
+  // For each ship, try AUTO_PLACE_TRIES random (anchor, heading) combos and
+  // accept the first one that doesn't overlap already-placed ships. If none
+  // works in the budget, accept the last attempt anyway (overlap allowed).
+  const placedCells = new Set();
+  const dirs = hexDirs();
+  fleet.forEach(ship => {
+    setup.unplaced.delete(ship.id); // auto-place implies on-board
+    let chosenQ = ship.q, chosenR = ship.r, chosenHead = ship.head;
+    for (let attempt = 0; attempt < AUTO_PLACE_TRIES; attempt++) {
+      const q = Math.floor(Math.random() * (2 * state.radius + 1)) - state.radius;
+      const r = Math.floor(Math.random() * (2 * state.radius + 1)) - state.radius;
+      if (!inBoard(q, r, state.radius)) continue;
+      const h = Math.floor(Math.random() * dirs.length);
+      // Compute body cells with this hypothetical placement
+      const dir = dirs[h];
+      const cells = [];
+      for (let i = 0; i < ship.size; i++) {
+        cells.push(wrapHex(q + i * dir.dq, r + i * dir.dr, state.radius));
+      }
+      const overlaps = cells.some(c => placedCells.has(`${c.q},${c.r}`));
+      if (!overlaps) {
+        chosenQ = q; chosenR = r; chosenHead = h;
+        break;
+      }
+    }
+    ship.q = chosenQ; ship.r = chosenR; ship.head = chosenHead;
+    shipCells(ship).forEach(c => placedCells.add(`${c.q},${c.r}`));
+  });
+  setup.selectedShipId = null;
+  setup.drag = null;
+  buildSetupSidebar();
+  renderBoard();
+}
+
+const autoPlaceBtn = document.getElementById("autoPlaceBtn");
+if (autoPlaceBtn) autoPlaceBtn.addEventListener("click", autoPlaceAll);
+
+/* ---- SETUP: drag + select interaction model ---- */
+// Module-scope drag-tracking state (separate from setup.drag, which only
+// becomes populated once movement crosses the threshold).
+let setupPotentialDrag = null;
+// { shipId, fromSidebar, startClientX, startClientY,
+//   originalAnchor, originalHeading, sourceShipDataId? }
+
+function onSetupBoardMousedown(ev, cq, cr, shipId) {
+  if (state.perspective !== "setup") return;
+  ev.preventDefault(); // avoid native text-selection drag
+  if (shipId) {
+    // Mousedown on a ship cell — could become a drag, or it's just a click
+    // to (re)select. The threshold check on mousemove decides.
+    const ship = fleet.find(s => s.id === shipId);
+    // Which body cell was grabbed? Keep THAT cell under the cursor for the
+    // whole drag (otherwise grabbing the bow snaps the whole ship backward
+    // so cell 0 ends up under the cursor, jumping by size-1 hexes).
+    const cells = shipCells(ship);
+    let grabBodyIdx = 0;
+    for (let i = 0; i < cells.length; i++) {
+      if (cells[i].q === cq && cells[i].r === cr) { grabBodyIdx = i; break; }
+    }
+    setupPotentialDrag = {
+      shipId,
+      fromSidebar: false,
+      startClientX: ev.clientX,
+      startClientY: ev.clientY,
+      grabBodyIdx,
+      originalAnchor: { q: ship.q, r: ship.r },
+      originalHeading: ship.head,
+    };
+  } else {
+    // Mousedown on empty hex — treat as deselect on mouseup (handled in
+    // onSetupDocumentMouseup). Record null shipId so we know "intent: click empty".
+    setupPotentialDrag = {
+      shipId: null, fromSidebar: false,
+      startClientX: ev.clientX, startClientY: ev.clientY,
+      grabBodyIdx: 0,
+      originalAnchor: null, originalHeading: 0,
+    };
+  }
+}
+
+function onSetupSidebarCardMousedown(ev, shipId) {
+  if (state.perspective !== "setup") return;
+  ev.preventDefault();
+  const ship = fleet.find(s => s.id === shipId);
+  if (!ship) return;
+  setupPotentialDrag = {
+    shipId,
+    fromSidebar: true,
+    startClientX: ev.clientX,
+    startClientY: ev.clientY,
+    grabBodyIdx: 0,                      // sidebar drag = grab "by the anchor"
+    originalAnchor: { q: ship.q, r: ship.r },
+    originalHeading: ship.head,
+  };
+  // From-sidebar drag starts IMMEDIATELY (no click-vs-drag threshold) since
+  // a card click doesn't mean "select the card" — there's nothing to select.
+  setup.drag = {
+    shipId,
+    fromSidebar: true,
+    grabBodyIdx: 0,
+    originalAnchor: setupPotentialDrag.originalAnchor,
+    originalHeading: setupPotentialDrag.originalHeading,
+    currentAnchor: { q: ship.q, r: ship.r },
+    currentHeading: ship.head,
+  };
+  // Update the cursor's hex so the ghost renders at the actual position.
+  updateSetupDragFromCursor(ev.clientX, ev.clientY);
+  buildSetupSidebar();
+  renderBoard();
+}
+
+// Convert (clientX, clientY) → board hex (q,r). Uses the main board SVG.
+function clientToBoardHex(clientX, clientY) {
+  const svg = document.getElementById("board");
+  if (!svg) return null;
+  const rect = svg.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  const hr = computeHexR(W, H, state.radius);
+  const cx = W / 2, cy = H / 2;
+  const x = clientX - rect.left - cx;
+  const y = clientY - rect.top - cy;
+  // Invert axialToPx. For flat-top: x = 1.5·hr·q, y = √3·hr·(r + q/2)
+  let qf, rf;
+  if (state.orient === "pointy") {
+    qf = (x * Math.sqrt(3) / 3 - y / 3) / hr;
+    rf = (y * 2 / 3) / hr;
+  } else {
+    qf = (x * 2 / 3) / hr;
+    rf = (-x / 3 + y * Math.sqrt(3) / 3) / hr;
+  }
+  // Round axial to nearest hex via cube coords
+  let rx = Math.round(qf), ry = Math.round(-qf - rf), rz = Math.round(rf);
+  const dx = Math.abs(rx - qf), dy = Math.abs(ry - (-qf - rf)), dz = Math.abs(rz - rf);
+  if (dx > dy && dx > dz) rx = -ry - rz;
+  else if (dy > dz) ry = -rx - rz;
+  else rz = -rx - ry;
+  return wrapHex(rx, rz, state.radius);
+}
+
+function updateSetupDragFromCursor(clientX, clientY) {
+  if (!setup.drag) return;
+  const hex = clientToBoardHex(clientX, clientY);
+  if (!hex) return;
+  // Keep the grabbed body cell under the cursor. anchor + grabBodyIdx · dir = cursorHex
+  // so anchor = cursorHex − grabBodyIdx · dir. (Heading doesn't change during a drag.)
+  const dir = hexDirs()[setup.drag.currentHeading];
+  const bIdx = setup.drag.grabBodyIdx || 0;
+  const rawQ = hex.q - bIdx * dir.dq;
+  const rawR = hex.r - bIdx * dir.dr;
+  setup.drag.currentAnchor = wrapHex(rawQ, rawR, state.radius);
+}
+
+function onSetupDocumentMousemove(ev) {
+  if (state.perspective !== "setup") return;
+  // Sidebar drag is already active — just follow the cursor.
+  if (setup.drag) {
+    updateSetupDragFromCursor(ev.clientX, ev.clientY);
+    renderBoard();
+    return;
+  }
+  // Board mousedown happened; check whether we've crossed the click→drag threshold.
+  if (!setupPotentialDrag || setupPotentialDrag.fromSidebar) return;
+  if (!setupPotentialDrag.shipId) return; // empty-hex mousedown, never a drag
+  const dx = ev.clientX - setupPotentialDrag.startClientX;
+  const dy = ev.clientY - setupPotentialDrag.startClientY;
+  if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+  // Promote to an active drag.
+  const ship = fleet.find(s => s.id === setupPotentialDrag.shipId);
+  setup.drag = {
+    shipId: setupPotentialDrag.shipId,
+    fromSidebar: false,
+    grabBodyIdx: setupPotentialDrag.grabBodyIdx,
+    originalAnchor: setupPotentialDrag.originalAnchor,
+    originalHeading: setupPotentialDrag.originalHeading,
+    currentAnchor: { q: ship.q, r: ship.r },
+    currentHeading: ship.head,
+  };
+  updateSetupDragFromCursor(ev.clientX, ev.clientY);
+  buildSetupSidebar();
+  renderBoard();
+}
+
+function onSetupDocumentMouseup(ev) {
+  if (state.perspective !== "setup") return;
+  // Active drag? Commit the position (or remove if released over sidebar).
+  if (setup.drag) {
+    const overSidebar = isClientOverSidebar(ev.clientX, ev.clientY);
+    const ship = fleet.find(s => s.id === setup.drag.shipId);
+    if (ship) {
+      if (overSidebar) {
+        // Released over the sidebar → remove (unplace) the ship.
+        setup.unplaced.add(ship.id);
+        setup.selectedShipId = null;
+      } else {
+        // Released over the board → commit position + heading. Select the ship.
+        if (setup.drag.currentAnchor) {
+          ship.q = setup.drag.currentAnchor.q;
+          ship.r = setup.drag.currentAnchor.r;
+          ship.head = setup.drag.currentHeading;
+        }
+        setup.unplaced.delete(ship.id);
+        setup.selectedShipId = ship.id;
+      }
+    }
+    setup.drag = null;
+    setupPotentialDrag = null;
+    buildSetupSidebar();
+    renderBoard();
+    return;
+  }
+  // No drag promoted — this was a click. Select / deselect.
+  if (setupPotentialDrag) {
+    if (setupPotentialDrag.shipId) {
+      setup.selectedShipId = setupPotentialDrag.shipId;
+    } else {
+      setup.selectedShipId = null;
+    }
+    setupPotentialDrag = null;
+    buildSetupSidebar();
+    renderBoard();
+  }
+}
+
+function isClientOverSidebar(clientX, clientY) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return false;
+  const rect = sidebar.getBoundingClientRect();
+  return clientX >= rect.left && clientX <= rect.right
+      && clientY >= rect.top && clientY <= rect.bottom;
+}
+
+document.addEventListener("mousemove", onSetupDocumentMousemove);
+document.addEventListener("mouseup", onSetupDocumentMouseup);
+
+// Wire sidebar card mousedowns. Cards are rebuilt on every render, so we use
+// event delegation on the parent list and react to clicks on any card.
+// IMPORTANT: only let *unplaced* cards initiate a drag — clicking a placed
+// card in the sidebar would feel weird (the ship is already on the board;
+// there's nothing to pick up from the sidebar). For placed ships, the pickup
+// happens on the board itself.
+function attachSetupSidebarHandlers() {
+  const root = document.getElementById("setupFleetList");
+  if (!root) return;
+  if (root.dataset.setupHandlerAttached) return;
+  root.dataset.setupHandlerAttached = "true";
+  root.addEventListener("mousedown", (ev) => {
+    const card = ev.target.closest(".setup-ship-card");
+    if (!card) return;
+    if (!card.classList.contains("unplaced")) return;
+    const shipId = card.dataset.shipId;
+    if (!shipId) return;
+    onSetupSidebarCardMousedown(ev, shipId);
+  });
+}
+attachSetupSidebarHandlers();
+
+/* ---- SETUP: cursor key rotation + Delete ----
+ * Setup rotates ships around their MIDDLE cell — the player's intuitive pivot
+ * for arranging ships. This is intentionally DIFFERENT from how ships turn
+ * during simulation movement (which pivots around the stern / cell 0, because
+ * the anchor is the steering reference for motion). Here in placement the
+ * anchor itself shifts so the middle stays put.
+ */
+function setupApplyHeadingChange(ship, newHeading) {
+  const dirs = hexDirs();
+  if (newHeading < 0 || newHeading >= dirs.length) return;
+  if (newHeading === ship.head) return;
+  // Middle-cell index, integer: 0/1/1/2 for sizes 2/3/4/5. Even sizes pick the
+  // cell just aft of geometric center — the rotation will look slightly
+  // off-center for even-size hulls but the math stays exact (no half-cells).
+  const middleIdx = Math.floor((ship.size - 1) / 2);
+  const oldDir = dirs[ship.head];
+  const newDir = dirs[newHeading];
+  // Where the middle cell SAT before the rotation (raw, possibly off-board).
+  const midQ = ship.q + middleIdx * oldDir.dq;
+  const midR = ship.r + middleIdx * oldDir.dr;
+  // Solve: newAnchor + middleIdx · newDir = midCell  →  shift anchor accordingly.
+  const newAnchorQ = midQ - middleIdx * newDir.dq;
+  const newAnchorR = midR - middleIdx * newDir.dr;
+  const wrapped = wrapHex(newAnchorQ, newAnchorR, state.radius);
+  ship.q = wrapped.q;
+  ship.r = wrapped.r;
+  ship.head = newHeading;
+}
+function setupRotateSelected(deltaSteps) {
+  if (state.perspective !== "setup") return;
+  if (!setup.selectedShipId) return;
+  const ship = fleet.find(s => s.id === setup.selectedShipId);
+  if (!ship) return;
+  const dirCount = hexDirs().length;
+  const newHead = ((ship.head + deltaSteps) % dirCount + dirCount) % dirCount;
+  setupApplyHeadingChange(ship, newHead);
+  buildSetupSidebar();
+  renderBoard();
+}
+function setupSetHeading(headingIdx) {
+  if (state.perspective !== "setup") return;
+  if (!setup.selectedShipId) return;
+  const ship = fleet.find(s => s.id === setup.selectedShipId);
+  if (!ship) return;
+  setupApplyHeadingChange(ship, headingIdx);
+  buildSetupSidebar();
+  renderBoard();
+}
+function setupRemoveSelected() {
+  if (state.perspective !== "setup") return;
+  if (!setup.selectedShipId) return;
+  setup.unplaced.add(setup.selectedShipId);
+  setup.selectedShipId = null;
+  buildSetupSidebar();
+  renderBoard();
+}
+
+document.addEventListener("keydown", (ev) => {
+  if (state.perspective !== "setup") return;
+  // Don't intercept keys when typing into an input.
+  if (ev.target && (ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA")) return;
+  if (ev.key === "ArrowLeft" || ev.key === "q" || ev.key === "Q") { setupRotateSelected(-1); ev.preventDefault(); return; }
+  if (ev.key === "ArrowRight" || ev.key === "e" || ev.key === "E") { setupRotateSelected(+1); ev.preventDefault(); return; }
+  if (ev.key >= "1" && ev.key <= "6") { setupSetHeading(parseInt(ev.key, 10) - 1); ev.preventDefault(); return; }
+  if (ev.key === "Delete" || ev.key === "Backspace") { setupRemoveSelected(); ev.preventDefault(); return; }
+});
+
+// Mini-board (PIP) click → swap to whichever perspective the mini is showing.
+// EoG mini is hidden via CSS so this handler never fires there.
+const miniboardWrap = document.getElementById("miniboard-wrap");
+if (miniboardWrap) {
+  miniboardWrap.addEventListener("click", () => {
+    const opposite = state.perspective === "defender" ? "attacker" : "defender";
+    setPerspective(opposite);
+  });
+}
+
+/* ---- ENDGAME SUB-VIEW (FROM ATTACKER / FROM DEFENDER) ---- */
+const ENDGAME_VIEW_META = {
+  attacker: "From attacker — probes prominent, ship truth dimmed",
+  defender: "From defender — ship truth prominent, probes dimmed",
+};
+
+function setEndgameView(v) {
+  if (v !== "attacker" && v !== "defender") return;
+  state.endgameView = v;
+  document.body.setAttribute("data-endgame-view", v);
+  document.querySelectorAll("#endgameViewSeg button").forEach(b => {
+    b.classList.toggle("active", b.dataset.v === v);
+  });
+  const m = document.getElementById("endgameViewMeta");
+  if (m) m.textContent = ENDGAME_VIEW_META[v];
+  buildEndgamePanels();
+  buildSetupSidebar();
+  renderBoard();
+}
+
+document.querySelectorAll("#endgameViewSeg button").forEach(btn => {
+  btn.addEventListener("click", () => setEndgameView(btn.dataset.v));
+});
+
+/* ---- ATTACKER FIRING UX ---- */
+// CSS shows/hides the teletype line via body[data-aim="locked"]. The teletype
+// text is the entire UI — no separate picker. Click 1 sets the aim, hovering
+// a second cell shows the salvo preview and the FIRE prompt, click 2 fires.
+function refreshAttackerOverlay() {
+  const aimLocked = state.perspective === "attacker" && !!attacker.aim;
+  document.body.setAttribute("data-aim", aimLocked ? "locked" : "free");
+  const line = document.getElementById("teletypeLine");
+  if (!line) return;
+  if (!aimLocked) { line.innerHTML = ""; return; }
+  const tgt = `(${attacker.aim.q},${attacker.aim.r})`;
+  if (attacker.hoverDestination) {
+    const dst = `(${attacker.hoverDestination.q},${attacker.hoverDestination.r})`;
+    const d = hexDistance(attacker.aim.q, attacker.aim.r, attacker.hoverDestination.q, attacker.hoverDestination.r);
+    line.innerHTML = `&gt; TGT ${tgt} + ${dst} · ${salvoLabelByDistance(d)} · FIRE FOR EFFECT<span class="cur">_</span>`;
+  } else {
+    line.innerHTML = `&gt; TGT ${tgt} · SELECT SECOND CELL<span class="cur">_</span>`;
+  }
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    exitAssignmentMode();
+    clearAim();
+    return;
+  }
+  // Peek-by-hold (C). Backtick. Suppressed in EoG (which already shows truth).
+  // Only fires on the first keydown — auto-repeat ignored.
+  if (e.key === "`" && !e.repeat
+      && !state.peekingPerspective
+      && state.perspective !== "endgame") {
+    state.peekingPerspective = state.perspective === "defender" ? "attacker" : "defender";
+    document.body.setAttribute("data-perspective", state.peekingPerspective);
+    refreshAttackerOverlay();
+    renderBoard();
+    e.preventDefault();
+  }
+});
+document.addEventListener("keyup", e => {
+  if (e.key === "`" && state.peekingPerspective) {
+    state.peekingPerspective = null;
+    document.body.setAttribute("data-perspective", state.perspective);
+    refreshAttackerOverlay();
+    renderBoard();
+    e.preventDefault();
+  }
+});
+
+const RENDER_LABELS = {
+  ink:     "Ink — dark silhouette (same anatomy as Detail)",
+  detail:  "Detail — gradient hull + deck features (default)",
+  line:    "Line — outlines only (same anatomy as Detail)",
+  counter: "Counter — NATO command counter (own geometry)",
+};
+
+document.querySelectorAll("#renderSeg button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#renderSeg button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.render = btn.dataset.r;
+    document.getElementById("renderMeta").textContent = RENDER_LABELS[state.render];
+    renderBoard();
+  });
+});
+
+document.getElementById("orient").addEventListener("change", e => { state.orient = e.target.value; buildFleetList(); renderBoard(); });
+document.getElementById("radius").addEventListener("input", e => {
+  state.radius = parseInt(e.target.value, 10);
+  document.getElementById("radiusVal").textContent = state.radius;
+  // re-clamp ship positions so they don't go nuts
+  fleet.forEach(s => { s.q = Math.max(-state.radius, Math.min(state.radius, s.q)); s.r = Math.max(-state.radius, Math.min(state.radius, s.r)); });
+  buildFleetList(); renderBoard();
+});
+["showHighlight","showLabels","showCoords","showCompass"].forEach(id => {
+  document.getElementById(id).addEventListener("change", e => { state[id] = e.target.checked; renderBoard(); });
+});
+// Hit aura — visibility is CSS-driven via body[data-hit-aura] so no re-render needed.
+document.getElementById("showHitAura").addEventListener("change", e => {
+  state.showHitAura = e.target.checked;
+  document.body.setAttribute("data-hit-aura", e.target.checked ? "on" : "off");
+});
+// Contact tracks — visibility CSS-driven, but turning ON needs a compute since
+// we don't maintain attacker.contacts while the toggle is off.
+document.getElementById("showContactTracks").addEventListener("change", e => {
+  state.showContactTracks = e.target.checked;
+  document.body.setAttribute("data-contact-tracks", e.target.checked ? "on" : "off");
+  if (e.target.checked) attacker.contacts = computeContactTracks();
+  else attacker.contacts = [];
+  buildContactsList();
+  buildEndgamePanels();
+  buildSetupSidebar();
+  renderBoard();
+});
+
+// ---- Simulation controls ----
+// (Mode-toggle buttons removed — perspective switching drives placement vs.
+// running internally via enterPlacementMode / enterRunningMode.)
+document.getElementById("stepFwd").addEventListener("click", () => { stepForward(); updateSpeedChart(); });
+document.getElementById("stepBack").addEventListener("click", () => { stepBack(); updateSpeedChart(); });
+document.getElementById("resetTick").addEventListener("click", () => { resetSim(); updateSpeedChart(); });
+document.getElementById("probeToggle").addEventListener("click", () => {
+  sim.probeMode = !sim.probeMode;
+  document.getElementById("probeToggle").classList.toggle("active", sim.probeMode);
+  renderBoard();
+});
+
+window.addEventListener("resize", renderBoard);
+
+// Collapsible sidebar sections
+document.querySelectorAll('#sidebar h2').forEach(h2 => {
+  const chev = document.createElement('span');
+  chev.className = 'chev';
+  chev.textContent = '▾';
+  h2.appendChild(chev);
+  h2.addEventListener('click', () => {
+    h2.classList.toggle('collapsed');
+    const section = h2.nextElementSibling;
+    if (section && section.classList.contains('sidebar-section')) {
+      section.classList.toggle('collapsed');
+    }
+  });
+});
+
+/* =====================================================================
+   8. SMOKE PARTICLE SYSTEM  (defender · independent rAF loop, overlay SVG)
+   Reads ship truth (which body cells are damaged) — hidden in attacker view.
+   ===================================================================== */
+const smoke = {
+  svg: null,
+  group: null,
+  pool: [],
+  POOL_SIZE: 250,
+  lastTime: 0,
+
+  init() {
+    this.svg = document.createElementNS(SVG_NS, "svg");
+    this.svg.setAttribute("xmlns", SVG_NS);
+    this.svg.style.cssText = "position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5;";
+    document.getElementById("board-wrap").appendChild(this.svg);
+
+    const defs = el("defs");
+    defs.innerHTML = `<filter id="smokeBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter>`;
+    this.svg.appendChild(defs);
+
+    this.group = el("g", { filter: "url(#smokeBlur)", opacity: "0.85" });
+    this.svg.appendChild(this.group);
+
+    for (let i = 0; i < this.POOL_SIZE; i++) {
+      const c = el("circle", { cx: -9999, cy: -9999, r: 0, fill: "#888", opacity: "0" });
+      this.group.appendChild(c);
+      this.pool.push({ el: c, active: false, x:0, y:0, vx:0, vy:0, r:0, dr:0, opacity:0, fade:0, grey:140, life:0 });
+    }
+
+    requestAnimationFrame(t => this.tick(t));
+  },
+
+  syncViewBox() {
+    const board = document.getElementById("board");
+    const vb = board.getAttribute("viewBox");
+    if (vb && this.svg.getAttribute("viewBox") !== vb) this.svg.setAttribute("viewBox", vb);
+  },
+
+  /** Returns [{x, y, hitCount}] for each damaged body-cell on a living ship */
+  getSources() {
+    // Smoke rises from a ship's damaged body cells — that's ship truth and
+    // would betray ship position to the attacker. Hide entirely in attacker view.
+    if (state.perspective !== "defender") return [];
+
+    const wrap = document.getElementById("board-wrap");
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    const hr = computeHexR(W, H, state.radius);
+    const cx = W / 2, cy = H / 2;
+    this._hr = hr; this._cx = cx; this._cy = cy;
+
+    const out = [];
+    fleet.forEach(ship => {
+      if (ship.sunk) return;
+      const hits = sim.hitLog.filter(e => e.shipId === ship.id && e.result === 'HIT');
+      if (!hits.length) return;
+
+      const byBody = {};
+      hits.forEach(e => { const bi = e.bodyIndex ?? 0; byBody[bi] = (byBody[bi] || 0) + 1; });
+
+      const cells = shipCells(ship);
+      Object.entries(byBody).forEach(([bi, n]) => {
+        const c = cells[parseInt(bi)];
+        if (!c || !inBoard(c.q, c.r, state.radius)) return;
+        const p = axialToPx(c.q, c.r, hr);
+        out.push({ x: cx + p.x, y: cy + p.y, hitCount: n });
+      });
+    });
+    return out;
+  },
+
+  spawn(src) {
+    const p = this.pool.find(p => !p.active);
+    if (!p) return;
+    const hr = this._hr || 25;
+    const spread = hr * 0.6;
+
+    p.active = true;
+    p.x  = src.x + (Math.random() - 0.5) * spread;
+    p.y  = src.y + (Math.random() - 0.5) * spread * 0.5;
+    p.vx = (Math.random() - 0.5) * 12;
+    p.vy = -(8 + Math.random() * 22);                       // strong upward
+    p.r  = hr * (0.12 + Math.random() * 0.20);              // start medium
+    p.dr = hr * (0.06 + Math.random() * 0.10);              // grow per sec
+    const maxLife = 2.0 + Math.random() * 2.5;
+    p.life = maxLife;
+    p.opacity = 0.20 + Math.random() * 0.20 + src.hitCount * 0.07;
+    p.fade = p.opacity / maxLife;
+    p.grey = Math.max(25, 200 - src.hitCount * 55 + Math.floor((Math.random() - 0.5) * 50));
+  },
+
+  tick(ts) {
+    const dt = this.lastTime ? Math.min((ts - this.lastTime) / 1000, 0.08) : 0.016;
+    this.lastTime = ts;
+
+    this.syncViewBox();
+    const sources = this.getSources();
+
+    // Spawn — rate scales with hitCount
+    sources.forEach(src => {
+      const rate = 5 + src.hitCount * 6;          // particles/sec per source
+      const count = Math.floor(rate * dt + (Math.random() < (rate * dt % 1) ? 1 : 0));
+      for (let i = 0; i < count; i++) this.spawn(src);
+    });
+
+    // Update
+    for (const p of this.pool) {
+      if (!p.active) continue;
+      p.life -= dt;
+      if (p.life <= 0) { p.active = false; p.el.setAttribute("opacity", "0"); continue; }
+
+      p.x  += p.vx * dt;
+      p.y  += p.vy * dt;
+      p.r  += p.dr * dt;
+      p.vx *= (1 - 1.8 * dt);   // drag
+      p.vy *= (1 - 0.6 * dt);   // lighter vertical drag so it keeps drifting up
+      p.opacity -= p.fade * dt;
+      if (p.opacity < 0) p.opacity = 0;
+
+      p.el.setAttribute("cx", p.x.toFixed(1));
+      p.el.setAttribute("cy", p.y.toFixed(1));
+      p.el.setAttribute("r",  p.r.toFixed(1));
+      p.el.setAttribute("fill", `rgb(${p.grey},${p.grey},${p.grey})`);
+      p.el.setAttribute("opacity", p.opacity.toFixed(3));
+    }
+
+    requestAnimationFrame(t => this.tick(t));
+  },
+};
+
+document.body.setAttribute("data-perspective", state.perspective);
+document.body.setAttribute("data-aim", "free");
+document.body.setAttribute("data-hit-aura", state.showHitAura ? "on" : "off");
+document.body.setAttribute("data-contact-tracks", state.showContactTracks ? "on" : "off");
+document.body.setAttribute("data-endgame-view", state.endgameView);
+smoke.init();
+
+buildFleetList();
+buildEnemyFleetSilhouettes();
+buildContactsList();
+setTimeout(renderBoard, 50);
+</script>
+</body>
+</html>
+  </app-source>
+</iframe-app>
+
+
