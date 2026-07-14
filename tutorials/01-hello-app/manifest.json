@@ -2,6 +2,7 @@
   "id": "ai.charmiq.tutorials.hello-app",
   "name": "Hello App",
   "description": "A simple React app — file structure, ESM, and SCSS",
+  "requestedScopes": [],
   "bundle": {
     "entry": {
       "html": "/index.html",

@@ -2,6 +2,7 @@
   "id": "ai.charmiq.shared.ays-dialog",
   "name": "AYS Dialog",
   "description": "A customizable 'Are You Sure' confirmation dialog — Web Component with TSX and SCSS",
+  "requestedScopes": [],
   "bundle": {
     "entry": {
       "script": "/ays-dialog.tsx"

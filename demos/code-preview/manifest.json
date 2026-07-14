@@ -2,6 +2,7 @@
   "id": "code-preview",
   "name": "Code Preview",
   "description": "A static HTML/CSS preview assembled from document content blocks — edit the source in the editors, reload the preview to see your changes.",
+  "requestedScopes": [],
 
   "bundle": {
     "format": "html",

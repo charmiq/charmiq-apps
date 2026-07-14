@@ -2,6 +2,13 @@
   "id": "ai.charmiq.apps.excalidraw-drawing",
   "name": "Excalidraw Drawing",
   "description": "A collaborative drawing canvas powered by Excalidraw with OT content sync, persistent configuration, and an LLM command surface",
+  "requestedScopes": [
+    "appContent.read",
+    "appContent.write",
+    "appState.read",
+    "appState.write",
+    "application.advertise"
+  ],
   "bundle": {
     "entry": {
       "html": "/src/index.html",

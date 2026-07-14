@@ -2,6 +2,13 @@
   "id": "ai.charmiq.shared.codemirror-editor",
   "name": "CodeMirror Editor",
   "description": "A multi-tab code editor with collaborative editing, OT content sync, and configurable language modes",
+  "requestedScopes": [
+    "appContent.read",
+    "appContent.write",
+    "appState.read",
+    "appState.write",
+    "application.advertise"
+  ],
   "bundle": {
     "entry": {
       "html": "/src/index.html",

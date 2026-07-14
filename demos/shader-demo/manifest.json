@@ -2,6 +2,12 @@
   "id": "ai.charmiq.demos.shader-demo",
   "name": "Shader Demo",
   "description": "A minimal Shadertoy-style live GLSL player — pulls its fragment shader from a sibling CodeMirror editor and its iChannel textures from a sibling Image Gallery",
+  "requestedScopes": [
+    "appState.read",
+    "appState.write",
+    "application.advertise",
+    "application.call"
+  ],
   "bundle": {
     "entry": {
       "html": "/src/index.html",

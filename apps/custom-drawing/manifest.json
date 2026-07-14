@@ -2,6 +2,21 @@
   "id": "ai.charmiq.apps.custom-drawing",
   "name": "Custom Drawing",
   "description": "An SVG drawing canvas with shape tools, text, images, rotation, grouping, and export — with reactive state sync and an LLM command surface",
+  "requestedScopes": [
+    "appContent.read",
+    "appContent.write",
+    "appState.read",
+    "appState.write",
+    "application.advertise",
+    "asset.read",
+    "asset.upload",
+    "command.asset.copy.toRichtextAsset",
+    "command.modal.generation.image.editor.openAndResolve",
+    "command.modal.mediaImport.openAndResolve",
+    "command.notification.modal.emit",
+    "command.notification.toast.emit",
+    "generation.image"
+  ],
   "bundle": {
     "entry": {
       "html": "/src/index.html",
