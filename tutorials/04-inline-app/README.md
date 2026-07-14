@@ -3,7 +3,7 @@
 *No folder. No files. No manifest — the whole Application lives in this document.*
 
 <p style="text-align: center;">
-  <iframe-app height="220px">
+  <iframe-app height="280px">
     <app-source>
 <!DOCTYPE html>
 <html>
@@ -67,17 +67,15 @@ await commandService.execute({ id: 'notification.toast.emit', args: { status: 's
 
 `discover('charmiq.service.*')` resolves locally — asking for a service proxy needs no permission. The `execute` is different: it asks the **platform** to run a Command on your behalf. That crossing is governed by a scope — this one is `command.notification.toast.emit`.
 
-## The catch: no manifest, nothing declared
+## The catch: no manifest, so every capability asks separately
 
-Click the button. It fails:
+Click the button. Before the toast appears, CharmIQ asks for your consent — one dialog, for this one capability. Allow it and the toast fires; your decision is remembered (see it under **Settings → Permissions**), so the next click runs without asking.
 
-```
-denied by the consent gate — scope 'command.notification.toast.emit' is not declared in the manifest's requestedScopes
-```
+That dialog-per-capability is the cost of having no manifest. Every capability an Application uses is a scope, and an Application with no manifest has nowhere to *declare* its scopes — so it falls back to asking for each one, the first time it comes up. An Application that needs five capabilities interrupts you five times.
 
-Every capability an Application uses is a scope, and an Application must **declare** its scopes before it may even ask you for them — that is what [`requestedScopes`](charmiq://../02-reading-data/manifest.json) does in the folder tutorials, and it is what powers the one-dialog consent you see when a declared Application first runs. An Application that declares nothing cannot use any gated capability: not Commands, not services, not `charmiq.fetch`, not Application-to-Application calls.
+The folder tutorials never do that: [`requestedScopes`](charmiq://../02-reading-data/manifest.json) declares the full set up front, so the user sees **one** dialog covering everything the Application will ever ask for — and anything *outside* the declaration is denied outright, which is a promise the Application makes to its users. Declaring is both the better experience and the stronger contract.
 
-The inline form has no manifest, so it has nowhere to declare anything. What an inline Application *can* do today is everything that never leaves the sandbox: markup, styles, local state — Tutorial 01's counter would run here unchanged.
+The inline form trades that away for zero setup. For one button it hardly matters; the moment your Application grows a second or third capability, the manifest is how you grow up — and it is also the door to [signing](charmiq://../../demos/shader-demo/README.md), which only exists for Applications with a manifest.
 
 ## What to pay attention to
 
@@ -85,4 +83,6 @@ The inline form has no manifest, so it has nowhere to declare anything. What an 
 
 **`discover` vs `execute`** — resolving a service proxy is local and free; invoking through it is a platform crossing and is gated.
 
-**The denial names the fix** — the error tells you exactly which scope was missing. For a folder Application the fix is one line in `requestedScopes`; for an inline Application, there is no line to write — yet.
+**Consent is per scope, per Application, per document** — an inline Application's grants are anchored to the document that hosts it. Copy this Application into another document and it asks again there.
+
+**The drip is the incentive** — one capability, one ask is tolerable; five capabilities, five asks is the nudge toward a manifest and its single batched dialog.

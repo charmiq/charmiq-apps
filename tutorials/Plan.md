@@ -74,8 +74,8 @@ Key concepts: full replacement vs. incremental changes, OT safety, the update gu
 
 **Files:** `README.md` only (the document IS the Application — that's the point).
 
-- A single "Celebrate" button calls `notification.toast.emit` through `discover('charmiq.service.command')`; the click is DENIED (`deny-undeclared`) because the inline form has nowhere to declare the scope — the denial and its error message are the lesson.
-- Becomes a working toast when inline Applications gain a declaration mechanism (open design: srcdoc-embedded manifest).
+- A single "Celebrate" button calls `notification.toast.emit` through `discover('charmiq.service.command')`; the click prompts (legacy per-scope consent — no manifest, no declaration), then toasts. The drip-per-capability vs the manifest's one batched dialog is the lesson.
+- Inline grants anchor to the host document (`inline:{richtextId}` subject).
 
 ---
 
