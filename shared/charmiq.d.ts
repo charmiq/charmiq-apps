@@ -183,7 +183,7 @@ export type McpTransport = 'direct' | 'proxy';
  *  - `providerUrl`   — platform resolves the integration by provider */
 export type McpServerAuth =
   | Readonly<{ type: 'platform'; }>
-  | Readonly<{ type: 'oauth'; integrationId: Identifier; scopes: string[]; app: OAuthAppRegistration; }>
+  | Readonly<{ type: 'oauth'; integrationId: Identifier; scopes: string[]; app?: OAuthAppRegistration/*legacy self-declaration — ignored*/; }>
   | Readonly<{ type: 'oauth'; providerUrl: string; scopes?: string[]; }>
   | Readonly<{ type: 'none'; }>;
 
@@ -253,18 +253,14 @@ export interface CharmIQMcpAPI {
 }
 
 // == OAuth =======================================================================
-/** metadata that apps must register before requesting OAuth */
+/** legacy `oauth.register()` self-declaration — ignored. The app's identity is
+ *  platform-resolved (the loaded application material); connections are isolated
+ *  per application by that identity, never by a declared appId */
 export type OAuthAppRegistration = Readonly<{
-  /** unique app identifier (reverse domain notation recommended) */
+  /** self-declared app identifier — ignored */
   appId: string;
-  /** human-readable app name shown to users during consent */
+  /** self-declared app name — ignored */
   name: string;
-  /** optional description of what the app does */
-  description?: string;
-  /** optional icon URL displayed in consent dialog and management UI */
-  icon?: string;
-  /** optional homepage URL for the app */
-  homepage?: string;
 }>;
 
 /** controls account resolution behavior for getValidAuth.
@@ -300,7 +296,8 @@ export type OAuthGetValidAuthConfig =
 
 // --------------------------------------------------------------------------------
 export interface CharmIQOAuthAPI {
-  /** register your app's identity (required before calling getValidAuth) */
+  /** legacy no-op — the app's identity is platform-resolved; the declaration is
+   *  ignored. Call getValidAuth directly */
   register: (registration: OAuthAppRegistration) => Promise<void>;
 
   /** get a valid (non-expired) OAuth auth. The platform handles the full
@@ -510,16 +507,12 @@ export interface CharmIQAPI {
 
   /** OAuth API for authenticating with external providers (Google, GitHub, etc.)
    *  All resolution logic (Integration lookup, account selection, token refresh)
-   *  runs parent-side — the iframe never touches credentials directly.
+   *  runs parent-side — the iframe never touches credentials directly. The app's
+   *  identity is platform-resolved (the loaded application material); connections
+   *  are isolated per application by that identity.
    *
    *  @example
-   *  // 1. register your app (once, before any OAuth calls)
-   *  await window.charmiq.oauth.register({
-   *    appId: 'com.example.my-application',
-   *    name: 'My Application'
-   *  });
-   *
-   *  // 2. get a valid auth — one call handles everything:
+   *  // 1. get a valid auth — one call handles everything:
    *  //    integration resolution, account selection, consent popup, token refresh
    *
    *  // by providerUrl (platform resolves which integration to use):
@@ -534,12 +527,12 @@ export interface CharmIQAPI {
    *    scopes: ['https://www.googleapis.com/auth/bigquery']
    *  });
    *
-   *  // 3. use the access token
+   *  // 2. use the access token
    *  const response = await fetch('https://gmail.googleapis.com/...', {
    *    headers: { Authorization: `Bearer ${auth.accessToken}` }
    *  });
    *
-   *  // 4. revoke when done (optional)
+   *  // 3. revoke when done (optional)
    *  await window.charmiq.oauth.revokeAuth(auth);
    */
   oauth: CharmIQOAuthAPI;
