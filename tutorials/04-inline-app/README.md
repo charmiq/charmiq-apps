@@ -3,7 +3,7 @@
 *No folder. No files. No manifest — the whole Application lives in this document.*
 
 <p style="text-align: center;">
-  <iframe-app height="280px">
+  <iframe-app height="280px" requested-scopes="%5B%22command.notification.toast.emit%22%5D">
     <app-source>
 <!DOCTYPE html>
 <html>
@@ -48,7 +48,7 @@ The Application above is live — and its entire source sits inside the `app-sou
 | Tutorial 03 | Here |
 |----|----|
 | Six files in a folder | One HTML document inside `app-source` |
-| `manifest.json` declares entries and scopes | **No manifest — and that matters. Read on.** |
+| `manifest.json` declares entries and scopes | The Application container declares scopes |
 | TypeScript + SCSS, built on demand | Plain HTML, CSS, and JavaScript, as written |
 | React via import map | No dependencies at all |
 
@@ -67,15 +67,19 @@ await commandService.execute({ id: 'notification.toast.emit', args: { status: 's
 
 `discover('charmiq.service.*')` resolves locally — asking for a service proxy needs no permission. The `execute` is different: it asks the **platform** to run a Command on your behalf. That crossing is governed by a scope — this one is `command.notification.toast.emit`.
 
-## The catch: no manifest, so every capability asks separately
+## Declaring the capability without a manifest
 
 Click the button. Before the toast appears, CharmIQ asks for your consent — one dialog, for this one capability. Allow it and the toast fires; your decision is remembered (see it under **Settings → Permissions**), so the next click runs without asking.
 
-That dialog-per-capability is the cost of having no manifest. Every capability an Application uses is a scope, and an Application with no manifest has nowhere to *declare* its scopes — so it falls back to asking for each one, the first time it comes up. An Application that needs five capabilities interrupts you five times.
+The Application declares that capability on its container:
 
-The folder tutorials never do that: [`requestedScopes`](charmiq://../02-reading-data/manifest.json) declares the full set up front, so the user sees **one** dialog covering everything the Application will ever ask for — and anything *outside* the declaration is denied outright, which is a promise the Application makes to its users. Declaring is both the better experience and the stronger contract.
+```html
+<iframe-app requested-scopes="%5B%22command.notification.toast.emit%22%5D">
+```
 
-The inline form trades that away for zero setup. For one button it hardly matters; the moment your Application grows a second or third capability, the manifest is how you grow up — and it is also the door to [signing](charmiq://../../demos/shader-demo/README.md), which only exists for Applications with a manifest.
+The value is the percent-encoded JSON array `["command.notification.toast.emit"]`. It bounds what this inline Application may ask for: the declared command is eligible for consent when the button invokes it, while every gated capability outside the declaration is denied without another prompt. Omitting `requested-scopes` means an authoritative empty declaration, so an ordinary inline Application loads silently and cannot invoke gated capabilities.
+
+Folder-based Applications put the same declaration in [`requestedScopes`](charmiq://../02-reading-data/manifest.json). The manifest also enables multi-file builds and [signing](charmiq://../../demos/shader-demo/README.md); moving to a folder is about structure and provenance, not gaining a permission declaration.
 
 ## What to pay attention to
 
@@ -85,4 +89,4 @@ The inline form trades that away for zero setup. For one button it hardly matter
 
 **Consent is per scope, per Application, per document** — an inline Application's grants are anchored to the document that hosts it. Copy this Application into another document and it asks again there.
 
-**The drip is the incentive** — one capability, one ask is tolerable; five capabilities, five asks is the nudge toward a manifest and its single batched dialog.
+**Declarations bound the ask** — inline or folder-based, only declared scopes can reach consent. Missing inline declarations mean no gated capabilities, not legacy per-capability prompts.
