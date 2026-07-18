@@ -12,7 +12,7 @@ import type { TabId } from './tab-types';
  *  Excludes non-bool config keys like `maxTabs` (which has its own number input) */
 type BoolOption = 'lineNumbers' | 'lineWrapping' | 'smartIndent' | 'indentWithTabs';
 
-
+// --------------------------------------------------------------------------------
 /** file extension → CodeMirror mode mapping for import */
 const EXTENSION_TO_MODE: Readonly<Record<string, string>> = {
   '.md': 'markdown',
