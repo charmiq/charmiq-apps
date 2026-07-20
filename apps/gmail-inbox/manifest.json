@@ -5,7 +5,6 @@
   "requestedScopes": [
     "oauth.token",
     "oauth.manage",
-    "navigation.popupEscape",
     "appState.read",
     "appState.write"
   ],

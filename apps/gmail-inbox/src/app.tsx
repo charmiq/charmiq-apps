@@ -56,7 +56,9 @@ export const App = () => {
       </div>
 
       <div class="detail-panel">
-        <EmailDetail email={inbox.selectedEmail} />
+        {(inbox.status === 'ready') && (inbox.accounts.length < 1)
+          ? <div class="placeholder">Connect a Gmail account to get started — use the add-account button above.</div>
+          : <EmailDetail email={inbox.selectedEmail} />}
       </div>
 
       <ConfirmDialog
