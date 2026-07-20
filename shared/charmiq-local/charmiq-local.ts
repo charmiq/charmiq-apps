@@ -105,6 +105,7 @@ const makeOAuth = () => {
     const account: StoredAccount = {
       id: `local:${profile.id}`,
       providerUrl,
+      integrationId: 'local'/*synthetic — the harness models one Integration per provider*/,
       providerAccountId: profile.id,
       scopes,
       accessToken,

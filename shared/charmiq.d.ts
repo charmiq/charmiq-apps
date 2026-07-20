@@ -276,6 +276,11 @@ export type OAuthAuth = Readonly<{
   id: string;
   /** OAuth provider URL (authorization server base URL) */
   providerUrl: string;
+  /** the Integration whose credentials issued this connection. Provider-mode
+   *  `listAuth` spans Integrations, so the same account connected through two
+   *  Integrations returns two entries with equal `providerAccountId` but distinct
+   *  `id` and `integrationId` — this is how an app tells them apart */
+  integrationId: string;
   /** provider's stable account identifier (e.g. 'sub' for Google, 'id' for GitHub) */
   providerAccountId: string;
   /** scopes granted for this token */
