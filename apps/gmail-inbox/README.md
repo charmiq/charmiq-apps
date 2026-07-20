@@ -13,6 +13,11 @@ A worked example of **OAuth in a CharmIQ Application**. It connects one or more 
 The point of the example is the OAuth flow, so everything else stays deliberately simple.
 
 
+## First-time setup
+
+Connecting Gmail needs a one-time Google + CharmIQ OAuth setup — create a Google OAuth client, register it as a CharmIQ **OAuth Integration**, and enable the Gmail API. An administrator does it once (it isn't specific to this app). See **[SETUP.md](./SETUP.md)**.
+
+
 ## Using It
 
 - **Connect an account** — click the person-plus button. A CharmIQ consent popup and Google's sign-in appear; approve read-only Gmail access.
