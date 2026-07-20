@@ -1,0 +1,30 @@
+{
+  "id": "ai.charmiq.apps.gmail-inbox",
+  "name": "Gmail Inbox",
+  "description": "A read-only, multi-account Gmail inbox — a master-detail viewer built on the CharmIQ OAuth bridge, with obvious hooks to make it read-write",
+  "requestedScopes": [
+    "oauth.token",
+    "oauth.manage",
+    "navigation.popupEscape",
+    "appState.read",
+    "appState.write"
+  ],
+  "bundle": {
+    "format": "esm",
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.tsx",
+      "style": "/src/styles.scss"
+    },
+    "dependencies": {
+      "importMap": {
+        "preact": "https://esm.sh/preact@10.24.3",
+        "preact/hooks": "https://esm.sh/preact@10.24.3/hooks",
+        "preact/jsx-runtime": "https://esm.sh/preact@10.24.3/jsx-runtime"
+      }
+    }
+  },
+  "runtime": {
+    "appState": true
+  }
+}

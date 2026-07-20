@@ -284,15 +284,41 @@ export type OAuthAuth = Readonly<{
   accessToken: string;
   /** Unix timestamp when token expires. `undefined` for tokens that never expire */
   expiresAt?: number;
+
   /** normalized display identifier (email, username, or fallback to accountId) */
   displayIdentifier: string;
+  /** user's display name (e.g. "John Doe") — present when the provider's userinfo
+   *  returns one (reliably populated for Google) */
+  displayName?: string;
+  /** user's avatar / profile picture URL — present when the provider's userinfo
+   *  returns one (reliably populated for Google) */
+  displayAvatar?: string;
+
+  /** `true` when this is the User's preferred Connection for the Integration; the
+   *  resolution chain auto-selects it. Opt-in via the Connection management UI */
+  default?: boolean;
 }>;
 
+/** the account shape returned by `oauth.listAuth` — an {@link OAuthAuth} with the
+ *  `accessToken` withheld. Enumerate connected accounts (render them, rehydrate a
+ *  multi-account UI across a reload) without minting a token per account; the token
+ *  for a chosen account is fetched on demand via `getValidAuth({ connectionKey })`.
+ *  The `id` doubles as that targeting key and as the argument to `revokeAuth` */
+export type OAuthAuthDescriptor = Omit<OAuthAuth, 'accessToken'>;
+
 /** getValidAuth config — either `{ providerUrl }` to let the platform resolve the
- *  integration, or `{ integrationId }` when the integration is known */
+ *  integration, or `{ integrationId }` when the integration is known. Pass
+ *  `connectionKey` (an {@link OAuthAuthDescriptor} `id` from `listAuth`) to target
+ *  one specific already-connected account, bypassing account selection */
 export type OAuthGetValidAuthConfig =
-  | Readonly<{ providerUrl: string; scopes?: string[]; prompt?: OAuthGetValidAuthPrompt; }>
-  | Readonly<{ integrationId: Identifier; scopes?: string[]; prompt?: OAuthGetValidAuthPrompt; }>;
+  | Readonly<{ providerUrl: string; scopes?: string[]; prompt?: OAuthGetValidAuthPrompt; connectionKey?: string; }>
+  | Readonly<{ integrationId: Identifier; scopes?: string[]; prompt?: OAuthGetValidAuthPrompt; connectionKey?: string; }>;
+
+/** listAuth config — enumerate the app's connected accounts for a provider or a
+ *  specific Integration */
+export type OAuthListAuthConfig =
+  | Readonly<{ providerUrl: string; }>
+  | Readonly<{ integrationId: Identifier; }>;
 
 // --------------------------------------------------------------------------------
 export interface CharmIQOAuthAPI {
@@ -305,11 +331,25 @@ export interface CharmIQOAuthAPI {
    *  1. resolve integration (if by provider, only when no connections exist)
    *  2. resolve account (0 → consent popup, 1 → auto, >1 → account picker)
    *  3. refresh if token is expired
-   *  4. return valid OAuthAuth */
+   *  4. return valid OAuthAuth
+   *
+   *  Pass `connectionKey` (an {@link OAuthAuthDescriptor} `id` from {@link listAuth})
+   *  to target one specific already-connected account — the platform verifies the
+   *  key names one of *this* app's own Connections, refreshes it if expired, and
+   *  returns its token, bypassing selection. This is how a multi-account app
+   *  fetches a token per account after enumerating with `listAuth` */
   getValidAuth: (config: OAuthGetValidAuthConfig) => Promise<OAuthAuth>;
 
-  /** revoke an OAuth connection (pass the OAuthAuth object from getValidAuth) */
-  revokeAuth: (auth: OAuthAuth) => Promise<void>;
+  /** list this app's connected accounts (token-less {@link OAuthAuthDescriptor}s)
+   *  for a provider or Integration. No consent popup, no account resolution — the
+   *  enumeration a multi-account app needs to render every account on load and
+   *  rehydrate across a reload. Fetch a token for a chosen account on demand via
+   *  `getValidAuth({ connectionKey })` */
+  listAuth: (config: OAuthListAuthConfig) => Promise<OAuthAuthDescriptor[]>;
+
+  /** revoke an OAuth connection (pass the OAuthAuth from getValidAuth, or an
+   *  OAuthAuthDescriptor from listAuth — both carry the `id` the platform needs) */
+  revokeAuth: (auth: OAuthAuth | OAuthAuthDescriptor) => Promise<void>;
 }
 
 // == Visual Editor ===============================================================
