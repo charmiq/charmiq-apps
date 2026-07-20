@@ -15,7 +15,7 @@ The point of the example is the OAuth flow, so everything else stays deliberatel
 
 ## First-time setup
 
-Connecting Gmail needs a one-time Google + CharmIQ OAuth setup — create a Google OAuth client, register it as a CharmIQ **OAuth Integration**, and enable the Gmail API. An administrator does it once (it isn't specific to this app). See **[SETUP.md](./SETUP.md)**.
+Connecting Gmail needs a one-time Google + CharmIQ OAuth setup — create a Google OAuth client, register it as a CharmIQ **OAuth Integration**, and enable the Gmail API. An administrator does it once (it isn't specific to this app). See **[SETUP.md](charmiq://./SETUP.md)**.
 
 
 ## Using It

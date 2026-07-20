@@ -1,6 +1,6 @@
 # Gmail Inbox — Connecting Google (one-time setup)
 
-Before anyone can add a Gmail account in the [app](./README.md), an administrator does this one-time setup: create a Google OAuth client, register it with CharmIQ as an **OAuth Integration**, and enable the Gmail API. The app itself never handles these credentials — it calls the CharmIQ bridge, which resolves the Integration you set up here.
+Before anyone can add a Gmail account in the [app](charmiq://./README.md), an administrator does this one-time setup: create a Google OAuth client, register it with CharmIQ as an **OAuth Integration**, and enable the Gmail API. The app itself never handles these credentials — it calls the CharmIQ bridge, which resolves the Integration you set up here.
 
 > You do this once per Google project. The same OAuth Integration works for any CharmIQ app that connects to Google — it isn't specific to this app.
 
@@ -78,4 +78,4 @@ Click **Advanced**:
 
 ## Done
 
-Once the Integration exists and the Gmail API is enabled, open the [Gmail Inbox](./README.md), click **Add account**, and CharmIQ resolves your Integration, opens the Google sign-in, and connects the account read-only.
+Once the Integration exists and the Gmail API is enabled, open the [Gmail Inbox](charmiq://./README.md), click **Add account**, and CharmIQ resolves your Integration, opens the Google sign-in, and connects the account read-only.
