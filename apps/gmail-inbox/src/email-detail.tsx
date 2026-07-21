@@ -1,15 +1,16 @@
 /** @jsx h */
-import { h } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { h } from './h';
 
 import { Avatar } from './avatar';
 import { formatFullDate } from './format';
+import type { InboxModel } from './inbox-model';
 import type { InboxEmail } from './types';
 
 // the detail panel. A plain-text body renders as text; an HTML body renders in a
 // sandboxed (`allow-scripts`, no same-origin) iframe so nothing in the email can
 // reach the app — an injected reporter posts the content height back so the frame
-// grows to fit instead of nesting a scrollbar
+// grows to fit. The header sits ABOVE the scroll area, so collapsing it on scroll
+// never reflows (or jumps) the scrolled content
 // ********************************************************************************
 // == Constants ===================================================================
 const HEIGHT_MESSAGE = 'gmail-inbox:body-height';
@@ -43,7 +44,7 @@ const mountHtmlBody = (container: HTMLElement, html: string): (() => void) => {
     const data = event.data as { type?: string; height?: number; };
     if((event.source === iframe.contentWindow) && (data?.type === HEIGHT_MESSAGE) && (typeof data.height === 'number')) {
       iframe.style.height = `${data.height}px`;
-    } /* else -- not the height message from this iframe, ignore */
+    }
   };
   window.addEventListener('message', onMessage);
 
@@ -55,69 +56,79 @@ const mountHtmlBody = (container: HTMLElement, html: string): (() => void) => {
   return () => window.removeEventListener('message', onMessage);
 };
 
-// == Component ===================================================================
-export const EmailDetail = ({ email }: { email: InboxEmail | null; }) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const headRef = useRef<HTMLDivElement>(null);
-  const bodyRef = useRef<HTMLDivElement>(null);
+// == Detail ======================================================================
+/** build one email's detail. Returns the element plus a cleanup for its body listener */
+const buildDetail = (email: InboxEmail): { element: HTMLElement; cleanup: (() => void) | null; } => {
+  const body = (<div class="detail-body" />) as HTMLElement;
+  let cleanup: (() => void) | null = null;
+  if(email.bodyHtml === null) body.textContent = email.bodyText || email.snippet;
+  else cleanup = mountHtmlBody(body, email.bodyHtml);
 
-  useEffect(() => {
-    const container = bodyRef.current;
-    if(!container || !email) return;
-
-    container.innerHTML = '';
-    if(email.bodyHtml === null) {
-      container.textContent = email.bodyText || email.snippet;
-      return;
-    } /* else -- HTML body: mount the sandboxed frame */
-    return mountHtmlBody(container, email.bodyHtml);
-  }, [email?.id]);
-
-  // collapse the header once the body is scrolled down; expand it at the top. The
-  // header sits ABOVE the scroll area (a flex sibling), not inside it — so resizing
-  // it on collapse never moves the scroll position, which is what removes the
-  // reflow feedback (collapse → jump-to-top) a sticky in-scroll header suffers.
-  // The class is toggled on the DOM directly (not render state) so scrolling never
-  // re-mounts the body iframe; the 56/24 gap is hysteresis against a boundary flicker
-  useEffect(() => {
-    const scroller = scrollRef.current;
-    const head = headRef.current;
-    if(!scroller || !head || !email) return;
-
-    scroller.scrollTop = 0;
-    head.classList.remove('compact')/*a freshly selected email starts expanded at the top*/;
-
-    let frame = 0;
-    const check = () => {
-      if(scroller.scrollTop > 56) head.classList.add('compact');
-      else if(scroller.scrollTop < 24) head.classList.remove('compact');
-    };
-    const onScroll = () => {
-      if(frame) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(check);
-    };
-    scroller.addEventListener('scroll', onScroll, { passive: true });
-    return () => { scroller.removeEventListener('scroll', onScroll); if(frame) cancelAnimationFrame(frame); };
-  }, [email?.id]);
-
-  if(!email) return <div class="placeholder">Select an email to read it.</div>;
-
-  return (
-    <div class="detail">
-      <div class="detail-head" ref={headRef}>
-        <div class="detail-subject">
-          <Avatar account={email.account} size={24} />
-          <span>{email.subject}</span>
-        </div>
-        <div class="detail-meta">
-          <div class="detail-meta-row"><span class="detail-label">From</span><span>{email.from}</span></div>
-          <div class="detail-meta-row"><span class="detail-label">To</span><span>{email.to}</span></div>
-          <div class="detail-meta-row"><span class="detail-label">Date</span><span>{formatFullDate(email.dateHeader)}</span></div>
-        </div>
+  const head = (
+    <div class="detail-head">
+      <div class="detail-subject">
+        {Avatar({ account: email.account, size: 24 })}
+        <span>{email.subject}</span>
       </div>
-      <div class="detail-scroll" ref={scrollRef}>
-        <div class="detail-body" ref={bodyRef} />
+      <div class="detail-meta">
+        <div class="detail-meta-row"><span class="detail-label">From</span><span>{email.from}</span></div>
+        <div class="detail-meta-row"><span class="detail-label">To</span><span>{email.to}</span></div>
+        <div class="detail-meta-row"><span class="detail-label">Date</span><span>{formatFullDate(email.dateHeader)}</span></div>
       </div>
     </div>
-  );
+  ) as HTMLElement;
+
+  const scroll = (<div class="detail-scroll">{body}</div>) as HTMLElement;
+
+  // collapse the header once the body is scrolled down; expand at the top. Hysteresis
+  // (56 / 24) against a boundary flicker; the header is outside the scroll area, so
+  // resizing it never moves the scroll position
+  let frame = 0;
+  const check = (): void => {
+    if(scroll.scrollTop > 56) head.classList.add('compact');
+    else if(scroll.scrollTop < 24) head.classList.remove('compact');
+  };
+  scroll.addEventListener('scroll', () => {
+    if(frame) cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(check);
+  }, { passive: true });
+
+  return { element: (<div class="detail">{head}{scroll}</div>) as HTMLElement, cleanup };
+};
+
+// == Panel =======================================================================
+export const EmailDetail = (model: InboxModel): Node => {
+  const panel = (<div class="detail-panel" />) as HTMLElement;
+
+  let lastKey: string | undefined;
+  let cleanup: (() => void) | null = null;
+
+  const render = (): void => {
+    const state = model.getState();
+    const noAccounts = (state.status === 'ready') && (state.accounts.length < 1);
+    // rebuild only when the shown email (or the no-account state) changes, so an
+    // unrelated emit never re-mounts the body iframe
+    const key = noAccounts ? 'no-accounts' : (state.selectedEmail?.id ?? 'none');
+    if(key === lastKey) return;
+    lastKey = key;
+
+    if(cleanup) { cleanup(); cleanup = null; }
+
+    if(noAccounts) {
+      panel.replaceChildren(<div class="placeholder">Connect a Gmail account to get started — use the add-account button above.</div>);
+      return;
+    } /* else -- an account is present */
+    if(!state.selectedEmail) {
+      panel.replaceChildren(<div class="placeholder">Select an email to read it.</div>);
+      return;
+    } /* else -- render the selected email */
+
+    const detail = buildDetail(state.selectedEmail);
+    cleanup = detail.cleanup;
+    panel.replaceChildren(detail.element);
+  };
+
+  model.subscribe(render);
+  render();
+  return panel;
 };

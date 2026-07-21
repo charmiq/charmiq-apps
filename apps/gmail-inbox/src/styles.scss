@@ -183,8 +183,28 @@ body {
   }
 }
 
+// == Search ======================================================================
+.search-bar {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--gray-900);
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+
+  &::placeholder { color: var(--gray-400); }
+  &:focus { outline: none; border-color: var(--primary); background: white; }
+}
+
 // == Master List =================================================================
-.master-body { flex: 1; overflow-y: auto; }
+.master-body { flex: 1; min-height: 0; overflow-y: auto; }
 .list { padding: 8px; }
 
 .email-row {

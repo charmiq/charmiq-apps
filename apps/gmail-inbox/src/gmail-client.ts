@@ -24,10 +24,14 @@ export type MessagePage = Readonly<{
 }>;
 
 // == Read =======================================================================
-/** fetch one page of inbox messages, fully hydrated (`format=full`). The list
- *  endpoint returns ids only, so each id is expanded in parallel */
-export const fetchInboxPage = async (accessToken: string, pageToken?: string): Promise<MessagePage> => {
-  const params = new URLSearchParams({ maxResults: String(PAGE_SIZE), labelIds: 'INBOX' });
+/** fetch one page of messages, fully hydrated (`format=full`). With no `query` it
+ *  lists the inbox; with a `query` it runs a Gmail search across all mail using the
+ *  same syntax as the Gmail search box (`from:`, `is:unread`, `newer_than:7d`, free
+ *  text, …). The list endpoint returns ids only, so each id is expanded in parallel */
+export const fetchInboxPage = async (accessToken: string, pageToken?: string, query?: string): Promise<MessagePage> => {
+  const params = new URLSearchParams({ maxResults: String(PAGE_SIZE) });
+  if(query) params.set('q', query);
+  else params.set('labelIds', 'INBOX');
   if(pageToken) params.set('pageToken', pageToken);
 
   const list = await gmailGet<{ messages?: Array<{ id: string; }>; nextPageToken?: string; }>(accessToken, `/messages?${params}`);

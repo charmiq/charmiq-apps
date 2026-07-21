@@ -1,11 +1,11 @@
 /** @jsx h */
-import { h } from 'preact';
+import { h } from './h';
 
 import type { OAuthAuthDescriptor } from '../../../shared/charmiq';
 
 // the per-account avatar — the provider's profile picture when present (Google
-// returns one for free via the auto-merged userinfo scopes), else the account's
-// initials, else the first letter of its identifier
+// returns one via the auto-merged userinfo scopes), else the account's initials,
+// else the first letter of its identifier
 // ********************************************************************************
 // == Helpers =====================================================================
 /** up to two initials from a display name, else the first letter of the identifier */
@@ -22,8 +22,8 @@ const initialsOf = (account: OAuthAuthDescriptor): string => {
   return (account.displayIdentifier[0] ?? '?').toUpperCase();
 };
 
-// == Component ===================================================================
-export const Avatar = ({ account, size = 32 }: { account: OAuthAuthDescriptor; size?: number; }) => {
+// == Builder =====================================================================
+export const Avatar = ({ account, size = 32 }: { account: OAuthAuthDescriptor; size?: number; }): Node => {
   const title = account.displayName || account.displayIdentifier;
   const style = { width: `${size}px`, height: `${size}px`, fontSize: `${Math.round(size * 0.4)}px` };
   return (

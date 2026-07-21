@@ -1,12 +1,13 @@
 {
   "id": "ai.charmiq.apps.gmail-inbox",
   "name": "Gmail Inbox",
-  "description": "A read-only, multi-account Gmail inbox — a master-detail viewer built on the CharmIQ OAuth bridge, with obvious hooks to make it read-write",
+  "description": "A read-only, multi-account Gmail inbox — a master-detail viewer built on the CharmIQ OAuth bridge, agent-drivable, with obvious hooks to make it read-write",
   "requestedScopes": [
     "oauth.token",
     "oauth.manage",
     "appState.read",
-    "appState.write"
+    "appState.write",
+    "application.advertise"
   ],
   "bundle": {
     "format": "esm",
@@ -14,16 +15,93 @@
       "html": "/src/index.html",
       "script": "/src/main.tsx",
       "style": "/src/styles.scss"
-    },
-    "dependencies": {
-      "importMap": {
-        "preact": "https://esm.sh/preact@10.24.3",
-        "preact/hooks": "https://esm.sh/preact@10.24.3/hooks",
-        "preact/jsx-runtime": "https://esm.sh/preact@10.24.3/jsx-runtime"
-      }
     }
   },
   "runtime": {
     "appState": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "listAccounts",
+        "description": "List the Gmail accounts connected to this inbox",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "email": { "type": "string" },
+              "name": { "type": "string" }
+            },
+            "required": ["id", "email"]
+          }
+        }
+      },
+      {
+        "name": "listEmails",
+        "description": "List the emails currently shown, newest first. Optionally scope to one account, or pass a Gmail search to run first.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "accountId": { "type": "string", "description": "Scope to one account — a Connection id, an email address, or a provider account id" },
+            "query": { "type": "string", "description": "Optional Gmail search (from:, is:unread, newer_than:7d, free text); runs before listing" }
+          }
+        },
+        "outputSchema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "from": { "type": "string" },
+              "subject": { "type": "string" },
+              "date": { "type": "string" },
+              "snippet": { "type": "string" },
+              "unread": { "type": "boolean" },
+              "account": { "type": "string" }
+            },
+            "required": ["id", "from", "subject", "account"]
+          }
+        }
+      },
+      {
+        "name": "getEmail",
+        "description": "Get the full readable content (text) of one email by id",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "emailId": { "type": "string" } },
+          "required": ["emailId"]
+        },
+        "outputSchema": { "type": ["object", "null"], "description": "The email, or null if it is not in the loaded/searched set" }
+      },
+      {
+        "name": "selectEmail",
+        "description": "Open an email in the reading pane so the User sees it open",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "emailId": { "type": "string" } },
+          "required": ["emailId"]
+        },
+        "outputSchema": { "type": "boolean", "description": "True if the email was found and opened" }
+      },
+      {
+        "name": "loadMore",
+        "description": "Fetch the next page of emails for the current view",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "number", "description": "Total emails loaded after the fetch" }
+      },
+      {
+        "name": "search",
+        "description": "Run a Gmail search across the connected accounts and return the matches (also updates the UI). Uses Gmail search syntax.",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "query": { "type": "string", "description": "Gmail search, e.g. 'from:boss is:unread newer_than:7d'" } },
+          "required": ["query"]
+        },
+        "outputSchema": { "type": "array", "items": { "type": "object" }, "description": "Matching emails (summaries), newest first" }
+      }
+    ]
   }
 }
