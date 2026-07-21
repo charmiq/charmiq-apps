@@ -11,13 +11,10 @@ type DialogType = 'warning' | 'info' | 'error';
 import componentStyles from './ays-dialog.scss';
 
 // == Component ===================================================================
-/**
- * <ays-dialog> — a customizable "Are You Sure" confirmation dialog.
- *
- * @element ays-dialog
- * @fires {CustomEvent} ays-confirmed - fired when the user confirms
- * @fires {CustomEvent} ays-cancelled - fired when the user cancels
- */
+/** <ays-dialog> — a customizable "Are You Sure" confirmation dialog.
+ *  @element ays-dialog
+ *  @fires {CustomEvent} ays-confirmed - fired when the user confirms
+ *  @fires {CustomEvent} ays-cancelled - fired when the user cancels */
 class AysDialog extends HTMLElement {
   private _isOpen = false;
   private _handleKeydown: ((e: KeyboardEvent) => void) | null = null;
