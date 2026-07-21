@@ -96,5 +96,5 @@ The app advertises these commands via `charmiq.advertise`:
 | `setText(text)` | Replace the drawing content |
 | `getSceneElements()` | Return Excalidraw's scene elements array |
 | `getSceneState()` | Return Excalidraw's scene state (zoom, cursor, background, etc.) |
-| `getConfig()` | Return the current widget configuration |
+| `getConfig()` | Return the current application configuration |
 | `setConfig(partial)` | Merge partial config and persist to appState |

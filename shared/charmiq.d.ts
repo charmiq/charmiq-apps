@@ -88,7 +88,7 @@ export interface AppStateAPI {
    *  @returns Observable that emits the current state or null if no state exists */
   onChange$: () => Observable<any | null>;
 
-  /** update the persisted state for this iframe widget
+  /** update the persisted state for this iframe application instance
    *  @param state JSON-serializable state object
    *  @returns Promise that resolves when state is saved to the document */
   set: (state: any) => Promise<void>;

@@ -105,6 +105,6 @@ For this tutorial we use `set()` to keep things simple. A real collaborative edi
 
 ## Next steps
 
-The content you're writing persists in the document — but what about app-level preferences like theme or display mode? Those don't belong in `appContent`. Next, we introduce `appState`: per-widget configuration that survives reloads.
+The content you're writing persists in the document — but what about app-level preferences like theme or display mode? Those don't belong in `appContent`. Next, we introduce `appState`: per-instance configuration that survives reloads.
 
 → [**Persistent State**](charmiq://../04-persistent-state/README.md)

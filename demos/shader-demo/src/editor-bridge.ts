@@ -50,7 +50,7 @@ const EDITOR_CAPABILITY = 'ai.charmiq.shared.codemirror-editor';
 // --------------------------------------------------------------------------------
 // retry policy for `changes$()` subscription — covers the brief window during
 // sibling-iframe startup / HMR reload where the editor's nodeId is in the parent
-// registry but its widgetCapabilities map hasn't been populated yet
+// registry but its application capabilities map hasn't been populated yet
 /** total retry attempts before giving up */
 const CHANGES_RETRY_COUNT     = 20;
 /** per-attempt delay multiplier. attempt N waits min(N * STEP, MAX) ms */

@@ -87,6 +87,6 @@ Key concepts: full replacement vs. incremental changes, OT safety, the update gu
 
 - **`manifest.json`** — add `runtime.appState` with a default (e.g. `{ "theme": "light" }`).
 - **`App.tsx`** — add a theme toggle (light/dark) backed by `appState.set()` / `appState.onChange$()`. Content editing still uses `appContent` from tutorial 03; theme preference uses `appState`.
-- **`README.md`** — explain: `appState` is per-widget, JSON-serializable, last-write-wins (no OT). Good for preferences/config, not for collaborative content. Contrast with `appContent`.
+- **`README.md`** — explain: `appState` is per-instance, JSON-serializable, last-write-wins (no OT). Good for preferences/config, not for collaborative content. Contrast with `appContent`.
 
-Key distinction: `appContent` = collaborative document data (OT). `appState` = per-widget config (last-write-wins). Use each for what it's designed for.
+Key distinction: `appContent` = collaborative document data (OT). `appState` = per-instance config (last-write-wins). Use each for what it's designed for.

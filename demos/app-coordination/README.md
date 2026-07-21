@@ -81,7 +81,7 @@ function updateCount(newCount) {
   log(`Count updated to: ${count}`);
 }
 
-function initializeWidget() {
+function initializeApp() {
   try {
     window.charmiq.advertise('counter', {
       increment: () => {
@@ -124,7 +124,7 @@ function initializeWidget() {
 }
 
 log('Coordinator initializing...');
-initializeWidget();
+initializeApp();
 </script>
 </body>
 </html>
@@ -266,7 +266,7 @@ async function handleReset() {
   }
 }
 
-function initializeWidget() {
+function initializeApp() {
   try {
     window.charmiq.discover$('counter').subscribe(counters => {
       counter = counters[0] || undefined;
@@ -299,7 +299,7 @@ function initializeWidget() {
 }
 
 updateStatus('Initializing...');
-initializeWidget();
+initializeApp();
 </script>
 </body>
 </html>
