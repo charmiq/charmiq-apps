@@ -160,8 +160,16 @@ a.folder-link:hover { text-decoration: underline; }
 .chip .chip-email { color: var(--gray-500); }
 
 /* == Roster table ================================================================ */
-table { width: 100%; border-collapse: collapse; }
+/* the table body scrolls inside a capped region with a sticky header — the page
+ * itself never becomes a second scroller. Separate borders: collapsed borders do
+ * not stick with a sticky header */
+.table-scroll { max-height: 380px; overflow-y: auto; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
 th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: white;
   text-align: left;
   font-size: 12px;
   text-transform: uppercase;
@@ -169,7 +177,11 @@ th {
   color: var(--gray-500);
   padding: 8px 10px;
   border-bottom: 1px solid var(--gray-200);
+  cursor: pointer;
+  user-select: none;
 }
+th:hover { color: var(--gray-800); }
+th svg.mi { width: 14px; height: 14px; }
 td { padding: 10px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
 tr.deleted td { color: var(--gray-400); }
 tr.deleted .student-name { text-decoration: line-through; }
@@ -321,6 +333,7 @@ let busyStudentId = null/*one clone at a time*/;
 let progressText = new Map()/*studentId → status line*/;
 let addStudent = { name: '', user: null/*{userId, name, email}*/ };
 let ownerPickerOpen = false;
+let sort = { key: 'name', dir: 1/*ascending*/ };
 
 const defaultState = () => ({
   config: {
@@ -912,6 +925,32 @@ const ownersRowHtml = () => `
     </div>
   </div>`;
 
+// visual sort only — the persisted roster order is never touched. The clicked
+// column is the primary key (direction applies to it alone); the remaining chain
+// follows in fixed order, natural direction, so the order is always total:
+// name A→Z, then email, then cloned before not-cloned, then active before deleted
+const SORT_CHAIN = ['name', 'user', 'cloned', 'status'];
+const SORT_COMPARATORS = {
+  name: (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+  user: (a, b) => (a.email || '').localeCompare(b.email || '', undefined, { sensitivity: 'base' })
+               || (a.profileName || '').localeCompare(b.profileName || '', undefined, { sensitivity: 'base' }),
+  cloned: (a, b) => (Object.keys(b.mapping).length > 0 ? 1 : 0) - (Object.keys(a.mapping).length > 0 ? 1 : 0),
+  status: (a, b) => (a.deleted ? 1 : 0) - (b.deleted ? 1 : 0),
+};
+const sortedStudents = () => {
+  const chain = [sort.key, ...SORT_CHAIN.filter(key => key !== sort.key)];
+  return [...state.students].sort((a, b) => {
+    for(const key of chain) {
+      const comparison = SORT_COMPARATORS[key](a, b);
+      if(comparison !== 0) return (key === sort.key) ? comparison * sort.dir : comparison;
+    }
+    return a.id.localeCompare(b.id)/*total-order backstop*/;
+  });
+};
+
+const headerCellHtml = (key, label, style) =>
+  `<th style="${style}" data-sort-key="${key}">${label}${sort.key === key ? icon(sort.dir === 1 ? 'expandLess' : 'expandMore') : ''}</th>`;
+
 const studentRowHtml = (student) => {
   const cloneCount = Object.keys(student.mapping).length;
   const progress = progressText.get(student.id);
@@ -969,12 +1008,14 @@ const render = () => {
       </div>
       <div class="card-body">
         ${problem ? `<div class="banner${problem.severity === 'error' ? ' error' : ''}" style="margin-bottom:12px;">${esc(problem.message)}</div>` : ''}
+        <div class="table-scroll">
         <table>
-          <thead><tr><th style="width:22%;">Student</th><th style="width:30%;">CharmIQ User</th><th style="width:28%;">Cloned</th><th style="width:20%; text-align:right;">Actions</th></tr></thead>
+          <thead><tr>${headerCellHtml('name', 'Student', 'width:22%;')}${headerCellHtml('user', 'CharmIQ User', 'width:30%;')}${headerCellHtml('cloned', 'Cloned', 'width:28%;')}${headerCellHtml('status', 'Actions', 'width:20%; text-align:right;')}</tr></thead>
           <tbody>
-            ${state.students.length ? state.students.map(studentRowHtml).join('') : `<tr><td colspan="4"><span class="sub">No students yet — add the first one below.</span></td></tr>`}
+            ${state.students.length ? sortedStudents().map(studentRowHtml).join('') : `<tr><td colspan="4"><span class="sub">No students yet — add the first one below.</span></td></tr>`}
           </tbody>
         </table>
+        </div>
         <div class="add-row">
           <div class="field"><input type="text" id="add-name" placeholder="Student name" value="${esc(addStudent.name)}"></div>
           <div class="field">
@@ -1012,6 +1053,14 @@ const bindEvents = (app) => {
       else if(action === 'clone-student') cloneStudent(el.dataset.studentId);
       else if(action === 'delete-student') markStudentDeleted(el.dataset.studentId, true);
       else if(action === 'restore-student') markStudentDeleted(el.dataset.studentId, false);
+    });
+  });
+
+  app.querySelectorAll('th[data-sort-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      sort = (sort.key === key) ? { key, dir: -sort.dir } : { key, dir: 1 };
+      render();
     });
   });
 
