@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Workshop Manager</title>
+<style>
+/* Workshop Manager — roster + template-Folder cloning, on the shared app design tokens */
+/* ******************************************************************************** */
+/* == Tokens ====================================================================== */
+:root {
+  --primary: #4A90E2;
+  --primary-light: #e7f3ff;
+  --danger: #d32f2f;
+  --danger-light: #fdecea;
+  --warn: #b45309;
+  --warn-light: #fef3c7;
+  --success: #15803d;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
+
+/* == Reset ======================================================================= */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  padding: 16px;
+  background: var(--gray-50);
+  color: var(--gray-900);
+  font-size: 14px;
+}
+
+/* == Layout ====================================================================== */
+.container { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+.card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: visible;
+}
+.card-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-header h2 { font-size: 16px; font-weight: 600; }
+.card-body { padding: 16px 20px; }
+
+/* == Buttons / inputs ============================================================ */
+button {
+  font: inherit;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 7px 14px;
+  background: var(--gray-100);
+  color: var(--gray-800);
+}
+button:hover { background: var(--gray-200); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--primary); color: white; }
+button.primary:hover:not(:disabled) { background: #3a7bc8; }
+button.danger { background: var(--danger); color: white; }
+button.danger:hover:not(:disabled) { background: #b02724; }
+button.icon {
+  padding: 4px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  color: var(--gray-500);
+}
+button.icon:hover { background: var(--gray-100); color: var(--gray-800); }
+button.small { padding: 4px 10px; font-size: 13px; }
+
+input[type="text"] {
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  width: 100%;
+  background: white;
+}
+input[type="text"]:focus { outline: 2px solid var(--primary-light); border-color: var(--primary); }
+
+svg.mi { width: 18px; height: 18px; fill: currentColor; vertical-align: middle; }
+
+/* == Config rows ================================================================= */
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+.config-row:last-child { border-bottom: none; }
+.config-label { width: 170px; flex-shrink: 0; font-weight: 600; color: var(--gray-600); }
+.config-value { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.config-value .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+a.folder-link {
+  color: var(--primary);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+a.folder-link:hover { text-decoration: underline; }
+.unset { color: var(--warn); font-style: italic; }
+.config-edit { flex: 1 1 auto; display: flex; gap: 8px; align-items: center; }
+.hint { font-size: 12px; color: var(--gray-500); margin-top: 4px; }
+.inline-error { font-size: 12px; color: var(--danger); margin-top: 4px; }
+
+/* == Chips (owners) ============================================================== */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--gray-100);
+  border-radius: 999px;
+  padding: 3px 6px 3px 10px;
+  font-size: 13px;
+  max-width: 280px;
+}
+.chip .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chip .chip-email { color: var(--gray-500); }
+
+/* == Roster table ================================================================ */
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--gray-500);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--gray-200);
+}
+td { padding: 10px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
+tr.deleted td { color: var(--gray-400); }
+tr.deleted .student-name { text-decoration: line-through; }
+td .sub { font-size: 12px; color: var(--gray-500); }
+tr.deleted td .sub { color: var(--gray-400); }
+.status-cloned { color: var(--success); }
+.status-progress { color: var(--primary); }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+.add-row { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; }
+.add-row .field { flex: 1 1 0; position: relative; }
+
+/* == Typeahead =================================================================== */
+.typeahead-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  max-height: 320px;
+  overflow-y: auto;
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 50;
+  padding: 6px 4px;
+}
+.typeahead-section { font-size: 12px; font-weight: 600; color: var(--gray-500); padding: 4px 8px; }
+.typeahead-item { padding: 6px 8px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.typeahead-item:hover, .typeahead-item.focused { background: var(--gray-100); }
+.typeahead-item img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.typeahead-item .avatar-fallback {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  background: var(--primary-light); color: var(--primary);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600;
+}
+.typeahead-item .who { min-width: 0; }
+.typeahead-item .who .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.typeahead-item .who .e { font-size: 12px; color: var(--gray-500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.typeahead-empty { padding: 6px 8px; color: var(--gray-500); font-size: 13px; }
+.selected-user {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--primary-light);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.selected-user .who { min-width: 0; flex: 1 1 auto; }
+
+/* == Modal ======================================================================= */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(17, 24, 39, 0.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  width: min(480px, calc(100vw - 32px));
+  overflow: hidden;
+}
+.modal-header { padding: 14px 20px; font-size: 16px; font-weight: 600; border-bottom: 1px solid var(--gray-200); }
+.modal.loud .modal-header { background: var(--danger-light); color: var(--danger); }
+.modal-body { padding: 16px 20px; color: var(--gray-700); line-height: 1.5; }
+.modal-body .type-confirm { margin-top: 12px; }
+.modal-footer { padding: 12px 20px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--gray-200); }
+
+/* == Banner / toast ============================================================== */
+.banner {
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: var(--warn-light);
+  color: var(--warn);
+  line-height: 1.5;
+}
+.banner.error { background: var(--danger-light); color: var(--danger); }
+#toasts {
+  position: fixed; right: 16px; bottom: 16px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 200;
+  max-width: 380px;
+}
+.toast {
+  background: var(--gray-800); color: white;
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  display: flex; gap: 10px; align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.toast.error { background: var(--danger); }
+.toast button.icon { color: rgba(255, 255, 255, 0.8); flex-shrink: 0; }
+.toast button.icon:hover { background: rgba(255, 255, 255, 0.15); color: white; }
+</style>
+</head>
+<body>
+  <div class="container" id="app"></div>
+  <div id="toasts"></div>
+
+<script>
+(() => {
+'use strict';
+
+// Workshop Manager
+// Two configured Folders (Template, Classroom), a student roster, and per-student
+// cloning of the Template tree with an incremental re-clone (additions only). All
+// state rides app-state; the template→copy mapping per student is the re-clone index.
+// ********************************************************************************
+// == Constants ===================================================================
+const CHARMIQ_URI_SCHEME = 'charmiq://';
+// URI scopes that copy via the richtext.copy Command; folders recurse; anything
+// else (assets, platform pages, agent tasks) is reported as skipped
+const RICHTEXT_SCOPES = new Set(['workspace', 'charm', 'chat', 'source']);
+const SHARE_ROLES = new Set(['owner', 'manager', 'editor', 'commenter', 'viewer']);
+const DEFAULT_PATTERN = 'Workshop — {name}';
+const LIST_PAGE_LIMIT = 100;
+const LIST_PAGE_CAP = 50;
+const TYPEAHEAD_LIMIT = 5;
+const TYPEAHEAD_DEBOUNCE_MS = 200;
+const OBSERVABLE_TIMEOUT_MS = 8000;
+
+const ICONS = {
+  edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
+  openInNew: 'M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z',
+  close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+};
+
+// == State =======================================================================
+// persisted (app-state) — SEE: normalizeState() for the authoritative shape
+let state = null;
+let lastWrittenJson = null;
+
+// session-only UI state
+let services = { command: null, userProfile: null, authUser: null };
+let authState = null;
+let editingField = null/*'template' | 'classroom' | 'pattern' | null*/;
+let editError = null;
+let busyStudentId = null/*one clone at a time*/;
+let progressText = new Map()/*studentId → status line*/;
+let addStudent = { name: '', user: null/*{userId, name, email}*/ };
+let ownerPickerOpen = false;
+
+const defaultState = () => ({
+  config: {
+    templateFolderId: null, templateFolderName: null,
+    classroomFolderId: null, classroomFolderName: null,
+    folderNamePattern: DEFAULT_PATTERN,
+    owners: [],
+  },
+  students: [],
+});
+
+const normalizeState = (raw) => {
+  const base = defaultState();
+  if(!raw || typeof raw !== 'object') return base;
+  const config = { ...base.config, ...(raw.config && typeof raw.config === 'object' ? raw.config : {}) };
+  if(!Array.isArray(config.owners)) config.owners = [];
+  const students = (Array.isArray(raw.students) ? raw.students : []).map(s => ({
+    id: s.id, name: s.name || '', userId: s.userId || null, email: s.email || '',
+    profileName: s.profileName || '',
+    deleted: s.deleted === true,
+    folderId: s.folderId || null, folderName: s.folderName || null,
+    clonedAt: s.clonedAt || null,
+    mapping: (s.mapping && typeof s.mapping === 'object') ? s.mapping : {},
+  })).filter(s => s.id);
+  return { config, students };
+};
+
+// == Utilities ===================================================================
+const esc = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+const icon = (name) => `<svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
+
+const generateId = () => 'st_' + (window.crypto?.randomUUID?.() ?? (Date.now().toString(36) + Math.random().toString(36).slice(2, 10)));
+
+// the embedding platform page's origin serves folder links; the referrer is that page
+const platformOrigin = () => {
+  try { if(document.referrer) return new URL(document.referrer).origin; } catch { /* fall through */ }
+  return 'https://team.charmiq.ai';
+};
+const folderUri = (folderId) => `${CHARMIQ_URI_SCHEME}folder/${folderId}`;
+const folderWebUrl = (folderId) => `${platformOrigin()}/folder/${folderId}`;
+const uriScope = (uri) => { const rest = String(uri || '').slice(CHARMIQ_URI_SCHEME.length); return rest.slice(0, rest.indexOf('/')); };
+const uriId = (uri) => { const rest = String(uri || '').slice(CHARMIQ_URI_SCHEME.length); return rest.slice(rest.indexOf('/') + 1).split(/[?#]/)[0]; };
+
+// accepts a web URL (…/folder/<id>), a charmiq://folder/<id> URI, or a bare id
+const parseFolderRef = (input) => {
+  const trimmed = String(input || '').trim();
+  if(!trimmed) return null;
+  const webMatch = trimmed.match(/\/folder\/([A-Za-z0-9_-]+)/);
+  if(webMatch) return webMatch[1];
+  if(trimmed.startsWith(CHARMIQ_URI_SCHEME)) return uriScope(trimmed) === 'folder' ? uriId(trimmed) : null;
+  if(/^[A-Za-z0-9_-]{15,}$/.test(trimmed)) return trimmed;
+  return null;
+};
+
+const formatDate = (iso) => {
+  if(!iso) return '';
+  try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); } catch { return iso; }
+};
+
+const displayName = (profile) => {
+  const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ').trim();
+  return name || profile?.username || profile?.email || '(unnamed)';
+};
+
+// first emission of a bridge observable as a Promise
+const firstEmission = (observable, timeoutMs = OBSERVABLE_TIMEOUT_MS) => new Promise((resolve, reject) => {
+  let settled = false;
+  let subscription = null;
+  const finish = (fn, value) => {
+    if(settled) return;
+    settled = true;
+    clearTimeout(timer);
+    try { subscription?.unsubscribe?.(); } catch { /* disposed */ }
+    fn(value);
+  };
+  const timer = setTimeout(() => finish(reject, new Error('Timed out waiting for the platform')), timeoutMs);
+  try {
+    subscription = observable.subscribe({
+      next: (value) => finish(resolve, value),
+      error: (error) => finish(reject, error),
+    });
+    if(settled) { try { subscription?.unsubscribe?.(); } catch { /* disposed */ } }
+  } catch(error) { finish(reject, error); }
+});
+
+// MCP tool results may arrive structured, wrapped, or as text content
+const normalizeToolResult = (result) => {
+  if(result == null) return {};
+  if(result.structuredContent && typeof result.structuredContent === 'object') return result.structuredContent;
+  if(Array.isArray(result.content)) {
+    const text = result.content.filter(c => c && c.type === 'text').map(c => c.text).join('\n');
+    try { return JSON.parse(text); } catch { return { text }; }
+  }
+  return result;
+};
+
+// == Platform calls ==============================================================
+const callVfs = async (tool, args) => normalizeToolResult(await window.charmiq.mcp.callTool('vfs', tool, args));
+
+const execCommand = async (id, args) => {
+  if(!services.command) throw new Error('The Command service is unavailable — reload the page');
+  return await services.command.execute({ id, args });
+};
+
+const listDirAll = async (uri) => {
+  const entries = [];
+  let offset = 0;
+  for(let page = 0; page < LIST_PAGE_CAP; page++) {
+    const result = await callVfs('list_dir', { uri, limit: LIST_PAGE_LIMIT, offset });
+    const pageEntries = Array.isArray(result.entries) ? result.entries : [];
+    entries.push(...pageEntries);
+    if(!result.hasMore || pageEntries.length < 1) return entries;
+    offset += pageEntries.length;
+  }
+  throw new Error(`Folder listing exceeded ${LIST_PAGE_CAP * LIST_PAGE_LIMIT} entries`);
+};
+
+const describeUri = async (uri, verbose = false) => await callVfs('describe_file', verbose ? { uri, verbose: true } : { uri });
+
+const resolveFolderName = async (folderId) => {
+  const described = await describeUri(folderUri(folderId));
+  if(typeof described.name === 'string' && described.name.trim()) return described.name.trim();
+  if(typeof described.text === 'string') { const line = described.text.split('\n')[0]; if(line) return line; }
+  return folderId;
+};
+
+// existing guest shares on a Folder (defensive across result shapes); merged back
+// on permission.set since that Command replaces the complete map
+const readFolderShares = async (folderId) => {
+  try {
+    const described = await describeUri(folderUri(folderId), true/*verbose — includes shares*/);
+    const shares = described.shares;
+    let pairs = [];
+    if(Array.isArray(shares)) pairs = shares.map(s => [s.userId ?? s.user ?? s.id, s.role]);
+    else if(shares && typeof shares === 'object') pairs = Object.entries(shares).map(([userId, value]) => [userId, typeof value === 'string' ? value : value?.role]);
+    return pairs.filter(([userId, role]) => userId && SHARE_ROLES.has(role));
+  } catch { return []; }
+};
+
+// == Persistence =================================================================
+// fetch-merge-set: every write re-reads current state and applies a targeted
+// mutation so concurrent writers only lose at the whole-blob boundary
+const persist = async (mutate) => {
+  const fetched = normalizeState(await window.charmiq.appState.get());
+  const next = mutate(fetched) || fetched;
+  lastWrittenJson = JSON.stringify(next);
+  await window.charmiq.appState.set(next);
+  state = next;
+  render();
+};
+
+const replaceStudent = (students, updated) => students.map(s => s.id === updated.id ? updated : s);
+
+const anyClones = () => state.students.some(s => !s.deleted && Object.keys(s.mapping).length > 0);
+
+// == Toasts ======================================================================
+const toast = (message, { error = false } = {}) => {
+  const el = document.createElement('div');
+  el.className = 'toast' + (error ? ' error' : '');
+  el.innerHTML = `<div style="flex:1 1 auto; min-width:0;">${esc(message)}</div><button class="icon" title="Dismiss">${icon('close')}</button>`;
+  el.querySelector('button').addEventListener('click', () => el.remove());
+  document.getElementById('toasts').appendChild(el);
+  if(!error) setTimeout(() => el.remove(), 6000);
+};
+
+// == Confirm modal ===============================================================
+// loud mode renders the danger header and requires typing the confirmation word
+const confirmModal = ({ title, bodyHtml, confirmLabel = 'Confirm', loud = false, typeToConfirm = null }) => new Promise((resolve) => {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal${loud ? ' loud' : ''}">
+      <div class="modal-header">${esc(title)}</div>
+      <div class="modal-body">
+        ${bodyHtml}
+        ${typeToConfirm ? `<div class="type-confirm"><input type="text" placeholder="Type &quot;${esc(typeToConfirm)}&quot; to confirm"></div>` : ''}
+      </div>
+      <div class="modal-footer">
+        <button data-action="cancel">Cancel</button>
+        <button data-action="confirm" class="${loud ? 'danger' : 'primary'}" ${typeToConfirm ? 'disabled' : ''}>${esc(confirmLabel)}</button>
+      </div>
+    </div>`;
+  const confirmButton = overlay.querySelector('[data-action="confirm"]');
+  const input = overlay.querySelector('.type-confirm input');
+  if(input) input.addEventListener('input', () => { confirmButton.disabled = input.value.trim().toLowerCase() !== typeToConfirm.toLowerCase(); });
+  const close = (value) => { overlay.remove(); resolve(value); };
+  overlay.querySelector('[data-action="cancel"]').addEventListener('click', () => close(false));
+  confirmButton.addEventListener('click', () => close(true));
+  overlay.addEventListener('click', (event) => { if(event.target === overlay) close(false); });
+  document.body.appendChild(overlay);
+  (input ?? confirmButton).focus();
+});
+
+// == User typeahead ==============================================================
+// mirrors the platform's user search sections: active-Organization Members, Teams,
+// and an exact-email fall-through when the scoped sections come up empty
+const searchProfiles = async (filter) => {
+  if(!services.userProfile) return [];
+  const tuples = await firstEmission(services.userProfile.typeaheadSearchProfiles$(filter));
+  return Array.isArray(tuples) ? tuples : [];
+};
+
+const searchUserSections = async (query) => {
+  const sections = [];
+  const organizationId = authState?.activeOrg?.id ?? null;
+  const teamIds = authState?.profilePrivate?.favoriteTeamIds ?? null;
+  if(organizationId) {
+    try { const tuples = await searchProfiles({ query, organizationId, limit: TYPEAHEAD_LIMIT }); if(tuples.length) sections.push({ label: 'Organization', tuples }); }
+    catch { /* section unavailable */ }
+  }
+  if(Array.isArray(teamIds) && teamIds.length > 0) {
+    try { const tuples = await searchProfiles({ query, teamIds, limit: TYPEAHEAD_LIMIT }); if(tuples.length) sections.push({ label: 'Teams', tuples }); }
+    catch { /* section unavailable */ }
+  }
+  if(sections.length < 1) {
+    // exact-email fall-through: an unscoped search filtered to the exact address
+    try {
+      const tuples = await searchProfiles({ query, limit: TYPEAHEAD_LIMIT * 2 });
+      const exact = tuples.filter(({ obj }) => obj?.email === query);
+      if(exact.length) sections.push({ label: 'Exact email match', tuples: exact });
+    } catch { /* section unavailable */ }
+  }
+  return sections;
+};
+
+const attachUserTypeahead = (input, menu, onSelect) => {
+  let debounceTimer = null;
+  let requestSequence = 0;
+  const closeMenu = () => { menu.style.display = 'none'; menu.innerHTML = ''; };
+  const renderMenu = (sections, query) => {
+    if(!query) { closeMenu(); return; }
+    menu.style.display = 'block';
+    if(sections.length < 1) {
+      menu.innerHTML = `<div class="typeahead-empty">No Platform User found${query.includes('@') ? '' : ' — try the exact email address'}</div>`;
+      return;
+    }
+    menu.innerHTML = sections.map(section => `
+      <div class="typeahead-section">${esc(section.label)}</div>
+      ${section.tuples.map(({ id, obj }) => `
+        <div class="typeahead-item" data-user-id="${esc(id)}" data-name="${esc(displayName(obj))}" data-email="${esc(obj?.email || '')}">
+          ${obj?.profileImageUrl
+            ? `<img src="${esc(obj.profileImageUrl)}" alt="">`
+            : `<span class="avatar-fallback">${esc(displayName(obj).slice(0, 1).toUpperCase())}</span>`}
+          <div class="who"><div class="n">${esc(displayName(obj))}</div><div class="e">${esc(obj?.email || '')}</div></div>
+        </div>`).join('')}
+    `).join('');
+    menu.querySelectorAll('.typeahead-item').forEach(item => {
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault()/*keep the input's focus*/;
+        closeMenu();
+        onSelect({ userId: item.dataset.userId, name: item.dataset.name, email: item.dataset.email });
+      });
+    });
+  };
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const query = input.value.trim();
+    if(!query) { closeMenu(); return; }
+    debounceTimer = setTimeout(async () => {
+      const sequence = ++requestSequence;
+      const sections = await searchUserSections(query);
+      if(sequence !== requestSequence) return/*superseded*/;
+      renderMenu(sections, query);
+    }, TYPEAHEAD_DEBOUNCE_MS);
+  });
+  input.addEventListener('keydown', (event) => {
+    if(event.key === 'Escape') closeMenu();
+    if(event.key === 'Enter') {
+      const first = menu.querySelector('.typeahead-item');
+      if(first) {
+        closeMenu();
+        onSelect({ userId: first.dataset.userId, name: first.dataset.name, email: first.dataset.email });
+      }
+      event.preventDefault();
+    }
+  });
+  input.addEventListener('blur', () => setTimeout(closeMenu, 150)/*allow item mousedown first*/);
+};
+
+// == Template walk ===============================================================
+// BFS from the Template root, parents before children. Returns folders and
+// documents (with parent template-URIs) plus entries of uncopyable scopes.
+const walkTemplate = async (templateFolderId) => {
+  const rootUri = folderUri(templateFolderId);
+  const folders = []/*{uri, name, parentUri}*/;
+  const docs = []/*{uri, name, parentUri}*/;
+  const skipped = []/*{uri, name}*/;
+  const queue = [rootUri];
+  while(queue.length > 0) {
+    const parentUri = queue.shift();
+    const entries = await listDirAll(parentUri);
+    for(const entry of entries) {
+      const scope = uriScope(entry.uri);
+      if(scope === 'folder') {
+        folders.push({ uri: entry.uri, name: entry.name.replace(/\/$/, ''), parentUri });
+        queue.push(entry.uri);
+      } else if(RICHTEXT_SCOPES.has(scope)) {
+        docs.push({ uri: entry.uri, name: entry.name, parentUri });
+      } else {
+        skipped.push({ uri: entry.uri, name: entry.name });
+      }
+    }
+  }
+  return { rootUri, folders, docs, skipped };
+};
+
+// == Clone engine ================================================================
+const setProgress = (studentId, text) => {
+  if(text === null) progressText.delete(studentId); else progressText.set(studentId, text);
+  render();
+};
+
+// the copy Command returns the new RichtextIdentifier (shape-tolerant on the wire)
+const copyIdentifier = (result) => {
+  if(typeof result === 'string') return result;
+  if(result && typeof result === 'object') return result.richtextId ?? result.id ?? null;
+  return null;
+};
+
+const ensureStudentFolder = async (student) => {
+  if(student.folderId) return student;
+  const name = state.config.folderNamePattern.replaceAll('{name}', student.name);
+  const created = await callVfs('create_dir', { uri: folderUri(state.config.classroomFolderId), name });
+  const folderId = created.folderId ?? (created.uri ? uriId(created.uri) : null);
+  if(!folderId) throw new Error('Folder creation returned no id');
+
+  // one permission pass at creation: shares inherited from the Classroom folder are
+  // merged back (permission.set replaces the complete map), then the configured
+  // Owners and the student; later manual share edits are never touched again
+  const permissions = {};
+  for(const [userId, role] of await readFolderShares(folderId)) permissions[userId] = role;
+  for(const owner of state.config.owners) if(owner.userId) permissions[owner.userId] = 'owner';
+  permissions[student.userId] = 'editor';
+  await execCommand('folder.permission.set', { folderId, permissions, sendNotificationEmail: false, sendInviteExternalEmail: false });
+
+  return { ...student, folderId, folderName: name };
+};
+
+const cloneStudent = async (studentId) => {
+  if(busyStudentId) return;
+  const original = state.students.find(s => s.id === studentId);
+  if(!original || original.deleted) return;
+  if(!state.config.templateFolderId || !state.config.classroomFolderId) { toast('Set the Template and Classroom folders first', { error: true }); return; }
+
+  busyStudentId = studentId;
+  const mapping = { ...original.mapping };
+  let student = { ...original, mapping };
+  let copiedCount = 0;
+  let skippedEntries = [];
+  try {
+    setProgress(studentId, 'Reading template…');
+    const walk = await walkTemplate(state.config.templateFolderId);
+    skippedEntries = walk.skipped;
+
+    student = await ensureStudentFolder(student);
+    // persist the created folder immediately so a later failure cannot orphan it
+    if(student.folderId !== original.folderId) {
+      await persist(s => { s.students = replaceStudent(s.students, { ...student, mapping: { ...mapping } }); return s; });
+    }
+
+    // the id of the student-side parent for a template-side parent URI
+    const copyParentId = (templateParentUri) =>
+      templateParentUri === walk.rootUri ? student.folderId : mapping[templateParentUri]?.copyId;
+
+    const pending = walk.folders.filter(f => !mapping[f.uri]).length
+                  + walk.docs.filter(d => !mapping[d.uri]).length;
+    let processed = 0;
+
+    // folders first (BFS order guarantees parents precede children)
+    for(const folder of walk.folders) {
+      if(mapping[folder.uri]) continue;
+      const parentId = copyParentId(folder.parentUri);
+      if(!parentId) throw new Error(`No cloned parent for folder "${folder.name}"`);
+      setProgress(studentId, `Cloning… ${++processed}/${pending}`);
+      const created = await callVfs('create_dir', { uri: folderUri(parentId), name: folder.name });
+      const copyId = created.folderId ?? (created.uri ? uriId(created.uri) : null);
+      if(!copyId) throw new Error(`Folder creation returned no id for "${folder.name}"`);
+      mapping[folder.uri] = { copyId, kind: 'folder', clonedAt: new Date().toISOString() };
+      copiedCount++;
+    }
+
+    for(const doc of walk.docs) {
+      if(mapping[doc.uri]) continue;
+      const parentId = copyParentId(doc.parentUri);
+      if(!parentId) throw new Error(`No cloned parent for "${doc.name}"`);
+      setProgress(studentId, `Cloning… ${++processed}/${pending}`);
+      // record which template version was copied (best-effort; enables future diffing)
+      let templateVersion = null;
+      try { const described = await describeUri(doc.uri); if(typeof described.version === 'number') templateVersion = described.version; } catch { /* version stays null */ }
+      const result = await execCommand('richtext.copy', { richtextId: uriId(doc.uri), parentFolderId: parentId, deep: true });
+      const copyId = copyIdentifier(result);
+      if(!copyId) throw new Error(`Copy returned no id for "${doc.name}"`);
+      mapping[doc.uri] = { copyId, kind: 'doc', templateVersion, clonedAt: new Date().toISOString() };
+      copiedCount++;
+    }
+
+    student = { ...student, mapping, clonedAt: new Date().toISOString() };
+    await persist(s => { s.students = replaceStudent(s.students, student); return s; });
+
+    const skippedNote = skippedEntries.length ? ` (${skippedEntries.length} skipped — not copyable: ${skippedEntries.map(e => e.name).join(', ')})` : '';
+    toast(copiedCount > 0 ? `${student.name}: cloned ${copiedCount} item${copiedCount === 1 ? '' : 's'}${skippedNote}` : `${student.name}: already up to date${skippedNote}`);
+  } catch(error) {
+    // keep whatever completed: the mapping is the re-clone index
+    try { await persist(s => { s.students = replaceStudent(s.students, { ...student, mapping }); return s; }); } catch { /* the mapping write itself failed */ }
+    toast(`${student.name}: clone failed after ${copiedCount} item${copiedCount === 1 ? '' : 's'} — ${error?.message ?? error}`, { error: true });
+  } finally {
+    busyStudentId = null;
+    setProgress(studentId, null);
+  }
+};
+
+// == Config actions ==============================================================
+const FOLDER_FIELDS = {
+  template: { idKey: 'templateFolderId', nameKey: 'templateFolderName', label: 'Template folder' },
+  classroom: { idKey: 'classroomFolderId', nameKey: 'classroomFolderName', label: 'Classroom folder' },
+};
+
+const changeFolderWarning = (field) => field === 'template'
+  ? `<p>Changing the <strong>Template folder</strong> abandons the existing clone index: every already-cloned item no longer matches, so the next re-clone copies the <strong>entire new template</strong> into every student folder alongside what is already there.</p>`
+  : `<p>Changing the <strong>Classroom folder</strong> only affects <strong>future</strong> clones. Folders already created for students stay where they are.</p>`;
+
+const saveFolderEdit = async (field, rawValue) => {
+  const spec = FOLDER_FIELDS[field];
+  const folderId = parseFolderRef(rawValue);
+  if(!folderId) { editError = 'Paste a folder URL, charmiq://folder/… URI, or folder id'; render(); return; }
+  let name;
+  try { name = await resolveFolderName(folderId); }
+  catch(error) { editError = `Cannot read that folder: ${error?.message ?? error}`; render(); return; }
+
+  const loud = anyClones();
+  const confirmed = await confirmModal({
+    title: `Change ${spec.label}?`,
+    bodyHtml: `${changeFolderWarning(field)}<p>New ${spec.label}: <strong>${esc(name)}</strong></p>`,
+    confirmLabel: 'Change folder',
+    loud,
+    typeToConfirm: loud ? 'change' : null,
+  });
+  if(!confirmed) return;
+
+  editingField = null; editError = null;
+  await persist(s => { s.config[spec.idKey] = folderId; s.config[spec.nameKey] = name; return s; });
+};
+
+const savePatternEdit = async (rawValue) => {
+  const pattern = String(rawValue || '').trim();
+  if(!pattern.includes('{name}')) { editError = 'The pattern must contain {name}'; render(); return; }
+  const loud = anyClones();
+  const confirmed = await confirmModal({
+    title: 'Change folder name pattern?',
+    bodyHtml: `<p>The pattern names each student's folder at clone time. Folders already created <strong>keep their current names</strong>; only future clones use the new pattern.</p><p>New pattern: <strong>${esc(pattern)}</strong></p>`,
+    confirmLabel: 'Change pattern',
+    loud,
+    typeToConfirm: loud ? 'change' : null,
+  });
+  if(!confirmed) return;
+  editingField = null; editError = null;
+  await persist(s => { s.config.folderNamePattern = pattern; return s; });
+};
+
+const addOwner = async (user) => {
+  if(state.config.owners.some(o => o.userId === user.userId)) { toast(`${user.name} is already an Owner`); return; }
+  ownerPickerOpen = false;
+  await persist(s => { s.config.owners = [...s.config.owners, user]; return s; });
+};
+
+const removeOwner = async (userId) => {
+  const owner = state.config.owners.find(o => o.userId === userId);
+  if(!owner) return;
+  const confirmed = await confirmModal({
+    title: 'Remove Owner?',
+    bodyHtml: `<p><strong>${esc(owner.name)}</strong> will not be added to folders cloned from now on. Folders already shared with them are <strong>not</strong> changed.</p>`,
+    confirmLabel: 'Remove',
+  });
+  if(!confirmed) return;
+  await persist(s => { s.config.owners = s.config.owners.filter(o => o.userId !== userId); return s; });
+};
+
+// == Roster actions ==============================================================
+const addStudentRow = async () => {
+  const name = addStudent.name.trim();
+  const user = addStudent.user;
+  if(!name || !user) return;
+  addStudent = { name: '', user: null };
+  await persist(s => {
+    s.students = [...s.students, {
+      id: generateId(), name, userId: user.userId, email: user.email, profileName: user.name,
+      deleted: false, folderId: null, folderName: null, clonedAt: null, mapping: {},
+    }];
+    return s;
+  });
+};
+
+const markStudentDeleted = async (studentId, deleted) => {
+  const student = state.students.find(s => s.id === studentId);
+  if(!student) return;
+  if(deleted) {
+    const confirmed = await confirmModal({
+      title: 'Mark student deleted?',
+      bodyHtml: `<p><strong>${esc(student.name)}</strong> stays in the list (grayed out) and their cloned folder is untouched. This can be undone with Restore.</p>`,
+      confirmLabel: 'Mark deleted',
+    });
+    if(!confirmed) return;
+  }
+  await persist(s => { s.students = s.students.map(st => st.id === studentId ? { ...st, deleted } : st); return s; });
+};
+
+// == Render ======================================================================
+const folderRowHtml = (field) => {
+  const spec = FOLDER_FIELDS[field];
+  const folderId = state.config[spec.idKey];
+  const name = state.config[spec.nameKey];
+  if(editingField === field) {
+    return `
+      <div class="config-row">
+        <div class="config-label">${esc(spec.label)}</div>
+        <div style="flex:1 1 auto; min-width:0;">
+          <div class="config-edit">
+            <input type="text" id="edit-input" placeholder="Paste the folder URL (…/folder/…) or id" value="">
+            <button class="primary small" data-action="save-edit">Save</button>
+            <button class="small" data-action="cancel-edit">Cancel</button>
+          </div>
+          ${editError ? `<div class="inline-error">${esc(editError)}</div>` : ''}
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="config-row">
+      <div class="config-label">${esc(spec.label)}</div>
+      <div class="config-value">
+        ${folderId
+          ? `<a class="folder-link" href="${esc(folderWebUrl(folderId))}" target="_blank" rel="noopener" title="${esc(name || folderId)}"><span class="name">${esc(name || folderId)}</span>${icon('openInNew')}</a>`
+          : `<span class="unset">Not set — click the pencil</span>`}
+        <button class="icon" data-action="edit" data-field="${field}" title="Change ${esc(spec.label)}">${icon('edit')}</button>
+      </div>
+    </div>`;
+};
+
+const patternRowHtml = () => {
+  if(editingField === 'pattern') {
+    return `
+      <div class="config-row">
+        <div class="config-label">Folder name pattern</div>
+        <div style="flex:1 1 auto; min-width:0;">
+          <div class="config-edit">
+            <input type="text" id="edit-input" value="${esc(state.config.folderNamePattern)}">
+            <button class="primary small" data-action="save-edit">Save</button>
+            <button class="small" data-action="cancel-edit">Cancel</button>
+          </div>
+          <div class="hint">{name} is replaced with the student's name</div>
+          ${editError ? `<div class="inline-error">${esc(editError)}</div>` : ''}
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="config-row">
+      <div class="config-label">Folder name pattern</div>
+      <div class="config-value">
+        <span class="name">${esc(state.config.folderNamePattern)}</span>
+        <button class="icon" data-action="edit" data-field="pattern" title="Change the pattern">${icon('edit')}</button>
+      </div>
+    </div>`;
+};
+
+const ownersRowHtml = () => `
+  <div class="config-row">
+    <div class="config-label">Folder Owners</div>
+    <div style="flex:1 1 auto; min-width:0;">
+      <div class="chips">
+        ${state.config.owners.map(owner => `
+          <span class="chip" title="${esc(owner.email)}">
+            <span class="chip-name">${esc(owner.name)}</span>
+            <span class="chip-email">${esc(owner.email)}</span>
+            <button class="icon" data-action="remove-owner" data-user-id="${esc(owner.userId)}" title="Remove">${icon('close')}</button>
+          </span>`).join('')}
+        ${ownerPickerOpen
+          ? `<span class="field" style="position:relative; min-width:240px;"><input type="text" id="owner-picker-input" placeholder="Search Platform Users…"><div class="typeahead-menu" id="owner-picker-menu" style="display:none;"></div></span>
+             <button class="small" data-action="close-owner-picker">Cancel</button>`
+          : `<button class="small" data-action="open-owner-picker" ${services.userProfile ? '' : 'disabled title="User search is unavailable — the platform userProfile.search scope has not shipped yet"'}>Add Owner</button>`}
+      </div>
+      <div class="hint">Added as Owner on each student folder at clone time; changing this never rewrites already-cloned folders</div>
+    </div>
+  </div>`;
+
+const studentRowHtml = (student) => {
+  const cloneCount = Object.keys(student.mapping).length;
+  const progress = progressText.get(student.id);
+  const busy = busyStudentId !== null;
+  const statusHtml = progress
+    ? `<span class="status-progress">${esc(progress)}</span>`
+    : cloneCount > 0
+      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'}</span><div class="sub">${esc(formatDate(student.clonedAt))}${student.folderId ? ` · <a class="folder-link" href="${esc(folderWebUrl(student.folderId))}" target="_blank" rel="noopener">open ${icon('openInNew')}</a>` : ''}</div>`
+      : `<span class="sub">Not cloned</span>`;
+  return `
+    <tr class="${student.deleted ? 'deleted' : ''}">
+      <td><span class="student-name">${esc(student.name)}</span></td>
+      <td>${esc(student.profileName)}<div class="sub">${esc(student.email)}</div></td>
+      <td>${statusHtml}</td>
+      <td>
+        <div class="row-actions">
+          ${student.deleted
+            ? `<button class="small" data-action="restore-student" data-student-id="${esc(student.id)}">Restore</button>`
+            : `<button class="small primary" data-action="clone-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''}>${cloneCount > 0 ? 'Re-clone' : 'Clone'}</button>
+               <button class="small" data-action="delete-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''}>Mark deleted</button>`}
+        </div>
+      </td>
+    </tr>`;
+};
+
+const render = () => {
+  const app = document.getElementById('app');
+  if(!window.charmiq) {
+    app.innerHTML = `<div class="banner error">This application must run embedded in a CharmIQ document.</div>`;
+    return;
+  }
+  if(!state) { app.innerHTML = `<div class="banner">Loading…</div>`; return; }
+
+  const configIncomplete = !state.config.templateFolderId || !state.config.classroomFolderId;
+  app.innerHTML = `
+    ${services.command ? '' : `<div class="banner error">The Command service is unavailable — cloning is disabled. Check the application's granted permissions and reload.</div>`}
+    <div class="card">
+      <div class="card-header"><h2>Workshop configuration</h2></div>
+      <div class="card-body">
+        ${folderRowHtml('template')}
+        ${folderRowHtml('classroom')}
+        ${patternRowHtml()}
+        ${ownersRowHtml()}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <h2>Students</h2>
+        <span class="sub" style="color:var(--gray-500); font-size:13px;">${state.students.filter(s => !s.deleted).length} active</span>
+      </div>
+      <div class="card-body">
+        ${configIncomplete ? `<div class="banner" style="margin-bottom:12px;">Set the Template and Classroom folders above before cloning.</div>` : ''}
+        <table>
+          <thead><tr><th style="width:22%;">Student</th><th style="width:30%;">CharmIQ User</th><th style="width:28%;">Cloned</th><th style="width:20%; text-align:right;">Actions</th></tr></thead>
+          <tbody>
+            ${state.students.length ? state.students.map(studentRowHtml).join('') : `<tr><td colspan="4"><span class="sub">No students yet — add the first one below.</span></td></tr>`}
+          </tbody>
+        </table>
+        <div class="add-row">
+          <div class="field"><input type="text" id="add-name" placeholder="Student name" value="${esc(addStudent.name)}"></div>
+          <div class="field">
+            ${addStudent.user
+              ? `<div class="selected-user"><div class="who"><div class="n">${esc(addStudent.user.name)}</div><div class="e" style="font-size:12px; color:var(--gray-500);">${esc(addStudent.user.email)}</div></div><button class="icon" data-action="clear-add-user" title="Clear">${icon('close')}</button></div>`
+              : `<input type="text" id="add-user-input" placeholder="Search Platform Users (name or exact email)…" ${services.userProfile ? '' : 'disabled title="User search is unavailable — the platform userProfile.search scope has not shipped yet"'}>
+                 <div class="typeahead-menu" id="add-user-menu" style="display:none;"></div>`}
+          </div>
+          <button class="primary" data-action="add-student" ${addStudent.name.trim() && addStudent.user ? '' : 'disabled'}>Add student</button>
+        </div>
+        ${services.userProfile ? '' : `<div class="hint">Adding students requires Platform user search, which this application has not been granted yet.</div>`}
+      </div>
+    </div>`;
+
+  bindEvents(app);
+};
+
+// -- Event wiring ----------------------------------------------------------------
+const bindEvents = (app) => {
+  app.querySelectorAll('[data-action]').forEach(el => {
+    const action = el.dataset.action;
+    el.addEventListener('click', () => {
+      if(action === 'edit') { editingField = el.dataset.field; editError = null; render(); document.getElementById('edit-input')?.focus(); }
+      else if(action === 'cancel-edit') { editingField = null; editError = null; render(); }
+      else if(action === 'save-edit') {
+        const value = document.getElementById('edit-input')?.value ?? '';
+        if(editingField === 'pattern') savePatternEdit(value); else saveFolderEdit(editingField, value);
+      }
+      else if(action === 'open-owner-picker') { ownerPickerOpen = true; render(); document.getElementById('owner-picker-input')?.focus(); }
+      else if(action === 'close-owner-picker') { ownerPickerOpen = false; render(); }
+      else if(action === 'remove-owner') removeOwner(el.dataset.userId);
+      else if(action === 'add-student') addStudentRow();
+      else if(action === 'clear-add-user') { addStudent = { ...addStudent, user: null }; render(); }
+      else if(action === 'clone-student') cloneStudent(el.dataset.studentId);
+      else if(action === 'delete-student') markStudentDeleted(el.dataset.studentId, true);
+      else if(action === 'restore-student') markStudentDeleted(el.dataset.studentId, false);
+    });
+  });
+
+  const editInput = document.getElementById('edit-input');
+  if(editInput) editInput.addEventListener('keydown', (event) => {
+    if(event.key === 'Enter') (editingField === 'pattern' ? savePatternEdit : (v) => saveFolderEdit(editingField, v))(editInput.value);
+    if(event.key === 'Escape') { editingField = null; editError = null; render(); }
+  });
+
+  const addNameInput = document.getElementById('add-name');
+  if(addNameInput) addNameInput.addEventListener('input', () => {
+    addStudent = { ...addStudent, name: addNameInput.value };
+    // enable/disable Add without a full re-render (the input keeps focus)
+    const addButton = app.querySelector('[data-action="add-student"]');
+    if(addButton) addButton.disabled = !(addStudent.name.trim() && addStudent.user);
+  });
+
+  const addUserInput = document.getElementById('add-user-input');
+  if(addUserInput) attachUserTypeahead(addUserInput, document.getElementById('add-user-menu'), (user) => {
+    addStudent = { ...addStudent, user };
+    render();
+    document.getElementById('add-name')?.focus();
+  });
+
+  const ownerInput = document.getElementById('owner-picker-input');
+  if(ownerInput) attachUserTypeahead(ownerInput, document.getElementById('owner-picker-menu'), addOwner);
+};
+
+// == Boot ========================================================================
+const boot = async () => {
+  render()/*loading shell*/;
+  if(!window.charmiq) return;
+
+  try { services.command = await window.charmiq.discover('charmiq.service.command'); }
+  catch { services.command = null; }
+  try { services.userProfile = await window.charmiq.discover('charmiq.service.user-profile'); }
+  catch { services.userProfile = null; }
+  try {
+    services.authUser = await window.charmiq.discover('charmiq.service.auth-user');
+    services.authUser?.onAuthUser$?.().subscribe?.((value) => { authState = value; });
+  } catch { services.authUser = null; }
+
+  try {
+    state = normalizeState(await window.charmiq.appState.get());
+    lastWrittenJson = JSON.stringify(state);
+  } catch(error) {
+    state = defaultState();
+    toast(`Could not load saved state: ${error?.message ?? error}`, { error: true });
+  }
+
+  // live refresh for other open copies of this page; own writes echo back and are
+  // suppressed by content equality
+  try {
+    window.charmiq.appState.onChange$().subscribe((incoming) => {
+      const normalized = normalizeState(incoming);
+      const json = JSON.stringify(normalized);
+      if(json === lastWrittenJson) return;
+      state = normalized;
+      lastWrittenJson = json;
+      render();
+    });
+  } catch { /* live refresh unavailable; explicit actions still re-render */ }
+
+  render();
+};
+
+boot();
+})();
+</script>
+</body>
+</html>
