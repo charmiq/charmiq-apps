@@ -4,20 +4,20 @@ Manages the mechanics of running a workshop: a student roster and per-student cl
 of a Template folder into a Classroom folder, with incremental re-clone (additions
 only) as the Template grows.
 
-Unlike the other `apps/`, this is an **inline application** — no `manifest.json`. The
-complete app is `src/index.html`; it embeds in a document inside an `<iframe-app>`
-container with its scopes on the `requested-scopes` attribute.
+Unlike the other `apps/`, this is currently a single-file Source application with no
+`manifest.json`. The complete app is `src/index.html` and is mounted through a
+`charmiq://` URL.
 
 ## Embedding
 
-<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.vfs%22%2C%22command.richtext.copy%22%2C%22command.folder.permission.set%22%5D">
+<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.folder.permission.set%22%5D">
 </iframe-app>
 
 The `requested-scopes` value is the percent-encoded JSON array:
 
 ```json
 ["appState.read", "appState.write", "authUser.state.read", "userProfile.search",
- "mcp.vfs", "command.richtext.copy", "command.folder.permission.set"]
+ "mcp.platform.vfs", "command.richtext.copy", "command.folder.permission.set"]
 ```
 
 | Scope | Used for |
@@ -25,18 +25,16 @@ The `requested-scopes` value is the percent-encoded JSON array:
 | `appState.read` / `appState.write` | All state: folder config, name pattern, Owners, roster, per-student clone mappings |
 | `authUser.state.read` | Active Organization + Teams that scope the user-search sections |
 | `userProfile.search` | The user typeahead (add student / add Owner) — see the platform dependency below |
-| `mcp.vfs` | `list_dir` (template walk), `describe_file` (folder names, document versions, existing shares), `create_dir` (student + sub folders) |
+| `mcp.platform.vfs` | `list_dir` (template walk), `describe_file` (folder names, document versions, existing shares), `create_dir` (student + sub folders) |
 | `command.richtext.copy` | Deep-copies each template document into the student folder |
 | `command.folder.permission.set` | One permission pass on each student folder at creation |
 
 ## Platform dependency: `userProfile.search`
 
 The user typeahead calls `IUserProfileService.typeaheadSearchProfiles$` over the app
-bridge. That method must carry a `@ServiceMethod` decoration (scope
-`userProfile.search`) to be bridge-reachable; until that ships, the app disables the
-add-student and add-Owner pickers and says why. Students and Owners are always
-selected from the search results — a free-typed email is never accepted, which is
-what enforces "must be a Platform User".
+bridge. Students and Owners are always selected from the search
+results — a free-typed email is never accepted, which is what enforces "must be a
+Platform User".
 
 ## Behavior notes
 
