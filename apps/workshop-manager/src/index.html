@@ -200,7 +200,7 @@ tr.deleted td .sub { color: var(--gray-400); }
 /* the status cell renders main + sub lines in every state so switching between
    not-cloned / syncing / cloned never changes the row's height */
 td .status-main { min-height: 20px; }
-.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 
 /* the row stands at the selected-user card's height from the start — picking a
    user never changes the row's height; single-line controls center within it */
@@ -502,6 +502,14 @@ const persist = async (mutate) => {
 const replaceStudent = (students, updated) => students.map(s => s.id === updated.id ? updated : s);
 
 const anyClones = () => state.students.some(s => !s.deleted && Object.keys(s.mapping).length > 0);
+
+// mirror of the platform's hasRole: Admin implies every role
+const hasUserRole = (role) => {
+  const roles = authState?.userRoles ?? {};
+  return (roles['admin'/*UserRole.Admin*/] === true) || (roles[role] === true);
+};
+// the server enforces the role on admin.agent.create — this gate is visibility only
+const canImportCharms = () => hasUserRole('daa'/*UserRole.DefaultAgentAdmin*/);
 
 // cloning requires both configured Folders and they must differ (a template cloned
 // into itself compounds on every re-clone); the roster banner and the per-row Clone
@@ -1072,6 +1080,30 @@ const markStudentDeleted = async (studentId, deleted) => {
   await persist(s => { s.students = s.students.map(st => st.id === studentId ? { ...st, deleted } : st); return s; });
 };
 
+// creates private Agents for the student from their cloned Charm copies
+// (noDuplicate makes re-imports idempotent); Admin / DefaultAgentAdmin only —
+// the server enforces the role regardless of the button gate
+const importCharms = async (studentId) => {
+  if(busyStudentId) return;
+  const student = state.students.find(s => s.id === studentId);
+  if(!student || student.deleted) return;
+  const charmIds = Object.entries(student.mapping)
+    .filter(([templateUri]) => uriScope(templateUri) === 'charm')
+    .map(([, entry]) => entry.copyId);
+  if(charmIds.length < 1) { toast(`${student.name}: no cloned Charms to import`); return; }
+  busyStudentId = studentId;
+  setProgress(studentId, 'Importing Charms…');
+  try {
+    await execCommand('admin.agent.create', { targetUserId: student.userId, promptTemplateIds: charmIds, visibility: 'private', noDuplicate: true });
+    toast(`${student.name}: imported ${charmIds.length} Charm${charmIds.length === 1 ? '' : 's'}`);
+  } catch(error) {
+    toast(`${student.name}: Charm import failed — ${error?.message ?? error}`, { error: true });
+  } finally {
+    busyStudentId = null;
+    setProgress(studentId, null);
+  }
+};
+
 // == Render ======================================================================
 // the editor floats over the row (never reflows the list); the row underneath
 // stays rendered at its standing height
@@ -1184,6 +1216,7 @@ const studentRowHtml = (student) => {
           ${student.deleted
             ? `<button class="small" data-action="restore-student" data-student-id="${esc(student.id)}">Restore</button>`
             : `<button class="small primary" data-action="clone-student" data-student-id="${esc(student.id)}" ${(busy || problem) ? 'disabled' : ''} ${problem ? `title="${esc(problem.message)}"` : ''}>${cloneCount > 0 ? 'Re-clone' : 'Clone'}</button>
+               ${canImportCharms() ? `<button class="small" data-action="import-charms" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''} title="Create private Agents for this student from their cloned Charms">Import Charms</button>` : ''}
                <button class="small" data-action="delete-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''}>Mark deleted</button>`}
         </div>
       </td>
@@ -1264,6 +1297,7 @@ const bindEvents = (app) => {
       else if(action === 'add-student') addStudentRow();
       else if(action === 'clear-add-user') { addStudent = { ...addStudent, user: null }; render(); }
       else if(action === 'clone-student') cloneStudent(el.dataset.studentId);
+      else if(action === 'import-charms') importCharms(el.dataset.studentId);
       else if(action === 'delete-student') markStudentDeleted(el.dataset.studentId, true);
       else if(action === 'restore-student') markStudentDeleted(el.dataset.studentId, false);
     });
@@ -1313,7 +1347,14 @@ const boot = async () => {
   catch { services.userProfile = null; }
   try {
     services.authUser = await window.charmiq.discover('charmiq.service.auth-user');
-    services.authUser?.onAuthUser$?.().subscribe?.((value) => { authState = value; });
+    let lastRolesJson = '';
+    services.authUser?.onAuthUser$?.().subscribe?.((value) => {
+      authState = value;
+      // role-gated buttons appear when the roles arrive; re-render only on a
+      // role change (auth state emits more often than roles change)
+      const rolesJson = JSON.stringify(value?.userRoles ?? {});
+      if(rolesJson !== lastRolesJson) { lastRolesJson = rolesJson; render(); }
+    });
   } catch { services.authUser = null; }
 
   try {

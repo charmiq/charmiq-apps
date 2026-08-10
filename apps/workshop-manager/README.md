@@ -10,7 +10,7 @@ Unlike the other `apps/`, this is currently a single-file Source application wit
 
 ## Embedding
 
-<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%5D">
+<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.admin.agent.create%22%5D">
 </iframe-app>
 
 The `requested-scopes` value is the percent-encoded JSON array:
@@ -18,7 +18,7 @@ The `requested-scopes` value is the percent-encoded JSON array:
 ```json
 ["appState.read", "appState.write", "authUser.state.read", "userProfile.search",
  "mcp.platform.vfs", "command.richtext.copy", "command.folder.permission.set",
- "command.folder.delete"]
+ "command.folder.delete", "command.admin.agent.create"]
 ```
 
 | Scope | Used for |
@@ -30,6 +30,7 @@ The `requested-scopes` value is the percent-encoded JSON array:
 | `command.richtext.copy` | Deep-copies each template document into the student folder |
 | `command.folder.permission.set` | One permission pass on each student folder at creation |
 | `command.folder.delete` | Deletes a removed template folder's copy once it is verifiably empty |
+| `command.admin.agent.create` | Import Charms: creates private Agents for a student from their cloned Charm copies (Admin / DefaultAgentAdmin only) |
 
 ## User search
 
@@ -69,6 +70,11 @@ bridge-denied search reports as unavailable, never as an empty roster.
   affects future clones only.
 - **Interrupted clones are resumable**: the mapping persists after every failure, so
   the next re-clone continues where it stopped.
+- **Import Charms** (per row; visible only to Admin / `DefaultAgentAdmin` — the
+  role gate is UX, the server enforces regardless): dispatches `admin.agent.create`
+  with the student as `targetUserId` and the ids of **their cloned Charm copies**
+  (the mapping's `charm`-scoped entries), `visibility: 'private'`,
+  `noDuplicate: true` so re-imports are idempotent.
 - **State** rides app-state (per-embed, in-document): whole-blob last-write-wins with
   fetch-merge-set writes and an `onChange$` subscription for live refresh of other
   open copies. Collaborators on the hosting document share the state — do not add
