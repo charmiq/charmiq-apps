@@ -44,8 +44,9 @@ bridge-denied search reports as unavailable, never as an empty roster.
 
 - **Clone** walks the Template (BFS, `list_dir`), creates the student folder under
   Classroom named by the pattern (`{name}` → student name), then per entry: folders
-  via `create_dir`, documents via `richtext.copy` with `deep: true` and the explicit
-  target `parentFolderId` (the deep path never falls back to the source's parent).
+  via `create_dir`, documents via a shallow `richtext.copy` with the explicit target
+  `parentFolderId` and `copyToParentFolder: false` (the shallow path's default would
+  land the copy in the template's own folder).
   Each copy is recorded as `templateUri → { copyId, kind, parentUri, templateVersion,
   clonedAt }`; entries cloned before `parentUri` was recorded are backfilled from the
   walk on the next re-clone.
@@ -54,8 +55,13 @@ bridge-denied search reports as unavailable, never as an empty roster.
   removals, and recreates of student-deleted copies. The summary toast itemizes
   every kind; kept folders, out-of-reach items, and failures each get their own
   loud report.
-- **Assets (Files) are not copied** — the platform has no asset copy-into-folder
-  primitive. Skipped entries are reported by name after each clone.
+- **Comments are never cloned and never synced** — clones are shallow and the
+  edit-sync overwrite carries content only, so nothing crosses from the template's
+  comments to a student's copy, and comments on a copy (instructor feedback)
+  survive every overwrite.
+- **Assets (Files) are explicitly ignored** — a deliberate ruling, not only a
+  platform gap (there is no asset copy-into-folder primitive). Skipped entries are
+  reported by name after each clone.
 - **Permissions**: one `folder.permission.set` on the student folder at creation —
   shares inherited from the Classroom folder are merged back (the Command replaces
   the complete map), plus the configured Owners (`owner`) and the student

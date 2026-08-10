@@ -787,7 +787,10 @@ const cloneStudent = async (studentId) => {
       // record which template version was copied (best-effort; drives edit sync)
       let templateVersion = null;
       try { const described = await describeUri(doc.uri); if(typeof described.version === 'number') templateVersion = described.version; } catch { /* version stays null */ }
-      const result = await execCommand('richtext.copy', { richtextId: uriId(doc.uri), parentFolderId: parentId, preserveContextDependents: true, deep: true });
+      // shallow copy: Comments are never cloned. copyToParentFolder must be an
+      // explicit false — the shallow path's default would land the copy in the
+      // source's parent (the template folder) instead of the student's
+      const result = await execCommand('richtext.copy', { richtextId: uriId(doc.uri), parentFolderId: parentId, copyToParentFolder: false, preserveContextDependents: true });
       const copyId = copyIdentifier(result);
       if(!copyId) throw new Error('copy returned no id');
       mapping[doc.uri] = { copyId, kind: 'doc', parentUri: doc.parentUri, templateVersion, clonedAt: new Date().toISOString() };
