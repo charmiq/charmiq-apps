@@ -200,7 +200,7 @@ tr.deleted td .sub { color: var(--gray-400); }
 /* the status cell renders main + sub lines in every state so switching between
    not-cloned / syncing / cloned never changes the row's height */
 td .status-main { min-height: 20px; }
-.row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 
 /* the row stands at the selected-user card's height from the start — picking a
    user never changes the row's height; single-line controls center within it */
@@ -327,6 +327,7 @@ const ICONS = {
   close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   expandLess: 'M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14l-6-6z',
   expandMore: 'M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z',
+  delete: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
 };
 
 // == State =======================================================================
@@ -1082,20 +1083,35 @@ const markStudentDeleted = async (studentId, deleted) => {
 
 // creates private Agents for the student from their cloned Charm copies
 // (noDuplicate makes re-imports idempotent); Admin / DefaultAgentAdmin only —
-// the server enforces the role regardless of the button gate
+// the server enforces the role regardless of the button gate. The detailed
+// result stamps agentImportedAt per entry: created and already-exists both
+// mean the student has an Agent for that Charm
+const charmEntriesOf = (student) => Object.entries(student.mapping).filter(([templateUri]) => uriScope(templateUri) === 'charm');
+
 const importCharms = async (studentId) => {
   if(busyStudentId) return;
   const student = state.students.find(s => s.id === studentId);
   if(!student || student.deleted) return;
-  const charmIds = Object.entries(student.mapping)
-    .filter(([templateUri]) => uriScope(templateUri) === 'charm')
-    .map(([, entry]) => entry.copyId);
-  if(charmIds.length < 1) { toast(`${student.name}: no cloned Charms to import`); return; }
+  const charmEntries = charmEntriesOf(student);
+  if(charmEntries.length < 1) { toast(`${student.name}: no cloned Charms to import`); return; }
   busyStudentId = studentId;
   setProgress(studentId, 'Importing Charms…');
   try {
-    await execCommand('admin.agent.create', { targetUserId: student.userId, promptTemplateIds: charmIds, visibility: 'private', noDuplicate: true });
-    toast(`${student.name}: imported ${charmIds.length} Charm${charmIds.length === 1 ? '' : 's'}`);
+    const result = await execCommand('admin.agent.create', { targetUserId: student.userId, promptTemplateIds: charmEntries.map(([, entry]) => entry.copyId), visibility: 'private', noDuplicate: true });
+    // stamp what the server confirmed; an unrecognized result shape stamps
+    // everything sent (the call succeeded as a whole)
+    const reportedIds = new Set((Array.isArray(result?.results) ? result.results : []).map(item => item.promptTemplateId));
+    const stampedAt = new Date().toISOString();
+    const mapping = { ...student.mapping };
+    for(const [templateUri, entry] of charmEntries) {
+      if((reportedIds.size > 0) && !reportedIds.has(entry.copyId)) continue;
+      mapping[templateUri] = { ...entry, agentImportedAt: stampedAt };
+    }
+    await persist(s => { s.students = replaceStudent(s.students, { ...student, mapping }); return s; });
+    const summary = result?.summary;
+    toast(summary
+      ? `${student.name}: ${summary.created} Charm Agent${summary.created === 1 ? '' : 's'} created, ${summary.alreadyExists} already existed`
+      : `${student.name}: imported ${charmEntries.length} Charm${charmEntries.length === 1 ? '' : 's'}`);
   } catch(error) {
     toast(`${student.name}: Charm import failed — ${error?.message ?? error}`, { error: true });
   } finally {
@@ -1194,16 +1210,21 @@ const headerCellHtml = (key, label, style) =>
 const studentRowHtml = (student) => {
   const cloneCount = Object.keys(student.mapping).length;
   const outOfSyncCount = Object.values(student.mapping).filter(entry => entry.outOfSync).length;
+  const charmEntries = charmEntriesOf(student).map(([, entry]) => entry);
+  const charmsImported = charmEntries.filter(entry => entry.agentImportedAt).length;
+  const charmsPending = charmEntries.length - charmsImported;
+  const lastCharmImportAt = charmEntries.reduce((latest, entry) => ((entry.agentImportedAt ?? '') > latest) ? entry.agentImportedAt : latest, '');
   const progress = progressText.get(student.id);
   const busy = busyStudentId !== null;
   const problem = configProblem();
   const statusSubParts = [];
+  if(charmEntries.length > 0) statusSubParts.push(`<span class="${charmsPending > 0 ? 'status-outofsync' : ''}" title="${esc(`${charmsImported} of ${charmEntries.length} cloned Charm${charmEntries.length === 1 ? '' : 's'} imported as Agents`)}">Charms ${charmsImported}/${charmEntries.length}</span>`);
   if(student.clonedAt) statusSubParts.push(esc(formatDate(student.clonedAt)));
   if(student.folderId) statusSubParts.push(`<a class="folder-link" href="${esc(folderWebUrl(student.folderId))}" target="_blank" rel="noopener">open ${icon('openInNew')}</a>`);
   const statusMain = progress
     ? `<span class="status-progress">${esc(progress)}</span>`
     : cloneCount > 0
-      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'}</span>${outOfSyncCount > 0 ? ` <span class="status-outofsync" title="Copies deliberately left diverged from the template (student-edited, admin chose to leave them)">· ${outOfSyncCount} out of sync</span>` : ''}`
+      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'} cloned</span>${outOfSyncCount > 0 ? ` <span class="status-outofsync" title="Copies deliberately left diverged from the template (student-edited, admin chose to leave them)">· ${outOfSyncCount} out of sync</span>` : ''}`
       : `<span class="sub">Not cloned</span>`;
   const statusHtml = `<div class="status-main">${statusMain}</div><div class="sub">${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
   return `
@@ -1216,8 +1237,8 @@ const studentRowHtml = (student) => {
           ${student.deleted
             ? `<button class="small" data-action="restore-student" data-student-id="${esc(student.id)}">Restore</button>`
             : `<button class="small primary" data-action="clone-student" data-student-id="${esc(student.id)}" ${(busy || problem) ? 'disabled' : ''} ${problem ? `title="${esc(problem.message)}"` : ''}>${cloneCount > 0 ? 'Re-clone' : 'Clone'}</button>
-               ${canImportCharms() ? `<button class="small" data-action="import-charms" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''} title="Create private Agents for this student from their cloned Charms">Import Charms</button>` : ''}
-               <button class="small" data-action="delete-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''}>Mark deleted</button>`}
+               ${canImportCharms() ? `<button class="small" data-action="import-charms" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''} title="${esc(charmEntries.length > 0 ? `${charmsImported} of ${charmEntries.length} Charm${charmEntries.length === 1 ? '' : 's'} imported${lastCharmImportAt ? ` · last ${formatDate(lastCharmImportAt)}` : ''}` : 'Create private Agents for this student from their cloned Charms')}">Import Charms</button>` : ''}
+               <button class="icon" data-action="delete-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''} title="Mark deleted">${icon('delete')}</button>`}
         </div>
       </td>
     </tr>`;
@@ -1256,7 +1277,7 @@ const render = () => {
         ${problem ? `<div class="banner${problem.severity === 'error' ? ' error' : ''}" style="margin-bottom:12px;">${esc(problem.message)}</div>` : ''}
         <div class="table-scroll">
         <table>
-          <thead><tr>${headerCellHtml('name', 'Student', 'width:22%;')}${headerCellHtml('user', 'CharmIQ User', 'width:30%;')}${headerCellHtml('cloned', 'Cloned', 'width:28%;')}${headerCellHtml('status', 'Actions', 'width:20%; text-align:right;')}</tr></thead>
+          <thead><tr>${headerCellHtml('name', 'Student', 'width:22%;')}${headerCellHtml('user', 'CharmIQ User', 'width:26%;')}${headerCellHtml('cloned', 'Status', 'width:26%;')}${headerCellHtml('status', 'Actions', 'width:26%; text-align:right;')}</tr></thead>
           <tbody>
             ${state.students.length ? sortedStudents().map(studentRowHtml).join('') : `<tr><td colspan="4"><span class="sub">No students yet — add the first one below.</span></td></tr>`}
           </tbody>

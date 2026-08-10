@@ -74,7 +74,14 @@ bridge-denied search reports as unavailable, never as an empty roster.
   role gate is UX, the server enforces regardless): dispatches `admin.agent.create`
   with the student as `targetUserId` and the ids of **their cloned Charm copies**
   (the mapping's `charm`-scoped entries), `visibility: 'private'`,
-  `noDuplicate: true` so re-imports are idempotent.
+  `noDuplicate: true` so re-imports are idempotent. The detailed result stamps
+  `agentImportedAt` on each confirmed entry (created and already-exists both count);
+  the button label carries the pending count — "Import Charms (2)" means two cloned
+  Charms have no Agent yet, "Re-import Charms" means none pending — and its tooltip
+  shows imported/total plus the last import date. The ledger records what this app
+  did: a recreated Charm copy (fresh id) correctly shows pending again; a
+  template-removed Charm's Agent survives on the student (deliberately out of
+  scope); the toast reports created vs already-existed from the server's summary.
 - **State** rides app-state (per-embed, in-document): whole-blob last-write-wins with
   fetch-merge-set writes and an `onChange$` subscription for live refresh of other
   open copies. Collaborators on the hosting document share the state — do not add
