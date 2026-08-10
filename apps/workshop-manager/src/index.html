@@ -850,12 +850,11 @@ const cloneStudent = async (studentId) => {
         if(templateVersionNow === null) continue/*cannot compare this round*/;
         if(current.templateVersion == null) { mapping[doc.uri] = { ...current, templateVersion: templateVersionNow }; continue; }/*amnesty*/
         // templateVersion always remains the version the copy's CONTENT came
-        // from (clone or last overwrite); a leave never touches it — the
-        // acknowledgment rides its own field so the divergence stays measurable
+        // from (clone or last overwrite); a leave never touches it, and a
+        // standing divergence re-asks on EVERY sync until resolved
         if(templateVersionNow > current.templateVersion) {
           let overwrite = true;
           if(studentEdited(current, live.version)) {
-            if((current.acknowledgedTemplateVersion ?? -1) >= templateVersionNow) continue/*divergence already acknowledged at this template version*/;
             overwrite = await confirmModal({
               title: 'Template changed — copy was edited',
               bodyHtml: `<p><strong>${esc(doc.name)}</strong> changed in the template, but the copy for <strong>${esc(student.name)}</strong> has been edited since it was cloned. Overwrite the copy with the template version, or leave it as is?</p>`,
@@ -877,7 +876,9 @@ const cloneStudent = async (studentId) => {
             mapping[doc.uri] = updated;
             report.updated++;
           } else {
-            mapping[doc.uri] = { ...current, acknowledgedTemplateVersion: templateVersionNow, outOfSync: true };
+            const left = { ...current, outOfSync: true };
+            delete left.acknowledgedTemplateVersion/*scrub the retired suppression field*/;
+            mapping[doc.uri] = left;
             report.leftAlone.push(doc.name);
           }
         } /* else -- template unchanged since the content was last synced */

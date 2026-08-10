@@ -92,9 +92,9 @@ X = the inverse read of the mapping).
 - **Admin edits**: unedited copy → overwrite silently; edited copy → prompt
   (overwrite / leave). `templateVersion` always remains the version the copy's
   content actually came from (clone or last overwrite) — a leave never touches
-  it. A leave records `outOfSync` plus `acknowledgedTemplateVersion` (which
-  suppresses re-asking until the template changes again); the student's row shows
-  a standing "N out of sync" marker; a later overwrite clears both.
+  it. A leave records `outOfSync` (the student's row shows a standing "N out of
+  sync" marker) and the prompt returns on **every** sync while the divergence
+  stands; an overwrite clears the marker.
 - **Admin deletes a document**: unedited copy → delete; edited copy → prompt.
 - **Admin deletes a folder**: contents first, per the document rules. The folder
   itself deletes only when nothing remains. **Student-created files are never
