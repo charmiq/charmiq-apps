@@ -479,6 +479,10 @@ const replaceStudent = (students, updated) => students.map(s => s.id === updated
 
 const anyClones = () => state.students.some(s => !s.deleted && Object.keys(s.mapping).length > 0);
 
+// cloning requires both configured Folders; the roster banner and the per-row
+// Clone buttons key off the same predicate
+const isConfigIncomplete = () => !state.config.templateFolderId || !state.config.classroomFolderId;
+
 // == Toasts ======================================================================
 const toast = (message, { error = false } = {}) => {
   const el = document.createElement('div');
@@ -916,7 +920,7 @@ const studentRowHtml = (student) => {
         <div class="row-actions">
           ${student.deleted
             ? `<button class="small" data-action="restore-student" data-student-id="${esc(student.id)}">Restore</button>`
-            : `<button class="small primary" data-action="clone-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''}>${cloneCount > 0 ? 'Re-clone' : 'Clone'}</button>
+            : `<button class="small primary" data-action="clone-student" data-student-id="${esc(student.id)}" ${(busy || isConfigIncomplete()) ? 'disabled' : ''} ${isConfigIncomplete() ? 'title="Set the Template and Classroom Folders first"' : ''}>${cloneCount > 0 ? 'Re-clone' : 'Clone'}</button>
                <button class="small" data-action="delete-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''}>Mark deleted</button>`}
         </div>
       </td>
@@ -931,7 +935,7 @@ const render = () => {
   }
   if(!state) { app.innerHTML = `<div class="banner">Loading…</div>`; return; }
 
-  const configIncomplete = !state.config.templateFolderId || !state.config.classroomFolderId;
+  const configIncomplete = isConfigIncomplete();
   app.innerHTML = `
     ${services.command ? '' : `<div class="banner error">The Command service is unavailable — cloning is disabled. Check the application's granted permissions and reload.</div>`}
     <div class="card">
