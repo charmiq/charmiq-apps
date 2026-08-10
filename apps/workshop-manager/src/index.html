@@ -197,6 +197,9 @@ tr.deleted td .sub { color: var(--gray-400); }
 .status-cloned { color: var(--success); }
 .status-outofsync { color: var(--warn); font-weight: 600; }
 .status-progress { color: var(--primary); }
+/* the status cell renders main + sub lines in every state so switching between
+   not-cloned / syncing / cloned never changes the row's height */
+td .status-main { min-height: 20px; }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
 /* the row stands at the selected-user card's height from the start — picking a
@@ -1158,11 +1161,15 @@ const studentRowHtml = (student) => {
   const progress = progressText.get(student.id);
   const busy = busyStudentId !== null;
   const problem = configProblem();
-  const statusHtml = progress
+  const statusSubParts = [];
+  if(student.clonedAt) statusSubParts.push(esc(formatDate(student.clonedAt)));
+  if(student.folderId) statusSubParts.push(`<a class="folder-link" href="${esc(folderWebUrl(student.folderId))}" target="_blank" rel="noopener">open ${icon('openInNew')}</a>`);
+  const statusMain = progress
     ? `<span class="status-progress">${esc(progress)}</span>`
     : cloneCount > 0
-      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'}</span>${outOfSyncCount > 0 ? ` <span class="status-outofsync" title="Copies deliberately left diverged from the template (student-edited, admin chose to leave them)">· ${outOfSyncCount} out of sync</span>` : ''}<div class="sub">${esc(formatDate(student.clonedAt))}${student.folderId ? ` · <a class="folder-link" href="${esc(folderWebUrl(student.folderId))}" target="_blank" rel="noopener">open ${icon('openInNew')}</a>` : ''}</div>`
+      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'}</span>${outOfSyncCount > 0 ? ` <span class="status-outofsync" title="Copies deliberately left diverged from the template (student-edited, admin chose to leave them)">· ${outOfSyncCount} out of sync</span>` : ''}`
       : `<span class="sub">Not cloned</span>`;
+  const statusHtml = `<div class="status-main">${statusMain}</div><div class="sub">${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
   return `
     <tr class="${student.deleted ? 'deleted' : ''}">
       <td><span class="student-name">${esc(student.name)}</span></td>
