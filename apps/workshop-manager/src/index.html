@@ -96,6 +96,10 @@ input[type="text"]:focus { outline: 2px solid var(--primary-light); border-color
 
 svg.mi { width: 18px; height: 18px; fill: currentColor; vertical-align: middle; }
 
+/* truncation discipline: a name never wraps — fixed width, ellipsis, and the full
+   value rides a title tooltip at every use site */
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* == Config rows ================================================================= */
 .config-row {
   position: relative;
@@ -171,7 +175,7 @@ a.folder-link:hover { text-decoration: underline; }
 .roster-card { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .roster-card .card-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .table-scroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed/*percent columns hold — long names truncate instead of stretching the column*/; }
 th {
   position: sticky;
   top: 0;
@@ -191,6 +195,7 @@ th:hover { color: var(--gray-800); }
 th svg.mi { width: 14px; height: 14px; }
 td { padding: 10px; border-bottom: 1px solid var(--gray-100); vertical-align: middle; }
 tr.deleted td { color: var(--gray-400); }
+.student-name { display: block; }
 tr.deleted .student-name { text-decoration: line-through; }
 td .sub { font-size: 12px; color: var(--gray-500); }
 tr.deleted td .sub { color: var(--gray-400); }
@@ -205,10 +210,12 @@ td .status-main { min-height: 20px; }
 /* the row stands at the selected-user card's height from the start — picking a
    user never changes the row's height; single-line controls center within it */
 .add-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
-.add-row .field { flex: 1 1 0; position: relative; height: 46px; display: flex; align-items: center; }
+/* min-width: 0 — a flex item's default min-content width would let a long name
+   stretch the field instead of truncating inside it */
+.add-row .field { flex: 1 1 0; min-width: 0; position: relative; height: 46px; display: flex; align-items: center; }
 .add-row .field input[type="text"] { height: 34px; }
-.add-row > button { height: 34px; }
-.add-row .selected-user { height: 100%; width: 100%; }
+.add-row > button { height: 34px; flex-shrink: 0; white-space: nowrap; }
+.add-row .selected-user { height: 100%; width: 100%; min-width: 0; }
 
 /* == Typeahead =================================================================== */
 .typeahead-menu {
@@ -234,9 +241,10 @@ td .status-main { min-height: 20px; }
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 600;
 }
-.typeahead-item .who { min-width: 0; }
-.typeahead-item .who .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.typeahead-item .who .e { font-size: 12px; color: var(--gray-500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* every .who block (typeahead items, the selected-user card) truncates its lines */
+.who { min-width: 0; }
+.who .n, .who .e { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .e { font-size: 12px; color: var(--gray-500); }
 .typeahead-empty { padding: 6px 8px; color: var(--gray-500); font-size: 13px; }
 .selected-user {
   display: flex; align-items: center; gap: 8px;
@@ -613,7 +621,7 @@ const attachUserTypeahead = (input, menu, onSelect) => {
           ${obj?.profileImageUrl
             ? `<img src="${esc(obj.profileImageUrl)}" alt="">`
             : `<span class="avatar-fallback">${esc(displayName(obj).slice(0, 1).toUpperCase())}</span>`}
-          <div class="who"><div class="n">${esc(displayName(obj))}</div><div class="e">${esc(obj?.email || '')}</div></div>
+          <div class="who"><div class="n" title="${esc(displayName(obj))}">${esc(displayName(obj))}</div><div class="e" title="${esc(obj?.email || '')}">${esc(obj?.email || '')}</div></div>
         </div>`).join('')}
     `).join('');
     menu.querySelectorAll('.typeahead-item').forEach(item => {
@@ -1167,7 +1175,7 @@ const ownersRowHtml = () => `
     <div style="flex:1 1 auto; min-width:0;">
       <div class="chips">
         ${state.config.owners.map(owner => `
-          <span class="chip" title="${esc(owner.email)}">
+          <span class="chip" title="${esc(`${owner.name} · ${owner.email}`)}">
             <span class="chip-name">${esc(owner.name)}</span>
             <span class="chip-email">${esc(owner.email)}</span>
             <button class="icon" data-action="remove-owner" data-user-id="${esc(owner.userId)}" title="Remove">${icon('close')}</button>
@@ -1226,11 +1234,11 @@ const studentRowHtml = (student) => {
     : cloneCount > 0
       ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'} cloned</span>${outOfSyncCount > 0 ? ` <span class="status-outofsync" title="Copies deliberately left diverged from the template (student-edited, admin chose to leave them)">· ${outOfSyncCount} out of sync</span>` : ''}`
       : `<span class="sub">Not cloned</span>`;
-  const statusHtml = `<div class="status-main">${statusMain}</div><div class="sub">${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
+  const statusHtml = `<div class="status-main trunc">${statusMain}</div><div class="sub trunc">${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
   return `
     <tr class="${student.deleted ? 'deleted' : ''}">
-      <td><span class="student-name">${esc(student.name)}</span></td>
-      <td>${esc(student.profileName)}<div class="sub">${esc(student.email)}</div></td>
+      <td><span class="student-name trunc" title="${esc(student.name)}">${esc(student.name)}</span></td>
+      <td><div class="trunc" title="${esc(student.profileName)}">${esc(student.profileName)}</div><div class="sub trunc" title="${esc(student.email)}">${esc(student.email)}</div></td>
       <td>${statusHtml}</td>
       <td>
         <div class="row-actions">
@@ -1287,7 +1295,7 @@ const render = () => {
           <div class="field"><input type="text" id="add-name" placeholder="Student name" value="${esc(addStudent.name)}"></div>
           <div class="field">
             ${addStudent.user
-              ? `<div class="selected-user"><div class="who"><div class="n">${esc(addStudent.user.name)}</div><div class="e" style="font-size:12px; color:var(--gray-500);">${esc(addStudent.user.email)}</div></div><button class="icon" data-action="clear-add-user" title="Clear">${icon('close')}</button></div>`
+              ? `<div class="selected-user"><div class="who"><div class="n" title="${esc(addStudent.user.name)}">${esc(addStudent.user.name)}</div><div class="e" title="${esc(addStudent.user.email)}">${esc(addStudent.user.email)}</div></div><button class="icon" data-action="clear-add-user" title="Clear">${icon('close')}</button></div>`
               : `<input type="text" id="add-user-input" placeholder="Search Platform Users (name or exact email)…" ${services.userProfile ? '' : 'disabled title="User search is unavailable — the platform userProfile.search scope has not shipped yet"'}>
                  <div class="typeahead-menu" id="add-user-menu" style="display:none;"></div>`}
           </div>
