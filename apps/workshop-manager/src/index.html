@@ -727,7 +727,7 @@ const cloneStudent = async (studentId) => {
       // record which template version was copied (best-effort; enables future diffing)
       let templateVersion = null;
       try { const described = await describeUri(doc.uri); if(typeof described.version === 'number') templateVersion = described.version; } catch { /* version stays null */ }
-      const result = await execCommand('richtext.copy', { richtextId: uriId(doc.uri), parentFolderId: parentId, deep: true });
+      const result = await execCommand('richtext.copy', { richtextId: uriId(doc.uri), parentFolderId: parentId, preserveContextDependents: true, deep: true });
       const copyId = copyIdentifier(result);
       if(!copyId) throw new Error(`Copy returned no id for "${doc.name}"`);
       mapping[doc.uri] = { copyId, kind: 'doc', templateVersion, clonedAt: new Date().toISOString() };
