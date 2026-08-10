@@ -479,9 +479,15 @@ const replaceStudent = (students, updated) => students.map(s => s.id === updated
 
 const anyClones = () => state.students.some(s => !s.deleted && Object.keys(s.mapping).length > 0);
 
-// cloning requires both configured Folders; the roster banner and the per-row
-// Clone buttons key off the same predicate
-const isConfigIncomplete = () => !state.config.templateFolderId || !state.config.classroomFolderId;
+// cloning requires both configured Folders and they must differ (a template cloned
+// into itself compounds on every re-clone); the roster banner and the per-row Clone
+// buttons key off the same predicate. Either Folder may still be SET freely — the
+// problem reports at the cloning surface, not the pencil
+const configProblem = () => {
+  if(!state.config.templateFolderId || !state.config.classroomFolderId) return { message: 'Set the Template and Classroom Folders above before cloning.', severity: 'warn' };
+  if(state.config.templateFolderId === state.config.classroomFolderId) return { message: 'The Template and Classroom Folders are the same — cloning would copy the template into itself. Set them to different Folders.', severity: 'error' };
+  return null;
+};
 
 // == Toasts ======================================================================
 const toast = (message, { error = false } = {}) => {
@@ -670,7 +676,8 @@ const cloneStudent = async (studentId) => {
   if(busyStudentId) return;
   const original = state.students.find(s => s.id === studentId);
   if(!original || original.deleted) return;
-  if(!state.config.templateFolderId || !state.config.classroomFolderId) { toast('Set the Template and Classroom folders first', { error: true }); return; }
+  const problem = configProblem();
+  if(problem) { toast(problem.message, { error: true }); return; }
 
   busyStudentId = studentId;
   const mapping = { ...original.mapping };
@@ -906,6 +913,7 @@ const studentRowHtml = (student) => {
   const cloneCount = Object.keys(student.mapping).length;
   const progress = progressText.get(student.id);
   const busy = busyStudentId !== null;
+  const problem = configProblem();
   const statusHtml = progress
     ? `<span class="status-progress">${esc(progress)}</span>`
     : cloneCount > 0
@@ -920,7 +928,7 @@ const studentRowHtml = (student) => {
         <div class="row-actions">
           ${student.deleted
             ? `<button class="small" data-action="restore-student" data-student-id="${esc(student.id)}">Restore</button>`
-            : `<button class="small primary" data-action="clone-student" data-student-id="${esc(student.id)}" ${(busy || isConfigIncomplete()) ? 'disabled' : ''} ${isConfigIncomplete() ? 'title="Set the Template and Classroom Folders first"' : ''}>${cloneCount > 0 ? 'Re-clone' : 'Clone'}</button>
+            : `<button class="small primary" data-action="clone-student" data-student-id="${esc(student.id)}" ${(busy || problem) ? 'disabled' : ''} ${problem ? `title="${esc(problem.message)}"` : ''}>${cloneCount > 0 ? 'Re-clone' : 'Clone'}</button>
                <button class="small" data-action="delete-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''}>Mark deleted</button>`}
         </div>
       </td>
@@ -935,7 +943,7 @@ const render = () => {
   }
   if(!state) { app.innerHTML = `<div class="banner">Loading…</div>`; return; }
 
-  const configIncomplete = isConfigIncomplete();
+  const problem = configProblem();
   app.innerHTML = `
     ${services.command ? '' : `<div class="banner error">The Command service is unavailable — cloning is disabled. Check the application's granted permissions and reload.</div>`}
     <div class="card">
@@ -957,7 +965,7 @@ const render = () => {
         <span class="sub" style="color:var(--gray-500); font-size:13px;">${state.students.filter(s => !s.deleted).length} active</span>
       </div>
       <div class="card-body">
-        ${configIncomplete ? `<div class="banner" style="margin-bottom:12px;">Set the Template and Classroom folders above before cloning.</div>` : ''}
+        ${problem ? `<div class="banner${problem.severity === 'error' ? ' error' : ''}" style="margin-bottom:12px;">${esc(problem.message)}</div>` : ''}
         <table>
           <thead><tr><th style="width:22%;">Student</th><th style="width:30%;">CharmIQ User</th><th style="width:28%;">Cloned</th><th style="width:20%; text-align:right;">Actions</th></tr></thead>
           <tbody>
