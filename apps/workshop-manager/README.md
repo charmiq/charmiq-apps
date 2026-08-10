@@ -10,13 +10,8 @@ container with its scopes on the `requested-scopes` attribute.
 
 ## Embedding
 
-```html
-<iframe-app height="900px" width="100%" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.vfs%22%2C%22command.richtext.copy%22%2C%22command.folder.permission.set%22%5D">
-  <app-source>
-<!-- contents of src/index.html -->
-  </app-source>
+<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.vfs%22%2C%22command.richtext.copy%22%2C%22command.folder.permission.set%22%5D">
 </iframe-app>
-```
 
 The `requested-scopes` value is the percent-encoded JSON array:
 
