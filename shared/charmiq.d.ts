@@ -524,6 +524,15 @@ export interface CharmIQAPI {
    *  and auth config. OAuth auth supports two sub-modes:
    *  - `providerUrl` — platform resolves the integration (ergonomic, no opaque IDs)
    *  - `integrationId` — developer specifies the exact integration (precise / dev)
+   *
+   *  MCP `requestedScopes` identify the authority, not merely the runtime alias:
+   *  - `listServers()` — `mcp.discover`
+   *  - CharmIQ server — `mcp.platform.{serverName}` (for example `mcp.platform.vfs`)
+   *  - Organization server — `mcp.org.{serverId}` (or `mcp.org.*` when discovered dynamically)
+   *  - explicit server — `mcp.adhoc.{connectionName}` (+ `oauth.token` when OAuth-backed)
+   *  Never derive `mcp.{alias}` from a call-site alias; `mcp.vfs` and `mcp.*`
+   *  are not valid MCP call-site declarations.
+   *
    *  @example
    *  // Organization-defined server: discover and connect
    *  const servers = await window.charmiq.mcp.listServers();
