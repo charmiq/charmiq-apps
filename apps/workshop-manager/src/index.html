@@ -29,16 +29,18 @@
 /* == Reset ======================================================================= */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+html, body { height: 100%; }
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   padding: 16px;
   background: var(--gray-50);
   color: var(--gray-900);
   font-size: 14px;
+  overflow: hidden/*the table region is the only scroller*/;
 }
 
 /* == Layout ====================================================================== */
-.container { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.container { max-width: 1100px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 
 .card {
   background: white;
@@ -160,10 +162,15 @@ a.folder-link:hover { text-decoration: underline; }
 .chip .chip-email { color: var(--gray-500); }
 
 /* == Roster table ================================================================ */
-/* the table body scrolls inside a capped region with a sticky header — the page
- * itself never becomes a second scroller. Separate borders: collapsed borders do
- * not stick with a sticky header */
-.table-scroll { max-height: 380px; overflow-y: auto; }
+/* the roster card takes whatever height the configuration card leaves — collapsing
+ * the configuration hands its space to the table, reopening takes it back. The
+ * table region grows with content up to that space then scrolls (sticky header),
+ * so the page itself never becomes a second scroller; a short roster keeps the
+ * add row hugged to the table. Separate borders: collapsed borders do not stick
+ * with a sticky header */
+.roster-card { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.roster-card .card-body { flex: 0 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.table-scroll { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
 th {
   position: sticky;
@@ -1001,7 +1008,7 @@ const render = () => {
         ${ownersRowHtml()}
       </div>`}
     </div>
-    <div class="card">
+    <div class="card roster-card">
       <div class="card-header">
         <h2>Students</h2>
         <span class="sub" style="color:var(--gray-500); font-size:13px;">${state.students.filter(s => !s.deleted).length} active</span>
