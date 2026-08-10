@@ -536,36 +536,39 @@ const searchProfiles = async (filter) => {
   return Array.isArray(tuples) ? tuples : [];
 };
 
+// distinguishes empty results from a search that could not run at all: a service
+// call denied by the bridge (the user-search method is not exposed, or consent was
+// refused) must never render as "no user found"
 const searchUserSections = async (query) => {
   const sections = [];
+  let attempts = 0, failures = 0;
+  const trySection = async (label, filter, pick = (tuples) => tuples) => {
+    attempts++;
+    try {
+      const tuples = pick(await searchProfiles(filter));
+      if(tuples.length) sections.push({ label, tuples });
+    } catch { failures++; }
+  };
   const organizationId = authState?.activeOrg?.id ?? null;
   const teamIds = authState?.profilePrivate?.favoriteTeamIds ?? null;
-  if(organizationId) {
-    try { const tuples = await searchProfiles({ query, organizationId, limit: TYPEAHEAD_LIMIT }); if(tuples.length) sections.push({ label: 'Organization', tuples }); }
-    catch { /* section unavailable */ }
-  }
-  if(Array.isArray(teamIds) && (teamIds.length > 0)) {
-    try { const tuples = await searchProfiles({ query, teamIds, limit: TYPEAHEAD_LIMIT }); if(tuples.length) sections.push({ label: 'Teams', tuples }); }
-    catch { /* section unavailable */ }
-  } /* else -- no teams, or no profilePrivate yet */
-  if(sections.length < 1) {
-    // exact-email fall-through: an unscoped search filtered to the exact address
-    try {
-      const tuples = await searchProfiles({ query, limit: TYPEAHEAD_LIMIT * 2 });
-      const exact = tuples.filter(({ obj }) => obj?.email === query);
-      if(exact.length) sections.push({ label: 'Exact email match', tuples: exact });
-    } catch { /* section unavailable */ }
-  } /* else --there are scoped sections */
-  return sections;
+  if(organizationId) await trySection('Organization', { query, organizationId, limit: TYPEAHEAD_LIMIT });
+  if(Array.isArray(teamIds) && (teamIds.length > 0)) await trySection('Teams', { query, teamIds, limit: TYPEAHEAD_LIMIT });
+  // exact-email fall-through: an unscoped search filtered to the exact address
+  if(sections.length < 1) await trySection('Exact email match', { query, limit: TYPEAHEAD_LIMIT * 2 }, tuples => tuples.filter(({ obj }) => obj?.email === query));
+  return { sections, unavailable: (attempts > 0) && (failures === attempts) };
 };
 
 const attachUserTypeahead = (input, menu, onSelect) => {
   let debounceTimer = null;
   let requestSequence = 0;
   const closeMenu = () => { menu.style.display = 'none'; menu.innerHTML = ''; };
-  const renderMenu = (sections, query) => {
+  const renderMenu = ({ sections, unavailable }, query) => {
     if(!query) { closeMenu(); return; }
     menu.style.display = 'block';
+    if(unavailable) {
+      menu.innerHTML = `<div class="typeahead-empty">User search is unavailable — the platform has not exposed user search to this application</div>`;
+      return;
+    }
     if(sections.length < 1) {
       menu.innerHTML = `<div class="typeahead-empty">No Platform User found${query.includes('@') ? '' : ' — try the exact email address'}</div>`;
       return;
@@ -594,9 +597,9 @@ const attachUserTypeahead = (input, menu, onSelect) => {
     if(!query) { closeMenu(); return; }
     debounceTimer = setTimeout(async () => {
       const sequence = ++requestSequence;
-      const sections = await searchUserSections(query);
+      const result = await searchUserSections(query);
       if(sequence !== requestSequence) return/*superseded*/;
-      renderMenu(sections, query);
+      renderMenu(result, query);
     }, TYPEAHEAD_DEBOUNCE_MS);
   });
   input.addEventListener('keydown', (event) => {
