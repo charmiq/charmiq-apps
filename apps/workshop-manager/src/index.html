@@ -96,6 +96,7 @@ svg.mi { width: 18px; height: 18px; fill: currentColor; vertical-align: middle; 
 
 /* == Config rows ================================================================= */
 .config-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -110,6 +111,18 @@ svg.mi { width: 18px; height: 18px; fill: currentColor; vertical-align: middle; 
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+}
+/* floats over the row — editing never shifts the layout */
+.edit-popover {
+  position: absolute;
+  top: 2px;
+  left: 180px;
+  right: 0;
+  z-index: 60;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 10px 12px;
 }
 a.folder-link {
   color: var(--primary);
@@ -126,17 +139,23 @@ a.folder-link:hover { text-decoration: underline; }
 .inline-error { font-size: 12px; color: var(--danger); margin-top: 4px; }
 
 /* == Chips (owners) ============================================================== */
+/* every control in the row — chip, picker input, buttons — shares one height, so
+   swapping the Add Owner button for the picker never changes the row's height */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chips button.small, .chips input[type="text"] { height: 30px; }
+.chips input[type="text"] { padding: 0 10px; font-size: 13px; }
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 30px;
   background: var(--gray-100);
   border-radius: 999px;
-  padding: 3px 6px 3px 10px;
+  padding: 0 6px 0 10px;
   font-size: 13px;
   max-width: 280px;
 }
+.chip .icon svg.mi { width: 16px; height: 16px; }
 .chip .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .chip .chip-email { color: var(--gray-500); }
 
@@ -160,8 +179,13 @@ tr.deleted td .sub { color: var(--gray-400); }
 .status-progress { color: var(--primary); }
 .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
-.add-row { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; }
-.add-row .field { flex: 1 1 0; position: relative; }
+/* the row stands at the selected-user card's height from the start — picking a
+   user never changes the row's height; single-line controls center within it */
+.add-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+.add-row .field { flex: 1 1 0; position: relative; height: 46px; display: flex; align-items: center; }
+.add-row .field input[type="text"] { height: 34px; }
+.add-row > button { height: 34px; }
+.add-row .selected-user { height: 100%; width: 100%; }
 
 /* == Typeahead =================================================================== */
 .typeahead-menu {
@@ -278,6 +302,8 @@ const ICONS = {
   edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
   openInNew: 'M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z',
   close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+  expandLess: 'M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14l-6-6z',
+  expandMore: 'M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z',
 };
 
 // == State =======================================================================
@@ -288,6 +314,7 @@ let lastWrittenJson = null;
 // session-only UI state
 let services = { command: null, userProfile: null, authUser: null };
 let authState = null;
+let configCollapsed = false/*boot: collapsed iff app-state already exists*/;
 let editingField = null/*'template' | 'classroom' | 'pattern' | null*/;
 let editError = null;
 let busyStudentId = null/*one clone at a time*/;
@@ -389,7 +416,7 @@ const normalizeToolResult = (result) => {
   if(Array.isArray(result.content)) {
     const text = result.content.filter(c => c && c.type === 'text').map(c => c.text).join('\n');
     try { return JSON.parse(text); } catch { return { text }; }
-  }
+  } /* else -- unstructured, non-array content */
   return result;
 };
 
@@ -404,11 +431,11 @@ const execCommand = async (id, args) => {
 const listDirAll = async (uri) => {
   const entries = [];
   let offset = 0;
-  for(let page = 0; page < LIST_PAGE_CAP; page++) {
+  for(let page=0; page<LIST_PAGE_CAP; page++) {
     const result = await callVfs('list_dir', { uri, limit: LIST_PAGE_LIMIT, offset });
     const pageEntries = Array.isArray(result.entries) ? result.entries : [];
     entries.push(...pageEntries);
-    if(!result.hasMore || pageEntries.length < 1) return entries;
+    if(!result.hasMore || (pageEntries.length < 1)) return entries;
     offset += pageEntries.length;
   }
   throw new Error(`Folder listing exceeded ${LIST_PAGE_CAP * LIST_PAGE_LIMIT} entries`);
@@ -507,10 +534,10 @@ const searchUserSections = async (query) => {
     try { const tuples = await searchProfiles({ query, organizationId, limit: TYPEAHEAD_LIMIT }); if(tuples.length) sections.push({ label: 'Organization', tuples }); }
     catch { /* section unavailable */ }
   }
-  if(Array.isArray(teamIds) && teamIds.length > 0) {
+  if(Array.isArray(teamIds) && (teamIds.length > 0)) {
     try { const tuples = await searchProfiles({ query, teamIds, limit: TYPEAHEAD_LIMIT }); if(tuples.length) sections.push({ label: 'Teams', tuples }); }
     catch { /* section unavailable */ }
-  }
+  } /* else -- no teams, or no profilePrivate yet */
   if(sections.length < 1) {
     // exact-email fall-through: an unscoped search filtered to the exact address
     try {
@@ -518,7 +545,7 @@ const searchUserSections = async (query) => {
       const exact = tuples.filter(({ obj }) => obj?.email === query);
       if(exact.length) sections.push({ label: 'Exact email match', tuples: exact });
     } catch { /* section unavailable */ }
-  }
+  } /* else --there are scoped sections */
   return sections;
 };
 
@@ -569,16 +596,16 @@ const attachUserTypeahead = (input, menu, onSelect) => {
       if(first) {
         closeMenu();
         onSelect({ userId: first.dataset.userId, name: first.dataset.name, email: first.dataset.email });
-      }
+      } /*else -- no selection */
       event.preventDefault();
-    }
+    } /* else -- not 'Enter' */
   });
   input.addEventListener('blur', () => setTimeout(closeMenu, 150)/*allow item mousedown first*/);
 };
 
 // == Template walk ===============================================================
 // BFS from the Template root, parents before children. Returns folders and
-// documents (with parent template-URIs) plus entries of uncopyable scopes.
+// documents (with parent template-URIs) plus entries of uncopyable scopes
 const walkTemplate = async (templateFolderId) => {
   const rootUri = folderUri(templateFolderId);
   const folders = []/*{uri, name, parentUri}*/;
@@ -612,7 +639,7 @@ const setProgress = (studentId, text) => {
 // the copy Command returns the new RichtextIdentifier (shape-tolerant on the wire)
 const copyIdentifier = (result) => {
   if(typeof result === 'string') return result;
-  if(result && typeof result === 'object') return result.richtextId ?? result.id ?? null;
+  if(result && (typeof result === 'object')) return result.richtextId ?? result.id ?? null;
   return null;
 };
 
@@ -655,7 +682,7 @@ const cloneStudent = async (studentId) => {
     // persist the created folder immediately so a later failure cannot orphan it
     if(student.folderId !== original.folderId) {
       await persist(s => { s.students = replaceStudent(s.students, { ...student, mapping: { ...mapping } }); return s; });
-    }
+    } /* else -- folder already existed, no need to persist yet */
 
     // the id of the student-side parent for a template-side parent URI
     const copyParentId = (templateParentUri) =>
@@ -710,13 +737,13 @@ const cloneStudent = async (studentId) => {
 
 // == Config actions ==============================================================
 const FOLDER_FIELDS = {
-  template: { idKey: 'templateFolderId', nameKey: 'templateFolderName', label: 'Template folder' },
-  classroom: { idKey: 'classroomFolderId', nameKey: 'classroomFolderName', label: 'Classroom folder' },
+  template: { idKey: 'templateFolderId', nameKey: 'templateFolderName', label: 'Template Folder' },
+  classroom: { idKey: 'classroomFolderId', nameKey: 'classroomFolderName', label: 'Classroom Folder' },
 };
 
 const changeFolderWarning = (field) => field === 'template'
-  ? `<p>Changing the <strong>Template folder</strong> abandons the existing clone index: every already-cloned item no longer matches, so the next re-clone copies the <strong>entire new template</strong> into every student folder alongside what is already there.</p>`
-  : `<p>Changing the <strong>Classroom folder</strong> only affects <strong>future</strong> clones. Folders already created for students stay where they are.</p>`;
+  ? `<p>Changing the <strong>Template Folder</strong> abandons the existing clone index: every already-cloned item no longer matches, so the next re-clone copies the <strong>entire new template</strong> into every student folder alongside what is already there.</p>`
+  : `<p>Changing the <strong>Classroom Folder</strong> only affects <strong>future</strong> clones. Folders already created for students stay where they are.</p>`;
 
 const saveFolderEdit = async (field, rawValue) => {
   const spec = FOLDER_FIELDS[field];
@@ -726,15 +753,19 @@ const saveFolderEdit = async (field, rawValue) => {
   try { name = await resolveFolderName(folderId); }
   catch(error) { editError = `Cannot read that folder: ${error?.message ?? error}`; render(); return; }
 
-  const loud = anyClones();
-  const confirmed = await confirmModal({
-    title: `Change ${spec.label}?`,
-    bodyHtml: `${changeFolderWarning(field)}<p>New ${spec.label}: <strong>${esc(name)}</strong></p>`,
-    confirmLabel: 'Change folder',
-    loud,
-    typeToConfirm: loud ? 'change' : null,
-  });
-  if(!confirmed) return;
+  // replacing an existing folder warns (loudly once clones exist); a first set is
+  // not a change and commits silently
+  if(state.config[spec.idKey]) {
+    const loud = anyClones();
+    const confirmed = await confirmModal({
+      title: `Change ${spec.label}?`,
+      bodyHtml: `${changeFolderWarning(field)}<p>New ${spec.label}: <strong>${esc(name)}</strong></p>`,
+      confirmLabel: 'Change folder',
+      loud,
+      typeToConfirm: loud ? 'change' : null,
+    });
+    if(!confirmed) return;
+  }
 
   editingField = null; editError = null;
   await persist(s => { s.config[spec.idKey] = folderId; s.config[spec.nameKey] = name; return s; });
@@ -743,15 +774,18 @@ const saveFolderEdit = async (field, rawValue) => {
 const savePatternEdit = async (rawValue) => {
   const pattern = String(rawValue || '').trim();
   if(!pattern.includes('{name}')) { editError = 'The pattern must contain {name}'; render(); return; }
-  const loud = anyClones();
-  const confirmed = await confirmModal({
-    title: 'Change folder name pattern?',
-    bodyHtml: `<p>The pattern names each student's folder at clone time. Folders already created <strong>keep their current names</strong>; only future clones use the new pattern.</p><p>New pattern: <strong>${esc(pattern)}</strong></p>`,
-    confirmLabel: 'Change pattern',
-    loud,
-    typeToConfirm: loud ? 'change' : null,
-  });
-  if(!confirmed) return;
+  // the warning protects folders already created from the pattern; before any
+  // clone exists the change commits silently
+  if(anyClones()) {
+    const confirmed = await confirmModal({
+      title: 'Change Student Folder Name?',
+      bodyHtml: `<p>The name pattern names each student's folder at clone time. Folders already created <strong>keep their current names</strong>; only future clones use the new pattern.</p><p>New pattern: <strong>${esc(pattern)}</strong></p>`,
+      confirmLabel: 'Change name',
+      loud: true,
+      typeToConfirm: 'change',
+    });
+    if(!confirmed) return;
+  }
   editingField = null; editError = null;
   await persist(s => { s.config.folderNamePattern = pattern; return s; });
 };
@@ -804,24 +838,23 @@ const markStudentDeleted = async (studentId, deleted) => {
 };
 
 // == Render ======================================================================
+// the editor floats over the row (never reflows the list); the row underneath
+// stays rendered at its standing height
+const editPopoverHtml = ({ placeholder = '', value = '', hint = null }) => `
+  <div class="edit-popover">
+    <div class="config-edit">
+      <input type="text" id="edit-input" placeholder="${esc(placeholder)}" value="${esc(value)}">
+      <button class="primary small" data-action="save-edit">Save</button>
+      <button class="small" data-action="cancel-edit">Cancel</button>
+    </div>
+    ${hint ? `<div class="hint">${esc(hint)}</div>` : ''}
+    ${editError ? `<div class="inline-error">${esc(editError)}</div>` : ''}
+  </div>`;
+
 const folderRowHtml = (field) => {
   const spec = FOLDER_FIELDS[field];
   const folderId = state.config[spec.idKey];
   const name = state.config[spec.nameKey];
-  if(editingField === field) {
-    return `
-      <div class="config-row">
-        <div class="config-label">${esc(spec.label)}</div>
-        <div style="flex:1 1 auto; min-width:0;">
-          <div class="config-edit">
-            <input type="text" id="edit-input" placeholder="Paste the folder URL (…/folder/…) or id" value="">
-            <button class="primary small" data-action="save-edit">Save</button>
-            <button class="small" data-action="cancel-edit">Cancel</button>
-          </div>
-          ${editError ? `<div class="inline-error">${esc(editError)}</div>` : ''}
-        </div>
-      </div>`;
-  }
   return `
     <div class="config-row">
       <div class="config-label">${esc(spec.label)}</div>
@@ -831,34 +864,19 @@ const folderRowHtml = (field) => {
           : `<span class="unset">Not set — click the pencil</span>`}
         <button class="icon" data-action="edit" data-field="${field}" title="Change ${esc(spec.label)}">${icon('edit')}</button>
       </div>
+      ${(editingField === field) ? editPopoverHtml({ placeholder: 'Paste the folder URL (…/folder/…) or id' }) : ''}
     </div>`;
 };
 
-const patternRowHtml = () => {
-  if(editingField === 'pattern') {
-    return `
-      <div class="config-row">
-        <div class="config-label">Folder name pattern</div>
-        <div style="flex:1 1 auto; min-width:0;">
-          <div class="config-edit">
-            <input type="text" id="edit-input" value="${esc(state.config.folderNamePattern)}">
-            <button class="primary small" data-action="save-edit">Save</button>
-            <button class="small" data-action="cancel-edit">Cancel</button>
-          </div>
-          <div class="hint">{name} is replaced with the student's name</div>
-          ${editError ? `<div class="inline-error">${esc(editError)}</div>` : ''}
-        </div>
-      </div>`;
-  }
-  return `
-    <div class="config-row">
-      <div class="config-label">Folder name pattern</div>
-      <div class="config-value">
-        <span class="name">${esc(state.config.folderNamePattern)}</span>
-        <button class="icon" data-action="edit" data-field="pattern" title="Change the pattern">${icon('edit')}</button>
-      </div>
-    </div>`;
-};
+const patternRowHtml = () => `
+  <div class="config-row">
+    <div class="config-label">Student Folder Name</div>
+    <div class="config-value">
+      <span class="name">${esc(state.config.folderNamePattern)}</span>
+      <button class="icon" data-action="edit" data-field="pattern" title="Change the Student Folder Name">${icon('edit')}</button>
+    </div>
+    ${(editingField === 'pattern') ? editPopoverHtml({ value: state.config.folderNamePattern, hint: `{name} is replaced with the student's name` }) : ''}
+  </div>`;
 
 const ownersRowHtml = () => `
   <div class="config-row">
@@ -917,13 +935,17 @@ const render = () => {
   app.innerHTML = `
     ${services.command ? '' : `<div class="banner error">The Command service is unavailable — cloning is disabled. Check the application's granted permissions and reload.</div>`}
     <div class="card">
-      <div class="card-header"><h2>Workshop configuration</h2></div>
+      <div class="card-header">
+        <h2>Workshop Configuration</h2>
+        <button class="icon" data-action="toggle-config" title="${configCollapsed ? 'Expand' : 'Collapse'}">${icon(configCollapsed ? 'expandMore' : 'expandLess')}</button>
+      </div>
+      ${configCollapsed ? '' : `
       <div class="card-body">
         ${folderRowHtml('template')}
         ${folderRowHtml('classroom')}
         ${patternRowHtml()}
         ${ownersRowHtml()}
-      </div>
+      </div>`}
     </div>
     <div class="card">
       <div class="card-header">
@@ -961,6 +983,7 @@ const bindEvents = (app) => {
     const action = el.dataset.action;
     el.addEventListener('click', () => {
       if(action === 'edit') { editingField = el.dataset.field; editError = null; render(); document.getElementById('edit-input')?.focus(); }
+      else if(action === 'toggle-config') { configCollapsed = !configCollapsed; render(); }
       else if(action === 'cancel-edit') { editingField = null; editError = null; render(); }
       else if(action === 'save-edit') {
         const value = document.getElementById('edit-input')?.value ?? '';
@@ -1017,12 +1040,23 @@ const boot = async () => {
   } catch { services.authUser = null; }
 
   try {
-    state = normalizeState(await window.charmiq.appState.get());
+    const raw = await window.charmiq.appState.get();
+    // a configured embed opens with the configuration collapsed; a fresh one open
+    configCollapsed = (raw != null) && ((typeof raw !== 'object') || (Object.keys(raw).length > 0));
+    state = normalizeState(raw);
     lastWrittenJson = JSON.stringify(state);
   } catch(error) {
     state = defaultState();
     toast(`Could not load saved state: ${error?.message ?? error}`, { error: true });
   }
+
+  // a click outside the floating editor (and outside any confirm modal) cancels it
+  document.addEventListener('mousedown', (event) => {
+    if(!editingField) return;
+    const target = event.target;
+    if(target.closest('.edit-popover') || target.closest('[data-action="edit"]') || target.closest('.modal-overlay')) return;
+    editingField = null; editError = null; render();
+  });
 
   // live refresh for other open copies of this page; own writes echo back and are
   // suppressed by content equality
