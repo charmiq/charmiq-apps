@@ -818,6 +818,7 @@ const syncStudent = async (studentId, shared) => {
   let student = { ...original, mapping };
   const report = { added: 0, moved: 0, updated: 0, recreated: 0, renamed: 0, removed: 0, leftAlone: [], keptFolders: [], outOfReach: [], failed: [] };
   try {
+    setProgress(studentId, 'Checking…')/*claim the row before the first await*/;
     student = await ensureStudentFolder(student, report);
     // persist the created folder immediately so a later failure cannot orphan it
     if(student.folderId !== original.folderId) {
@@ -1097,7 +1098,8 @@ const runSync = async (studentIds) => {
     let shared;
     try { shared = await gatherTemplate(); }
     catch(error) { toast(`Template read failed — ${error?.message ?? error}`, { error: true }); return; }
-    setProgress(studentIds[0], null);
+    // no progress clear here — the row hands off from 'Reading template…'
+    // straight into the student's own phases, never flashing its resting state
     if(shared.walk.skipped.length) toast(`${shared.walk.skipped.length} not copyable (ignored): ${shared.walk.skipped.map(e => e.name).join(', ')}`);
     for(const studentId of studentIds) {
       busyStudentId = studentId;
