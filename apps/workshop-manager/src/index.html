@@ -1260,6 +1260,9 @@ const render = () => {
   }
   if(!state) { app.innerHTML = `<div class="banner">Loading…</div>`; return; }
 
+  // innerHTML replacement destroys the scroller — carry its position across
+  const scrollTop = app.querySelector('.table-scroll')?.scrollTop ?? 0;
+
   const problem = configProblem();
   app.innerHTML = `
     ${services.command ? '' : `<div class="banner error">The Command service is unavailable — cloning is disabled. Check the application's granted permissions and reload.</div>`}
@@ -1304,6 +1307,9 @@ const render = () => {
         ${services.userProfile ? '' : `<div class="hint">Adding students requires Platform user search, which this application has not been granted yet.</div>`}
       </div>
     </div>`;
+
+  const scroller = app.querySelector('.table-scroll');
+  if(scroller) scroller.scrollTop = scrollTop;
 
   bindEvents(app);
 };
