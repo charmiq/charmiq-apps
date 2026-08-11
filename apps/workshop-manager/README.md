@@ -130,7 +130,12 @@ X = the inverse read of the mapping).
   failing action's permission-denied is caught and reported as such; no proactive
   reach checks.
 - **Conflicts resolve per student**: cloning runs one student at a time (class
-  size ~30) and prompts within that run.
+  size ~30) and prompts within that run. Within a student, reads gather through a
+  bounded pool (8 concurrent — the hard fan-out cap), decisions and their prompts
+  run back-to-back with no I/O between them, and writes apply through the pool
+  behind ordering barriers (folder levels, folders before documents, removals
+  last). **Sync All** runs every active student sequentially over one shared
+  template gather (the walk and template versions are computed once per run).
 - **Mapping fields that carry the contract**: `parentUri` at clone time (existing
   entries are backfilled from the walk on the next re-clone), the template
   document's version, and `copyVersion` written only by sync overwrites (absent =

@@ -336,6 +336,8 @@ const LIST_PAGE_CAP = 50;
 const TYPEAHEAD_LIMIT = 5;
 const TYPEAHEAD_DEBOUNCE_MS = 200;
 const OBSERVABLE_TIMEOUT_MS = 8000;
+// concurrent platform calls per phase — sync latency is round trips, not work
+const POOL_LIMIT = 8;
 
 const ICONS = {
   edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
@@ -451,6 +453,22 @@ const firstEmission = (observable, timeoutMs = OBSERVABLE_TIMEOUT_MS) => new Pro
   } catch(error) { finish(reject, error); }
 });
 
+// bounded parallel map: lanes pull the next item as they finish; a worker that
+// throws rejects the whole pool (workers that must survive failure catch inside)
+const mapPool = async (items, limit, worker) => {
+  const results = new Array(items.length);
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while(true) {
+      const index = next++;
+      if(index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(lanes);
+  return results;
+};
+
 // MCP tool results may arrive structured, wrapped, or as text content
 const normalizeToolResult = (result) => {
   if(result == null) return {};
@@ -507,14 +525,21 @@ const readFolderShares = async (folderId) => {
 
 // == Persistence =================================================================
 // fetch-merge-set: every write re-reads current state and applies a targeted
-// mutation so concurrent writers only lose at the whole-blob boundary
-const persist = async (mutate) => {
-  const fetched = normalizeState(await window.charmiq.appState.get());
-  const next = mutate(fetched) || fetched;
-  lastWrittenJson = JSON.stringify(next);
-  await window.charmiq.appState.set(next);
-  state = next;
-  render();
+// mutation. All writes serialize through one queue so two persists in this
+// browser can never interleave their read-modify-write windows (an add-student
+// mid-sync lands cleanly); across browsers app-state stays last-write-wins
+let persistQueue = Promise.resolve();
+const persist = (mutate) => {
+  const run = persistQueue.then(async () => {
+    const fetched = normalizeState(await window.charmiq.appState.get());
+    const next = mutate(fetched) || fetched;
+    lastWrittenJson = JSON.stringify(next);
+    await window.charmiq.appState.set(next);
+    state = next;
+    render();
+  });
+  persistQueue = run.catch(() => { /* a failed write never wedges the queue */ });
+  return run;
 };
 
 const replaceStudent = (students, updated) => students.map(s => s.id === updated.id ? updated : s);
@@ -671,30 +696,49 @@ const attachUserTypeahead = (input, menu, onSelect) => {
 };
 
 // == Template walk ===============================================================
-// BFS from the Template root, parents before children. Returns folders and
-// documents (with parent template-URIs) plus entries of uncopyable scopes
+// BFS from the Template root, one level at a time with the level's listings in
+// parallel — parents always precede children, and each folder carries its depth
+// so applies can barrier per level. Returns folders and documents (with parent
+// template-URIs) plus entries of uncopyable scopes
 const walkTemplate = async (templateFolderId) => {
   const rootUri = folderUri(templateFolderId);
-  const folders = []/*{uri, name, parentUri}*/;
+  const folders = []/*{uri, name, parentUri, depth}*/;
   const docs = []/*{uri, name, parentUri}*/;
   const skipped = []/*{uri, name}*/;
-  const queue = [rootUri];
-  while(queue.length > 0) {
-    const parentUri = queue.shift();
-    const entries = await listDirAll(parentUri);
-    for(const entry of entries) {
-      const scope = uriScope(entry.uri);
-      if(scope === 'folder') {
-        folders.push({ uri: entry.uri, name: entry.name.replace(/\/$/, ''), parentUri });
-        queue.push(entry.uri);
-      } else if(RICHTEXT_SCOPES.has(scope)) {
-        docs.push({ uri: entry.uri, name: entry.name, parentUri });
-      } else {
-        skipped.push({ uri: entry.uri, name: entry.name });
+  let level = [rootUri];
+  let depth = 0;
+  while(level.length > 0) {
+    const listings = await mapPool(level, POOL_LIMIT, async (parentUri) => ({ parentUri, entries: await listDirAll(parentUri) }));
+    const nextLevel = [];
+    for(const { parentUri, entries } of listings) {
+      for(const entry of entries) {
+        const scope = uriScope(entry.uri);
+        if(scope === 'folder') {
+          folders.push({ uri: entry.uri, name: entry.name.replace(/\/$/, ''), parentUri, depth });
+          nextLevel.push(entry.uri);
+        } else if(RICHTEXT_SCOPES.has(scope)) {
+          docs.push({ uri: entry.uri, name: entry.name, parentUri });
+        } else {
+          skipped.push({ uri: entry.uri, name: entry.name });
+        }
       }
     }
+    level = nextLevel;
+    depth++;
   }
   return { rootUri, folders, docs, skipped };
+};
+
+// the walk and the template-side versions are identical for every student — one
+// gather serves a single sync and the whole roster alike
+const gatherTemplate = async () => {
+  const walk = await walkTemplate(state.config.templateFolderId);
+  const templateVersionNow = new Map();
+  await mapPool(walk.docs, POOL_LIMIT, async (doc) => {
+    try { const described = await describeUri(doc.uri); templateVersionNow.set(doc.uri, (typeof described.version === 'number') ? described.version : null); }
+    catch { templateVersionNow.set(doc.uri, null); }
+  });
+  return { walk, templateVersionNow };
 };
 
 // == Clone engine ================================================================
@@ -761,24 +805,19 @@ const ensureStudentFolder = async (student, report) => {
 
 // full sync per student: additions, admin moves, admin edits, admin deletes, and
 // recreates of student-deleted copies — the mapping resolves everything by id, so
-// student placement never blocks an operation and never loses a copy
-const cloneStudent = async (studentId) => {
-  if(busyStudentId) return;
+// student placement never blocks an operation and never loses a copy. Reads
+// gather through the bounded pool, decisions (and their prompts) run with no I/O
+// between them, writes apply through the pool behind ordering barriers.
+// Busy/lifecycle is owned by runSync
+const syncStudent = async (studentId, shared) => {
   const original = state.students.find(s => s.id === studentId);
   if(!original || original.deleted) return;
-  const problem = configProblem();
-  if(problem) { toast(problem.message, { error: true }); return; }
+  const { walk, templateVersionNow } = shared;
 
-  busyStudentId = studentId;
   const mapping = { ...original.mapping };
   let student = { ...original, mapping };
   const report = { added: 0, moved: 0, updated: 0, recreated: 0, removed: 0, leftAlone: [], keptFolders: [], outOfReach: [], failed: [] };
-  let skippedEntries = [];
   try {
-    setProgress(studentId, 'Reading template…');
-    const walk = await walkTemplate(state.config.templateFolderId);
-    skippedEntries = walk.skipped;
-
     student = await ensureStudentFolder(student, report);
     // persist the created folder immediately so a later failure cannot orphan it
     if(student.folderId !== original.folderId) {
@@ -814,9 +853,7 @@ const cloneStudent = async (studentId) => {
     const createDocCopy = async (doc) => {
       const parentId = copyParentId(doc.parentUri);
       if(!parentId) throw new Error('no cloned parent folder');
-      // record which template version was copied (best-effort; drives edit sync)
-      let templateVersion = null;
-      try { const described = await describeUri(doc.uri); if(typeof described.version === 'number') templateVersion = described.version; } catch { /* version stays null */ }
+      const templateVersion = templateVersionNow.get(doc.uri) ?? null/*gathered once for the run*/;
       // shallow copy: Comments are never cloned. copyToParentFolder must be an
       // explicit false — the shallow path's default would land the copy in the
       // source's parent (the template folder) instead of the student's
@@ -826,48 +863,96 @@ const cloneStudent = async (studentId) => {
       mapping[doc.uri] = { copyId, kind: 'doc', parentUri: doc.parentUri, templateVersion, clonedAt: new Date().toISOString() };
     };
 
+    // -- gather: every copy-side read fires through the pool ---------------------
+    const folderLive = new Map();
+    const docLive = new Map();
+    const removedLive = new Map();
+    const reads = [
+      ...walk.folders.filter(folder => mapping[folder.uri]?.parentUri).map(folder => async () =>
+        folderLive.set(folder.uri, await describeCopyState(folderUri(mapping[folder.uri].copyId)))),
+      ...walk.docs.filter(doc => mapping[doc.uri]?.parentUri).map(doc => async () =>
+        docLive.set(doc.uri, await describeCopyState(copyUri(doc.uri, mapping[doc.uri].copyId)))),
+      ...removedUris.map(uri => async () => {
+        const entry = mapping[uri];
+        removedLive.set(uri, await describeCopyState((entryKind(uri, entry) === 'folder') ? folderUri(entry.copyId) : copyUri(uri, entry.copyId)));
+      }),
+    ];
+    let checked = 0;
+    await mapPool(reads, POOL_LIMIT, async (read) => { await read(); setProgress(studentId, `Checking… ${++checked}/${reads.length}`); });
+
     // -- template folders: additions, recreates, admin-move mirroring ------------
-    // (BFS order: parents precede children, so move targets exist when needed)
-    for(const folder of walk.folders) {
-      step();
-      try {
-        const entry = mapping[folder.uri];
-        if(!entry) { await createFolderCopy(folder); report.added++; continue; }
-        // entries cloned before parentUri was recorded learn it here — template
-        // moves from before that recording are amnestied
-        if(!entry.parentUri) { mapping[folder.uri] = { ...entry, parentUri: folder.parentUri }; continue; }
+    // level barriers keep parents settled before their children
+    const maxDepth = walk.folders.reduce((max, folder) => Math.max(max, folder.depth), 0);
+    for(let depth = 0; depth <= maxDepth; depth++) {
+      await mapPool(walk.folders.filter(folder => folder.depth === depth), POOL_LIMIT, async (folder) => {
+        step();
+        try {
+          const entry = mapping[folder.uri];
+          if(!entry) { await createFolderCopy(folder); report.added++; return; }
+          // entries cloned before parentUri was recorded learn it here — template
+          // moves from before that recording are amnestied
+          if(!entry.parentUri) { mapping[folder.uri] = { ...entry, parentUri: folder.parentUri }; return; }
 
-        const live = await describeCopyState(folderUri(entry.copyId));
-        if(live.state === 'unreachable') { report.outOfReach.push(folder.name); continue; }
-        if(live.state === 'error') { report.failed.push(`${folder.name}: ${live.message}`); continue; }
-        if(live.state === 'gone') { await createFolderCopy(folder); report.recreated++; continue; }
+          const live = folderLive.get(folder.uri);
+          if(live.state === 'unreachable') { report.outOfReach.push(folder.name); return; }
+          if(live.state === 'error') { report.failed.push(`${folder.name}: ${live.message}`); return; }
+          if(live.state === 'gone') { await createFolderCopy(folder); report.recreated++; return; }
 
-        if(entry.parentUri !== folder.parentUri) {
-          // admin moved the folder in the template — admin placement wins
-          const parentId = copyParentId(folder.parentUri);
-          if(!parentId) throw new Error('no cloned parent folder');
-          await callVfs('move', { uri: folderUri(entry.copyId), destination: folderUri(parentId) });
-          mapping[folder.uri] = { ...entry, parentUri: folder.parentUri };
-          report.moved++;
-        } /* else -- placement unchanged */
-      } catch(error) { itemFailed(folder.name, error); }
+          if(entry.parentUri !== folder.parentUri) {
+            // admin moved the folder in the template — admin placement wins
+            const parentId = copyParentId(folder.parentUri);
+            if(!parentId) throw new Error('no cloned parent folder');
+            await callVfs('move', { uri: folderUri(entry.copyId), destination: folderUri(parentId) });
+            mapping[folder.uri] = { ...entry, parentUri: folder.parentUri };
+            report.moved++;
+          } /* else -- placement unchanged */
+        } catch(error) { itemFailed(folder.name, error); }
+      });
     }
 
-    // -- template documents: additions, recreates, moves, edit sync --------------
+    // -- template documents: decide first (prompts back-to-back with no I/O
+    // between them), then apply through the pool ---------------------------------
+    const docActions = [];
     for(const doc of walk.docs) {
+      const entry = mapping[doc.uri];
+      if(!entry) { docActions.push({ doc, create: true }); continue; }
+      if(!entry.parentUri) { mapping[doc.uri] = { ...entry, parentUri: doc.parentUri }; step(); continue; }/*amnesty, as folders*/
+
+      const live = docLive.get(doc.uri);
+      if(live.state === 'unreachable') { report.outOfReach.push(doc.name); step(); continue; }
+      if(live.state === 'error') { report.failed.push(`${doc.name}: ${live.message}`); step(); continue; }
+      if(live.state === 'gone') { docActions.push({ doc, create: true, recreate: true }); continue; }
+
+      const current = mapping[doc.uri];
+      const move = current.parentUri !== doc.parentUri;
+      const tv = templateVersionNow.get(doc.uri) ?? null;
+      let update = false, leave = false;
+      if(tv === null) { /* cannot compare this round */ }
+      else if(current.templateVersion == null) { mapping[doc.uri] = { ...current, templateVersion: tv }; }/*amnesty*/
+      // templateVersion always remains the version the copy's CONTENT came from
+      // (clone or last overwrite); a leave never touches it, and a standing
+      // divergence re-asks on EVERY sync until resolved
+      else if(tv > current.templateVersion) {
+        let overwrite = true;
+        if(studentEdited(current, live.version)) {
+          overwrite = await confirmModal({
+            title: 'Template changed — copy was edited',
+            bodyHtml: `<p><strong>${esc(doc.name)}</strong> changed in the template, but the copy for <strong>${esc(student.name)}</strong> has been edited since it was cloned. Overwrite the copy with the template version, or leave it as is?</p>`,
+            confirmLabel: 'Overwrite', cancelLabel: 'Leave it',
+          });
+        } /* else -- untouched copy updates silently */
+        if(overwrite) update = true; else leave = true;
+      } /* else -- template unchanged since the content was last synced */
+      if(move || update || leave) docActions.push({ doc, move, update, leave, versionNow: tv });
+      else step()/*nothing to do for this doc*/;
+    }
+
+    await mapPool(docActions, POOL_LIMIT, async ({ doc, create, recreate, move, update, leave, versionNow }) => {
       step();
       try {
-        const entry = mapping[doc.uri];
-        if(!entry) { await createDocCopy(doc); report.added++; continue; }
-        if(!entry.parentUri) { mapping[doc.uri] = { ...entry, parentUri: doc.parentUri }; continue; }/*amnesty, as folders*/
-
-        const live = await describeCopyState(copyUri(doc.uri, entry.copyId));
-        if(live.state === 'unreachable') { report.outOfReach.push(doc.name); continue; }
-        if(live.state === 'error') { report.failed.push(`${doc.name}: ${live.message}`); continue; }
-        if(live.state === 'gone') { await createDocCopy(doc); report.recreated++; continue; }
-
+        if(create) { await createDocCopy(doc); if(recreate) report.recreated++; else report.added++; return; }
         let current = mapping[doc.uri];
-        if(current.parentUri !== doc.parentUri) {
+        if(move) {
           // admin moved the document — admin placement wins
           const parentId = copyParentId(doc.parentUri);
           if(!parentId) throw new Error('no cloned parent folder');
@@ -876,75 +961,61 @@ const cloneStudent = async (studentId) => {
           mapping[doc.uri] = current;
           report.moved++;
         } /* else -- placement unchanged */
-
-        // edit sync: silent when the copy is untouched, prompted when it isn't
-        const templateNow = await describeUri(doc.uri);
-        const templateVersionNow = (typeof templateNow.version === 'number') ? templateNow.version : null;
-        if(templateVersionNow === null) continue/*cannot compare this round*/;
-        if(current.templateVersion == null) { mapping[doc.uri] = { ...current, templateVersion: templateVersionNow }; continue; }/*amnesty*/
-        // templateVersion always remains the version the copy's CONTENT came
-        // from (clone or last overwrite); a leave never touches it, and a
-        // standing divergence re-asks on EVERY sync until resolved
-        if(templateVersionNow > current.templateVersion) {
-          let overwrite = true;
-          if(studentEdited(current, live.version)) {
-            overwrite = await confirmModal({
-              title: 'Template changed — copy was edited',
-              bodyHtml: `<p><strong>${esc(doc.name)}</strong> changed in the template, but the copy for <strong>${esc(student.name)}</strong> has been edited since it was cloned. Overwrite the copy with the template version, or leave it as is?</p>`,
-              confirmLabel: 'Overwrite', cancelLabel: 'Leave it',
-            });
-          } /* else -- untouched copy updates silently */
-          if(overwrite) {
-            const templateContent = await callVfs('read_file', { uri: doc.uri });
-            const written = await callVfs('write_file', { uri: copyUri(doc.uri, current.copyId), content: templateContent.content ?? '' });
-            let baseline = (typeof written.versionIndex === 'number') ? written.versionIndex : null;
-            if(baseline === null) { const after = await describeCopyState(copyUri(doc.uri, current.copyId)); if(after.state === 'ok') baseline = after.version; }
-            const updated = {
-              ...current,
-              templateVersion: (typeof templateContent.version === 'number') ? templateContent.version : templateVersionNow,
-              ...((baseline !== null) ? { copyVersion: baseline } : {}),
-            };
-            delete updated.outOfSync/*the copy matches the template again*/;
-            delete updated.acknowledgedTemplateVersion;
-            mapping[doc.uri] = updated;
-            report.updated++;
-          } else {
-            const left = { ...current, outOfSync: true };
-            delete left.acknowledgedTemplateVersion/*scrub the retired suppression field*/;
-            mapping[doc.uri] = left;
-            report.leftAlone.push(doc.name);
-          }
-        } /* else -- template unchanged since the content was last synced */
+        if(update) {
+          const templateContent = await callVfs('read_file', { uri: doc.uri });
+          const written = await callVfs('write_file', { uri: copyUri(doc.uri, current.copyId), content: templateContent.content ?? '' });
+          let baseline = (typeof written.versionIndex === 'number') ? written.versionIndex : null;
+          if(baseline === null) { const after = await describeCopyState(copyUri(doc.uri, current.copyId)); if(after.state === 'ok') baseline = after.version; }
+          const updated = {
+            ...current,
+            templateVersion: (typeof templateContent.version === 'number') ? templateContent.version : versionNow,
+            ...((baseline !== null) ? { copyVersion: baseline } : {}),
+          };
+          delete updated.outOfSync/*the copy matches the template again*/;
+          delete updated.acknowledgedTemplateVersion;
+          mapping[doc.uri] = updated;
+          report.updated++;
+        } else if(leave) {
+          const left = { ...current, outOfSync: true };
+          delete left.acknowledgedTemplateVersion/*scrub the retired suppression field*/;
+          mapping[doc.uri] = left;
+          report.leftAlone.push(doc.name);
+        }
       } catch(error) { itemFailed(doc.name, error); }
-    }
+    });
 
     // -- template removals (moved out and deleted are one case) ------------------
     // documents before folders so removed folders can empty out
     const removedDocs = removedUris.filter(uri => entryKind(uri, mapping[uri]) === 'doc');
     const removedFolders = removedUris.filter(uri => entryKind(uri, mapping[uri]) === 'folder');
 
+    const removalActions = [];
     for(const uri of removedDocs) {
+      const entry = mapping[uri];
+      const live = removedLive.get(uri);
+      if(live.state === 'unreachable') { report.outOfReach.push(live.name ?? entry.copyId); step(); continue; }
+      if(live.state === 'error') { report.failed.push(`${entry.copyId}: ${live.message}`); step(); continue; }
+      if(live.state === 'gone') { delete mapping[uri]; step(); continue; }/*both sides gone*/
+      const name = live.name ?? entry.copyId;
+      let doDelete = true;
+      if(studentEdited(entry, live.version)) {
+        doDelete = await confirmModal({
+          title: 'Removed from template — copy was edited',
+          bodyHtml: `<p><strong>${esc(name)}</strong> was removed from the template, but the copy for <strong>${esc(student.name)}</strong> has been edited. Delete the copy, or leave it (it stops being managed)?</p>`,
+          confirmLabel: 'Delete copy', cancelLabel: 'Leave it',
+        });
+      } /* else -- untouched copy deletes silently */
+      removalActions.push({ uri, name, doDelete });
+    }
+    await mapPool(removalActions, POOL_LIMIT, async ({ uri, name, doDelete }) => {
       step();
       const entry = mapping[uri];
       try {
-        const live = await describeCopyState(copyUri(uri, entry.copyId));
-        if(live.state === 'unreachable') { report.outOfReach.push(live.name ?? entry.copyId); continue; }
-        if(live.state === 'error') { report.failed.push(`${entry.copyId}: ${live.message}`); continue; }
-        if(live.state === 'gone') { delete mapping[uri]; continue; }/*both sides gone*/
-        const name = live.name ?? entry.copyId;
-        let doDelete = true;
-        if(studentEdited(entry, live.version)) {
-          doDelete = await confirmModal({
-            title: 'Removed from template — copy was edited',
-            bodyHtml: `<p><strong>${esc(name)}</strong> was removed from the template, but the copy for <strong>${esc(student.name)}</strong> has been edited. Delete the copy, or leave it (it stops being managed)?</p>`,
-            confirmLabel: 'Delete copy', cancelLabel: 'Leave it',
-          });
-        } /* else -- untouched copy deletes silently */
         if(doDelete) { await callVfs('delete_file', { uri: copyUri(uri, entry.copyId) }); report.removed++; }
         else report.leftAlone.push(name);
         delete mapping[uri];
-      } catch(error) { itemFailed(entry.copyId, error); }
-    }
+      } catch(error) { itemFailed(name, error); }
+    });
 
     // deepest-first by retry passes: a removed folder deletes only when empty;
     // student-created files are NEVER deleted — a folder holding any is kept and
@@ -985,8 +1056,7 @@ const cloneStudent = async (studentId) => {
     if(report.recreated) parts.push(`${report.recreated} recreated`);
     if(report.removed) parts.push(`${report.removed} removed`);
     if(report.leftAlone.length) parts.push(`${report.leftAlone.length} left as-is`);
-    const skippedNote = skippedEntries.length ? ` (${skippedEntries.length} not copyable: ${skippedEntries.map(e => e.name).join(', ')})` : '';
-    toast(`${student.name}: ${parts.length ? parts.join(', ') : 'up to date'}${skippedNote}`);
+    toast(`${student.name}: ${parts.length ? parts.join(', ') : 'up to date'}`);
     if(report.keptFolders.length) toast(`${student.name}: folder${report.keptFolders.length === 1 ? '' : 's'} NOT deleted — holding files the workshop does not manage: ${report.keptFolders.join(', ')}`, { error: true });
     if(report.outOfReach.length) toast(`${student.name}: out of reach (permission denied): ${report.outOfReach.join(', ')}`, { error: true });
     if(report.failed.length) toast(`${student.name}: failed: ${report.failed.join('; ')}`, { error: true });
@@ -995,10 +1065,39 @@ const cloneStudent = async (studentId) => {
     try { await persist(s => { s.students = replaceStudent(s.students, { ...student, mapping }); return s; }); } catch { /* the mapping write itself failed */ }
     toast(`${student.name}: sync failed — ${error?.message ?? error}`, { error: true });
   } finally {
-    busyStudentId = null;
     setProgress(studentId, null);
   }
 };
+
+// one run owns the busy lock and gathers the template once — a single student's
+// sync and Sync All are the same run over different rosters
+const runSync = async (studentIds) => {
+  if(busyStudentId) return;
+  if(studentIds.length < 1) { toast('No active students to sync'); return; }
+  const problem = configProblem();
+  if(problem) { toast(problem.message, { error: true }); return; }
+  busyStudentId = studentIds[0];
+  try {
+    setProgress(studentIds[0], 'Reading template…');
+    let shared;
+    try { shared = await gatherTemplate(); }
+    catch(error) { toast(`Template read failed — ${error?.message ?? error}`, { error: true }); return; }
+    setProgress(studentIds[0], null);
+    if(shared.walk.skipped.length) toast(`${shared.walk.skipped.length} not copyable (ignored): ${shared.walk.skipped.map(e => e.name).join(', ')}`);
+    for(const studentId of studentIds) {
+      busyStudentId = studentId;
+      await syncStudent(studentId, shared);
+    }
+  } finally {
+    // clear the busy flag BEFORE the render that setProgress triggers — the
+    // other order leaves every button rendered disabled with no render to follow
+    busyStudentId = null;
+    setProgress(studentIds[0], null);
+  }
+};
+
+const cloneStudent = (studentId) => runSync([studentId]);
+const syncAll = () => runSync(sortedStudents().filter(s => !s.deleted).map(s => s.id));
 
 // == Config actions ==============================================================
 const FOLDER_FIELDS = {
@@ -1347,7 +1446,10 @@ const render = () => {
     <div class="card roster-card">
       <div class="card-header">
         <h2>Students</h2>
-        <span class="sub" style="color:var(--gray-500); font-size:13px;">${state.students.filter(s => !s.deleted).length} active</span>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="sub" style="color:var(--gray-500); font-size:13px;">${state.students.filter(s => !s.deleted).length} active</span>
+          <button class="small" data-action="sync-all" ${(busyStudentId || problem) ? 'disabled' : ''} ${problem ? `title="${esc(problem.message)}"` : 'title="Sync every active student, one at a time"'}>Sync All</button>
+        </div>
       </div>
       <div class="card-body">
         ${problem ? `<div class="banner${problem.severity === 'error' ? ' error' : ''}" style="margin-bottom:12px;">${esc(problem.message)}</div>` : ''}
@@ -1400,6 +1502,7 @@ const bindEvents = (app) => {
       else if(action === 'cancel-student-edit') { editingStudentId = null; editError = null; render(); }
       else if(action === 'save-student-edit') saveStudentRename(el.dataset.studentId, document.getElementById('edit-student-input')?.value ?? '');
       else if(action === 'clone-student') cloneStudent(el.dataset.studentId);
+      else if(action === 'sync-all') syncAll();
       else if(action === 'import-charms') importCharms(el.dataset.studentId);
       else if(action === 'delete-student') markStudentDeleted(el.dataset.studentId, true);
       else if(action === 'restore-student') markStudentDeleted(el.dataset.studentId, false);
