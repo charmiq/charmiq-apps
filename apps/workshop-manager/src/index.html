@@ -197,6 +197,11 @@ td { padding: 10px; border-bottom: 1px solid var(--gray-100); vertical-align: mi
 tr.deleted td { color: var(--gray-400); }
 .student-name { display: block; }
 tr.deleted .student-name { text-decoration: line-through; }
+.student-cell { position: relative; }
+.cell-flex { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.cell-flex .student-name { flex: 1 1 auto; min-width: 0; }
+/* the rename editor floats over the row like every other edit surface */
+.edit-popover.row-popover { left: 0; right: auto; width: 360px; top: 4px; z-index: 70; }
 td .sub { font-size: 12px; color: var(--gray-500); }
 tr.deleted td .sub { color: var(--gray-400); }
 .status-cloned { color: var(--success); }
@@ -348,6 +353,7 @@ let services = { command: null, userProfile: null, authUser: null };
 let authState = null;
 let configCollapsed = false/*boot: collapsed iff app-state already exists*/;
 let editingField = null/*'template' | 'classroom' | 'pattern' | null*/;
+let editingStudentId = null/*row rename popover*/;
 let editError = null;
 let busyStudentId = null/*one clone at a time*/;
 let progressText = new Map()/*studentId → status line*/;
@@ -1089,6 +1095,43 @@ const markStudentDeleted = async (studentId, deleted) => {
   await persist(s => { s.students = s.students.map(st => st.id === studentId ? { ...st, deleted } : st); return s; });
 };
 
+// renaming a student updates the roster and renames their folder only when its
+// live name still matches what the app last set (folderName) — a student's own
+// rename wins, exactly like their moves. The email/user pairing never changes
+const saveStudentRename = async (studentId, rawValue) => {
+  const newName = String(rawValue || '').trim();
+  if(!newName) { editError = 'Name must not be empty'; render(); return; }
+  const student = state.students.find(s => s.id === studentId);
+  if(!student) return;
+  if(newName === student.name) { editingStudentId = null; editError = null; render(); return; }
+
+  editingStudentId = null; editError = null;
+  busyStudentId = studentId;
+  setProgress(studentId, 'Renaming…');
+  try {
+    let folderName = student.folderName;
+    let folderNote = '';
+    if(student.folderId) {
+      const live = await describeCopyState(folderUri(student.folderId));
+      if(live.state === 'ok') {
+        if(live.name === student.folderName) {
+          const newFolderName = state.config.folderNamePattern.replaceAll('{name}', newName);
+          await execCommand('folder.name.set', { folderId: student.folderId, name: newFolderName });
+          folderName = newFolderName;
+          folderNote = ' — folder renamed';
+        } else folderNote = ' — folder name left as-is (changed by the student)';
+      } else folderNote = ' — folder not reachable; the next sync handles it';
+    } /* else -- no folder yet; nothing to rename */
+    await persist(s => { s.students = s.students.map(st => st.id === studentId ? { ...st, name: newName, folderName } : st); return s; });
+    toast(`${student.name} renamed to ${newName}${folderNote}`);
+  } catch(error) {
+    toast(`${student.name}: rename failed — ${error?.message ?? error}`, { error: true });
+  } finally {
+    busyStudentId = null;
+    setProgress(studentId, null);
+  }
+};
+
 // creates private Agents for the student from their cloned Charm copies
 // (noDuplicate makes re-imports idempotent); Admin / DefaultAgentAdmin only —
 // the server enforces the role regardless of the button gate. The detailed
@@ -1237,7 +1280,22 @@ const studentRowHtml = (student) => {
   const statusHtml = `<div class="status-main trunc">${statusMain}</div><div class="sub trunc">${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
   return `
     <tr class="${student.deleted ? 'deleted' : ''}">
-      <td><span class="student-name trunc" title="${esc(student.name)}">${esc(student.name)}</span></td>
+      <td class="student-cell">
+        <div class="cell-flex">
+          <span class="student-name trunc" title="${esc(student.name)}">${esc(student.name)}</span>
+          ${student.deleted ? '' : `<button class="icon" data-action="edit-student" data-student-id="${esc(student.id)}" ${busy ? 'disabled' : ''} title="Rename student">${icon('edit')}</button>`}
+        </div>
+        ${(editingStudentId === student.id) ? `
+        <div class="edit-popover row-popover">
+          <div class="config-edit">
+            <input type="text" id="edit-student-input" value="${esc(student.name)}">
+            <button class="primary small" data-action="save-student-edit" data-student-id="${esc(student.id)}">Save</button>
+            <button class="small" data-action="cancel-student-edit">Cancel</button>
+          </div>
+          <div class="hint">Renames the folder only if the student has not renamed it; the email never changes</div>
+          ${editError ? `<div class="inline-error">${esc(editError)}</div>` : ''}
+        </div>` : ''}
+      </td>
       <td><div class="trunc" title="${esc(student.profileName)}">${esc(student.profileName)}</div><div class="sub trunc" title="${esc(student.email)}">${esc(student.email)}</div></td>
       <td>${statusHtml}</td>
       <td>
@@ -1331,6 +1389,9 @@ const bindEvents = (app) => {
       else if(action === 'remove-owner') removeOwner(el.dataset.userId);
       else if(action === 'add-student') addStudentRow();
       else if(action === 'clear-add-user') { addStudent = { ...addStudent, user: null }; render(); }
+      else if(action === 'edit-student') { editingStudentId = el.dataset.studentId; editError = null; render(); document.getElementById('edit-student-input')?.focus(); }
+      else if(action === 'cancel-student-edit') { editingStudentId = null; editError = null; render(); }
+      else if(action === 'save-student-edit') saveStudentRename(el.dataset.studentId, document.getElementById('edit-student-input')?.value ?? '');
       else if(action === 'clone-student') cloneStudent(el.dataset.studentId);
       else if(action === 'import-charms') importCharms(el.dataset.studentId);
       else if(action === 'delete-student') markStudentDeleted(el.dataset.studentId, true);
@@ -1350,6 +1411,12 @@ const bindEvents = (app) => {
   if(editInput) editInput.addEventListener('keydown', (event) => {
     if(event.key === 'Enter') (editingField === 'pattern' ? savePatternEdit : (v) => saveFolderEdit(editingField, v))(editInput.value);
     if(event.key === 'Escape') { editingField = null; editError = null; render(); }
+  });
+
+  const editStudentInput = document.getElementById('edit-student-input');
+  if(editStudentInput) editStudentInput.addEventListener('keydown', (event) => {
+    if(event.key === 'Enter') saveStudentRename(editingStudentId, editStudentInput.value);
+    if(event.key === 'Escape') { editingStudentId = null; editError = null; render(); }
   });
 
   const addNameInput = document.getElementById('add-name');
@@ -1405,10 +1472,10 @@ const boot = async () => {
 
   // a click outside the floating editor (and outside any confirm modal) cancels it
   document.addEventListener('mousedown', (event) => {
-    if(!editingField) return;
+    if(!editingField && !editingStudentId) return;
     const target = event.target;
-    if(target.closest('.edit-popover') || target.closest('[data-action="edit"]') || target.closest('.modal-overlay')) return;
-    editingField = null; editError = null; render();
+    if(target.closest('.edit-popover') || target.closest('[data-action="edit"]') || target.closest('[data-action="edit-student"]') || target.closest('.modal-overlay')) return;
+    editingField = null; editingStudentId = null; editError = null; render();
   });
 
   // live refresh for other open copies of this page; own writes echo back and are
