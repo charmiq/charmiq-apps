@@ -10,15 +10,16 @@ Unlike the other `apps/`, this is currently a single-file Source application wit
 
 ## Embedding
 
-<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%5D">
+<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.richtext.metadata.set%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%5D">
 </iframe-app>
 
 The `requested-scopes` value is the percent-encoded JSON array:
 
 ```json
 ["appState.read", "appState.write", "authUser.state.read", "userProfile.search",
- "mcp.platform.vfs", "command.richtext.copy", "command.folder.permission.set",
- "command.folder.delete", "command.folder.name.set", "command.admin.agent.create"]
+ "mcp.platform.vfs", "command.richtext.copy", "command.richtext.metadata.set",
+ "command.folder.permission.set", "command.folder.delete",
+ "command.folder.name.set", "command.admin.agent.create"]
 ```
 
 | Scope | Used for |
@@ -27,7 +28,8 @@ The `requested-scopes` value is the percent-encoded JSON array:
 | `authUser.state.read` | Active Organization + Teams that scope the user-search sections |
 | `userProfile.search` | The user typeahead (add student / add Owner) |
 | `mcp.platform.vfs` | `list_dir` (walk, empty-folder checks), `describe_file` (names, versions, shares, copy liveness), `create_dir`, `move` (admin-move mirroring), `read_file`/`write_file` (edit sync), `delete_file` (removed documents) |
-| `command.richtext.copy` | Deep-copies each template document into the student folder |
+| `command.richtext.copy` | Copies each template document into the student folder |
+| `command.richtext.metadata.set` | Takes a Charm copy's name back from the platform's "Copy of" copy convention (at copy time and as a sync heal) |
 | `command.folder.permission.set` | One permission pass on each student folder at creation |
 | `command.folder.delete` | Deletes a removed template folder's copy once it is verifiably empty |
 | `command.folder.name.set` | Renames a student's folder when the student is renamed (only if the student has not renamed it themselves) |
@@ -57,6 +59,12 @@ bridge-denied search reports as unavailable, never as an empty roster.
   removals, and recreates of student-deleted copies. The summary toast itemizes
   every kind; kept folders, out-of-reach items, and failures each get their own
   loud report.
+- **"Copy of" is undone for Charms**: the platform names an explicitly-named
+  source's copy "Copy of <name>" (Charms are always explicitly named; content-named
+  types are unaffected). A fresh Charm copy takes the template's name immediately,
+  and the sync heals any copy still named exactly `Copy of <template's current
+  name>` — an exact match proves the prefix is the convention's, so a student's own
+  rename is never touched.
 - **Comments are never cloned and never synced** — clones are shallow and the
   edit-sync overwrite carries content only, so nothing crosses from the template's
   comments to a student's copy, and comments on a copy (instructor feedback)

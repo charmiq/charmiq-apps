@@ -816,7 +816,7 @@ const syncStudent = async (studentId, shared) => {
 
   const mapping = { ...original.mapping };
   let student = { ...original, mapping };
-  const report = { added: 0, moved: 0, updated: 0, recreated: 0, removed: 0, leftAlone: [], keptFolders: [], outOfReach: [], failed: [] };
+  const report = { added: 0, moved: 0, updated: 0, recreated: 0, renamed: 0, removed: 0, leftAlone: [], keptFolders: [], outOfReach: [], failed: [] };
   try {
     student = await ensureStudentFolder(student, report);
     // persist the created folder immediately so a later failure cannot orphan it
@@ -861,6 +861,12 @@ const syncStudent = async (studentId, shared) => {
       const copyId = copyIdentifier(result);
       if(!copyId) throw new Error('copy returned no id');
       mapping[doc.uri] = { copyId, kind: 'doc', parentUri: doc.parentUri, templateVersion, clonedAt: new Date().toISOString() };
+      // an explicitly-named source copies as "Copy of <name>" (the platform's
+      // UI-copy convention); Charms are always explicitly named, so their copies
+      // take the template's name back. A miss self-heals on the next sync
+      if(uriScope(doc.uri) === 'charm') {
+        try { await execCommand('richtext.metadata.set', { richtextId: copyId, name: doc.name }); } catch { /* healed next sync */ }
+      } /* else -- content-named types copy without the prefix */
     };
 
     // -- gather: every copy-side read fires through the pool ---------------------
@@ -943,15 +949,23 @@ const syncStudent = async (studentId, shared) => {
         } /* else -- untouched copy updates silently */
         if(overwrite) update = true; else leave = true;
       } /* else -- template unchanged since the content was last synced */
-      if(move || update || leave) docActions.push({ doc, move, update, leave, versionNow: tv });
+      // heal the platform's "Copy of" copy-naming: an exact match against the
+      // template's current name proves the prefix is the copy convention's, not
+      // a student's rename — anything else stays untouched
+      const healName = (live.name === `Copy of ${doc.name}`) ? doc.name : null;
+      if(move || update || leave || healName) docActions.push({ doc, move, update, leave, healName, versionNow: tv });
       else step()/*nothing to do for this doc*/;
     }
 
-    await mapPool(docActions, POOL_LIMIT, async ({ doc, create, recreate, move, update, leave, versionNow }) => {
+    await mapPool(docActions, POOL_LIMIT, async ({ doc, create, recreate, move, update, leave, healName, versionNow }) => {
       step();
       try {
         if(create) { await createDocCopy(doc); if(recreate) report.recreated++; else report.added++; return; }
         let current = mapping[doc.uri];
+        if(healName) {
+          await execCommand('richtext.metadata.set', { richtextId: current.copyId, name: healName });
+          report.renamed++;
+        } /* else -- name is the student's business */
         if(move) {
           // admin moved the document — admin placement wins
           const parentId = copyParentId(doc.parentUri);
@@ -1054,6 +1068,7 @@ const syncStudent = async (studentId, shared) => {
     if(report.moved) parts.push(`${report.moved} moved`);
     if(report.updated) parts.push(`${report.updated} updated`);
     if(report.recreated) parts.push(`${report.recreated} recreated`);
+    if(report.renamed) parts.push(`${report.renamed} renamed`);
     if(report.removed) parts.push(`${report.removed} removed`);
     if(report.leftAlone.length) parts.push(`${report.leftAlone.length} left as-is`);
     toast(`${student.name}: ${parts.length ? parts.join(', ') : 'up to date'}`);
