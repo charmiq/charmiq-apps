@@ -236,6 +236,9 @@ td .status-main { min-height: 20px; }
   z-index: 50;
   padding: 6px 4px;
 }
+/* opens upward when the viewport below the input cannot fit the menu (the page
+   itself never scrolls, so a below-the-fold menu would be unreachable) */
+.typeahead-menu.above { top: auto; bottom: calc(100% + 6px); }
 .typeahead-section { font-size: 12px; font-weight: 600; color: var(--gray-500); padding: 4px 8px; }
 .typeahead-item { padding: 6px 8px; border-radius: 6px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
 .typeahead-item:hover, .typeahead-item.focused { background: var(--gray-100); }
@@ -612,6 +615,10 @@ const attachUserTypeahead = (input, menu, onSelect) => {
   const renderMenu = ({ sections, unavailable }, query) => {
     if(!query) { closeMenu(); return; }
     menu.style.display = 'block';
+    // flip above the input when the space below cannot fit the menu's max height
+    const anchor = input.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - anchor.bottom;
+    menu.classList.toggle('above', (spaceBelow < 340/*max-height + margin*/) && (anchor.top > spaceBelow));
     if(unavailable) {
       menu.innerHTML = `<div class="typeahead-empty">User search is unavailable — the platform has not exposed user search to this application</div>`;
       return;
