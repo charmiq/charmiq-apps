@@ -932,7 +932,10 @@ const syncStudent = async (studentId, shared) => {
       if(live.state === 'error') { report.failed.push(`${doc.name}: ${live.message}`); step(); continue; }
       if(live.state === 'gone') { docActions.push({ doc, create: true, recreate: true }); continue; }
 
-      const current = mapping[doc.uri];
+      // record the observed copy version — the roster's out-of-sync badge means
+      // "edited since the app last wrote it", as of the most recent sync
+      const current = { ...mapping[doc.uri], lastCopyVersion: live.version };
+      mapping[doc.uri] = current;
       const move = current.parentUri !== doc.parentUri;
       const tv = templateVersionNow.get(doc.uri) ?? null;
       let update = false, leave = false;
@@ -946,8 +949,10 @@ const syncStudent = async (studentId, shared) => {
         if(studentEdited(current, live.version)) {
           overwrite = await confirmModal({
             title: 'Template changed — copy was edited',
-            bodyHtml: `<p><strong>${esc(doc.name)}</strong> changed in the template, but the copy for <strong>${esc(student.name)}</strong> has been edited since it was cloned. Overwrite the copy with the template version, or leave it as is?</p>`,
+            bodyHtml: `<p><strong>${esc(doc.name)}</strong> changed in the template, but the copy for <strong>${esc(student.name)}</strong> has been edited since it was cloned. Overwriting <strong>destroys the student's edits</strong>. Overwrite the copy with the template version, or leave it as is?</p>
+              <p class="hint">Template v${tv} vs copy content from v${current.templateVersion} · copy v${live.version} vs last app write v${current.copyVersion ?? 0}</p>`,
             confirmLabel: 'Overwrite', cancelLabel: 'Leave it',
+            loud: true, typeToConfirm: 'overwrite',
           });
         } /* else -- untouched copy updates silently */
         if(overwrite) update = true; else leave = true;
@@ -986,15 +991,16 @@ const syncStudent = async (studentId, shared) => {
           const updated = {
             ...current,
             templateVersion: (typeof templateContent.version === 'number') ? templateContent.version : versionNow,
-            ...((baseline !== null) ? { copyVersion: baseline } : {}),
+            ...((baseline !== null) ? { copyVersion: baseline, lastCopyVersion: baseline } : {}),
           };
-          delete updated.outOfSync/*the copy matches the template again*/;
+          delete updated.outOfSync/*scrub the retired flag — edited state is version-derived*/;
           delete updated.acknowledgedTemplateVersion;
           mapping[doc.uri] = updated;
           report.updated++;
         } else if(leave) {
-          const left = { ...current, outOfSync: true };
-          delete left.acknowledgedTemplateVersion/*scrub the retired suppression field*/;
+          const left = { ...current };
+          delete left.outOfSync/*scrub the retired flag — edited state is version-derived*/;
+          delete left.acknowledgedTemplateVersion;
           mapping[doc.uri] = left;
           report.leftAlone.push(doc.name);
         }
@@ -1018,8 +1024,10 @@ const syncStudent = async (studentId, shared) => {
       if(studentEdited(entry, live.version)) {
         doDelete = await confirmModal({
           title: 'Removed from template — copy was edited',
-          bodyHtml: `<p><strong>${esc(name)}</strong> was removed from the template, but the copy for <strong>${esc(student.name)}</strong> has been edited. Delete the copy, or leave it (it stops being managed)?</p>`,
+          bodyHtml: `<p><strong>${esc(name)}</strong> was removed from the template, but the copy for <strong>${esc(student.name)}</strong> has been edited. Deleting <strong>destroys the student's edits</strong>. Delete the copy, or leave it (it stops being managed)?</p>
+            <p class="hint">Copy v${live.version} vs last app write v${entry.copyVersion ?? 0}</p>`,
           confirmLabel: 'Delete copy', cancelLabel: 'Leave it',
+          loud: true, typeToConfirm: 'delete',
         });
       } /* else -- untouched copy deletes silently */
       removalActions.push({ uri, name, doDelete });
@@ -1385,7 +1393,7 @@ const headerCellHtml = (key, label, style) =>
 
 const studentRowHtml = (student) => {
   const cloneCount = Object.keys(student.mapping).length;
-  const outOfSyncCount = Object.values(student.mapping).filter(entry => entry.outOfSync).length;
+  const outOfSyncCount = Object.values(student.mapping).filter(entry => ((entry.lastCopyVersion ?? 0) > (entry.copyVersion ?? 0))).length;
   const charmEntries = charmEntriesOf(student).map(([, entry]) => entry);
   const charmsImported = charmEntries.filter(entry => entry.agentImportedAt).length;
   const charmsPending = charmEntries.length - charmsImported;
@@ -1400,7 +1408,7 @@ const studentRowHtml = (student) => {
   const statusMain = progress
     ? `<span class="status-progress">${esc(progress)}</span>`
     : cloneCount > 0
-      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'} cloned</span>${outOfSyncCount > 0 ? ` <span class="status-outofsync" title="Copies deliberately left diverged from the template (student-edited, admin chose to leave them)">· ${outOfSyncCount} out of sync</span>` : ''}`
+      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'} cloned</span>${outOfSyncCount > 0 ? ` <span class="status-outofsync" title="Copies the student has edited since the app last wrote them — as of the last sync">· ${outOfSyncCount} out of sync</span>` : ''}`
       : `<span class="sub">Not cloned</span>`;
   const statusHtml = `<div class="status-main trunc">${statusMain}</div><div class="sub trunc">${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
   return `

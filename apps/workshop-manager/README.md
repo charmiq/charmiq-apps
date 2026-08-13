@@ -125,7 +125,15 @@ X = the inverse read of the mapping).
 - **Admin moves** relocate the copy by id into the mapped new parent — admin
   placement wins over student placement.
 - **Admin edits**: unedited copy → overwrite silently; edited copy → prompt
-  (overwrite / leave). `templateVersion` always remains the version the copy's
+  (overwrite / leave). Choosing the destructive side of either edited-copy prompt
+  (overwrite, or delete on a removal) is loud and requires typing the word —
+  student work is never one accidental click from destruction; dismissing any
+  prompt resolves as leave. Both prompts show the version facts driving them.
+- **The "N out of sync" badge means "the student edited this copy"** — computed
+  from the copy version the sync last observed (`lastCopyVersion`) against the
+  version the app last wrote (`copyVersion`, absent = 0), independent of any
+  template change. A sync is the scanner: badges reflect the world as of the last
+  sync, and Sync All refreshes the whole roster's counts. `templateVersion` always remains the version the copy's
   content actually came from (clone or last overwrite) — a leave never touches
   it. A leave records `outOfSync` (the student's row shows a standing "N out of
   sync" marker) and the prompt returns on **every** sync while the divergence
