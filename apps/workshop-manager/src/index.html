@@ -855,10 +855,12 @@ const syncStudent = async (studentId, shared) => {
       const parentId = copyParentId(doc.parentUri);
       if(!parentId) throw new Error('no cloned parent folder');
       const templateVersion = templateVersionNow.get(doc.uri) ?? null/*gathered once for the run*/;
-      // shallow copy: Comments are never cloned. copyToParentFolder must be an
-      // explicit false — the shallow path's default would land the copy in the
-      // source's parent (the template folder) instead of the student's
-      const result = await execCommand('richtext.copy', { richtextId: uriId(doc.uri), parentFolderId: parentId, copyToParentFolder: false, preserveContextDependents: true });
+      // shallow copy: Comments and Reference Material are never cloned (the
+      // context rows would be the admin's, invisible to the student anyway).
+      // copyToParentFolder must be an explicit false — the shallow path's
+      // default would land the copy in the source's parent (the template
+      // folder) instead of the student's
+      const result = await execCommand('richtext.copy', { richtextId: uriId(doc.uri), parentFolderId: parentId, copyToParentFolder: false, preserveContextDependents: false });
       const copyId = copyIdentifier(result);
       if(!copyId) throw new Error('copy returned no id');
       mapping[doc.uri] = { copyId, kind: 'doc', parentUri: doc.parentUri, templateVersion, clonedAt: new Date().toISOString() };

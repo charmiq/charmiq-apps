@@ -65,10 +65,12 @@ bridge-denied search reports as unavailable, never as an empty roster.
   and the sync heals any copy still named exactly `Copy of <template's current
   name>` — an exact match proves the prefix is the convention's, so a student's own
   rename is never touched.
-- **Comments are never cloned and never synced** — clones are shallow and the
-  edit-sync overwrite carries content only, so nothing crosses from the template's
-  comments to a student's copy, and comments on a copy (instructor feedback)
-  survive every overwrite.
+- **Comments and Reference Material are never cloned and never synced** — clones
+  are shallow with `preserveContextDependents: false`, and the edit-sync overwrite
+  carries content only. Nothing crosses from the template's comments or RM
+  attachments to a student's copy (RM is per-user, so cloned rows would be the
+  admin's and invisible to students regardless); comments and attachments a
+  student adds to their copy survive every overwrite.
 - **Assets (Files) are explicitly ignored** — a deliberate ruling, not only a
   platform gap (there is no asset copy-into-folder primitive). Skipped entries are
   reported by name after each clone.
