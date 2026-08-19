@@ -133,7 +133,11 @@ X = the inverse read of the mapping).
   from the copy version the sync last observed (`lastCopyVersion`) against the
   version the app last wrote (`copyVersion`, absent = 0), independent of any
   template change. A sync is the scanner: badges reflect the world as of the last
-  sync, and Sync All refreshes the whole roster's counts. `templateVersion` always remains the version the copy's
+  sync, and Sync All refreshes the whole roster's counts. Clicking the badge opens
+  a bounded, scrollable list of those copies (names resolved live by id, never
+  stored) — each a single truncated line that opens the copy in a new tab. This
+  is the first slice of the grading view: every student's edited work, one click
+  from the roster. `templateVersion` always remains the version the copy's
   content actually came from (clone or last overwrite) — a leave never touches
   it. A leave records `outOfSync` (the student's row shows a standing "N out of
   sync" marker) and the prompt returns on **every** sync while the divergence

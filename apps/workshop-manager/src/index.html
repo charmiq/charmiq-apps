@@ -206,6 +206,22 @@ td .sub { font-size: 12px; color: var(--gray-500); }
 tr.deleted td .sub { color: var(--gray-400); }
 .status-cloned { color: var(--success); }
 .status-outofsync { color: var(--warn); font-weight: 600; }
+button.status-outofsync { background: transparent; padding: 0; font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline dotted; }
+button.status-outofsync:hover { background: transparent; color: var(--danger); }
+/* the out-of-sync list floats over the row like every other popover: bounded
+   height, its own scroller, single-line truncated names that open in a new tab */
+.status-cell { position: relative; }
+.outofsync-popover {
+  position: absolute; top: 100%; left: 0; z-index: 70;
+  width: min(360px, 90vw); max-height: 260px; overflow-y: auto;
+  background: white; border-radius: 8px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 6px 4px;
+}
+.outofsync-popover .item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; color: var(--primary); text-decoration: none; min-width: 0; }
+.outofsync-popover .item:hover { background: var(--gray-100); }
+.outofsync-popover .item .n { flex: 1 1 auto; }
+.outofsync-popover .item svg.mi { flex-shrink: 0; width: 16px; height: 16px; }
+.outofsync-popover .empty { padding: 6px 8px; color: var(--gray-500); font-size: 13px; }
 .status-progress { color: var(--primary); }
 /* the status cell renders main + sub lines in every state so switching between
    not-cloned / syncing / cloned never changes the row's height */
@@ -365,6 +381,8 @@ let busyStudentId = null/*one clone at a time*/;
 let progressText = new Map()/*studentId → status line*/;
 let addStudent = { name: '', user: null/*{userId, name, email}*/ };
 let ownerPickerOpen = false;
+let outOfSyncOpenFor = null/*studentId whose out-of-sync list popover is open*/;
+const materialNameCache = new Map()/*uri → live name, session-only (names change; never persisted)*/;
 let sort = { key: 'name', dir: 1/*ascending*/ };
 
 const defaultState = () => ({
@@ -409,6 +427,8 @@ const platformOrigin = () => {
 };
 const folderUri = (folderId) => `${CHARMIQ_URI_SCHEME}folder/${folderId}`;
 const folderWebUrl = (folderId) => `${platformOrigin()}/folder/${folderId}`;
+// web URL for any copied material — the URI scope maps 1:1 onto the route segment
+const materialWebUrl = (templateUri, copyId) => `${platformOrigin()}/${uriScope(templateUri)}/${copyId}`;
 const uriScope = (uri) => { const rest = String(uri || '').slice(CHARMIQ_URI_SCHEME.length); return rest.slice(0, rest.indexOf('/')); };
 const uriId = (uri) => { const rest = String(uri || '').slice(CHARMIQ_URI_SCHEME.length); return rest.slice(rest.indexOf('/') + 1).split(/[?#]/)[0]; };
 
@@ -1409,9 +1429,33 @@ const sortedStudents = () => {
 const headerCellHtml = (key, label, style) =>
   `<th style="${style}" data-sort-key="${key}">${label}${sort.key === key ? icon(sort.dir === 1 ? 'expandLess' : 'expandMore') : ''}</th>`;
 
+// out-of-sync = the student edited the copy since the app last wrote it (as of
+// the last sync). Names resolve live by id and are cached for the session only
+const isEntryOutOfSync = (entry) => (entry.lastCopyVersion ?? 0) > (entry.copyVersion ?? 0);
+const outOfSyncEntriesOf = (student) => Object.entries(student.mapping).filter(([, entry]) => isEntryOutOfSync(entry));
+
+const resolveOutOfSyncNames = async (student) => {
+  const entries = outOfSyncEntriesOf(student).filter(([templateUri, entry]) => !materialNameCache.has(copyUri(templateUri, entry.copyId)));
+  await mapPool(entries, POOL_LIMIT, async ([templateUri, entry]) => {
+    const uri = copyUri(templateUri, entry.copyId);
+    try { const described = await describeUri(uri); materialNameCache.set(uri, (typeof described.name === 'string' && described.name.trim()) ? described.name.trim() : entry.copyId); }
+    catch { materialNameCache.set(uri, `${entry.copyId} (unreadable)`); }
+  });
+};
+
+const outOfSyncPopoverHtml = (student) => {
+  const entries = outOfSyncEntriesOf(student);
+  if(entries.length < 1) return `<div class="outofsync-popover"><div class="empty">Nothing out of sync</div></div>`;
+  return `<div class="outofsync-popover">${entries.map(([templateUri, entry]) => {
+    const uri = copyUri(templateUri, entry.copyId);
+    const name = materialNameCache.get(uri) ?? 'Loading…';
+    return `<a class="item" href="${esc(materialWebUrl(templateUri, entry.copyId))}" target="_blank" rel="noopener" title="${esc(name)}"><span class="n trunc">${esc(name)}</span>${icon('openInNew')}</a>`;
+  }).join('')}</div>`;
+};
+
 const studentRowHtml = (student) => {
   const cloneCount = Object.keys(student.mapping).length;
-  const outOfSyncCount = Object.values(student.mapping).filter(entry => ((entry.lastCopyVersion ?? 0) > (entry.copyVersion ?? 0))).length;
+  const outOfSyncCount = outOfSyncEntriesOf(student).length;
   const charmEntries = charmEntriesOf(student).map(([, entry]) => entry);
   const charmsImported = charmEntries.filter(entry => entry.agentImportedAt).length;
   const charmsPending = charmEntries.length - charmsImported;
@@ -1426,7 +1470,7 @@ const studentRowHtml = (student) => {
   const statusMain = progress
     ? `<span class="status-progress">${esc(progress)}</span>`
     : cloneCount > 0
-      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'} cloned</span>${outOfSyncCount > 0 ? ` <span class="status-outofsync" title="Copies the student has edited since the app last wrote them — as of the last sync">· ${outOfSyncCount} out of sync</span>` : ''}`
+      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'} cloned</span>${outOfSyncCount > 0 ? ` · <button class="status-outofsync" data-action="toggle-outofsync" data-student-id="${esc(student.id)}" title="Copies the student has edited since the app last wrote them — as of the last sync. Click to list them">${outOfSyncCount} out of sync</button>` : ''}`
       : `<span class="sub">Not cloned</span>`;
   const statusHtml = `<div class="status-main trunc">${statusMain}</div><div class="sub trunc">${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
   return `
@@ -1448,7 +1492,7 @@ const studentRowHtml = (student) => {
         </div>` : ''}
       </td>
       <td><div class="trunc" title="${esc(student.profileName)}">${esc(student.profileName)}</div><div class="sub trunc" title="${esc(student.email)}">${esc(student.email)}</div></td>
-      <td>${statusHtml}</td>
+      <td class="status-cell">${statusHtml}${(outOfSyncOpenFor === student.id) ? outOfSyncPopoverHtml(student) : ''}</td>
       <td>
         <div class="row-actions">
           ${student.deleted
@@ -1534,6 +1578,15 @@ const bindEvents = (app) => {
       if(action === 'edit') { editingField = el.dataset.field; editError = null; render(); document.getElementById('edit-input')?.focus(); }
       else if(action === 'toggle-config') { configCollapsed = !configCollapsed; render(); }
       else if(action === 'refresh-folder') refreshFolderName(el.dataset.field);
+      else if(action === 'toggle-outofsync') {
+        const studentId = el.dataset.studentId;
+        outOfSyncOpenFor = (outOfSyncOpenFor === studentId) ? null : studentId;
+        render();
+        if(outOfSyncOpenFor) {
+          const student = state.students.find(s => s.id === studentId);
+          if(student) resolveOutOfSyncNames(student).then(() => { if(outOfSyncOpenFor === studentId) render(); });
+        }
+      }
       else if(action === 'cancel-edit') { editingField = null; editError = null; render(); }
       else if(action === 'save-edit') {
         const value = document.getElementById('edit-input')?.value ?? '';
@@ -1628,10 +1681,10 @@ const boot = async () => {
 
   // a click outside the floating editor (and outside any confirm modal) cancels it
   document.addEventListener('mousedown', (event) => {
-    if(!editingField && !editingStudentId) return;
+    if(!editingField && !editingStudentId && !outOfSyncOpenFor) return;
     const target = event.target;
-    if(target.closest('.edit-popover') || target.closest('[data-action="edit"]') || target.closest('[data-action="edit-student"]') || target.closest('.modal-overlay')) return;
-    editingField = null; editingStudentId = null; editError = null; render();
+    if(target.closest('.edit-popover') || target.closest('.outofsync-popover') || target.closest('[data-action="edit"]') || target.closest('[data-action="edit-student"]') || target.closest('[data-action="toggle-outofsync"]') || target.closest('.modal-overlay')) return;
+    editingField = null; editingStudentId = null; outOfSyncOpenFor = null; editError = null; render();
   });
 
   // live refresh for other open copies of this page; own writes echo back and are
