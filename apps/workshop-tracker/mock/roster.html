@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mock Roster</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; padding: 16px; background: #fef3c7; color: #1f2937; font-size: 14px; }
+h2 { font-size: 15px; margin-bottom: 10px; }
+.row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+input[type="text"] { font: inherit; padding: 6px 10px; border: 1px solid #e5e7eb; border-radius: 6px; flex: 1 1 240px; }
+select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #e5e7eb; background: white; cursor: pointer; }
+button.primary { background: #4A90E2; color: white; border: none; }
+.log { font-size: 12px; color: #6b7280; max-height: 120px; overflow-y: auto; background: white; border-radius: 6px; padding: 8px; }
+</style>
+</head>
+<body>
+  <h2>Mock Roster — advertises 'workshop-data' with fabricated students over a real template tree</h2>
+  <div class="row"><input type="text" id="folder" placeholder="Real Template Folder id (walked for real Material uris)"><button class="primary" id="build">Build</button></div>
+  <div class="row">
+    <label>Scenario <select id="scenario">
+      <option value="small">Small (4 students)</option>
+      <option value="classroom">Classroom (30 students)</option>
+      <option value="chaos">Chaos (30, missing clones, long names)</option>
+      <option value="empty">Empty roster</option>
+    </select></label>
+    <button id="mutate">Random student edits something</button>
+    <label><input type="checkbox" id="auto"> auto-mutate every 3s</label>
+  </div>
+  <div class="log" id="log"></div>
+
+<script>
+(() => {
+'use strict';
+
+// mock provider for the workshop tracker: advertises the same 'workshop-data'
+// contract as the roster app, with fabricated students whose mappings cover a
+// REAL template tree (paste a real Folder id) — copy ids are fake, so copy
+// links 404, but structure / statuses / live updates are fully exercisable
+// ********************************************************************************
+const CHARMIQ_URI_SCHEME = 'charmiq://';
+const RICHTEXT_SCOPES = new Set(['workspace', 'charm', 'chat', 'source']);
+
+const FIRST = ['Ava', 'Ben', 'Carter', 'Daisy', 'Emma', 'Grace', 'Henry', 'Jack', 'Liam', 'Mia', 'Noah', 'Olivia', 'Ryan', 'Sophie', 'Tyler'];
+const LAST = ['Anderson', 'Brooks', 'Carter', 'Davis', 'Ellis', 'Foster', 'Hayes', 'Miller'];
+const LONG_NAME = 'Bartholomew Montgomery-Fitzgerald the Third of the Really Quite Long Names';
+
+const logEl = document.getElementById('log');
+const log = (message) => { logEl.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}<br>` + logEl.innerHTML; };
+
+const uriScope = (uri) => { const rest = String(uri || '').slice(CHARMIQ_URI_SCHEME.length); return rest.slice(0, rest.indexOf('/')); };
+const fakeId = () => 'mock' + Math.random().toString(36).slice(2, 18);
+
+let templateFolderId = null;
+let templateDocUris = [];
+let students = [];
+let mutateTimer = null;
+
+const { BehaviorSubject } = window.rxjs ?? {};
+const data$ = BehaviorSubject ? new BehaviorSubject(snapshot()) : null;
+
+// ================================================================================
+function snapshot() {
+  return {
+    version: 1,
+    config: { templateFolderId, classroomFolderId: 'mock-classroom' },
+    students,
+  };
+}
+const publish = () => { if(data$) data$.next(snapshot()); };
+
+// walk the real template one level at a time so mappings reference real uris
+const listDirAll = async (uri) => {
+  const result = await window.charmiq.mcp.callTool('vfs', 'list_dir', { uri, limit: 100 });
+  const structured = result?.structuredContent ?? result;
+  return Array.isArray(structured?.entries) ? structured.entries : [];
+};
+const walkDocs = async (folderId) => {
+  const docs = [];
+  let level = [`${CHARMIQ_URI_SCHEME}folder/${folderId}`];
+  while(level.length > 0) {
+    const nextLevel = [];
+    for(const parentUri of level) {
+      for(const entry of await listDirAll(parentUri)) {
+        const scope = uriScope(entry.uri);
+        if(scope === 'folder') nextLevel.push(entry.uri);
+        else if(RICHTEXT_SCOPES.has(scope)) docs.push(entry.uri);
+      }
+    }
+    level = nextLevel;
+  }
+  return docs;
+};
+
+const makeStudent = (name, { cloneEvery = true, editChance = 0.3 } = {}) => {
+  const mapping = {};
+  for(const uri of templateDocUris) {
+    if(!cloneEvery && Math.random() < 0.25) continue/*missing clone*/;
+    const edited = Math.random() < editChance;
+    mapping[uri] = {
+      copyId: fakeId(), kind: 'doc', parentUri: `${CHARMIQ_URI_SCHEME}folder/${templateFolderId}`,
+      templateVersion: 3, copyVersion: 0,
+      ...(edited ? { lastCopyVersion: 2 } : { lastCopyVersion: 0 }),
+      clonedAt: new Date().toISOString(),
+    };
+  }
+  return { id: fakeId(), name, email: `${name.toLowerCase().replace(/[^a-z]/g, '.')}@example.com`, userId: fakeId(), deleted: false, folderId: fakeId(), mapping };
+};
+
+const buildScenario = (which) => {
+  const roster = [];
+  const count = (which === 'small') ? 4 : (which === 'empty') ? 0 : 30;
+  for(let i = 0; i < count; i++) {
+    const name = (which === 'chaos' && i === 0) ? LONG_NAME
+      : `${FIRST[i % FIRST.length]} ${LAST[Math.floor(i / FIRST.length) % LAST.length]}${i >= FIRST.length * LAST.length ? ` ${i}` : ''}`;
+    roster.push(makeStudent(name, which === 'chaos' ? { cloneEvery: false, editChance: 0.5 } : {}));
+  }
+  students = roster;
+  publish();
+  log(`Scenario '${which}': ${students.length} students over ${templateDocUris.length} Materials`);
+};
+
+// ================================================================================
+document.getElementById('build').addEventListener('click', async () => {
+  const raw = document.getElementById('folder').value.trim();
+  const match = raw.match(/\/folder\/([A-Za-z0-9_-]+)/);
+  templateFolderId = match ? match[1] : raw;
+  if(!templateFolderId) { log('Paste a Template Folder id first'); return; }
+  log('Walking the real template…');
+  try {
+    templateDocUris = await walkDocs(templateFolderId);
+    log(`Found ${templateDocUris.length} document Materials`);
+    buildScenario(document.getElementById('scenario').value);
+  } catch(error) { log(`Walk failed: ${error?.message ?? error}`); }
+});
+document.getElementById('scenario').addEventListener('change', (event) => { if(templateFolderId) buildScenario(event.target.value); });
+
+const mutateOne = () => {
+  const candidates = students.flatMap(student => Object.entries(student.mapping).map(([uri, entry]) => ({ student, uri, entry })));
+  if(candidates.length < 1) return;
+  const { student, uri, entry } = candidates[Math.floor(Math.random() * candidates.length)];
+  entry.lastCopyVersion = (entry.lastCopyVersion ?? 0) + 1;
+  publish();
+  log(`${student.name} edited ${uri.slice(-8)} → v${entry.lastCopyVersion}`);
+};
+document.getElementById('mutate').addEventListener('click', mutateOne);
+document.getElementById('auto').addEventListener('change', (event) => {
+  clearInterval(mutateTimer);
+  mutateTimer = event.target.checked ? setInterval(mutateOne, 3000) : null;
+});
+
+if(!data$) { log('window.rxjs unavailable — cannot advertise a stream'); }
+else {
+  window.charmiq.advertise('workshop-data', {
+    getWorkshopData: () => snapshot(),
+    data$: () => data$.asObservable(),
+  });
+  log("Advertised 'workshop-data' (mock)");
+}
+})();
+</script>
+</body>
+</html>

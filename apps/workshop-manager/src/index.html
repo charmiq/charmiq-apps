@@ -557,6 +557,7 @@ const persist = (mutate) => {
     lastWrittenJson = JSON.stringify(next);
     await window.charmiq.appState.set(next);
     state = next;
+    publishWorkshopData();
     render();
   });
   persistQueue = run.catch(() => { /* a failed write never wedges the queue */ });
@@ -564,6 +565,30 @@ const persist = (mutate) => {
 };
 
 const replaceStudent = (students, updated) => students.map(s => s.id === updated.id ? updated : s);
+
+// == Advertise (workshop-data) ===================================================
+// app-to-app contract consumed by the workshop tracker: a one-shot getter and a
+// BehaviorSubject-backed stream that emits the current snapshot on subscribe and
+// again on every state change (the counters-demo pattern). The snapshot is the
+// persisted state plus nothing — names and tree structure resolve live by id on
+// the consumer side
+const WORKSHOP_DATA_VERSION = 1;
+const workshopSnapshot = () => ({
+  version: WORKSHOP_DATA_VERSION,
+  config: { templateFolderId: state.config.templateFolderId, classroomFolderId: state.config.classroomFolderId },
+  students: state.students,
+});
+let workshopData$ = null;
+const publishWorkshopData = () => { if(workshopData$ && state) workshopData$.next(workshopSnapshot()); };
+const advertiseWorkshopData = () => {
+  const BehaviorSubject = window.rxjs?.BehaviorSubject;
+  if(!BehaviorSubject || !window.charmiq?.advertise) return/*no stream host; the tracker reports disconnected*/;
+  workshopData$ = new BehaviorSubject(workshopSnapshot());
+  window.charmiq.advertise('workshop-data', {
+    getWorkshopData: () => workshopSnapshot(),
+    data$: () => workshopData$.asObservable(),
+  });
+};
 
 const anyClones = () => state.students.some(s => !s.deleted && Object.keys(s.mapping).length > 0);
 
@@ -1687,6 +1712,8 @@ const boot = async () => {
     editingField = null; editingStudentId = null; outOfSyncOpenFor = null; editError = null; render();
   });
 
+  advertiseWorkshopData();
+
   // live refresh for other open copies of this page; own writes echo back and are
   // suppressed by content equality
   try {
@@ -1696,6 +1723,7 @@ const boot = async () => {
       if(json === lastWrittenJson) return;
       state = normalized;
       lastWrittenJson = json;
+      publishWorkshopData();
       render();
     });
   } catch { /* live refresh unavailable; explicit actions still re-render */ }

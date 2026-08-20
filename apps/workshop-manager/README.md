@@ -10,7 +10,7 @@ Unlike the other `apps/`, this is currently a single-file Source application wit
 
 ## Embedding
 
-<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.richtext.metadata.set%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%5D">
+<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.richtext.metadata.set%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%2C%22application.advertise%22%5D">
 </iframe-app>
 
 The `requested-scopes` value is the percent-encoded JSON array:
@@ -19,7 +19,7 @@ The `requested-scopes` value is the percent-encoded JSON array:
 ["appState.read", "appState.write", "authUser.state.read", "userProfile.search",
  "mcp.platform.vfs", "command.richtext.copy", "command.richtext.metadata.set",
  "command.folder.permission.set", "command.folder.delete",
- "command.folder.name.set", "command.admin.agent.create"]
+ "command.folder.name.set", "command.admin.agent.create", "application.advertise"]
 ```
 
 | Scope | Used for |
@@ -34,6 +34,7 @@ The `requested-scopes` value is the percent-encoded JSON array:
 | `command.folder.delete` | Deletes a removed template folder's copy once it is verifiably empty |
 | `command.folder.name.set` | Renames a student's folder when the student is renamed (only if the student has not renamed it themselves) |
 | `command.admin.agent.create` | Import Charms: creates private Agents for a student from their cloned Charm copies (Admin / DefaultAgentAdmin only) |
+| `application.advertise` | Advertises `workshop-data` to the workshop tracker on the same page |
 
 ## User search
 
@@ -105,6 +106,26 @@ bridge-denied search reports as unavailable, never as an empty roster.
 - Changing the Template or Classroom folder (or the pattern) after clones exist
   requires a type-to-confirm warning; the Template change abandons the clone index,
   so the next re-clone copies the entire new template alongside existing content.
+
+## Advertised data (`workshop-data`)
+
+The app advertises its state to the workshop tracker (same page, app-to-app):
+
+```
+advertise('workshop-data', {
+  getWorkshopData: () => snapshot,   // one-shot
+  data$: () => Observable<snapshot>, // emits current on subscribe + every change
+})
+snapshot = { version: 1,
+             config: { templateFolderId, classroomFolderId },
+             students }              // the persisted roster, mappings included
+```
+
+The snapshot is the persisted state plus nothing — names and tree structure
+resolve live by id on the consumer side. `data$` is BehaviorSubject-backed and
+emits on every persisted write and every foreign write received via app-state.
+`apps/workshop-tracker/mock/roster.html` advertises the same contract with
+fabricated students for tracker development.
 
 ## Re-clone sync contract
 

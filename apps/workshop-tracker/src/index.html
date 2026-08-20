@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Workshop Tracker</title>
+<style>
+/* Workshop Tracker — the daily-work surface: Assignments over the template tree,
+   per-student progress at a glance. Shares the app design tokens */
+/* ******************************************************************************** */
+/* == Tokens ====================================================================== */
+:root {
+  --primary: #4A90E2;
+  --primary-light: #e7f3ff;
+  --danger: #d32f2f;
+  --danger-light: #fdecea;
+  --warn: #b45309;
+  --warn-light: #fef3c7;
+  --success: #15803d;
+  --success-light: #dcfce7;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+}
+
+/* == Reset ======================================================================= */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  padding: 16px;
+  background: var(--gray-50);
+  color: var(--gray-900);
+  font-size: 14px;
+  overflow: hidden/*the tree region is the only scroller*/;
+}
+
+.container { max-width: 1100px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
+
+.card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  flex: 0 1 auto; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.card-header {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--gray-200);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.card-header h2 { font-size: 16px; font-weight: 600; }
+.header-right { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.card-body { padding: 12px 20px 16px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+
+button {
+  font: inherit;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 7px 14px;
+  background: var(--gray-100);
+  color: var(--gray-800);
+}
+button:hover { background: var(--gray-200); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--primary); color: white; }
+button.primary:hover:not(:disabled) { background: #3a7bc8; }
+button.small { padding: 4px 10px; font-size: 13px; }
+button.icon { padding: 4px; background: transparent; display: inline-flex; align-items: center; color: var(--gray-500); }
+button.icon:hover { background: var(--gray-100); color: var(--gray-800); }
+
+svg.mi { width: 18px; height: 18px; fill: currentColor; vertical-align: middle; }
+
+/* truncation discipline: a name never wraps — ellipsis + the full value on hover */
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sub { font-size: 12px; color: var(--gray-500); }
+a.material-link { color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+a.material-link:hover { text-decoration: underline; }
+
+/* == Connection banner =========================================================== */
+.banner { border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; background: var(--warn-light); color: var(--warn); line-height: 1.5; }
+.banner.error { background: var(--danger-light); color: var(--danger); }
+
+/* == Tree ======================================================================== */
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  min-width: 0;
+}
+.tree-row:hover { background: var(--gray-50); }
+.tree-row .name { flex: 1 1 auto; min-width: 0; }
+.tree-row .folder-name { font-weight: 600; color: var(--gray-600); }
+.tree-children { margin-left: 20px; border-left: 1px solid var(--gray-100); padding-left: 6px; }
+
+/* the Assign toggle is a small pill; assigned rows carry the accent */
+.assign-toggle {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--gray-100);
+  color: var(--gray-500);
+}
+.assign-toggle:hover { background: var(--gray-200); }
+.assign-toggle.on { background: var(--primary); color: white; }
+.rollup { flex-shrink: 0; font-size: 12px; color: var(--gray-500); }
+.rollup.warm { color: var(--success); font-weight: 600; }
+.checked-stamp { flex-shrink: 0; font-size: 11px; color: var(--gray-400); }
+
+/* == Student rows under an Assignment ============================================ */
+.students { margin-left: 26px; padding: 2px 0 6px; }
+.student-row { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 6px; min-width: 0; }
+.student-row:hover { background: var(--gray-50); }
+.student-row .who { flex: 1 1 auto; min-width: 0; }
+.chip { flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
+.chip.work { background: var(--success-light); color: var(--success); }
+.chip.clean { background: var(--gray-100); color: var(--gray-500); }
+.chip.missing { background: var(--warn-light); color: var(--warn); }
+.chip.unreachable { background: var(--danger-light); color: var(--danger); }
+.chip.live { text-decoration: underline dotted; }
+
+#toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 200; max-width: 380px; }
+.toast { background: var(--gray-800); color: white; border-radius: 8px; padding: 10px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.4; }
+.toast.error { background: var(--danger); }
+.toast button.icon { color: rgba(255,255,255,0.8); flex-shrink: 0; }
+</style>
+</head>
+<body>
+  <div class="container" id="app"></div>
+  <div id="toasts"></div>
+
+<script>
+(() => {
+'use strict';
+
+// Workshop Tracker
+// The daily-work surface: subscribes to the roster app's advertised
+// 'workshop-data' stream, renders the template tree of Materials, and tracks
+// per-student progress on the Materials the teacher marks as Assignments.
+// Roster emissions replace DATA only — Assignments, expansion, live-check
+// results, and scroll all survive every emission by construction.
+// ********************************************************************************
+// == Constants ===================================================================
+const CHARMIQ_URI_SCHEME = 'charmiq://';
+const RICHTEXT_SCOPES = new Set(['workspace', 'charm', 'chat', 'source']);
+const LIST_PAGE_LIMIT = 100;
+const LIST_PAGE_CAP = 50;
+const POOL_LIMIT = 8/*hard fan-out cap for platform calls*/;
+
+const ICONS = {
+  openInNew: 'M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z',
+  close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+  expandLess: 'M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14l-6-6z',
+  expandMore: 'M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z',
+  refresh: 'M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z',
+};
+
+// == State =======================================================================
+// data (replaced wholesale by their sources; never carry UI state)
+let roster = null/*latest 'workshop-data' emission*/;
+let walk = null/*template tree for walkForFolderId*/;
+let walkForFolderId = null;
+let walkError = null;
+let assigned = new Set()/*persisted: template doc uris marked as Assignments*/;
+
+// session-only UI state — survives every roster emission by construction
+let connection = 'connecting'/*'connecting' | 'connected' | 'disconnected'*/;
+let collapsedFolders = new Set()/*template folder uris (default: everything expanded)*/;
+let collapsedAssignments = new Set()/*assigned doc uris whose student list is folded*/;
+let liveChecks = new Map()/*templateUri → { at, byStudentId: Map<studentId, 'work'|'clean'|'missing'|'unreachable'> }*/;
+let checking = null/*progress line while a check runs*/;
+let walkLoading = false;
+
+// == Utilities ===================================================================
+const esc = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const icon = (name) => `<svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
+
+const platformOrigin = () => {
+  try { if(document.referrer) return new URL(document.referrer).origin; } catch { /* fall through */ }
+  return 'https://team.charmiq.ai';
+};
+const folderUri = (folderId) => `${CHARMIQ_URI_SCHEME}folder/${folderId}`;
+const uriScope = (uri) => { const rest = String(uri || '').slice(CHARMIQ_URI_SCHEME.length); return rest.slice(0, rest.indexOf('/')); };
+const uriId = (uri) => { const rest = String(uri || '').slice(CHARMIQ_URI_SCHEME.length); return rest.slice(rest.indexOf('/') + 1).split(/[?#]/)[0]; };
+// a copy carries the source's type, so its URI (and web route) share the template's scope
+const copyUri = (templateUri, copyId) => `${CHARMIQ_URI_SCHEME}${uriScope(templateUri)}/${copyId}`;
+const materialWebUrl = (templateUri, materialId) => `${platformOrigin()}/${uriScope(templateUri)}/${materialId}`;
+
+const formatTime = (iso) => { try { return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); } catch { return iso; } };
+
+// bounded parallel map — lanes pull the next item as they finish
+const mapPool = async (items, limit, worker) => {
+  const results = new Array(items.length);
+  let next = 0;
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while(true) {
+      const index = next++;
+      if(index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(lanes);
+  return results;
+};
+
+// MCP tool results may arrive structured, wrapped, or as text content
+const normalizeToolResult = (result) => {
+  if(result == null) return {};
+  if(result.structuredContent && typeof result.structuredContent === 'object') return result.structuredContent;
+  if(Array.isArray(result.content)) {
+    const text = result.content.filter(c => c && c.type === 'text').map(c => c.text).join('\n');
+    try { return JSON.parse(text); } catch { return { text }; }
+  } /* else -- unstructured, non-array content */
+  return result;
+};
+const callVfs = async (tool, args) => normalizeToolResult(await window.charmiq.mcp.callTool('vfs', tool, args));
+
+const listDirAll = async (uri) => {
+  const entries = [];
+  let offset = 0;
+  for(let page = 0; page < LIST_PAGE_CAP; page++) {
+    const result = await callVfs('list_dir', { uri, limit: LIST_PAGE_LIMIT, offset });
+    const pageEntries = Array.isArray(result.entries) ? result.entries : [];
+    entries.push(...pageEntries);
+    if(!result.hasMore || (pageEntries.length < 1)) return entries;
+    offset += pageEntries.length;
+  }
+  throw new Error(`Folder listing exceeded ${LIST_PAGE_CAP * LIST_PAGE_LIMIT} entries`);
+};
+
+const isGoneError = (error) => /not[- ]found|deleted/i.test(String(error?.message ?? error));
+
+// == Toasts ======================================================================
+const toast = (message, { error = false } = {}) => {
+  const el = document.createElement('div');
+  el.className = 'toast' + (error ? ' error' : '');
+  el.innerHTML = `<div style="flex:1 1 auto; min-width:0;">${esc(message)}</div><button class="icon" title="Dismiss">${icon('close')}</button>`;
+  el.querySelector('button').addEventListener('click', () => el.remove());
+  document.getElementById('toasts').appendChild(el);
+  if(!error) setTimeout(() => el.remove(), 6000);
+};
+
+// == Own persistence (Assignments) ===============================================
+// fetch-merge-set through one write queue, echo-suppressed live refresh — the
+// same discipline as the roster app, over this app's own (per-embed) app-state
+let lastWrittenJson = null;
+let persistQueue = Promise.resolve();
+const normalizeOwnState = (raw) => ({
+  assignedUris: (raw && Array.isArray(raw.assignedUris)) ? raw.assignedUris.filter(uri => typeof uri === 'string') : [],
+});
+const persistAssigned = (mutate) => {
+  const run = persistQueue.then(async () => {
+    const fetched = normalizeOwnState(await window.charmiq.appState.get());
+    const next = mutate(fetched) || fetched;
+    lastWrittenJson = JSON.stringify(next);
+    await window.charmiq.appState.set(next);
+    assigned = new Set(next.assignedUris);
+    render();
+  });
+  persistQueue = run.catch(() => { /* a failed write never wedges the queue */ });
+  return run;
+};
+
+// == Roster subscription =========================================================
+// discover$ tracks the provider coming and going; each provider's data$() is
+// subscribed with retry so a reloaded roster app reconnects on its own
+let dataSubscription = null;
+const subscribeRoster = () => {
+  const rxjs = window.rxjs;
+  if(!rxjs || !window.charmiq?.discover$) { connection = 'disconnected'; render(); return; }
+  window.charmiq.discover$('workshop-data').subscribe({
+    next: (providers) => {
+      try { dataSubscription?.unsubscribe?.(); } catch { /* disposed */ }
+      dataSubscription = null;
+      const provider = (Array.isArray(providers) && providers.length > 0) ? providers[0] : null;
+      if(!provider) {
+        connection = 'disconnected'/*keep the last roster visible, tagged stale*/;
+        render();
+        return;
+      } /* else -- a provider is live */
+      dataSubscription = provider.data$().pipe(rxjs.retry({ delay: 1500 })).subscribe({
+        next: (data) => {
+          // data replaces DATA only — every piece of UI state survives
+          roster = data;
+          connection = 'connected';
+          ensureWalk();
+          render();
+        },
+        error: () => { connection = 'disconnected'; render(); },
+      });
+    },
+    error: () => { connection = 'disconnected'; render(); },
+  });
+};
+
+// == Template walk ===============================================================
+// re-walks only when the roster's Template Folder id actually changes
+const walkTemplate = async (templateFolderId) => {
+  const rootUri = folderUri(templateFolderId);
+  const folders = []/*{uri, name, parentUri}*/;
+  const docs = []/*{uri, name, parentUri}*/;
+  let level = [rootUri];
+  while(level.length > 0) {
+    const listings = await mapPool(level, POOL_LIMIT, async (parentUri) => ({ parentUri, entries: await listDirAll(parentUri) }));
+    const nextLevel = [];
+    for(const { parentUri, entries } of listings) {
+      for(const entry of entries) {
+        const scope = uriScope(entry.uri);
+        if(scope === 'folder') {
+          folders.push({ uri: entry.uri, name: entry.name.replace(/\/$/, ''), parentUri });
+          nextLevel.push(entry.uri);
+        } else if(RICHTEXT_SCOPES.has(scope)) {
+          docs.push({ uri: entry.uri, name: entry.name, parentUri });
+        } /* else -- uncopyable scope; the roster app reports those */
+      }
+    }
+    level = nextLevel;
+  }
+  return { rootUri, folders, docs };
+};
+
+const ensureWalk = () => {
+  const templateFolderId = roster?.config?.templateFolderId ?? null;
+  if(!templateFolderId || (templateFolderId === walkForFolderId) || walkLoading) return;
+  walkLoading = true;
+  walkError = null;
+  walkTemplate(templateFolderId)
+    .then(result => { walk = result; walkForFolderId = templateFolderId; })
+    .catch(error => { walkError = String(error?.message ?? error); })
+    .finally(() => { walkLoading = false; render(); });
+};
+
+// == Status ======================================================================
+// snapshot status from the roster data ("as of that student's last sync");
+// a live check overrides it for the checked Assignment
+const snapshotStatus = (student, templateUri) => {
+  const entry = student.mapping?.[templateUri];
+  if(!entry) return 'missing';
+  return ((entry.lastCopyVersion ?? 0) > (entry.copyVersion ?? 0)) ? 'work' : 'clean';
+};
+const statusOf = (student, templateUri) => {
+  const live = liveChecks.get(templateUri)?.byStudentId.get(student.id);
+  return { status: live ?? snapshotStatus(student, templateUri), isLive: live !== undefined };
+};
+const CHIP_LABEL = { work: 'Has work', clean: 'Not started', missing: 'Not cloned', unreachable: 'Unreachable' };
+
+const activeStudents = () => (roster?.students ?? []).filter(s => !s.deleted)
+  .slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+// == Live checks =================================================================
+// describes the copies directly — truth now, not as-of-last-sync
+const checkAssignments = async (templateUris) => {
+  if(checking || !roster) return;
+  const students = activeStudents();
+  const jobs = [];
+  for(const templateUri of templateUris) {
+    for(const student of students) {
+      jobs.push({ templateUri, student, entry: student.mapping?.[templateUri] });
+    }
+  }
+  if(jobs.length < 1) return;
+  let done = 0;
+  checking = `Checking… 0/${jobs.length}`;
+  render();
+  try {
+    const results = new Map(templateUris.map(uri => [uri, new Map()]));
+    await mapPool(jobs, POOL_LIMIT, async ({ templateUri, student, entry }) => {
+      let status;
+      if(!entry) status = 'missing';
+      else {
+        try {
+          const described = await callVfs('describe_file', { uri: copyUri(templateUri, entry.copyId) });
+          const version = (typeof described.version === 'number') ? described.version : 0;
+          status = (version > (entry.copyVersion ?? 0)) ? 'work' : 'clean';
+        } catch(error) {
+          status = isGoneError(error) ? 'missing' : 'unreachable';
+        }
+      }
+      results.get(templateUri).set(student.id, status);
+      checking = `Checking… ${++done}/${jobs.length}`;
+      render();
+    });
+    const at = new Date().toISOString();
+    for(const [templateUri, byStudentId] of results) liveChecks.set(templateUri, { at, byStudentId });
+  } finally {
+    checking = null;
+    render();
+  }
+};
+
+// == Render ======================================================================
+const childrenIndex = () => {
+  const byParent = new Map();
+  const bucket = (parentUri) => {
+    if(!byParent.has(parentUri)) byParent.set(parentUri, { folders: [], docs: [] });
+    return byParent.get(parentUri);
+  };
+  for(const folder of (walk?.folders ?? [])) bucket(folder.parentUri).folders.push(folder);
+  for(const doc of (walk?.docs ?? [])) bucket(doc.parentUri).docs.push(doc);
+  return byParent;
+};
+
+const assignmentRollup = (templateUri) => {
+  const students = activeStudents();
+  let work = 0;
+  for(const student of students) if(statusOf(student, templateUri).status === 'work') work++;
+  return { work, total: students.length };
+};
+
+const studentRowsHtml = (templateUri) => activeStudents().map(student => {
+  const { status, isLive } = statusOf(student, templateUri);
+  const entry = student.mapping?.[templateUri];
+  const nameHtml = entry
+    ? `<a class="material-link" href="${esc(materialWebUrl(templateUri, entry.copyId))}" target="_blank" rel="noopener" title="${esc(student.name)}"><span class="trunc">${esc(student.name)}</span>${icon('openInNew')}</a>`
+    : `<span class="trunc" title="${esc(student.name)}">${esc(student.name)}</span>`;
+  return `
+    <div class="student-row">
+      <div class="who trunc">${nameHtml}</div>
+      <span class="chip ${status}${isLive ? ' live' : ''}" title="${isLive ? 'Live-checked' : `As of this student's last sync`}">${CHIP_LABEL[status]}</span>
+    </div>`;
+}).join('');
+
+const docRowHtml = (doc) => {
+  const isAssigned = assigned.has(doc.uri);
+  const rollup = isAssigned ? assignmentRollup(doc.uri) : null;
+  const live = liveChecks.get(doc.uri);
+  const folded = collapsedAssignments.has(doc.uri);
+  return `
+    <div class="tree-row">
+      ${isAssigned ? `<button class="icon" data-action="toggle-students" data-uri="${esc(doc.uri)}" title="${folded ? 'Show students' : 'Hide students'}">${icon(folded ? 'expandMore' : 'expandLess')}</button>` : ''}
+      <a class="material-link name" href="${esc(materialWebUrl(doc.uri, uriId(doc.uri)))}" target="_blank" rel="noopener" title="${esc(doc.name)}"><span class="trunc">${esc(doc.name)}</span>${icon('openInNew')}</a>
+      ${isAssigned ? `<span class="rollup${rollup.work > 0 ? ' warm' : ''}" title="Students with work / active students">${rollup.work}/${rollup.total} have work</span>` : ''}
+      ${(isAssigned && live) ? `<span class="checked-stamp" title="Live-checked">checked ${esc(formatTime(live.at))}</span>` : ''}
+      ${isAssigned ? `<button class="icon" data-action="check-one" data-uri="${esc(doc.uri)}" ${checking ? 'disabled' : ''} title="Check this Assignment live now">${icon('refresh')}</button>` : ''}
+      <button class="assign-toggle${isAssigned ? ' on' : ''}" data-action="toggle-assign" data-uri="${esc(doc.uri)}" title="${isAssigned ? 'Unassign — stop tracking student work here' : 'Assign — track student work in this Material'}">${isAssigned ? 'Assigned' : 'Assign'}</button>
+    </div>
+    ${(isAssigned && !folded) ? `<div class="students">${studentRowsHtml(doc.uri)}</div>` : ''}`;
+};
+
+const treeLevelHtml = (parentUri, byParent) => {
+  const children = byParent.get(parentUri);
+  if(!children) return '';
+  const folderHtml = children.folders.map(folder => {
+    const folded = collapsedFolders.has(folder.uri);
+    return `
+      <div class="tree-row">
+        <button class="icon" data-action="toggle-folder" data-uri="${esc(folder.uri)}" title="${folded ? 'Expand' : 'Collapse'}">${icon(folded ? 'expandMore' : 'expandLess')}</button>
+        <span class="name folder-name trunc" title="${esc(folder.name)}">${esc(folder.name)}</span>
+      </div>
+      ${folded ? '' : `<div class="tree-children">${treeLevelHtml(folder.uri, byParent)}</div>`}`;
+  }).join('');
+  const docHtml = children.docs.map(docRowHtml).join('');
+  return folderHtml + docHtml;
+};
+
+const render = () => {
+  const app = document.getElementById('app');
+  if(!window.charmiq) { app.innerHTML = `<div class="banner error">This application must run embedded in a CharmIQ document.</div>`; return; }
+
+  // innerHTML replacement destroys the scroller — carry its position across
+  const scrollTop = app.querySelector('.card-body')?.scrollTop ?? 0;
+
+  const assignedCount = assigned.size;
+  const connectionHtml = {
+    connecting: `<span class="sub">Connecting to the roster…</span>`,
+    connected: `<span class="sub">Roster: live</span>`,
+    disconnected: `<span class="sub" style="color:var(--danger);">Roster app not found${roster ? ' — showing the last received data' : ''}</span>`,
+  }[connection];
+
+  let body;
+  if(!roster) body = `<div class="banner">Waiting for the Workshop Manager on this page to provide roster data…</div>`;
+  else if(!roster.config?.templateFolderId) body = `<div class="banner">No Template Folder is configured in the Workshop Manager yet.</div>`;
+  else if(walkError) body = `<div class="banner error">Cannot read the template tree: ${esc(walkError)} <button class="small" data-action="retry-walk">Retry</button></div>`;
+  else if(!walk || walkLoading) body = `<div class="banner">Reading the template tree…</div>`;
+  else body = treeLevelHtml(walk.rootUri, childrenIndex()) || `<div class="banner">The Template Folder is empty.</div>`;
+
+  app.innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <h2>Daily Work</h2>
+        <div class="header-right">
+          ${checking ? `<span class="sub" style="color:var(--primary);">${esc(checking)}</span>` : ''}
+          ${connectionHtml}
+          <button class="small primary" data-action="check-all" ${(checking || assignedCount < 1) ? 'disabled' : ''} title="${assignedCount < 1 ? 'Assign at least one Material first' : 'Live-check every Assignment for every student'}">Check all</button>
+        </div>
+      </div>
+      <div class="card-body">${body}</div>
+    </div>`;
+
+  const scroller = app.querySelector('.card-body');
+  if(scroller) scroller.scrollTop = scrollTop;
+
+  app.querySelectorAll('[data-action]').forEach(el => {
+    const action = el.dataset.action;
+    el.addEventListener('click', () => {
+      if(action === 'toggle-folder') { const uri = el.dataset.uri; collapsedFolders.has(uri) ? collapsedFolders.delete(uri) : collapsedFolders.add(uri); render(); }
+      else if(action === 'toggle-students') { const uri = el.dataset.uri; collapsedAssignments.has(uri) ? collapsedAssignments.delete(uri) : collapsedAssignments.add(uri); render(); }
+      else if(action === 'toggle-assign') {
+        const uri = el.dataset.uri;
+        const turningOn = !assigned.has(uri);
+        if(turningOn) collapsedAssignments.delete(uri)/*assigning opens the student list*/;
+        persistAssigned(s => {
+          const set = new Set(s.assignedUris);
+          turningOn ? set.add(uri) : set.delete(uri);
+          s.assignedUris = [...set];
+          return s;
+        });
+      }
+      else if(action === 'check-one') checkAssignments([el.dataset.uri]);
+      else if(action === 'check-all') checkAssignments([...assigned].filter(uri => walk?.docs.some(doc => doc.uri === uri)));
+      else if(action === 'retry-walk') { walkForFolderId = null; walkError = null; ensureWalk(); render(); }
+    });
+  });
+};
+
+// == Boot ========================================================================
+const boot = async () => {
+  render()/*shell*/;
+  if(!window.charmiq) return;
+
+  try {
+    assigned = new Set(normalizeOwnState(await window.charmiq.appState.get()).assignedUris);
+    lastWrittenJson = JSON.stringify({ assignedUris: [...assigned] });
+  } catch { /* fresh state */ }
+
+  // live refresh of Assignments from other open copies; own writes echo back
+  // and are suppressed by content equality
+  try {
+    window.charmiq.appState.onChange$().subscribe((incoming) => {
+      const normalized = normalizeOwnState(incoming);
+      const json = JSON.stringify(normalized);
+      if(json === lastWrittenJson) return;
+      assigned = new Set(normalized.assignedUris);
+      lastWrittenJson = json;
+      render();
+    });
+  } catch { /* live refresh unavailable */ }
+
+  subscribeRoster();
+  render();
+};
+
+boot();
+})();
+</script>
+</body>
+</html>
