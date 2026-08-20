@@ -11,14 +11,15 @@ discovery is document-scoped).
 
 ## Embedding
 
-<iframe-app height="700px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22mcp.platform.vfs%22%2C%22application.advertise%22%5D">
+<iframe-app height="700px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22mcp.platform.vfs%22%2C%22application.advertise%22%2C%22application.call%22%5D">
 </iframe-app>
 
 | Scope | Used for |
 |---|---|
 | `appState.read` / `appState.write` | The Assignment set (`assignedUris`, template-uri-keyed) |
 | `mcp.platform.vfs` | `list_dir` (template tree walk), `describe_file` (live checks) |
-| `application.advertise` | App-to-app **discovery** rides this same scope — consuming `workshop-data` requires it (`iframe-discover-request` resolves to `application.advertise`) |
+| `application.advertise` | App-to-app **discovery** rides this same scope — finding `workshop-data` requires it (`iframe-discover-request` resolves to `application.advertise`) |
+| `application.call` | **Using** a discovered capability — cross-app method calls and stream subscriptions (`iframe-stream-subscribe` for `data$()`) both resolve here; the caller pays, the provider does not |
 
 ## Data flow
 
