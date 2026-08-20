@@ -40,36 +40,33 @@ body {
   overflow: hidden/*the tree region is the only scroller*/;
 }
 
-.container { max-width: 1100px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
+.container { max-width: 1400px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
 
-.card {
+/* == Master-detail (the gmail-inbox skeleton) ==================================== */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 4px; }
+.topbar h2 { font-size: 16px; font-weight: 600; }
+.topbar .right { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.app { flex: 1 1 auto; min-height: 0; display: flex; gap: 16px; }
+.panel {
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  flex: 0 1 auto; min-height: 0;
   display: flex; flex-direction: column;
+  min-height: 0; overflow: hidden;
 }
-.card-header {
-  padding: 14px 20px;
+.master { width: 380px; flex-shrink: 0; }
+.detail { flex: 1; min-width: 0; }
+.panel-header {
+  padding: 12px 16px;
   border-bottom: 1px solid var(--gray-200);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  display: flex; align-items: center; gap: 8px;
+  min-height: 49px;
 }
-.card-header h2 { font-size: 16px; font-weight: 600; }
-.header-right { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.card-body { padding: 12px 20px 16px; flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.panel-header .title { font-weight: 600; min-width: 0; flex: 1 1 auto; }
+.panel-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px 8px 12px; }
 
-button {
-  font: inherit;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  padding: 7px 14px;
-  background: var(--gray-100);
-  color: var(--gray-800);
-}
+button { font: inherit; border: none; border-radius: 6px; cursor: pointer; padding: 7px 14px; background: var(--gray-100); color: var(--gray-800); }
 button:hover { background: var(--gray-200); }
 button:disabled { opacity: 0.5; cursor: default; }
 button.primary { background: var(--primary); color: white; }
@@ -79,58 +76,64 @@ button.icon { padding: 4px; background: transparent; display: inline-flex; align
 button.icon:hover { background: var(--gray-100); color: var(--gray-800); }
 
 svg.mi { width: 18px; height: 18px; fill: currentColor; vertical-align: middle; }
-
-/* truncation discipline: a name never wraps — ellipsis + the full value on hover */
 .trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 .sub { font-size: 12px; color: var(--gray-500); }
 a.material-link { color: var(--primary); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
 a.material-link:hover { text-decoration: underline; }
 
-/* == Connection banner =========================================================== */
-.banner { border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; background: var(--warn-light); color: var(--warn); line-height: 1.5; }
+.banner { border-radius: 8px; padding: 10px 14px; margin: 8px; background: var(--warn-light); color: var(--warn); line-height: 1.5; }
 .banner.error { background: var(--danger-light); color: var(--danger); }
 
-/* == Tree ======================================================================== */
-.tree-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 6px;
-  border-radius: 6px;
-  min-width: 0;
-}
-.tree-row:hover { background: var(--gray-50); }
-.tree-row .name { flex: 1 1 auto; min-width: 0; }
-.tree-row .folder-name { font-weight: 600; color: var(--gray-600); }
-.tree-children { margin-left: 20px; border-left: 1px solid var(--gray-100); padding-left: 6px; }
-
-/* the Assign toggle is a small pill; assigned rows carry the accent */
-.assign-toggle {
-  flex-shrink: 0;
-  font-size: 12px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: var(--gray-100);
+/* == Master: the template tree =================================================== */
+.folder-label {
+  display: flex; align-items: center; gap: 4px;
+  padding: 8px 6px 3px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--gray-500);
 }
-.assign-toggle:hover { background: var(--gray-200); }
-.assign-toggle.on { background: var(--primary); color: white; }
-.rollup { flex-shrink: 0; font-size: 12px; color: var(--gray-500); }
-.rollup.warm { color: var(--success); font-weight: 600; }
-.checked-stamp { flex-shrink: 0; font-size: 11px; color: var(--gray-400); }
+.folder-label .icon svg.mi { width: 14px; height: 14px; }
+.tree-children { margin-left: 12px; }
+.material-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 0;
+}
+.material-row:hover { background: var(--gray-50); }
+.material-row.selected { background: var(--primary-light); }
+.material-row .assign { color: var(--gray-200); flex-shrink: 0; }
+.material-row .assign:hover { color: var(--gray-400); background: transparent; }
+.material-row .assign.on { color: var(--primary); }
+.material-row .assign svg.mi { width: 16px; height: 16px; }
+.material-row .name { flex: 1 1 auto; min-width: 0; font-weight: 500; }
+.material-row .count { flex-shrink: 0; font-size: 12px; color: var(--gray-400); font-variant-numeric: tabular-nums; }
+.material-row .count.warm { color: var(--success); font-weight: 600; }
 
-/* == Student rows under an Assignment ============================================ */
-.students { margin-left: 26px; padding: 2px 0 6px; }
-.student-row { display: flex; align-items: center; gap: 8px; padding: 3px 6px; border-radius: 6px; min-width: 0; }
-.student-row:hover { background: var(--gray-50); }
-.student-row .who { flex: 1 1 auto; min-width: 0; }
-.chip { flex-shrink: 0; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
-.chip.work { background: var(--success-light); color: var(--success); }
-.chip.clean { background: var(--gray-100); color: var(--gray-500); }
-.chip.missing { background: var(--warn-light); color: var(--warn); }
-.chip.unreachable { background: var(--danger-light); color: var(--danger); }
+/* == Detail: the Assignment view ================================================= */
+.detail table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.detail th {
+  position: sticky; top: 0; z-index: 1; background: white;
+  text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--gray-500);
+  padding: 6px 10px; border-bottom: 1px solid var(--gray-200);
+}
+.detail td { padding: 6px 10px; border-bottom: 1px solid var(--gray-100); }
+.detail .panel-body { padding: 0 12px 12px; }
+.checked-stamp { font-size: 11px; color: var(--gray-400); flex-shrink: 0; }
+
+/* status: a quiet dot + label in its own aligned column */
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gray-500); }
+.chip::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--gray-400); flex-shrink: 0; }
+.chip.work { color: var(--success); font-weight: 600; }
+.chip.work::before { background: var(--success); }
+.chip.missing { color: var(--warn); }
+.chip.missing::before { background: var(--warn); }
+.chip.unreachable { color: var(--danger); }
+.chip.unreachable::before { background: var(--danger); }
 .chip.live { text-decoration: underline dotted; }
+
+.empty-detail { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 10px; color: var(--gray-500); }
 
 #toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 200; max-width: 380px; }
 .toast { background: var(--gray-800); color: white; border-radius: 8px; padding: 10px 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.25); display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.4; }
@@ -165,6 +168,8 @@ const ICONS = {
   close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
   expandLess: 'M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14l-6-6z',
   expandMore: 'M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z',
+  checkCircle: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z',
+  circle: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z',
   refresh: 'M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z',
 };
 
@@ -179,7 +184,7 @@ let assigned = new Set()/*persisted: template doc uris marked as Assignments*/;
 // session-only UI state — survives every roster emission by construction
 let connection = 'connecting'/*'connecting' | 'connected' | 'disconnected'*/;
 let collapsedFolders = new Set()/*template folder uris (default: everything expanded)*/;
-let collapsedAssignments = new Set()/*assigned doc uris whose student list is folded*/;
+let selectedUri = null/*the Material shown in the detail panel*/;
 let liveChecks = new Map()/*templateUri → { at, byStudentId: Map<studentId, 'work'|'clean'|'missing'|'unreachable'> }*/;
 let checking = null/*progress line while a check runs*/;
 let walkLoading = false;
@@ -422,34 +427,16 @@ const assignmentRollup = (templateUri) => {
   return { work, total: students.length };
 };
 
-const studentRowsHtml = (templateUri) => activeStudents().map(student => {
-  const { status, isLive } = statusOf(student, templateUri);
-  const entry = student.mapping?.[templateUri];
-  const nameHtml = entry
-    ? `<a class="material-link" href="${esc(materialWebUrl(templateUri, entry.copyId))}" target="_blank" rel="noopener" title="${esc(student.name)}"><span class="trunc">${esc(student.name)}</span>${icon('openInNew')}</a>`
-    : `<span class="trunc" title="${esc(student.name)}">${esc(student.name)}</span>`;
-  return `
-    <div class="student-row">
-      <div class="who trunc">${nameHtml}</div>
-      <span class="chip ${status}${isLive ? ' live' : ''}" title="${isLive ? 'Live-checked' : `As of this student's last sync`}">${CHIP_LABEL[status]}</span>
-    </div>`;
-}).join('');
-
-const docRowHtml = (doc) => {
+// -- Master: the template tree ---------------------------------------------------
+const materialRowHtml = (doc) => {
   const isAssigned = assigned.has(doc.uri);
   const rollup = isAssigned ? assignmentRollup(doc.uri) : null;
-  const live = liveChecks.get(doc.uri);
-  const folded = collapsedAssignments.has(doc.uri);
   return `
-    <div class="tree-row">
-      ${isAssigned ? `<button class="icon" data-action="toggle-students" data-uri="${esc(doc.uri)}" title="${folded ? 'Show students' : 'Hide students'}">${icon(folded ? 'expandMore' : 'expandLess')}</button>` : ''}
-      <a class="material-link name" href="${esc(materialWebUrl(doc.uri, uriId(doc.uri)))}" target="_blank" rel="noopener" title="${esc(doc.name)}"><span class="trunc">${esc(doc.name)}</span>${icon('openInNew')}</a>
-      ${isAssigned ? `<span class="rollup${rollup.work > 0 ? ' warm' : ''}" title="Students with work / active students">${rollup.work}/${rollup.total} have work</span>` : ''}
-      ${(isAssigned && live) ? `<span class="checked-stamp" title="Live-checked">checked ${esc(formatTime(live.at))}</span>` : ''}
-      ${isAssigned ? `<button class="icon" data-action="check-one" data-uri="${esc(doc.uri)}" ${checking ? 'disabled' : ''} title="Check this Assignment live now">${icon('refresh')}</button>` : ''}
-      <button class="assign-toggle${isAssigned ? ' on' : ''}" data-action="toggle-assign" data-uri="${esc(doc.uri)}" title="${isAssigned ? 'Unassign — stop tracking student work here' : 'Assign — track student work in this Material'}">${isAssigned ? 'Assigned' : 'Assign'}</button>
-    </div>
-    ${(isAssigned && !folded) ? `<div class="students">${studentRowsHtml(doc.uri)}</div>` : ''}`;
+    <div class="material-row${selectedUri === doc.uri ? ' selected' : ''}" data-action="select" data-uri="${esc(doc.uri)}">
+      <button class="icon assign${isAssigned ? ' on' : ''}" data-action="toggle-assign" data-uri="${esc(doc.uri)}" title="${isAssigned ? 'Assigned — click to stop tracking student work here' : 'Assign — track student work in this Material'}">${icon(isAssigned ? 'checkCircle' : 'circle')}</button>
+      <span class="name trunc" title="${esc(doc.name)}">${esc(doc.name)}</span>
+      ${isAssigned ? `<span class="count${rollup.work > 0 ? ' warm' : ''}" title="Students with work / active students">${rollup.work}/${rollup.total}</span>` : ''}
+    </div>`;
 };
 
 const treeLevelHtml = (parentUri, byParent) => {
@@ -458,62 +445,114 @@ const treeLevelHtml = (parentUri, byParent) => {
   const folderHtml = children.folders.map(folder => {
     const folded = collapsedFolders.has(folder.uri);
     return `
-      <div class="tree-row">
+      <div class="folder-label">
         <button class="icon" data-action="toggle-folder" data-uri="${esc(folder.uri)}" title="${folded ? 'Expand' : 'Collapse'}">${icon(folded ? 'expandMore' : 'expandLess')}</button>
-        <span class="name folder-name trunc" title="${esc(folder.name)}">${esc(folder.name)}</span>
+        <span class="trunc" title="${esc(folder.name)}">${esc(folder.name)}</span>
       </div>
       ${folded ? '' : `<div class="tree-children">${treeLevelHtml(folder.uri, byParent)}</div>`}`;
   }).join('');
-  const docHtml = children.docs.map(docRowHtml).join('');
-  return folderHtml + docHtml;
+  const docHtml = children.docs.map(materialRowHtml).join('');
+  return docHtml + folderHtml;
 };
 
+// -- Detail: the selected Assignment ---------------------------------------------
+const detailHtml = () => {
+  const doc = walk?.docs.find(d => d.uri === selectedUri);
+  if(!doc) return `
+    <div class="panel-header"><span class="title sub">No Material selected</span></div>
+    <div class="panel-body"><div class="empty-detail"><div>Select a Material on the left to see student progress.</div></div></div>`;
+
+  const isAssigned = assigned.has(doc.uri);
+  const live = liveChecks.get(doc.uri);
+  const rollup = isAssigned ? assignmentRollup(doc.uri) : null;
+  const header = `
+    <div class="panel-header">
+      <a class="material-link title" href="${esc(materialWebUrl(doc.uri, uriId(doc.uri)))}" target="_blank" rel="noopener" title="${esc(doc.name)}"><span class="trunc">${esc(doc.name)}</span>${icon('openInNew')}</a>
+      ${isAssigned ? `<span class="sub" style="flex-shrink:0;">${rollup.work} of ${rollup.total} have work</span>` : ''}
+      ${(isAssigned && live) ? `<span class="checked-stamp" title="Live-checked">checked ${esc(formatTime(live.at))}</span>` : ''}
+      ${isAssigned ? `<button class="small primary" data-action="check-one" data-uri="${esc(doc.uri)}" ${checking ? 'disabled' : ''}>Check now</button>` : ''}
+    </div>`;
+
+  if(!isAssigned) return header + `
+    <div class="panel-body"><div class="empty-detail">
+      <div>This Material is not an Assignment yet.</div>
+      <button class="primary" data-action="toggle-assign" data-uri="${esc(doc.uri)}">Assign — track student work here</button>
+    </div></div>`;
+
+  const students = activeStudents();
+  const rows = students.map(student => {
+    const { status, isLive } = statusOf(student, doc.uri);
+    const entry = student.mapping?.[doc.uri];
+    return `
+      <tr>
+        <td><span class="trunc" title="${esc(student.name)}" style="display:block;">${esc(student.name)}</span></td>
+        <td><span class="chip ${status}${isLive ? ' live' : ''}" title="${isLive ? 'Live-checked' : `As of this student's last sync`}">${CHIP_LABEL[status]}</span></td>
+        <td style="text-align:right;">${entry ? `<a class="material-link" href="${esc(materialWebUrl(doc.uri, entry.copyId))}" target="_blank" rel="noopener" title="Open ${esc(student.name)}'s copy">open ${icon('openInNew')}</a>` : ''}</td>
+      </tr>`;
+  }).join('');
+  return header + `
+    <div class="panel-body">
+      <table>
+        <thead><tr><th style="width:45%;">Student</th><th style="width:35%;">Status</th><th style="width:20%;"></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="3"><span class="sub">No active students in the roster.</span></td></tr>`}</tbody>
+      </table>
+    </div>`;
+};
+
+// -- Shell ------------------------------------------------------------------------
 const render = () => {
   const app = document.getElementById('app');
   if(!window.charmiq) { app.innerHTML = `<div class="banner error">This application must run embedded in a CharmIQ document.</div>`; return; }
 
-  // innerHTML replacement destroys the scroller — carry its position across
-  const scrollTop = app.querySelector('.card-body')?.scrollTop ?? 0;
+  // innerHTML replacement destroys the scrollers — carry both positions across
+  const masterScroll = app.querySelector('.master .panel-body')?.scrollTop ?? 0;
+  const detailScroll = app.querySelector('.detail .panel-body')?.scrollTop ?? 0;
 
-  const assignedCount = assigned.size;
   const connectionHtml = {
     connecting: `<span class="sub">Connecting to the roster…</span>`,
     connected: `<span class="sub">Roster: live</span>`,
     disconnected: `<span class="sub" style="color:var(--danger);">Roster app not found${roster ? ' — showing the last received data' : ''}</span>`,
   }[connection];
 
-  let body;
-  if(!roster) body = `<div class="banner">Waiting for the Workshop Manager on this page to provide roster data…</div>`;
-  else if(!roster.config?.templateFolderId) body = `<div class="banner">No Template Folder is configured in the Workshop Manager yet.</div>`;
-  else if(walkError) body = `<div class="banner error">Cannot read the template tree: ${esc(walkError)} <button class="small" data-action="retry-walk">Retry</button></div>`;
-  else if(!walk || walkLoading) body = `<div class="banner">Reading the template tree…</div>`;
-  else body = treeLevelHtml(walk.rootUri, childrenIndex()) || `<div class="banner">The Template Folder is empty.</div>`;
+  let master;
+  if(!roster) master = `<div class="banner">Waiting for the Workshop Manager on this page…</div>`;
+  else if(!roster.config?.templateFolderId) master = `<div class="banner">No Template Folder is configured in the Workshop Manager yet.</div>`;
+  else if(walkError) master = `<div class="banner error">Cannot read the template tree: ${esc(walkError)} <button class="small" data-action="retry-walk">Retry</button></div>`;
+  else if(!walk || walkLoading) master = `<div class="banner">Reading the template tree…</div>`;
+  else master = treeLevelHtml(walk.rootUri, childrenIndex()) || `<div class="banner">The Template Folder is empty.</div>`;
 
   app.innerHTML = `
-    <div class="card">
-      <div class="card-header">
-        <h2>Daily Work</h2>
-        <div class="header-right">
-          ${checking ? `<span class="sub" style="color:var(--primary);">${esc(checking)}</span>` : ''}
-          ${connectionHtml}
-          <button class="small primary" data-action="check-all" ${(checking || assignedCount < 1) ? 'disabled' : ''} title="${assignedCount < 1 ? 'Assign at least one Material first' : 'Live-check every Assignment for every student'}">Check all</button>
-        </div>
+    <div class="topbar">
+      <h2>Daily Work</h2>
+      <div class="right">
+        ${checking ? `<span class="sub" style="color:var(--primary);">${esc(checking)}</span>` : ''}
+        ${connectionHtml}
+        <button class="small primary" data-action="check-all" ${(checking || assigned.size < 1) ? 'disabled' : ''} title="${assigned.size < 1 ? 'Assign at least one Material first' : 'Live-check every Assignment for every student'}">Check all</button>
       </div>
-      <div class="card-body">${body}</div>
+    </div>
+    <div class="app">
+      <div class="panel master">
+        <div class="panel-header"><span class="title">Template Materials</span></div>
+        <div class="panel-body">${master}</div>
+      </div>
+      <div class="panel detail">${detailHtml()}</div>
     </div>`;
 
-  const scroller = app.querySelector('.card-body');
-  if(scroller) scroller.scrollTop = scrollTop;
+  const masterBody = app.querySelector('.master .panel-body');
+  if(masterBody) masterBody.scrollTop = masterScroll;
+  const detailBody = app.querySelector('.detail .panel-body');
+  if(detailBody) detailBody.scrollTop = detailScroll;
 
   app.querySelectorAll('[data-action]').forEach(el => {
     const action = el.dataset.action;
-    el.addEventListener('click', () => {
-      if(action === 'toggle-folder') { const uri = el.dataset.uri; collapsedFolders.has(uri) ? collapsedFolders.delete(uri) : collapsedFolders.add(uri); render(); }
-      else if(action === 'toggle-students') { const uri = el.dataset.uri; collapsedAssignments.has(uri) ? collapsedAssignments.delete(uri) : collapsedAssignments.add(uri); render(); }
+    el.addEventListener('click', (event) => {
+      if(action === 'select') { selectedUri = el.dataset.uri; render(); }
+      else if(action === 'toggle-folder') { event.stopPropagation(); const uri = el.dataset.uri; collapsedFolders.has(uri) ? collapsedFolders.delete(uri) : collapsedFolders.add(uri); render(); }
       else if(action === 'toggle-assign') {
+        event.stopPropagation()/*the row's select must not swallow the toggle*/;
         const uri = el.dataset.uri;
         const turningOn = !assigned.has(uri);
-        if(turningOn) collapsedAssignments.delete(uri)/*assigning opens the student list*/;
+        if(turningOn) selectedUri = uri/*assigning brings the Assignment into view*/;
         persistAssigned(s => {
           const set = new Set(s.assignedUris);
           turningOn ? set.add(uri) : set.delete(uri);
