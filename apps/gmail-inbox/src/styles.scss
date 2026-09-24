@@ -183,6 +183,42 @@ body {
   }
 }
 
+// == Error Notice ================================================================
+.error-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--danger);
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.error-notice-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.error-notice-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--gray-400);
+  cursor: pointer;
+
+  svg { width: 14px; height: 14px; }
+  &:hover { background: var(--gray-100); color: var(--gray-600); }
+}
+
 // == Search ======================================================================
 .search-bar {
   flex-shrink: 0;

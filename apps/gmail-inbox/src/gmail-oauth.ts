@@ -1,4 +1,4 @@
-import type { OAuthAuth, OAuthAuthDescriptor } from '../../../shared/charmiq';
+import type { CharmIQError, OAuthAuth, OAuthAuthDescriptor } from '../../../shared/charmiq';
 
 // the OAuth account layer — the only module that talks to the OAuth bridge. It
 // keeps NO token in memory: a token for one account is minted just-in-time right
@@ -51,6 +51,11 @@ export const disconnectAccount = (account: OAuthAuthDescriptor): Promise<void> =
   window.charmiq.oauth.revokeAuth(account);
 
 // == Helpers =====================================================================
+/** did the User dismiss the Platform's ask (the account picker, the consent)? That
+ *  is a choice, not a failure: nothing to report */
+export const isCancelled = (error: unknown): boolean =>
+  (error instanceof Error) && ((error as CharmIQError).code === 'functions/cancelled');
+
 /** the token-less descriptor for a resolved auth (drop the access token before it
  *  reaches display or persisted state) */
 export const toDescriptor = ({ accessToken: _accessToken/*stripped*/, ...descriptor }: OAuthAuth): OAuthAuthDescriptor => descriptor;

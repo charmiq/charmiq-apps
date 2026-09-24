@@ -1,6 +1,6 @@
 import type { OAuthAuthDescriptor } from '../../../shared/charmiq';
 import { extractBody, fetchInboxPage, getHeader } from './gmail-client';
-import { disconnectAccount, pickAccount, resolveAccount, toDescriptor } from './gmail-oauth';
+import { disconnectAccount, isCancelled, pickAccount, resolveAccount, toDescriptor } from './gmail-oauth';
 import type { GmailMessage, InboxEmail } from './types';
 
 // the inbox model — all state and the async orchestration behind a plain
@@ -169,6 +169,7 @@ export class InboxModel {
   // == Actions ===================================================================
   /** open the Platform account picker (existing + connect-new) and add the choice */
   public async addAccount(): Promise<void> {
+    this.error = null/*a new attempt replaces the last failure*/;
     this.setBusy(true);
     try {
       const auth = await pickAccount();
@@ -181,10 +182,17 @@ export class InboxModel {
       this.reaggregate();
       if(!this.selectedId) this.selectedId = this.emails[0]?.id ?? null;
     } catch(error) {
-      console.warn('gmail-inbox: add account not completed', error)/*cancelled picker / denied consent is normal*/;
+      if(isCancelled(error)) return/*the User dismissed the ask*/;
+      this.error = error instanceof Error ? error.message : 'Failed to add the account';
     } finally {
       this.setBusy(false);
     }
+  }
+
+  /** dismiss the failure notice */
+  public dismissError(): void {
+    this.error = null;
+    this.emit();
   }
 
   /** remove an account from this inbox (deselect) — non-destructive */
@@ -200,6 +208,7 @@ export class InboxModel {
 
   /** disconnect an account entirely (revoke), then drop it from the inbox */
   public async disconnectAccount(account: OAuthAuthDescriptor): Promise<void> {
+    this.error = null/*a new attempt replaces the last failure*/;
     this.setBusy(true);
     try {
       await disconnectAccount(account);
@@ -223,6 +232,7 @@ export class InboxModel {
     const pending = this.accounts.filter(account => this.pageTokens.get(account.id));
     if(pending.length < 1) return;
 
+    this.error = null/*a new attempt replaces the last failure*/;
     this.setBusy(true);
     try {
       await Promise.all(pending.map(async account => {

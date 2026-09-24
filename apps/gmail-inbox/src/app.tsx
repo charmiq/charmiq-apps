@@ -3,6 +3,7 @@ import { h } from './h';
 
 import { AccountBar } from './account-bar';
 import { EmailDetail } from './email-detail';
+import { ErrorNotice } from './error-notice';
 import type { InboxModel } from './inbox-model';
 import { MasterList } from './master-list';
 import { SearchBar } from './search-bar';
@@ -14,6 +15,7 @@ export const App = (model: InboxModel): Node => (
   <div class="app">
     <div class="master-panel">
       {AccountBar(model)}
+      {ErrorNotice(model)}
       {SearchBar(model)}
       {MasterList(model)}
     </div>

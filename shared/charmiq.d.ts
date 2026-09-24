@@ -342,7 +342,11 @@ export interface CharmIQOAuthAPI {
    *  to target one specific already-connected account — the platform verifies the
    *  key names one of *this* app's own Connections, refreshes it if expired, and
    *  returns its token, bypassing selection. This is how a multi-account app
-   *  fetches a token per account after enumerating with `listAuth` */
+   *  fetches a token per account after enumerating with `listAuth`.
+   *
+   *  Rejects with a {@link CharmIQError}: `functions/cancelled` when the User
+   *  dismisses an ask; `functions/not-found` when the Organization has no
+   *  Integration for the provider (the Platform has already told the User) */
   getValidAuth: (config: OAuthGetValidAuthConfig) => Promise<OAuthAuth>;
 
   /** list this app's connected accounts (token-less {@link OAuthAuthDescriptor}s)
@@ -376,6 +380,14 @@ export interface VisualDesignerAPI {
   activate: () => void;
   deactivate: () => void;
 }
+
+// == Failure =====================================================================
+/** the Error a failed Platform call rejects with: its `message`, and its `code`
+ *  when the Platform classified the failure (e.g. `functions/cancelled` -- the User
+ *  dismissed the ask; `functions/not-found` -- no OAuth Integration for the
+ *  provider; `functions/permission-denied`). Classify on `code`, never on the
+ *  message text. A call to another Application carries that provider's code */
+export type CharmIQError = Error & Readonly<{ code?: string; }>;
 
 // == CharmIQAPI ==================================================================
 // CharmIQ namespace for Application discovery and communication.
