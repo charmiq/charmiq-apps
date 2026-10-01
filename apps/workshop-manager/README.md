@@ -154,7 +154,11 @@ X = the inverse read of the mapping).
   from the copy version the sync last observed (`lastCopyVersion`) against the
   version the app last wrote (`copyVersion`, absent = 0), independent of any
   template change. A sync is the scanner: badges reflect the world as of the last
-  sync, and Sync All refreshes the whole roster's counts. Clicking the badge opens
+  sync, and Sync All refreshes the whole roster's counts. A warning icon leads the
+  status line whenever a row has out-of-sync copies; it never shrinks, so a narrow
+  window truncates the text but never hides the signal, and its hover names the
+  count. Truncatable status text carries its full text on hover. Clicking the
+  badge or the icon opens
   a bounded, scrollable list of those copies (names resolved live by id, never
   stored) — each a single truncated line that opens the copy in a new tab. This
   is the first slice of the grading view: every student's edited work, one click

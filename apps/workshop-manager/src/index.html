@@ -208,6 +208,11 @@ tr.deleted td .sub { color: var(--gray-400); }
 .status-outofsync { color: var(--warn); font-weight: 600; }
 button.status-outofsync { background: transparent; padding: 0; font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline dotted; }
 button.status-outofsync:hover { background: transparent; color: var(--danger); }
+/* the warning icon leads the status line and never shrinks: a narrow column
+   truncates the text, never the out-of-sync signal */
+button.icon.status-outofsync-icon { flex-shrink: 0; padding: 0; color: var(--warn); }
+button.icon.status-outofsync-icon:hover { background: transparent; color: var(--danger); }
+button.icon.status-outofsync-icon svg.mi { width: 16px; height: 16px; }
 /* the out-of-sync list floats over the row like every other popover: bounded
    height, its own scroller, single-line truncated names that open in a new tab */
 .status-cell { position: relative; }
@@ -225,7 +230,8 @@ button.status-outofsync:hover { background: transparent; color: var(--danger); }
 .status-progress { color: var(--primary); }
 /* the status cell renders main + sub lines in every state so switching between
    not-cloned / syncing / cloned never changes the row's height */
-td .status-main { min-height: 20px; }
+td .status-main { min-height: 20px; display: flex; align-items: center; gap: 4px; min-width: 0; }
+td .status-main .status-text { flex: 1 1 auto; min-width: 0; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
 
 /* the row stands at the selected-user card's height from the start — picking a
@@ -362,6 +368,7 @@ const ICONS = {
   expandLess: 'M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14l-6-6z',
   expandMore: 'M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z',
   delete: 'M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z',
+  warning: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z',
   refresh: 'M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z',
 };
 
@@ -1492,12 +1499,23 @@ const studentRowHtml = (student) => {
   if(charmEntries.length > 0) statusSubParts.push(`<span class="${charmsPending > 0 ? 'status-outofsync' : ''}" title="${esc(`${charmsImported} of ${charmEntries.length} cloned Charm${charmEntries.length === 1 ? '' : 's'} imported as Agents`)}">Charms ${charmsImported}/${charmEntries.length}</span>`);
   if(student.clonedAt) statusSubParts.push(esc(formatDate(student.clonedAt)));
   if(student.folderId) statusSubParts.push(`<a class="folder-link" href="${esc(folderWebUrl(student.folderId))}" target="_blank" rel="noopener">open ${icon('openInNew')}</a>`);
+  const clonedText = `${cloneCount} item${cloneCount === 1 ? '' : 's'} cloned`;
+  const outOfSyncText = `${outOfSyncCount} out of sync`;
+  const outOfSyncTitle = `${outOfSyncText}: copies the student has edited since the app last wrote them, as of the last sync. Click to list them`;
+  const statusText = progress ?? ((cloneCount > 0) ? (clonedText + ((outOfSyncCount > 0) ? ` · ${outOfSyncText}` : '')) : 'Not cloned');
   const statusMain = progress
     ? `<span class="status-progress">${esc(progress)}</span>`
     : cloneCount > 0
-      ? `<span class="status-cloned">${cloneCount} item${cloneCount === 1 ? '' : 's'} cloned</span>${outOfSyncCount > 0 ? ` · <button class="status-outofsync" data-action="toggle-outofsync" data-student-id="${esc(student.id)}" title="Copies the student has edited since the app last wrote them — as of the last sync. Click to list them">${outOfSyncCount} out of sync</button>` : ''}`
+      ? `<span class="status-cloned">${clonedText}</span>${outOfSyncCount > 0 ? ` · <button class="status-outofsync" data-action="toggle-outofsync" data-student-id="${esc(student.id)}" title="${esc(outOfSyncTitle)}">${outOfSyncText}</button>` : ''}`
       : `<span class="sub">Not cloned</span>`;
-  const statusHtml = `<div class="status-main trunc">${statusMain}</div><div class="sub trunc">${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
+  const outOfSyncIcon = (!progress && (outOfSyncCount > 0))
+    ? `<button class="icon status-outofsync-icon" data-action="toggle-outofsync" data-student-id="${esc(student.id)}" title="${esc(outOfSyncTitle)}" aria-label="${esc(outOfSyncText)}">${icon('warning')}</button>`
+    : '';
+  const statusSubText = [
+    ...((charmEntries.length > 0) ? [`Charms ${charmsImported}/${charmEntries.length} imported`] : []),
+    ...(student.clonedAt ? [formatDate(student.clonedAt)] : []),
+  ].join(' · ');
+  const statusHtml = `<div class="status-main">${outOfSyncIcon}<span class="status-text trunc" title="${esc(statusText)}">${statusMain}</span></div><div class="sub trunc" ${statusSubText ? `title="${esc(statusSubText)}"` : ''}>${statusSubParts.join(' · ') || '&nbsp;'}</div>`;
   return `
     <tr class="${student.deleted ? 'deleted' : ''}">
       <td class="student-cell">
