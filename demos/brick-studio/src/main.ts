@@ -147,8 +147,17 @@ const start = async () => {
     else viewer.keepInView();
     showStatus(model);
   });
-  commands.init();
-  await build.init();
+  commands.init()/*each command waits for the build*/;
+  try {
+    await build.init();
+  } catch(error) {
+    console.error('brick-studio: the build could not be read:', error);
+    loading.classList.add('is-error');
+    loadingText.textContent = (((error as { code?: unknown; } | null)?.code === 'functions/permission-denied')
+      ? 'This Application isn\'t allowed to read the build.'
+      : 'The build could not be read.') + ' Reload to try again.';
+    return;
+  }
 
   await viewer.whenSettled();
   loading.classList.add('is-done');

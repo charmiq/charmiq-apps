@@ -8,7 +8,8 @@ import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { Viewer } from './viewer';
 
 // the Charm command surface (SEE: manifest.json `advertise`). Results are terse
-// model-facing data; an edit resolves once the build is drawn so a following
+// model-facing data. Every command waits for the build to load; an edit resolves
+// once the build has the block's new text and it is drawn, so a following
 // Application screenshot shows it
 // ********************************************************************************
 // == Constants ===================================================================
@@ -41,7 +42,8 @@ export class CommandSurface {
         colors: COLORS.map(color => color.key),
       }),
 
-      listPlacedParts: () => {
+      listPlacedParts: async () => {
+        await this.build.whenReady();
         const model = this.build.getModel();
         return { parts: model.placements, ...((model.others.length > 0) ? { unchecked: model.others.length } : {}) };
       },
@@ -51,7 +53,6 @@ export class CommandSurface {
         await this.viewer.whenSettled();
         return { added: result.added, total: result.total, ...((result.floating.length > 0) ? { floating: result.floating } : {}) };
       },
-
       removeParts: async ({ at }: { at?: unknown; }) => {
         const result = await this.build.remove(Array.isArray(at) ? at : []);
         await this.viewer.whenSettled();
@@ -72,8 +73,7 @@ export class CommandSurface {
         return { fidelity: reached, look: fidelityLabel(reached) };
       },
 
-      getModel: () => this.build.getText(),
-
+      getModel: async () => { await this.build.whenReady(); return this.build.getText(); },
       setModel: async ({ ldraw }: { ldraw?: unknown; }) => {
         await this.build.replace((typeof ldraw === 'string') ? ldraw : '');
         await this.viewer.setView(this.viewer.getView(), true)/*a new build is framed whole*/;
@@ -81,7 +81,7 @@ export class CommandSurface {
         return reportCheck(this.build.check());
       },
 
-      check: () => reportCheck(this.build.check()),
+      check: async () => { await this.build.whenReady(); return reportCheck(this.build.check()); },
 
       setView: async ({ azimuth, elevation, fit }: { azimuth?: unknown; elevation?: unknown; fit?: unknown; }) => {
         const current = this.viewer.getView();

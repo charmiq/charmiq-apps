@@ -1,14 +1,30 @@
+import type { ContentChange } from '../../../shared/charmiq';
 import { getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, ldrawPosition, matrixRotation, rotationMatrix, type Placement } from './grid';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
 // written, and each type-1 line is one part. A multi-part (MPD) file is flattened
 // into its placed parts. A line whose part is in the catalog and lies on the grid
-// is a Placement; any other part line is kept and counted, never dropped
+// is a Placement; any other part line is kept and counted, never dropped. A flat
+// file's parts also carry where their lines lie, so an edit changes those lines
+// alone
 // ********************************************************************************
 // == Types =======================================================================
 /** a part line that is not a Placement (a part outside the catalog, an unknown
  *  color, or a position or rotation off the grid) */
 export type OtherPart = Readonly<{ ldraw: string; colorCode: number; position: readonly [number, number, number]; matrix: readonly number[]; }>;
+
+/** a line in the text, its line break included (UTF-16 offsets) */
+export type Span = Readonly<{ from: number; to: number; }>;
+/** where a flat file's parts lie in its text */
+export type ModelLayout = Readonly<{
+  /** the line of each of `placements` and of `others`, in order */
+  placements: ReadonlyArray<Span>;
+  others: ReadonlyArray<Span>;
+  /** the text's length, its line break, and whether it ends with one */
+  length: number;
+  lineBreak: string;
+  endsWithBreak: boolean;
+}>;
 
 // ................................................................................
 export type Model = Readonly<{
@@ -18,6 +34,8 @@ export type Model = Readonly<{
   others: ReadonlyArray<OtherPart>;
   /** the text expands past the part limit: only its first parts were read */
   truncated?: boolean;
+  /** where the parts lie, when the text is one flat file (no `0 FILE` sections) */
+  layout?: ModelLayout;
 }>;
 
 // == Constants ===================================================================
@@ -43,14 +61,14 @@ const compose = (parent: Transform, child: Transform): Transform => {
 /** parses LDraw text (LDR or MPD) into a Model. Submodels are flattened; LDraw's
  *  inherited colors (16, 24) take the parent's color */
 export const parseModel = (text: string): Model => {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const lines = splitLines(text);
 
   // split into files: a plain LDR is one unnamed file
-  const files = new Map<string, string[]>();
-  let current: string[] = [];
+  const files = new Map<string, Line[]>();
+  let current: Line[] = [];
   let main: string | undefined;
   for(const line of lines) {
-    const trimmed = line.trim();
+    const trimmed = line.text.trim();
     if(trimmed.startsWith('0 FILE ')) {
       const name = normalizeName(trimmed.slice(7));
       current = [];
@@ -61,11 +79,13 @@ export const parseModel = (text: string): Model => {
     if(main === undefined) { main = ''; files.set(main, current); }
     current.push(line);
   }
-  if(main === undefined) return EMPTY_MODEL;
+  if(main === undefined) return { ...EMPTY_MODEL, layout: { placements: [], others: [], length: 0, lineBreak: '\n', endsWithBreak: false } }/*empty text*/;
 
   const header: string[] = [];
   const placements: Placement[] = [];
   const others: OtherPart[] = [];
+  const placementSpans: Span[] = [];
+  const otherSpans: Span[] = [];
 
   // submodels can reference each other many times over, so the parts they expand
   // to, and the references followed to reach them, are bounded as they are read
@@ -74,7 +94,7 @@ export const parseModel = (text: string): Model => {
   const exceeded = () => truncated ||= (((placements.length + others.length) > MAX_PARTS) || (references > MAX_PARTS));
 
   const walk = (name: string, transform: Transform, inheritedColor: number, depth: number, isMain: boolean): void => {
-    for(const line of files.get(name) ?? []) {
+    for(const { text: line, from, to } of files.get(name) ?? []) {
       if(exceeded()) return;
       const fields = line.trim().split(/\s+/);
       if(fields[0] !== '1') {
@@ -92,14 +112,35 @@ export const parseModel = (text: string): Model => {
 
       if(files.has(reference) && (depth < 16/*guards a cyclic MPD*/)) { references++; walk(reference, world, colorCode, depth + 1, false); continue; }
       const placement = toPlacement(reference, colorCode, world);
-      if(placement) placements.push(placement);
-      else others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode, position: world.position, matrix: world.matrix });
+      if(placement) { placements.push(placement); placementSpans.push({ from, to }); }
+      else { others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode, position: world.position, matrix: world.matrix }); otherSpans.push({ from, to }); }
     }
   };
   walk(main, IDENTITY, 16, 0, true);
 
   exceeded();
-  return { header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others, ...(truncated ? { truncated } : {}) };
+  const flat = (files.size === 1) && (main === '')/*no `0 FILE` section: each part is its own line*/;
+  const lineBreak = lines.find(line => line.lineBreak)?.lineBreak ?? '\n';
+  return {
+    header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others,
+    ...(truncated ? { truncated } : {}),
+    ...(flat ? { layout: { placements: placementSpans, others: otherSpans, length: text.length, lineBreak, endsWithBreak: /[\r\n]$/.test(text) } } : {}),
+  };
+};
+
+// ................................................................................
+/** one line of the text: its content, and its span with its line break */
+type Line = Readonly<{ text: string; from: number; to: number; lineBreak: string; }>;
+
+/** the text's lines, as written (CRLF, CR or LF) */
+const splitLines = (text: string): Line[] => {
+  const lines: Line[] = [];
+  const pattern = /([^\r\n]*)(\r\n|\r|\n|$)/g;
+  for(let match = pattern.exec(text); match && (match.index < text.length); match = pattern.exec(text)) {
+    lines.push({ text: match[1], from: match.index, to: match.index + match[0].length, lineBreak: match[2] });
+    if(!match[2]) break/*the last line*/;
+  }
+  return lines;
 };
 
 // --------------------------------------------------------------------------------
@@ -126,12 +167,27 @@ export const serializeModel = (model: Model): string => [
 ].join('\n') + '\n';
 
 /** the LDraw line of a Placement (its part and color are catalog entries by contract) */
-const placementLine = (placement: Placement): string => {
+export const placementLine = (placement: Placement): string => {
   const part = getPart(placement.part)!/*by contract*/;
   const color = getColor(placement.color)!/*by contract*/;
   return partLine(color.code, ldrawPosition(getShape(part), placement), rotationMatrix(placement.rotation), part.ldraw);
 };
 
+// == Line Edits ==================================================================
+/** the edit that appends lines to a flat model's text, after its header when the
+ *  text is empty */
+export const appendLines = (layout: ModelLayout, lines: ReadonlyArray<string>): ContentChange => {
+  const written = (layout.length < 1) ? [...DEFAULT_HEADER, ...lines] : lines;
+  const lead = ((layout.length < 1) || layout.endsWithBreak) ? '' : layout.lineBreak/*the last line is unfinished*/;
+  return { from: layout.length, to: layout.length, insert: lead + written.map(line => line + layout.lineBreak).join('') };
+};
+
+/** the edits that delete lines, the last first: each edit is measured after the
+ *  ones before it */
+export const deleteLines = (spans: ReadonlyArray<Span>): ContentChange[] =>
+  [...spans].sort((a, b) => b.from - a.from).map(({ from, to }) => ({ from, to }));
+
+// --------------------------------------------------------------------------------
 const partLine = (colorCode: number, position: readonly number[], matrix: readonly number[], ldraw: string): string =>
   ['1', colorCode, ...position, ...matrix].map(formatNumber).join(' ') + ` ${ldraw}.dat`;
 

@@ -60,6 +60,8 @@ The Charm reads the catalog, places parts in batches, runs the check, and turns 
 
 The build is a flat LDraw file in the `model` content block. Each part is one line: its color, its position and rotation, and its part file. Edit it by hand, paste in LDraw from elsewhere, or let a Charm build it.
 
+**Sharing the build.** The block is the truth: the Studio shows what it holds, whoever changed it. Each edit changes its own lines alone (an add appends lines, a removal deletes them), so every other line stays exactly as written. An edit is checked against the block's text and applies only while the block is still that text; if someone changed it first, the edit is checked again on the new text, so a part removed by cell is whatever fills that cell now. The check covers the text the edit was made on: two people's editors can each accept an edit before seeing the other's. A multi-file (MPD) model is shown but not edited until `setModel` replaces it with a flat one, which drops the comments inside its submodels. A page opened before guarded edits shows the build and asks for a reload to edit it.
+
 **The parts.** Bricks, plates and tiles in the common sizes; slopes at 45, 33 and 65 degrees, inverted slopes, ridges and roof corners; corner bricks and plates, wedge plates, round bricks, plates, a tile and a cone; arches; windows and a door frame, with glass panes that sit in the windows; and landscaping and detail: trees, a bush, leafy plants, bamboo, grass, flower and leaf plates, a rock, crystals, fences, tall bricks, a round pillar, headlight and grille bricks, and round and swirled tiles. Sixteen solid colors and seven see-through ones (`trans-`), which refract light at the Plastic look and up.
 
 **The grid.** x runs east, z north, level up. A cell is one stud; a level is one plate, and a brick is three. A part is placed by the south-west corner of its footprint and its bottom level, and turns in quarter turns clockwise seen from above. Parts from the catalog on the grid are checked; any other part line is kept, drawn when its part is in the catalog, and counted as off grid.
@@ -94,7 +96,7 @@ Every edit resolves once the parts have landed, so a screenshot taken next shows
 | [`src/model.ts`](charmiq://./src/model.ts) | LDraw text to and from a build (MPD submodels flatten) |
 | [`src/check.ts`](charmiq://./src/check.ts) | collisions and what holds |
 | [`src/build.ts`](charmiq://./src/build.ts) | the current build and its edits |
-| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` content block |
+| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` content block, edited with guarded edits |
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
 | [`src/parts.ldr`](charmiq://./src/parts.ldr) | the catalog parts and every file they use, packed (generated) |
