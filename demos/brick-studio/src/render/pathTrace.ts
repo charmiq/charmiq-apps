@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { PhysicalCamera, WebGLPathTracer } from 'three-gpu-pathtracer';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-import { PLASTIC } from './plastic';
+import { TRACED_PLASTIC } from './plastic';
 
 // the top stop: the scene path traced with three-gpu-pathtracer, so reflections,
 // bounce light and soft shadows are physical. It refines one sample at a time while
@@ -114,7 +114,7 @@ export class PathTrace {
     return Array.from({ length: mesh.count }, (_, index) => {
       mesh.getMatrixAt(index, matrix);
       mesh.getColorAt(index, color);
-      const material = new THREE.MeshPhysicalMaterial({ ...PLASTIC(1), color: color.clone() });
+      const material = new THREE.MeshPhysicalMaterial({ ...TRACED_PLASTIC, color: color.clone() });
       this.owned.push(material);
       const brick = new THREE.Mesh(mesh.geometry/*shared with the rasterized scene*/, material);
       brick.matrixAutoUpdate = false;

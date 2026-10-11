@@ -16,8 +16,8 @@ import type { Fidelity } from './fidelity';
 // == Constants ===================================================================
 /** blur per unit of distance from focus, times the framing distance: the same
  *  macro look at any zoom */
-const APERTURE = 0.04;
-const MAX_BLUR = 0.012;
+const APERTURE = 0.012;
+const MAX_BLUR = 0.004;
 
 // == Finish ======================================================================
 /** a faint vignette and fixed film grain, in display space before output */

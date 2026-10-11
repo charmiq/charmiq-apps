@@ -13,6 +13,11 @@ export const PLASTIC = (fidelity: Fidelity): THREE.MeshPhysicalMaterialParameter
     ? { roughness: 0.34, clearcoat: 0.12, clearcoatRoughness: 0.3, ior: 1.5, specularIntensity: 1 }
     : { roughness: 0.24, clearcoat: 0.55, clearcoatRoughness: 0.06, ior: 1.54/*ABS*/, specularIntensity: 0.85 };
 
+/** ABS for the path tracer: a glossy dielectric is already physical, so no clear
+ *  coat (the rasterizer's stand-in for that gloss). The tracer also renders a clear
+ *  coat black on this geometry */
+export const TRACED_PLASTIC: THREE.MeshPhysicalMaterialParameters = { roughness: 0.2, ior: 1.54/*ABS*/, specularIntensity: 0.85 };
+
 /** sets a material to the ABS look at a stop */
 export const applyPlastic = (material: THREE.MeshPhysicalMaterial, fidelity: Fidelity): void => {
   material.setValues(PLASTIC(fidelity));
