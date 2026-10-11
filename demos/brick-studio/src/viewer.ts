@@ -40,9 +40,21 @@ const DROP_STAGGER_MS = 22/*ms*/;
 const DROP_STAGGER_MAX_MS = 700/*ms*/;
 const VIEW_MS = 520/*ms*/;
 
+// --------------------------------------------------------------------------------
+/** walking speed as a share of the distance to the point the camera orbits, so a
+ *  step suits a brick close up and a village far off */
+const WALK_SPEED = 0.5/*per second*/;
+const WALK_SPEED_MIN = 2/*scene units per second*/;
+const WALK_FAST = 3/*times, with Shift*/;
+const TURN_SPEED = Math.PI / 2/*radians per second*/;
+/** the longest frame a walk step covers (a stalled tab never leaps) */
+const WALK_STEP_MAX_MS = 100/*ms*/;
+const UP = new THREE.Vector3(0, 1, 0);
+
 /** the direction toward the sun, and the studio's key softbox, from the build */
 const KEY_DIRECTION = new THREE.Vector3(-0.45, 1, 0.6).normalize();
 
+// --------------------------------------------------------------------------------
 export const DEFAULT_VIEW: View = { azimuth: 30, elevation: 28 };
 
 // == Types =======================================================================
@@ -52,6 +64,11 @@ export type View = Readonly<{ azimuth: number; elevation: number; }>;
 
 type RenderItem = Readonly<{ ldraw: string; color: string/*hex*/; glass: boolean; key: string; matrix: THREE.Matrix4; }>;
 type Drop = { mesh: THREE.InstancedMesh; index: number; matrix: THREE.Matrix4; start: number; };
+
+/** how the keys move the camera, each -1, 0 or 1: forward (or back), right (or
+ *  left), up (or down) and turn left (or right); `fast` with Shift */
+export type Walk = Readonly<{ forward: number; right: number; up: number; turn: number; fast: boolean; }>;
+export const STANDING: Walk = { forward: 0, right: 0, up: 0, turn: 0, fast: false };
 
 /** the look the stage takes from CSS (SEE: styles.scss `--stage`, `--baseplate`) */
 type Theme = Readonly<{ stage: string; baseplate: string; }>;
@@ -91,6 +108,8 @@ export class Viewer {
   private drops: Drop[] = [];
 
   private tween: { from: THREE.Spherical; to: THREE.Spherical; fromTarget: THREE.Vector3; toTarget: THREE.Vector3; start: number; resolve: () => void; } | undefined;
+  private walking: Walk = STANDING;
+  private lastWalk: number | undefined/*ms: the previous walk step*/;
   private frameWaiters: Array<() => void> = [];
   private settleWaiters: Array<() => void> = [];
   private frameRequested = false;
@@ -333,6 +352,15 @@ export class Viewer {
     if(!inView) void this.setView(this.getView(), true);
   }
 
+  /** moves the camera as the keys say until they say stand (SEE: Walk) */
+  public walk(walk: Walk): void {
+    this.walking = walk;
+    if(isStanding(walk)) { this.lastWalk = undefined; return; }
+    this.tween?.resolve()/*a walk takes over from a view change*/;
+    this.tween = undefined;
+    this.requestFrame();
+  }
+
   // == Internal ==================================================================
   /** the build's bounds with every part in place (a dropping part counts where it lands) */
   private buildBounds(): THREE.Box3 {
@@ -445,6 +473,11 @@ export class Viewer {
       if(t >= 1) { const { resolve } = this.tween; this.tween = undefined; this.frameWaiters.push(resolve); }
       else moving = true;
     } /* else -- no tween */
+    if(!isStanding(this.walking)) {
+      this.step(Math.min(now - (this.lastWalk ?? now), WALK_STEP_MAX_MS) / 1000);
+      this.lastWalk = now;
+      moving = true;
+    } /* else -- standing */
     if(this.controls.update()) moving = true/*damping*/;
 
     // dropping parts
@@ -469,6 +502,27 @@ export class Viewer {
     if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
     if(moving || (this.drops.length > 0) || refining) this.requestFrame();
+  }
+
+  /** one walk step of `seconds`: moves the camera and the point it orbits together,
+   *  level with the baseplate, and turns the camera in place (the point swings
+   *  round it), so the mouse still orbits what the camera faces */
+  private step(seconds: number): void {
+    const { forward, right, up, turn, fast } = this.walking;
+    const camera = this.camera.position, target = this.controls.target;
+    if(turn !== 0) {
+      const offset = new THREE.Vector3().subVectors(target, camera).applyAxisAngle(UP, turn * TURN_SPEED * seconds);
+      target.copy(camera).add(offset);
+    } /* else -- not turning */
+
+    const speed = Math.max(camera.distanceTo(target) * WALK_SPEED, WALK_SPEED_MIN) * (fast ? WALK_FAST : 1) * seconds;
+    const ahead = new THREE.Vector3().subVectors(target, camera).setY(0).normalize();
+    const side = new THREE.Vector3().crossVectors(ahead, UP);
+    const move = ahead.multiplyScalar(forward * speed).addScaledVector(side, right * speed).addScaledVector(UP, up * speed);
+    move.y = Math.max(move.y, -target.y)/*the point never sinks below the baseplate*/;
+    camera.add(move);
+    target.add(move);
+    this.cameraMoved = true;
   }
 
   /** the depth of field focuses on the point the camera orbits */
@@ -552,6 +606,7 @@ const toSceneGeometry = (group: THREE.Group): THREE.BufferGeometry => {
 
 // == Util ========================================================================
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+const isStanding = (walk: Walk): boolean => (walk.forward === 0) && (walk.right === 0) && (walk.up === 0) && (walk.turn === 0);
 const lerp = (a: number, b: number, t: number): number => a + ((b - a) * t);
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t: number): number => (t < 0.5) ? (4 * t * t * t) : (1 - (Math.pow(-2 * t + 2, 3) / 2));

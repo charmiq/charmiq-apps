@@ -41,7 +41,7 @@
   </app-content>
 </iframe-app>
 
-Drag to orbit, right-drag to pan, scroll to zoom. The corner button takes the studio full screen; Esc leaves.
+Drag to orbit, right-drag to pan, scroll to zoom. Or walk with the keys once the studio has focus: W and S forward and back, A and D sideways, Q and E turn, Space and C up and down, Shift to hurry. The corner button takes the studio full screen; Esc leaves. The info button in the bottom corner, or I, shows these again.
 
 
 ## Try It

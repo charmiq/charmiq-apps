@@ -6,7 +6,7 @@ import { ContentBridge } from './content-bridge';
 import { FidelityControl } from './fidelity-control';
 import { getColor, getColorValue } from './grid';
 import type { Model } from './model';
-import { DEFAULT_VIEW, Viewer } from './viewer';
+import { DEFAULT_VIEW, STANDING, Viewer, type Walk } from './viewer';
 
 // entry point: creates the modules, wires them, loads the parts, then the build
 // ********************************************************************************
@@ -81,6 +81,53 @@ document.addEventListener('fullscreenchange', () => {
   fullscreenButton.setAttribute('aria-pressed', String(full));
   fullscreenButton.title = full ? 'Leave full screen' : 'Full screen';
 });
+
+// .. Help ........................................................................
+// the controls over the whole studio: the button or I opens them, a click anywhere
+// or Esc closes them
+const help = element<HTMLDialogElement>('help');
+const toggleHelp = () => {
+  if(help.open) { help.close(); return; }
+  held.clear(); viewer.walk(STANDING)/*the studio stands still under the help*/;
+  help.showModal();
+};
+element('helpButton').addEventListener('click', toggleHelp);
+help.addEventListener('click', () => help.close());
+
+// .. Walking .....................................................................
+// keys by position on the keyboard (any layout): W S forward and back, A D left
+// and right, Q E turn, Space C up and down, Shift faster
+const WALK_KEYS: Readonly<Record<string, readonly [keyof Omit<Walk, 'fast'>, number]>> = {
+  KeyW: ['forward', 1], KeyS: ['forward', -1],
+  KeyD: ['right', 1],   KeyA: ['right', -1],
+  Space: ['up', 1],     KeyC: ['up', -1],
+  KeyQ: ['turn', 1],    KeyE: ['turn', -1],
+};
+const held = new Set<string>();
+const walkFromKeys = (fast: boolean): Walk => {
+  const walk = { ...STANDING, fast };
+  for(const code of held) { const [axis, sign] = WALK_KEYS[code]; walk[axis] += sign; }
+  return walk;
+};
+
+/** whether a key goes to what has focus instead (text being typed, a shortcut) */
+const isForOthers = (event: KeyboardEvent): boolean =>
+  event.ctrlKey || event.metaKey || event.altKey ||
+  ((event.target instanceof HTMLElement) && (event.target.isContentEditable || (event.target instanceof HTMLTextAreaElement) ||
+    ((event.target instanceof HTMLInputElement) && (event.target.type !== 'range'))));
+
+const onWalkKey = (event: KeyboardEvent, down: boolean) => {
+  if(down && (event.code === 'KeyI') && !isForOthers(event)) { toggleHelp(); return; }
+  if(!(event.code in WALK_KEYS)) { if(event.key === 'Shift') viewer.walk(walkFromKeys(down)); return; }
+  if(down && (isForOthers(event) || help.open)) return;
+  event.preventDefault()/*Space neither scrolls nor presses the focused button*/;
+  if(down) held.add(event.code);
+  else held.delete(event.code);
+  viewer.walk(walkFromKeys(event.shiftKey));
+};
+window.addEventListener('keydown', event => onWalkKey(event, true));
+window.addEventListener('keyup', event => onWalkKey(event, false));
+window.addEventListener('blur', () => { held.clear(); viewer.walk(STANDING); })/*a key released elsewhere never sticks*/;
 
 // == Init ========================================================================
 const start = async () => {
