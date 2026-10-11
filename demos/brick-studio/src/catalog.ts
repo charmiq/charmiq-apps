@@ -4,7 +4,7 @@
 // NOTE: this module has no imports so that tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'plant' | 'rock' | 'fence' | 'detail';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -17,9 +17,10 @@ export type CatalogPart = Readonly<{
   frame?: string;
 }>;
 
-/** whether a kind's underside is open (an arch's span, an inverted slope's face):
- *  its fill is measured from below there, never assumed to reach its bottom */
-export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch');
+/** whether a kind's underside is open (an arch's span, an inverted slope's face, a
+ *  plant's foliage over its base): its fill is measured from below there, never
+ *  assumed to reach its bottom */
+export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'plant');
 
 // --------------------------------------------------------------------------------
 export const CATALOG: ReadonlyArray<CatalogPart> = [
@@ -118,6 +119,33 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'glass-1x2x2', ldraw: '60601', kind: 'glass', frame: '60592' },
   { key: 'glass-1x2x3', ldraw: '60602', kind: 'glass', frame: '60593' },
   { key: 'glass-1x4x3', ldraw: '60603', kind: 'glass', frame: '60594' },
+
+  { key: 'tree-pine-small', ldraw: '2435',  kind: 'plant' },
+  { key: 'tree-pine',       ldraw: '3471',  kind: 'plant' },
+  { key: 'tree-oval',       ldraw: '3470',  kind: 'plant' },
+  { key: 'tree-tall',       ldraw: '3778',  kind: 'plant' },
+  { key: 'bush',            ldraw: '6064b', kind: 'plant' },
+  { key: 'plant-leaves-1x1', ldraw: '6255', kind: 'plant' },
+  { key: 'bamboo-1x1',      ldraw: '30176', kind: 'plant' },
+  { key: 'leaves-plate-1x1', ldraw: '32607', kind: 'plant' },
+  { key: 'flower-plate-1x1', ldraw: '24866', kind: 'plant' },
+  { key: 'grass-stem',      ldraw: '15279', kind: 'plant' },
+
+  { key: 'rock-4x4',        ldraw: '42284', kind: 'rock' },
+  { key: 'crystal-1x1',     ldraw: '30385', kind: 'rock' },
+  { key: 'crystal-2x2',     ldraw: '30213', kind: 'rock' },
+
+  { key: 'fence-lattice-1x4x1', ldraw: '3633',  kind: 'fence' },
+  { key: 'fence-lattice-1x4x2', ldraw: '3185',  kind: 'fence' },
+  { key: 'fence-spindled-1x4x2', ldraw: '30055', kind: 'fence' },
+
+  { key: 'pillar-round-1x1x6', ldraw: '43888', kind: 'detail' },
+  { key: 'brick-1x1x3',     ldraw: '14716', kind: 'detail' },
+  { key: 'brick-1x1x5',     ldraw: '2453b', kind: 'detail' },
+  { key: 'headlight-brick-1x1', ldraw: '4070', kind: 'detail' },
+  { key: 'grille-brick-1x2', ldraw: '2877', kind: 'detail' },
+  { key: 'round-tile-2x2',  ldraw: '14769', kind: 'detail' },
+  { key: 'swirl-plate-1x1', ldraw: '15470', kind: 'detail' },
 ];
 
 // == Colors ======================================================================

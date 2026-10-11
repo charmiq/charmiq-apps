@@ -18,11 +18,16 @@ import { CATALOG, COLORS, hasOpenUnderside, type CatalogPart } from '../src/cata
 // == Constants ===================================================================
 const LDU_PER_STUD = 20/*LDU*/;
 const LDU_PER_PLATE = 8/*LDU*/;
+const STUD_RADIUS = 6/*LDU*/;
+const STUD_HEIGHT = 4/*LDU*/;
 const EPSILON = 0.01/*LDU*/;
 /** sample columns per cell side when measuring a cell's fill */
 const SAMPLES_PER_SIDE = 8;
 /** how far inside a cell a bottom-face vertex must lie to count as the cell's own */
 const BASE_INSET = 2/*LDU*/;
+/** how thick a part must be in a cell to fill any level there (less is a measuring
+ *  sliver) */
+const SLIVER = 1/*LDU*/;
 
 const SOURCE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 
@@ -32,7 +37,13 @@ type Transform = readonly [number, number, number, number, number, number, numbe
 const IDENTITY: Transform = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
 
 type Point = [number, number, number];
-type Measure = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; studs: Point[]; triangles: Array<readonly [Point, Point, Point]>; };
+type Triangle = readonly [Point, Point, Point];
+/** a part's geometry as walked: every face, tagged with the base of the stud
+ *  primitive that draws it (if any); every stud primitive's base; and the base under
+ *  every disc of stud radius (SEE: discStudBase) */
+type Walk = { faces: Array<{ triangle: Triangle; studBase?: Point; }>; studs: Point[]; discs: Point[]; };
+/** a part's body (everything but its top studs), with its extents (-y up) */
+type Measure = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; studs: Point[]; triangles: Triangle[]; };
 
 // == Files =======================================================================
 /** the name a type-1 line references, normalized as LDrawLoader normalizes it */
@@ -86,12 +97,20 @@ const apply = (t: Transform, x: number, y: number, z: number): [number, number, 
  *  underside tubes, `stud3.dat` and `stud4*.dat`, sit below it) */
 const isStud = (name: string): boolean => /^stud\d*[a-z]?\.dat$/.test(name);
 
+/** the base under a disc of stud radius: a stud's top when it is drawn without a
+ *  stud primitive (a notched stud: a partial cylinder and disc), and that disc stands
+ *  a stud's height above the top face (SEE: bodyOf) */
+const discStudBase = (name: string, world: Transform): Point | undefined => {
+  if(!/^\d+-\d+disc\.dat$/.test(name)) return undefined;
+  const radius = Math.hypot(world[0], world[3], world[6])/*the disc's x axis*/;
+  const [x, y, z] = apply(world, 0, 0, 0);
+  return (Math.abs(radius - STUD_RADIUS) < EPSILON) ? [x, y + STUD_HEIGHT, z] : undefined;
+};
+
 // --------------------------------------------------------------------------------
-/** walks a file's geometry under `transform`, measuring the body and recording each
- *  top stud's position. The body is what lies at or below the top face (y 0, -y up):
- *  studs stand above it, whatever primitive draws them, and an underside tube named
- *  like a stud (`stud4.dat`) is body */
-const measure = (library: string, name: string, transform: Transform, out: Measure): void => {
+/** walks a file's geometry under `transform`, recording each face (tagged with the
+ *  stud primitive drawing it) and each stud's base */
+const walk = (library: string, name: string, transform: Transform, out: Walk, studBase?: Point): void => {
   for(const line of readPart(library, name).split('\n')) {
     const fields = line.trim().split(/\s+/);
     switch(fields[0]) {
@@ -100,8 +119,11 @@ const measure = (library: string, name: string, transform: Transform, out: Measu
         const child = referenceName(fields.slice(14).join(' '));
         const local: Transform = [values[3], values[4], values[5], values[6], values[7], values[8], values[9], values[10], values[11], values[0], values[1], values[2]];
         const world = compose(transform, local);
-        if(isStud(child)) out.studs.push(apply(world, 0, 0, 0));
-        measure(library, child, world, out);
+        const base = (studBase === undefined) && isStud(child) ? apply(world, 0, 0, 0) : undefined;
+        const disc = (studBase === undefined) ? discStudBase(child, world) : undefined;
+        if(base) out.studs.push(base);
+        if(disc) out.discs.push(disc);
+        walk(library, child, world, out, studBase ?? base);
         break;
       }
       case '3':
@@ -109,20 +131,38 @@ const measure = (library: string, name: string, transform: Transform, out: Measu
         const values = fields.slice(2).map(Number);
         const points: Point[] = [];
         for(let v=0; v<(Number(fields[0]) * 3); v+=3) points.push(apply(transform, values[v], values[v + 1], values[v + 2]));
-        for(const [x, y, z] of points) {
-          if(y < -EPSILON) continue/*above the top face: a stud*/;
-          out.minX = Math.min(out.minX, x); out.maxX = Math.max(out.maxX, x);
-          out.minY = Math.min(out.minY, y); out.maxY = Math.max(out.maxY, y);
-          out.minZ = Math.min(out.minZ, z); out.maxZ = Math.max(out.maxZ, z);
-        }
-        if(points.some(([, y]) => y < -EPSILON)) break/*a stud's face*/;
-        out.triangles.push([points[0], points[1], points[2]]);
-        if(points.length > 3) out.triangles.push([points[0], points[2], points[3]]);
+        out.faces.push({ triangle: [points[0], points[1], points[2]], studBase });
+        if(points.length > 3) out.faces.push({ triangle: [points[0], points[2], points[3]], studBase });
         break;
       }
       default: break/*meta, lines and conditional lines carry no body*/;
     }
   }
+};
+
+/** a notched stud's own faces: within a stud's cylinder over its base */
+const inDiscStud = (bases: ReadonlyArray<Point>, [x, y, z]: Point): boolean => bases.some(([baseX, baseY, baseZ]) =>
+  (Math.hypot(x - baseX, z - baseZ) < (STUD_RADIUS + EPSILON)) && (y < (baseY + EPSILON)) && (y > (baseY - STUD_HEIGHT - EPSILON)));
+
+/** the body of a walked part: everything but the studs standing on its top face.
+ *  The top face is the highest point of what no stud draws; a stud primitive below
+ *  it (an underside tube named like a stud, `stud4.dat`) is body */
+const bodyOf = (walked: Walk): Measure => {
+  const plain = walked.faces.filter(({ triangle, studBase }) => (studBase === undefined) && !triangle.every(point => inDiscStud(walked.discs, point)));
+  const topY = Math.min(...plain.flatMap(({ triangle }) => triangle.map(([, y]) => y)));
+  const onTop = (base: Point | undefined): boolean => (base !== undefined) && (Math.abs(base[1] - topY) < EPSILON);
+  const discStuds = walked.discs.filter(onTop);
+  const triangles = walked.faces
+    .filter(({ triangle, studBase }) => !onTop(studBase) && !triangle.every(point => inDiscStud(discStuds, point)))
+    .map(({ triangle }) => triangle);
+
+  const points = triangles.flat();
+  return {
+    minX: Math.min(...points.map(([x]) => x)), maxX: Math.max(...points.map(([x]) => x)),
+    minY: topY, maxY: Math.max(...points.map(([, y]) => y)),
+    minZ: Math.min(...points.map(([, , z]) => z)), maxZ: Math.max(...points.map(([, , z]) => z)),
+    studs: [...walked.studs.filter(onTop), ...discStuds], triangles,
+  };
 };
 
 /** every file `name` references, transitively, as reference names */
@@ -138,36 +178,62 @@ const closure = (library: string, name: string, seen: Set<string>): void => {
 // == Measure =====================================================================
 const isWhole = (value: number): boolean => Math.abs(value - Math.round(value)) < EPSILON;
 
-/** footprint (studs), height (plates), origin and top-stud cells of one part, from
- *  the footprint's minimum corner. The origin lies on the top face; -y is up (LDraw) */
+/** the grid lines (LDU along one axis, every stud) a part lies on: its own extent
+ *  when that is whole studs; otherwise the extent grown out to the lines its base
+ *  sits on (a tree's foliage overhangs its base). A base an odd number of studs wide
+ *  centers on a cell, an even one on a cell corner */
+const gridSpan = (min: number, max: number, baseMin: number, baseMax: number): readonly [number, number] => {
+  if(isWhole((max - min) / LDU_PER_STUD)) return [min, max];
+  const center = Math.round((baseMin + baseMax) / 2 / (LDU_PER_STUD / 2)) * (LDU_PER_STUD / 2)/*on a half stud*/;
+  const odd = (Math.round((baseMax - baseMin) / LDU_PER_STUD) % 2) === 1;
+  const line = odd ? (center - (LDU_PER_STUD / 2)) : center/*one grid line*/;
+  return [
+    line + (Math.floor(((min - line) / LDU_PER_STUD) + (EPSILON / LDU_PER_STUD)) * LDU_PER_STUD),
+    line + (Math.ceil(((max - line) / LDU_PER_STUD) - (EPSILON / LDU_PER_STUD)) * LDU_PER_STUD),
+  ];
+};
+
+/** footprint (studs), height (plates), origin, base and top-stud cells of one part,
+ *  from the footprint's minimum corner; -y is up (LDraw). A part that reaches beyond
+ *  whole studs or levels (a tree) takes every cell and level it reaches into, laid
+ *  out from its base */
 const measurePart = (library: string, part: CatalogPart) => {
   const { ldraw } = part;
-  const out: Measure = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity, studs: [], triangles: [] };
-  measure(library, `${ldraw}.dat`, IDENTITY, out);
+  const walked: Walk = { faces: [], studs: [], discs: [] };
+  walk(library, `${ldraw}.dat`, IDENTITY, walked);
+  const body = bodyOf(walked);
 
-  const width = (out.maxX - out.minX) / LDU_PER_STUD;
-  const depth = (out.maxZ - out.minZ) / LDU_PER_STUD;
-  const height = out.maxY / LDU_PER_PLATE;
-  if(!isWhole(width) || !isWhole(depth) || !isWhole(height)) throw new Error(`${ldraw}: footprint ${width} x ${depth} x ${height} is not on the grid.`);
-  if(Math.abs(out.minY) > EPSILON) throw new Error(`${ldraw}: origin is not on the top face.`);
+  const base = body.maxY / LDU_PER_PLATE/*plates from the origin down to the bottom*/;
+  if(!isWhole(base)) throw new Error(`${ldraw}: bottom ${base} plates below the origin is not on a level.`);
+  const bottomFace = body.triangles.flat().filter(([, y]) => Math.abs(y - body.maxY) < EPSILON);
+  const [minX, maxX] = gridSpan(body.minX, body.maxX, Math.min(...bottomFace.map(([x]) => x)), Math.max(...bottomFace.map(([x]) => x)));
+  const [minZ, maxZ] = gridSpan(body.minZ, body.maxZ, Math.min(...bottomFace.map(([, , z]) => z)), Math.max(...bottomFace.map(([, , z]) => z)));
+  const height = Math.ceil(((body.maxY - body.minY) / LDU_PER_PLATE) - EPSILON)/*a tip short of a level reaches into it*/;
+
+  // the cells the part reaches into, trimmed to the ones it fills
+  const spanned = measureFill({ ...body, minX, minZ }, { width: Math.round((maxX - minX) / LDU_PER_STUD), depth: Math.round((maxZ - minZ) / LDU_PER_STUD), height }, hasOpenUnderside(part.kind));
+  const [shiftX, shiftZ] = [Math.min(...spanned.map(([x]) => x)), Math.min(...spanned.map(([, z]) => z))];
+  const fill = spanned.map(([x, z, bottom, top]) => [x - shiftX, z - shiftZ, bottom, top] as [number, number, number, number]);
+  const out = { ...body, minX: minX + (shiftX * LDU_PER_STUD), minZ: minZ + (shiftZ * LDU_PER_STUD) };
+  const width = Math.max(...fill.map(([x]) => x)) + 1;
+  const depth = Math.max(...fill.map(([, z]) => z)) + 1;
 
   // the origin in studs from the minimum corner (a slope's sits over its stud row)
   const origin = [-out.minX / LDU_PER_STUD, -out.minZ / LDU_PER_STUD] as [number, number];
   if(!isWhole(origin[0] * 2) || !isWhole(origin[1] * 2)) throw new Error(`${ldraw}: origin ${origin} is not on a half stud.`);
   const halfStud = (value: number): number => Math.round(value * 2) / 2/*a round part's facets leave float noise*/;
 
-  // a top stud sits on the top face (y 0); underside studs sit below it
+  // a top stud sits on the top face
   const studs = out.studs
-    .filter(([, y]) => Math.abs(y) < EPSILON)
     .map(([x, , z]) => [(x - out.minX) / LDU_PER_STUD - 0.5, (z - out.minZ) / LDU_PER_STUD - 0.5] as [number, number])
     .map(([x, z]) => {
       if(!isWhole(x) || !isWhole(z)) throw new Error(`${ldraw}: stud at ${x}, ${z} is not on a cell.`);
       return [Math.round(x), Math.round(z)] as [number, number];
     })
+    .filter(([x, z], index, all) => all.findIndex(([otherX, otherZ]) => (otherX === x) && (otherZ === z)) === index)/*a stud primitive's own disc*/
     .sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
-  const size = { width: Math.round(width), depth: Math.round(depth), height: Math.round(height) };
-  if(part.kind === 'ridge') assertRidgeRunsEastWest(out, ldraw);
-  return { ...size, origin: [halfStud(origin[0]), halfStud(origin[1])], studs, fill: measureFill(out, size, hasOpenUnderside(part.kind)) };
+  if(part.kind === 'ridge') assertRidgeRunsEastWest(body, ldraw);
+  return { width, depth, height, origin: [halfStud(origin[0]), halfStud(origin[1])], base: Math.round(base), studs, fill };
 };
 
 /** a ridge's peak runs east-west across the middle of its depth, as listParts says
@@ -176,8 +242,8 @@ const measurePart = (library: string, part: CatalogPart) => {
 const assertRidgeRunsEastWest = (out: Measure, ldraw: string): void => {
   const topAt = (x: number, z: number): number => Math.min(...crossings(out.triangles, x, z));
   const middleX = (out.minX + out.maxX) / 2, middleZ = (out.minZ + out.maxZ) / 2;
-  const peak = [out.minX + 1, middleX, out.maxX - 1].every(x => Math.abs(topAt(x, middleZ)) < EPSILON);
-  const falls = [out.minZ + 1, out.maxZ - 1].every(z => topAt(middleX, z) > 1);
+  const peak = [out.minX + 1, middleX, out.maxX - 1].every(x => Math.abs(topAt(x, middleZ) - out.minY) < EPSILON);
+  const falls = [out.minZ + 1, out.maxZ - 1].every(z => topAt(middleX, z) > (out.minY + 1));
   if(!peak || !falls) throw new Error(`${ldraw}: the ridge does not run east-west across its middle.`);
 };
 
@@ -200,15 +266,16 @@ const crossings = (triangles: Measure['triangles'], x: number, z: number): numbe
 /** each footprint cell the part fills and the levels it fills there, from the
  *  footprint's minimum corner as [x, z, bottom, top] (levels bottom up to, not
  *  including, top). A cell is filled when the part reaches into it at all (a wedge's
- *  cut cell still blocks a part beside it); a level when its middle lies below the
- *  part's highest point in the cell (nothing fits above a slope's high edge, a
- *  cone's tip or into a pocket in a top).
+ *  cut cell still blocks a part beside it); a level when its middle lies between the
+ *  part's underside and its highest point in the cell (nothing fits above a slope's
+ *  high edge, a cone's tip or into a pocket in a top). A part thinner than a plate
+ *  there (a leaf) fills the level holding its middle.
  *  The fill reaches the part's bottom unless its underside is open, where it starts
  *  at the underside's mean height -- except in a cell holding the part's own bottom
  *  face (a wall or tube standing on the part's bottom), since from below a hollow
  *  part shows only its inner ceiling */
 const measureFill = (out: Measure, size: Readonly<{ width: number; depth: number; height: number; }>, openUnderside: boolean): Array<[number, number, number, number]> => {
-  const bottomY = size.height * LDU_PER_PLATE;
+  const bottomY = out.maxY;
   const fill: Array<[number, number, number, number]> = [];
   for(let cz=0; cz<size.depth; cz++) {
     for(let cx=0; cx<size.width; cx++) {
@@ -231,9 +298,11 @@ const measureFill = (out: Measure, size: Readonly<{ width: number; depth: number
         (z > (z0 + BASE_INSET)) && (z < (z0 + LDU_PER_STUD - BASE_INSET))));
       const bottomRise = standsOnBottom ? 0 : (bottomY - (undersides.reduce((sum, y) => sum + y, 0) / undersides.length))/*its mean height*/;
 
-      const levels = Array.from({ length: size.height }, (_, level) => level)
+      const middles = Array.from({ length: size.height }, (_, level) => level)
         .filter(level => (((level + 0.5) * LDU_PER_PLATE) < topRise) && (((level + 0.5) * LDU_PER_PLATE) > bottomRise));
-      if(levels.length < 1) continue/*a sliver: no level's middle lies in it*/;
+      const thin = Math.min(size.height - 1, Math.floor(((topRise + bottomRise) / 2) / LDU_PER_PLATE))/*the level holding its middle*/;
+      const levels = (middles.length > 0) ? middles : ((topRise - bottomRise) > SLIVER) ? [thin] : [];
+      if(levels.length < 1) continue/*a sliver*/;
       fill.push([cx, cz, levels[0], levels[levels.length - 1] + 1]);
     }
   }
@@ -277,14 +346,14 @@ const colors = Object.fromEntries(COLORS.map(color => {
 }));
 
 const facts = [
-  '// each catalog part\'s footprint, height, top studs and fill, and each catalog',
-  '// value, measured from the LDraw Parts Library by tools/pack-parts.ts -- do not edit',
+  '// each catalog part\'s footprint, height, base, top studs and fill, and each catalog',
+  '// color\'s value, measured from the LDraw Parts Library by tools/pack-parts.ts -- do not edit',
   '// ********************************************************************************',
   '/** footprint in studs along x (`width`) and z (`depth`), height in plates, the LDraw',
-  ' *  origin in studs from the footprint\'s minimum corner, the top-stud cells and the',
-  ' *  filled cells ([x, z, bottom level, top level exclusive]), all at rotation 0, keyed',
-  ' *  by LDraw file stem */',
-  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; }>>> = ${JSON.stringify(geometry)};`,
+  ' *  origin in studs from the footprint\'s minimum corner and its `base` in plates above',
+  ' *  the part\'s bottom, the top-stud cells and the filled cells ([x, z, bottom level,',
+  ' *  top level exclusive]), all at rotation 0, keyed by LDraw file stem */',
+  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; }>>> = ${JSON.stringify(geometry)};`,
   '',
   '/** LDConfig color value, keyed by LDraw color code */',
   `export const COLOR_VALUES: Readonly<Record<number, string>> = ${JSON.stringify(colors, null, 2)};`,
