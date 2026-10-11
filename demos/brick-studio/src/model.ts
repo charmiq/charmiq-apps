@@ -16,9 +16,14 @@ export type Model = Readonly<{
   header: ReadonlyArray<string>;
   placements: ReadonlyArray<Placement>;
   others: ReadonlyArray<OtherPart>;
+  /** the text expands past the part limit: only its first parts were read */
+  truncated?: boolean;
 }>;
 
 // == Constants ===================================================================
+/** the most parts a build holds */
+export const MAX_PARTS = 3000;
+
 const DEFAULT_HEADER = ['0 Brick Studio model', '0 Name: model.ldr'];
 
 export const EMPTY_MODEL: Model = { header: DEFAULT_HEADER, placements: [], others: [] };
@@ -62,8 +67,15 @@ export const parseModel = (text: string): Model => {
   const placements: Placement[] = [];
   const others: OtherPart[] = [];
 
+  // submodels can reference each other many times over, so the parts they expand
+  // to, and the references followed to reach them, are bounded as they are read
+  let references = 0;
+  let truncated = false;
+  const exceeded = () => truncated ||= (((placements.length + others.length) > MAX_PARTS) || (references > MAX_PARTS));
+
   const walk = (name: string, transform: Transform, inheritedColor: number, depth: number, isMain: boolean): void => {
     for(const line of files.get(name) ?? []) {
+      if(exceeded()) return;
       const fields = line.trim().split(/\s+/);
       if(fields[0] !== '1') {
         if(isMain && (line.trim().length > 0) && !line.trim().startsWith('0 FILE')) header.push(line.trimEnd());
@@ -78,7 +90,7 @@ export const parseModel = (text: string): Model => {
       const local: Transform = { position: [values[1], values[2], values[3]], matrix: values.slice(4, 13) };
       const world = compose(transform, local);
 
-      if(files.has(reference) && (depth < 16/*guards a cyclic MPD*/)) { walk(reference, world, colorCode, depth + 1, false); continue; }
+      if(files.has(reference) && (depth < 16/*guards a cyclic MPD*/)) { references++; walk(reference, world, colorCode, depth + 1, false); continue; }
       const placement = toPlacement(reference, colorCode, world);
       if(placement) placements.push(placement);
       else others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode, position: world.position, matrix: world.matrix });
@@ -86,7 +98,8 @@ export const parseModel = (text: string): Model => {
   };
   walk(main, IDENTITY, 16, 0, true);
 
-  return { header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others };
+  exceeded();
+  return { header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others, ...(truncated ? { truncated } : {}) };
 };
 
 // --------------------------------------------------------------------------------

@@ -1,14 +1,13 @@
 import { checkModel, describePlacement, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, frameKey, getColor, getPart, getShape, toRotation, type Placement } from './grid';
-import { EMPTY_MODEL, parseModel, serializeModel, type Model } from './model';
+import { EMPTY_MODEL, MAX_PARTS, parseModel, serializeModel, type Model } from './model';
 
 // owns the current build. Every edit is validated, applied, written to appContent
 // and then shown. An edit that would collide is refused whole, so a build never
 // gains a collision through an edit; a part may float while its support is pending
 // ********************************************************************************
 // == Constants ===================================================================
-const MAX_PARTS = 3000;
 const MAX_BATCH = 400;
 const MAX_COORDINATE = 200/*studs from the origin*/;
 const MAX_LEVEL = 600/*plates*/;
@@ -51,7 +50,7 @@ export class Build {
   public async add(input: ReadonlyArray<unknown>): Promise<Readonly<{ added: number; total: number; floating: ReadonlyArray<string>; }>> {
     if(input.length < 1) throw new BuildError('No parts given.');
     if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per call.`);
-    if((this.model.placements.length + input.length) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
+    if(this.model.truncated || ((partCount(this.model) + input.length) > MAX_PARTS)) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
 
     const problems: string[] = [];
     const added = input.flatMap((item, index) => {
@@ -120,7 +119,7 @@ export class Build {
   /** replaces the build with LDraw text */
   public async replace(text: string): Promise<Model> {
     const model = parseModel(text);
-    if((model.placements.length + model.others.length) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
+    if(model.truncated || (partCount(model) > MAX_PARTS)) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
     await this.commit(model);
     return model;
   }
@@ -152,3 +151,6 @@ const toPlacement = (item: unknown): Placement | string => {
 };
 
 const isInteger = (value: unknown): value is number => (typeof value === 'number') && Number.isInteger(value);
+
+/** every part a model holds, outside the catalog included */
+const partCount = (model: Model): number => model.placements.length + model.others.length;
