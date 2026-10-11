@@ -50,6 +50,7 @@ const TURN_SPEED = Math.PI / 2/*radians per second*/;
 /** the longest frame a walk step covers (a stalled tab never leaps) */
 const WALK_STEP_MAX_MS = 100/*ms*/;
 const UP = new THREE.Vector3(0, 1, 0);
+const GROUND = new THREE.Plane(UP, 0);
 
 /** the direction toward the sun, and the studio's key softbox, from the build */
 const KEY_DIRECTION = new THREE.Vector3(-0.45, 1, 0.6).normalize();
@@ -354,7 +355,9 @@ export class Viewer {
 
   /** moves the camera as the keys say until they say stand (SEE: Walk) */
   public walk(walk: Walk): void {
+    const stopping = !isStanding(this.walking) && isStanding(walk);
     this.walking = walk;
+    if(stopping) this.pivotOnView();
     if(isStanding(walk)) { this.lastWalk = undefined; return; }
     this.tween?.resolve()/*a walk takes over from a view change*/;
     this.tween = undefined;
@@ -523,6 +526,23 @@ export class Viewer {
     camera.add(move);
     target.add(move);
     this.cameraMoved = true;
+  }
+
+  /** moves the point the camera orbits in to what lies at the center of the view
+   *  (a brick, else the baseplate's plane) when that is nearer, leaving the camera
+   *  where it stands. Never farther: ground far beyond the build would make the
+   *  next drag swing the camera around a distant point */
+  private pivotOnView(): void {
+    const camera = this.camera.position;
+    const distance = camera.distanceTo(this.controls.target);
+    const ahead = new THREE.Vector3().subVectors(this.controls.target, camera).normalize();
+    const ray = new THREE.Raycaster(camera, ahead);
+    const hit = ray.intersectObjects([this.parts, ...(this.baseplate ? [this.baseplate] : [])], true)[0]?.point
+      ?? ray.ray.intersectPlane(GROUND, new THREE.Vector3()) ?? undefined;
+    if(!hit) return/*looking at the sky: the point stays*/;
+    this.controls.target.copy(camera).addScaledVector(ahead, clamp(camera.distanceTo(hit), this.controls.minDistance, distance));
+    this.controls.update();
+    this.requestFrame();
   }
 
   /** the depth of field focuses on the point the camera orbits */
