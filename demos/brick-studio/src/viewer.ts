@@ -120,7 +120,9 @@ export class Viewer {
     this.controls.minDistance = 2;
     this.controls.maxDistance = 600;
     this.controls.addEventListener('start', () => { this.tween = undefined; });
-    this.controls.addEventListener('change', () => this.requestFrame());
+    // a wheel zoom lands inside the controls' own handler, so the next frame sees no
+    // movement; every change marks the camera moved for the path tracer
+    this.controls.addEventListener('change', () => { this.cameraMoved = true; this.requestFrame(); });
 
     this.setTheme(theme);
     this.applyLook(0);
