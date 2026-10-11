@@ -177,6 +177,47 @@ body {
   &:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
 }
 
+// == Look ========================================================================
+.look {
+  @extend %mono-caps;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.look-value {
+  min-width: 13ch/*the longest stop, so the slider never shifts*/;
+  color: var(--ink);
+}
+
+.look-slider {
+  width: 96px;
+  height: 14px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+
+  &::-webkit-slider-runnable-track { height: 4px; border: 1px solid var(--outline); border-radius: 2px; background: var(--baseplate); }
+  &::-moz-range-track { height: 4px; border: 1px solid var(--outline); border-radius: 2px; background: var(--baseplate); }
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 10px;
+    margin-top: -4px;
+    border: 1px solid var(--outline);
+    border-radius: 1px;
+    background: var(--brick-yellow)/*a 1x1 plate*/;
+    box-shadow: 0 1px 0 var(--outline);
+  }
+  &::-moz-range-thumb { width: 14px; height: 10px; border: 1px solid var(--outline); border-radius: 1px; background: var(--brick-yellow); box-shadow: 0 1px 0 var(--outline); }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+}
+
 // == Hint ========================================================================
 .hint {
   @extend %mono-caps;

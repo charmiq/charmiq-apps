@@ -3,6 +3,7 @@ import { Build } from './build';
 import { isSound } from './check';
 import { CommandSurface } from './command';
 import { ContentBridge } from './content-bridge';
+import { FidelityControl } from './fidelity-control';
 import { getColor, getColorValue } from './grid';
 import type { Model } from './model';
 import { DEFAULT_VIEW, Viewer } from './viewer';
@@ -37,7 +38,8 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const viewer = new Viewer(canvas, readTheme());
 const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
-const commands = new CommandSurface(build, viewer);
+const look = new FidelityControl(element('fidelity'), element('fidelityName'), viewer);
+const commands = new CommandSurface(build, viewer, look);
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => viewer.setTheme(readTheme()));
 
@@ -74,6 +76,7 @@ const start = async () => {
     return;
   }
 
+  await look.init();
   build.onChange((model, source) => {
     viewer.setModel(model, (source !== 'load') && !reducedMotion.matches);
     if(source === 'load') viewer.jumpToView(DEFAULT_VIEW);

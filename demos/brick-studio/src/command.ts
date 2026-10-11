@@ -1,8 +1,10 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { Build } from './build';
+import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS } from './catalog';
 import { reportCheck } from './check';
 import { getShape } from './grid';
+import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { Viewer } from './viewer';
 
 // the Charm command surface (SEE: manifest.json `advertise`). Results are terse
@@ -21,7 +23,7 @@ const GRID = [
 
 // == Class =======================================================================
 export class CommandSurface {
-  public constructor(private readonly build: Build, private readonly viewer: Viewer) {}
+  public constructor(private readonly build: Build, private readonly viewer: Viewer, private readonly look: FidelityControl) {}
 
   /** registers the commands; called once from main.ts */
   public init(): void {
@@ -60,6 +62,14 @@ export class CommandSurface {
         const removed = await this.build.clear();
         await this.viewer.setView(this.viewer.getView(), true);
         return { removed };
+      },
+
+      setFidelity: async ({ fidelity }: { fidelity?: unknown; }) => {
+        const stop = toFidelity(fidelity);
+        if(stop === undefined) throw new Error('fidelity must be 0, 1, 2, 3 or 4');
+        const reached = await this.look.set(stop);
+        await this.viewer.whenSettled()/*a screenshot next shows the settled look*/;
+        return { fidelity: reached, look: fidelityLabel(reached) };
       },
 
       getModel: () => this.build.getText(),

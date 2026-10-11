@@ -23,7 +23,14 @@
         "three/addons/environments/RoomEnvironment.js": "https://esm.sh/three@0.186.1/examples/jsm/environments/RoomEnvironment.js",
         "three/addons/loaders/LDrawLoader.js": "https://esm.sh/three@0.186.1/examples/jsm/loaders/LDrawLoader.js",
         "three/addons/materials/LDrawConditionalLineMaterial.js": "https://esm.sh/three@0.186.1/examples/jsm/materials/LDrawConditionalLineMaterial.js",
-        "three/addons/utils/BufferGeometryUtils.js": "https://esm.sh/three@0.186.1/examples/jsm/utils/BufferGeometryUtils.js"
+        "three/addons/utils/BufferGeometryUtils.js": "https://esm.sh/three@0.186.1/examples/jsm/utils/BufferGeometryUtils.js",
+        "three/addons/postprocessing/BokehPass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/BokehPass.js",
+        "three/addons/postprocessing/EffectComposer.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/EffectComposer.js",
+        "three/addons/postprocessing/GTAOPass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/GTAOPass.js",
+        "three/addons/postprocessing/OutputPass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/OutputPass.js",
+        "three/addons/postprocessing/RenderPass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/RenderPass.js",
+        "three/addons/postprocessing/ShaderPass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/ShaderPass.js",
+        "three-gpu-pathtracer": "https://esm.sh/three-gpu-pathtracer@0.0.27?deps=three@0.186.1,three-mesh-bvh@0.9.16"
       }
     }
   },
@@ -172,6 +179,25 @@
             "elevation": { "type": "number" }
           },
           "required": ["azimuth", "elevation"]
+        }
+      },
+      {
+        "name": "setFidelity",
+        "description": "Set how real the bricks look: 0 Draft, 1 Plastic, 2 Shaded, 3 Photo, 4 Path traced (slow; falls back to 3 where unavailable). Resolves once settled, so a screenshot next shows it",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "fidelity": { "type": "integer", "minimum": 0, "maximum": 4 }
+          },
+          "required": ["fidelity"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "fidelity": { "type": "integer" },
+            "look":     { "type": "string" }
+          },
+          "required": ["fidelity", "look"]
         }
       },
       {

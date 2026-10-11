@@ -9,12 +9,18 @@ import { CATALOG } from './catalog';
 import { getColor, getColorValue, getPart, getShape, ldrawPosition, LDU_PER_STUD, rotationMatrix } from './grid';
 import type { Model } from './model';
 import PARTS_LDRAW from './parts.ldr';
+import { Effects } from './render/effects';
+import type { Fidelity } from './render/fidelity';
+import { PathTrace } from './render/pathTrace';
+import { applyPlastic, seamMatrix, tintedColor } from './render/plastic';
+import { createStudio, type Studio } from './render/studio';
 
 // renders a build: one instanced mesh per catalog part over a studded baseplate.
 // Scene units are studs with +y up and -z north, so an LDraw transform L becomes
 // C L C^-1 with C = rotateX(pi) * scale(1/20). The canvas keeps its last frame
 // (preserveDrawingBuffer) so the Platform's Application screenshot captures it;
-// every view change resolves only after its final frame is drawn
+// every view change resolves only after its final frame is drawn. How real it looks
+// is the fidelity stop (SEE: render/fidelity.ts)
 // ********************************************************************************
 // == Constants ===================================================================
 const LDRAW_TO_SCENE = new THREE.Matrix4().makeRotationX(Math.PI).multiply(new THREE.Matrix4().makeScale(1 / LDU_PER_STUD, 1 / LDU_PER_STUD, 1 / LDU_PER_STUD));
@@ -32,6 +38,9 @@ const DROP_MS = 340/*ms*/;
 const DROP_STAGGER_MS = 22/*ms*/;
 const DROP_STAGGER_MAX_MS = 700/*ms*/;
 const VIEW_MS = 520/*ms*/;
+
+/** the direction toward the sun, and the studio's key softbox, from the build */
+const KEY_DIRECTION = new THREE.Vector3(-0.45, 1, 0.6).normalize();
 
 export const DEFAULT_VIEW: View = { azimuth: 30, elevation: 28 };
 
@@ -53,14 +62,26 @@ export class Viewer {
   private readonly camera = new THREE.PerspectiveCamera(32, 1, 0.1, 2000);
   private readonly controls: OrbitControls;
   private readonly sun = new THREE.DirectionalLight(0xffffff, 1.6);
+  private readonly sky = new THREE.HemisphereLight(0xfffaf0, 0xd8d0c0, 0.5);
+  private readonly room: THREE.Texture;
+  private studio: Studio | undefined;
+  private readonly effects: Effects;
+  private pathTrace: PathTrace | undefined;
+  private pathTraceStale = true;
+  private cameraMoved = false;
+  private fidelity: Fidelity = 0;
+  private fidelityRequest = 0;
+  private readonly stage = new THREE.Color();
 
   private readonly material = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.34, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.3 });
   private readonly baseplateMaterial = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0 });
 
   private readonly geometries = new Map<string/*ldraw*/, THREE.BufferGeometry>();
+  private readonly seams = new Map<string/*ldraw*/, THREE.Matrix4>();
   private studGeometry: THREE.BufferGeometry | undefined;
 
   private readonly parts = new THREE.Group();
+  private model: Model | undefined;
   private baseplate: THREE.Group | undefined;
   private shownKeys = new Set<string>();
   private drops: Drop[] = [];
@@ -80,8 +101,7 @@ export class Viewer {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     const environment = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = environment.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.42;
+    this.room = environment.fromScene(new RoomEnvironment(), 0.04).texture;
     environment.dispose();
 
     this.sun.castShadow = true;
@@ -89,8 +109,9 @@ export class Viewer {
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.02;
     this.sun.shadow.radius = 4;
-    this.scene.add(this.sun, this.sun.target, new THREE.HemisphereLight(0xfffaf0, 0xd8d0c0, 0.5));
+    this.scene.add(this.sun, this.sun.target, this.sky);
     this.scene.add(this.parts);
+    this.effects = new Effects(this.renderer, this.scene, this.camera);
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -102,6 +123,7 @@ export class Viewer {
     this.controls.addEventListener('change', () => this.requestFrame());
 
     this.setTheme(theme);
+    this.applyLook(0);
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
   }
@@ -114,21 +136,84 @@ export class Viewer {
     loader.addDefaultMaterials();
 
     await parse(loader, PARTS_LDRAW)/*caches every packed file*/;
-    for(const part of CATALOG) this.geometries.set(part.ldraw, toSceneGeometry(await parse(loader, single(`${part.ldraw}.dat`))));
+    for(const part of CATALOG) {
+      const geometry = toSceneGeometry(await parse(loader, single(`${part.ldraw}.dat`)));
+      this.geometries.set(part.ldraw, geometry);
+      this.seams.set(part.ldraw, seamMatrix(geometry));
+    }
     this.studGeometry = toSceneGeometry(await parse(loader, single('stud.dat')));
   }
 
   // == Theme =====================================================================
   public setTheme(theme: Theme): void {
-    this.renderer.setClearColor(new THREE.Color(theme.stage), 1);
+    this.stage.set(theme.stage);
+    this.renderer.setClearColor(this.stage, 1);
     this.baseplateMaterial.color.set(theme.baseplate);
+    this.pathTraceStale = true;
     this.requestFrame();
+  }
+
+  // == Fidelity ==================================================================
+  /** sets how real the build looks; resolves to the stop reached, which is lower
+   *  when the path tracer cannot run here */
+  public async setFidelity(fidelity: Fidelity): Promise<Fidelity> {
+    const request = ++this.fidelityRequest;
+    if(fidelity === 4) {
+      try {
+        const loaded = this.pathTrace ?? await PathTrace.create(this.renderer, this.camera, () => this.effects.render());
+        if(request !== this.fidelityRequest) { if(loaded !== this.pathTrace) loaded.dispose(); return this.fidelity/*a later choice won*/; }
+        this.pathTrace = loaded;
+      } catch(error) {
+        console.warn('path tracing is unavailable here:', error);
+        return (request === this.fidelityRequest) ? this.setFidelity(3) : this.fidelity;
+      }
+      this.pathTraceStale = true;
+    } else {
+      this.pathTrace?.dispose();
+      this.pathTrace = undefined;
+    }
+
+    this.fidelity = fidelity;
+    this.applyLook(fidelity);
+    if(this.model) this.setModel(this.model, false)/*seams and tint follow the stop*/;
+    this.requestFrame();
+    return fidelity;
+  }
+
+  /** the material, light and shadow of a stop; stop 4 rasterizes as stop 3 until
+   *  its samples land */
+  private applyLook(fidelity: Fidelity): void {
+    const draft = (fidelity < 1);
+    if(!draft) this.studio ??= createStudio(this.renderer, KEY_DIRECTION);
+    this.scene.environment = draft ? this.room : this.studio!.environment;
+    this.scene.environmentIntensity = draft ? 0.42 : 0.9;
+    this.sky.intensity = draft ? 0.5 : 0.1;
+    this.sun.intensity = draft ? 1.6 : 2.4;
+    this.renderer.toneMapping = draft ? THREE.ACESFilmicToneMapping : THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = draft ? 1.05 : 1.2;
+
+    // soft, blurred shadows from stop 2; a shadow type change recompiles materials
+    const shadows = (fidelity >= 2) ? THREE.VSMShadowMap : THREE.PCFShadowMap;
+    if(this.renderer.shadowMap.type !== shadows) {
+      this.renderer.shadowMap.type = shadows;
+      this.sun.shadow.radius = (fidelity >= 2) ? 10 : 4;
+      this.sun.shadow.blurSamples = 16;
+      this.sun.shadow.map?.dispose();
+      this.sun.shadow.map = null;
+      this.baseplateMaterial.needsUpdate = true;
+    } /* else -- unchanged */
+
+    applyPlastic(this.material, fidelity);
+    this.effects.setFidelity((fidelity > 3) ? 3 : fidelity);
   }
 
   // == Model =====================================================================
   /** shows a build; parts not shown before drop into place unless `animate` is false */
   public setModel(model: Model, animate: boolean): void {
-    const items = renderItems(model).filter(item => this.geometries.has(item.ldraw));
+    this.model = model;
+    const real = (this.fidelity >= 1);
+    const items = renderItems(model).filter(item => this.geometries.has(item.ldraw))
+      .map(item => real ? { ...item, matrix: item.matrix.clone().multiply(this.seams.get(item.ldraw)!) } : item);
 
     // one instanced mesh per part
     for(const child of [...this.parts.children]) { this.parts.remove(child); (child as THREE.InstancedMesh).dispose(); }
@@ -143,7 +228,7 @@ export class Viewer {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       partItems.forEach((item, index) => {
-        mesh.setColorAt(index, new THREE.Color(item.color));
+        mesh.setColorAt(index, real ? tintedColor(item.color, item.key) : new THREE.Color(item.color));
         if(animate && !this.shownKeys.has(item.key)) {
           this.drops.push({ mesh, index, matrix: item.matrix, start: now + Math.min(dropIndex++ * DROP_STAGGER_MS, DROP_STAGGER_MAX_MS) });
           mesh.setMatrixAt(index, dropped(item.matrix, 0));
@@ -158,6 +243,7 @@ export class Viewer {
     this.shownKeys = new Set(items.map(item => item.key));
 
     this.updateBaseplate();
+    this.pathTraceStale = true;
     this.requestFrame();
   }
 
@@ -302,6 +388,8 @@ export class Viewer {
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.effects.setSize(width, height);
+    this.cameraMoved = true;
     this.requestFrame();
   }
 
@@ -345,13 +433,40 @@ export class Viewer {
       moving = true;
     } /* else -- nothing dropping */
 
-    this.renderer.render(this.scene, this.camera);
+    this.effects.focus(this.focusDistance());
+    const refining = this.render(moving);
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
-    if((this.drops.length < 1) && !this.tween) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
+    const settled = (this.drops.length < 1) && !this.tween && (!this.pathTrace || this.pathTrace.settled);
+    if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
-    if(moving || (this.drops.length > 0)) this.requestFrame();
+    if(moving || (this.drops.length > 0) || refining) this.requestFrame();
+  }
+
+  /** the depth of field focuses on the point the camera orbits */
+  private focusDistance(): number { return this.camera.position.distanceTo(this.controls.target); }
+
+  /** whether the path tracer is still refining toward a settled frame */
+  public get refining(): boolean { return !!this.pathTrace && !this.pathTrace.settled; }
+
+  /** draws the frame at the current stop; true while the path tracer still refines */
+  private render(moving: boolean): boolean {
+    if(!this.pathTrace || (this.drops.length > 0)) { this.effects.render(); return false; }
+
+    if(this.pathTraceStale) {
+      this.pathTrace.setScene({
+        parts: this.parts.children as THREE.InstancedMesh[], baseplate: this.baseplate,
+        environment: this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.stage,
+        key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity },
+      }, this.focusDistance());
+      this.pathTraceStale = false;
+    } else if(moving || this.cameraMoved) {
+      this.pathTrace.moved(this.focusDistance());
+    } /* else -- still: keep refining */
+    this.cameraMoved = false;
+    this.pathTrace.render();
+    return this.pathTrace.refining;
   }
 }
 

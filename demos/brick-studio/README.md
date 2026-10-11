@@ -75,6 +75,7 @@ The build is a flat LDraw file in the `model` content block. Each part is one li
 | `clear` | removes every part |
 | `check` | lists collisions and floating parts |
 | `setView` | turns the camera and frames the build |
+| `setFidelity` | sets how real the bricks look, from Draft to Path traced, as the Look slider does |
 | `getModel` / `setModel` | reads or replaces the build as LDraw text |
 
 Every edit resolves once the parts have landed, so a screenshot taken next shows the result.
