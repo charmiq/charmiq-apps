@@ -24,6 +24,37 @@ export const applyPlastic = (material: THREE.MeshPhysicalMaterial, fidelity: Fid
   material.needsUpdate = true;
 };
 
+// == Transparent =================================================================
+/** polycarbonate, which transparent bricks are moulded from */
+const POLYCARBONATE_IOR = 1.585;
+
+/** how deep into a brick its tint absorbs, in studs: deep enough that a wall shows
+ *  through, shallow enough that a stack of them glows its color */
+const ABSORPTION = 1.2/*studs*/;
+
+/** see-through plastic of one tint at a stop. Draft blends; from Plastic up the
+ *  surface is clear and glossy and light refracts through the brick
+ *  (`transmission`), taking its color from absorption through the brick's depth, as
+ *  real transparent plastic does */
+export const GLASS = (tint: THREE.Color, fidelity: Fidelity): THREE.MeshPhysicalMaterialParameters =>
+  (fidelity < 1)
+    ? { color: tint.clone(), transmission: 0, transparent: true, opacity: 0.5, depthWrite: false, roughness: 0.1, ior: POLYCARBONATE_IOR, thickness: 0, attenuationDistance: Infinity }
+    : { color: new THREE.Color(1, 1, 1).lerp(tint, 0.25), transmission: 1, transparent: false, opacity: 1, depthWrite: true, roughness: 0.03, ior: POLYCARBONATE_IOR, specularIntensity: 1,
+        thickness: 1/*studs*/, attenuationColor: tint.clone(), attenuationDistance: ABSORPTION };
+
+/** sets a material to see-through plastic of its tint at a stop */
+export const applyGlass = (material: THREE.MeshPhysicalMaterial, tint: THREE.Color, fidelity: Fidelity): void => {
+  material.setValues(GLASS(tint, fidelity));
+  material.needsUpdate = true;
+};
+
+/** see-through plastic for the path tracer: thin-walled, each wall a ray crosses
+ *  filtering it by the tint. LDraw parts are open shells (hollow undersides, open
+ *  studs), not closed solids, so volumetric absorption traps rays and renders black;
+ *  the walls of a hollow brick compound the color instead */
+export const tracedGlass = (tint: THREE.Color): THREE.MeshPhysicalMaterialParameters =>
+  ({ color: tint.clone(), transmission: 1, roughness: 0.02, ior: POLYCARBONATE_IOR, specularIntensity: 1, thickness: 0 });
+
 // == Seams =======================================================================
 /** the gap between two bricks that touch, in studs: a real 0.1 mm on an 8 mm stud,
  *  doubled so it survives at viewing distance */

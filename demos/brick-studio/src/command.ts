@@ -18,6 +18,9 @@ const GRID = [
   'A part\'s x, z is the south-west corner of its footprint and level is its bottom.',
   'At rotation 0 a part spans width along x and depth along z; rotation 90, 180 or 270 turns it clockwise seen from above (90 and 270 swap width and depth).',
   'A part holds the part above it where its top studs lie under that part. Tiles have no top studs; a slope has studs only along its high row.',
+  'Each part row reads: name, then width x depth x height (studs, studs, levels), then which way a slope descends at rotation 0.',
+  'The slope name gives its angle (45, 33 or 65 degrees). Round parts and cones fill their square. An arch\'s opening counts as filled, so nothing goes under it.',
+  'Colors named trans- are see-through plastic.',
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east.',
 ].join(' ');
 
@@ -33,10 +36,8 @@ export class CommandSurface {
         grid: GRID,
         parts: CATALOG.map(part => {
           const shape = getShape(part);
-          return {
-            part: part.key, kind: part.kind, width: shape.width, depth: shape.depth, height: shape.height,
-            ...((part.kind === 'slope') ? { slope: `descends ${slopeDescent(shape.studs, shape.depth)} at rotation 0` } : {}),
-          };
+          const descent = (part.kind === 'slope') ? ` descends ${slopeDescent(shape.studs, shape.depth)}` : '';
+          return `${part.key} ${shape.width}x${shape.depth}x${shape.height}${descent}`;
         }),
         colors: COLORS.map(color => color.key),
       }),
@@ -89,6 +90,7 @@ export class CommandSurface {
           azimuth: (typeof azimuth === 'number') ? azimuth : current.azimuth,
           elevation: (typeof elevation === 'number') ? elevation : current.elevation,
         }, fit !== false);
+        await this.viewer.whenSettled()/*a screenshot next shows the settled frame*/;
         return this.viewer.getView();
       },
     });

@@ -60,9 +60,11 @@ The Charm reads the catalog, places parts in batches, runs the check, and turns 
 
 The build is a flat LDraw file in the `model` content block. Each part is one line: its color, its position and rotation, and its part file. Edit it by hand, paste in LDraw from elsewhere, or let a Charm build it.
 
+**The parts.** Bricks, plates and tiles in the common sizes; slopes at 45, 33 and 65 degrees; round bricks, plates, a tile and a cone; and arches. Sixteen solid colors and seven see-through ones (`trans-`), which refract light at the Plastic look and up.
+
 **The grid.** x runs east, z north, level up. A cell is one stud; a level is one plate, and a brick is three. A part is placed by the south-west corner of its footprint and its bottom level, and turns in quarter turns clockwise seen from above. Parts from the catalog on the grid are checked; any other part line is kept, drawn when its part is in the catalog, and counted as off grid.
 
-**The check.** Two parts collide when they fill the same cell at the same level. A part holds the part above it where its top studs lie under that part: tiles have none, and a slope has studs only along its high row. A part with no chain of holds down to the baseplate floats. An edit that would collide is refused whole.
+**The check.** Two parts collide when they fill the same cell at the same level. A part holds the part above it where its top studs lie under that part: tiles have none, and a slope has studs only along its high row. A round part or cone fills its square, and an arch's opening counts as filled. A part with no chain of holds down to the baseplate floats. An edit that would collide is refused whole.
 
 **The commands.** A Charm drives the Studio through these:
 

@@ -41,13 +41,13 @@
     "charmiq.command": [
       {
         "name": "listParts",
-        "description": "The grid conventions, the catalog parts (width and depth in studs, height in plates) and the colors. Call first",
+        "description": "The grid conventions, the catalog parts (one row each: name, width x depth x height) and the colors. Call first",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
           "properties": {
             "grid":   { "type": "string" },
-            "parts":  { "type": "array", "items": { "type": "object" } },
+            "parts":  { "type": "array", "items": { "type": "string" } },
             "colors": { "type": "array", "items": { "type": "string" } }
           },
           "required": ["grid", "parts", "colors"]

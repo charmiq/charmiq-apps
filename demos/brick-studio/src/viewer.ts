@@ -6,13 +6,13 @@ import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawCondit
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { CATALOG } from './catalog';
-import { getColor, getColorValue, getPart, getShape, ldrawPosition, LDU_PER_STUD, rotationMatrix } from './grid';
+import { getColor, getColorByCode, getColorValue, getPart, getShape, ldrawPosition, LDU_PER_STUD, rotationMatrix } from './grid';
 import type { Model } from './model';
 import PARTS_LDRAW from './parts.ldr';
 import { Effects } from './render/effects';
 import type { Fidelity } from './render/fidelity';
 import { PathTrace } from './render/pathTrace';
-import { applyPlastic, seamMatrix, tintedColor } from './render/plastic';
+import { applyGlass, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
 import { createStudio, type Studio } from './render/studio';
 
 // renders a build: one instanced mesh per catalog part over a studded baseplate.
@@ -28,6 +28,7 @@ const SCENE_TO_LDRAW = LDRAW_TO_SCENE.clone().invert();
 
 /** a color outside the palette renders as this neutral */
 const UNKNOWN_COLOR = '#A0A5A9';
+const WHITE = new THREE.Color(1, 1, 1);
 
 const BASEPLATE_MIN = 16/*studs*/;
 const BASEPLATE_MARGIN = 4/*studs*/;
@@ -49,7 +50,7 @@ export const DEFAULT_VIEW: View = { azimuth: 30, elevation: 28 };
  *  west from the east; elevation 0 is level, 90 straight down */
 export type View = Readonly<{ azimuth: number; elevation: number; }>;
 
-type RenderItem = Readonly<{ ldraw: string; color: string/*hex*/; key: string; matrix: THREE.Matrix4; }>;
+type RenderItem = Readonly<{ ldraw: string; color: string/*hex*/; glass: boolean; key: string; matrix: THREE.Matrix4; }>;
 type Drop = { mesh: THREE.InstancedMesh; index: number; matrix: THREE.Matrix4; start: number; };
 
 /** the look the stage takes from CSS (SEE: styles.scss `--stage`, `--baseplate`) */
@@ -74,6 +75,9 @@ export class Viewer {
   private readonly stage = new THREE.Color();
 
   private readonly material = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.34, metalness: 0, clearcoat: 0.12, clearcoatRoughness: 0.3 });
+  /** see-through plastic, one material per tint: its color is absorption through the
+   *  brick's depth, a material-wide property */
+  private readonly glasses = new Map<string/*tint hex*/, THREE.MeshPhysicalMaterial>();
   private readonly baseplateMaterial = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0 });
 
   private readonly geometries = new Map<string/*ldraw*/, THREE.BufferGeometry>();
@@ -182,6 +186,23 @@ export class Viewer {
     return fidelity;
   }
 
+  /** the see-through plastic of a tint, made at the current stop on first use */
+  private glassFor(tint: string): THREE.MeshPhysicalMaterial {
+    let glass = this.glasses.get(tint);
+    if(!glass) {
+      glass = new THREE.MeshPhysicalMaterial({ metalness: 0 });
+      applyGlass(glass, new THREE.Color(tint), this.fidelity);
+      this.glasses.set(tint, glass);
+    } /* else -- made */
+    return glass;
+  }
+
+  /** the tint a material is glass of, if it is glass */
+  private tintOf(material: THREE.Material | THREE.Material[]): THREE.Color | undefined {
+    for(const [tint, glass] of this.glasses) if(glass === material) return new THREE.Color(tint);
+    return undefined;
+  }
+
   /** the material, light and shadow of a stop; stop 4 rasterizes as stop 3 until
    *  its samples land */
   private applyLook(fidelity: Fidelity): void {
@@ -206,6 +227,7 @@ export class Viewer {
     } /* else -- unchanged */
 
     applyPlastic(this.material, fidelity);
+    for(const [tint, glass] of this.glasses) applyGlass(glass, new THREE.Color(tint), fidelity);
     this.effects.setFidelity((fidelity > 3) ? 3 : fidelity);
   }
 
@@ -223,14 +245,17 @@ export class Viewer {
     const now = performance.now();
     let dropIndex = 0;
 
+    // one instanced mesh per part in opaque plastic, and per part and tint in glass
+    const group = (item: RenderItem): string => item.glass ? `${item.ldraw}|${item.color}` : item.ldraw;
     const byPart = new Map<string, RenderItem[]>();
-    for(const item of items) byPart.set(item.ldraw, [...(byPart.get(item.ldraw) ?? []), item]);
-    for(const [ldraw, partItems] of byPart) {
-      const mesh = new THREE.InstancedMesh(this.geometries.get(ldraw)!, this.material, partItems.length);
-      mesh.castShadow = true;
+    for(const item of items) byPart.set(group(item), [...(byPart.get(group(item)) ?? []), item]);
+    for(const partItems of byPart.values()) {
+      const { ldraw, glass, color: tint } = partItems[0];
+      const mesh = new THREE.InstancedMesh(this.geometries.get(ldraw)!, glass ? this.glassFor(tint) : this.material, partItems.length);
+      mesh.castShadow = !glass/*light passes through; the path tracer shades it physically*/;
       mesh.receiveShadow = true;
       partItems.forEach((item, index) => {
-        mesh.setColorAt(index, real ? tintedColor(item.color, item.key) : new THREE.Color(item.color));
+        mesh.setColorAt(index, glass ? WHITE/*the glass material carries the tint*/ : real ? tintedColor(item.color, item.key) : new THREE.Color(item.color));
         if(animate && !this.shownKeys.has(item.key)) {
           this.drops.push({ mesh, index, matrix: item.matrix, start: now + Math.min(dropIndex++ * DROP_STAGGER_MS, DROP_STAGGER_MAX_MS) });
           mesh.setMatrixAt(index, dropped(item.matrix, 0));
@@ -458,7 +483,7 @@ export class Viewer {
 
     if(this.pathTraceStale) {
       this.pathTrace.setScene({
-        parts: this.parts.children as THREE.InstancedMesh[], baseplate: this.baseplate,
+        parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: this.baseplate,
         environment: this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.stage,
         key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity },
       }, this.focusDistance());
@@ -480,10 +505,10 @@ const renderItems = (model: Model): RenderItem[] => [
     const color = getColor(placement.color)!/*by contract*/;
     const position = ldrawPosition(getShape(part), placement);
     const matrix = rotationMatrix(placement.rotation);
-    return { ldraw: part.ldraw, color: getColorValue(color.code) ?? UNKNOWN_COLOR, key: `${part.ldraw}|${color.code}|${position}|${matrix}`, matrix: toScene(position, matrix) };
+    return { ldraw: part.ldraw, color: getColorValue(color.code) ?? UNKNOWN_COLOR, glass: !!color.transparent, key: `${part.ldraw}|${color.code}|${position}|${matrix}`, matrix: toScene(position, matrix) };
   }),
   ...model.others.map(other => ({
-    ldraw: other.ldraw, color: getColorValue(other.colorCode) ?? UNKNOWN_COLOR,
+    ldraw: other.ldraw, color: getColorValue(other.colorCode) ?? UNKNOWN_COLOR, glass: !!getColorByCode(other.colorCode)?.transparent,
     key: `${other.ldraw}|${other.colorCode}|${other.position}|${other.matrix}`, matrix: toScene(other.position, other.matrix),
   })),
 ];

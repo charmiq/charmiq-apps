@@ -76,15 +76,17 @@ const apply = (t: Transform, x: number, y: number, z: number): [number, number, 
   t[6]*x + t[7]*y + t[8]*z + t[11],
 ];
 
-/** a stud primitive (a single stud or a stud group); its geometry stands above the body */
-const isStudPrimitive = (name: string): boolean => /^stu[dg]/.test(name);
-/** a single top stud: `stud.dat` (solid) or `stud2.dat` (hollow) */
-const isTopStud = (name: string): boolean => (name === 'stud.dat') || (name === 'stud2.dat');
+/** a single stud primitive (`stud.dat`, hollow `stud2.dat`, `stud2a.dat`, round
+ *  parts' `stud10.dat`, ...); it is a top stud when it stands on the top face (the
+ *  underside tubes, `stud3.dat` and `stud4*.dat`, sit below it) */
+const isStud = (name: string): boolean => /^stud\d*[a-z]?\.dat$/.test(name);
 
 // --------------------------------------------------------------------------------
-/** walks a file's geometry under `transform`, measuring the body (stud primitives
- *  excluded) and recording each top stud's position */
-const measure = (library: string, name: string, transform: Transform, inStud: boolean, out: Measure): void => {
+/** walks a file's geometry under `transform`, measuring the body and recording each
+ *  top stud's position. The body is what lies at or below the top face (y 0, -y up):
+ *  studs stand above it, whatever primitive draws them, and an underside tube named
+ *  like a stud (`stud4.dat`) is body */
+const measure = (library: string, name: string, transform: Transform, out: Measure): void => {
   for(const line of readPart(library, name).split('\n')) {
     const fields = line.trim().split(/\s+/);
     switch(fields[0]) {
@@ -93,16 +95,16 @@ const measure = (library: string, name: string, transform: Transform, inStud: bo
         const child = referenceName(fields.slice(14).join(' '));
         const local: Transform = [values[3], values[4], values[5], values[6], values[7], values[8], values[9], values[10], values[11], values[0], values[1], values[2]];
         const world = compose(transform, local);
-        if(isTopStud(child)) out.studs.push(apply(world, 0, 0, 0));
-        measure(library, child, world, inStud || isStudPrimitive(child), out);
+        if(isStud(child)) out.studs.push(apply(world, 0, 0, 0));
+        measure(library, child, world, out);
         break;
       }
       case '3':
       case '4': {
-        if(inStud) break/*studs stand above the body*/;
         const values = fields.slice(2).map(Number);
         for(let v=0; v<(Number(fields[0]) * 3); v+=3) {
           const [x, y, z] = apply(transform, values[v], values[v + 1], values[v + 2]);
+          if(y < -EPSILON) continue/*above the top face: a stud*/;
           out.minX = Math.min(out.minX, x); out.maxX = Math.max(out.maxX, x);
           out.minY = Math.min(out.minY, y); out.maxY = Math.max(out.maxY, y);
           out.minZ = Math.min(out.minZ, z); out.maxZ = Math.max(out.maxZ, z);
@@ -131,7 +133,7 @@ const isWhole = (value: number): boolean => Math.abs(value - Math.round(value)) 
  *  the footprint's minimum corner. The origin lies on the top face; -y is up (LDraw) */
 const measurePart = (library: string, ldraw: string) => {
   const out: Measure = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity, studs: [] };
-  measure(library, `${ldraw}.dat`, IDENTITY, false, out);
+  measure(library, `${ldraw}.dat`, IDENTITY, out);
 
   const width = (out.maxX - out.minX) / LDU_PER_STUD;
   const depth = (out.maxZ - out.minZ) / LDU_PER_STUD;
@@ -142,6 +144,7 @@ const measurePart = (library: string, ldraw: string) => {
   // the origin in studs from the minimum corner (a slope's sits over its stud row)
   const origin = [-out.minX / LDU_PER_STUD, -out.minZ / LDU_PER_STUD] as [number, number];
   if(!isWhole(origin[0] * 2) || !isWhole(origin[1] * 2)) throw new Error(`${ldraw}: origin ${origin} is not on a half stud.`);
+  const halfStud = (value: number): number => Math.round(value * 2) / 2/*a round part's facets leave float noise*/;
 
   // a top stud sits on the top face (y 0); underside studs sit below it
   const studs = out.studs
@@ -152,7 +155,7 @@ const measurePart = (library: string, ldraw: string) => {
       return [Math.round(x), Math.round(z)] as [number, number];
     })
     .sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
-  return { width: Math.round(width), depth: Math.round(depth), height: Math.round(height), origin, studs };
+  return { width: Math.round(width), depth: Math.round(depth), height: Math.round(height), origin: [halfStud(origin[0]), halfStud(origin[1])], studs };
 };
 
 // == Main ========================================================================
@@ -160,7 +163,7 @@ const library = process.argv[2];
 if(!library || !existsSync(join(library, 'LDConfig.ldr'))) {
   console.error('Usage: node demos/brick-studio/tools/pack-parts.ts <path to the extracted ldraw directory>');
   process.exit(1);
-}
+} /* else -- XXX */
 
 // .. Pack ........................................................................
 const files = new Set<string>();
