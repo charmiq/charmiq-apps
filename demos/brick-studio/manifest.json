@@ -5,7 +5,9 @@
   "requestedScopes": [
     "appContent.read",
     "appContent.write",
-    "application.advertise"
+    "application.advertise",
+    "command.editor.redo",
+    "command.editor.undo"
   ],
   "bundle": {
     "entry": {
