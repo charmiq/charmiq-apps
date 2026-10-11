@@ -2,7 +2,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { Build } from './build';
 import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, type CatalogPart } from './catalog';
-import { reportCheck } from './check';
+import { reportCheck, TRUNCATED } from './check';
 import { getShape, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { Viewer } from './viewer';
@@ -32,6 +32,13 @@ const GRID = [
 export class CommandSurface {
   public constructor(private readonly build: Build, private readonly viewer: Viewer, private readonly look: FidelityControl) {}
 
+  /** the build's check, model-facing: never sound while the document holds more
+   *  than one build, since it covers only the one shown */
+  private report() {
+    const conflict = this.build.conflict();
+    return { ...reportCheck(this.build.check()), ...(conflict ? { ok: false, conflict } : {}) };
+  }
+
   /** registers the commands; called once from main.ts */
   public init(): void {
     const charmiq: CharmIQAPI = window.charmiq;
@@ -45,7 +52,8 @@ export class CommandSurface {
       listPlacedParts: async () => {
         await this.build.whenReady();
         const model = this.build.getModel();
-        return { parts: model.placements, ...((model.others.length > 0) ? { unchecked: model.others.length } : {}) };
+        const conflict = this.build.conflict();
+        return { parts: model.placements, ...((model.others.length > 0) ? { unchecked: model.others.length } : {}), ...(model.truncated ? { truncated: TRUNCATED } : {}), ...(conflict ? { conflict } : {}) };
       },
 
       addParts: async ({ parts }: { parts?: unknown; }) => {
@@ -73,15 +81,19 @@ export class CommandSurface {
         return { fidelity: reached, look: fidelityLabel(reached) };
       },
 
-      getModel: async () => { await this.build.whenReady(); return this.build.getText(); },
+      getModel: async () => {
+        await this.build.whenReady();
+        const conflict = this.build.conflict();
+        return conflict ? { conflict, builds: this.build.builds() }/*each build's text, to recover from*/ : this.build.getText();
+      },
       setModel: async ({ ldraw }: { ldraw?: unknown; }) => {
         await this.build.replace((typeof ldraw === 'string') ? ldraw : '');
         await this.viewer.setView(this.viewer.getView(), true)/*a new build is framed whole*/;
         await this.viewer.whenSettled();
-        return reportCheck(this.build.check());
+        return this.report();
       },
 
-      check: async () => { await this.build.whenReady(); return reportCheck(this.build.check()); },
+      check: async () => { await this.build.whenReady(); return this.report(); },
 
       setView: async ({ azimuth, elevation, fit }: { azimuth?: unknown; elevation?: unknown; fit?: unknown; }) => {
         const current = this.viewer.getView();

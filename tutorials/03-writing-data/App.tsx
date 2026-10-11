@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import type { AppContentSnapshot } from '../../shared/charmiq'/*also activates the window.charmiq global augmentation*/;
 import { append, canGuard, isConflict, records, remove, reread, snapshotOf, write, type TextRecord } from './records';
@@ -27,16 +27,39 @@ export const App = () => {
   const [view, setView] = useState<View>({ kind: 'waiting' });
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const shownRef = useRef<AppContentSnapshot | null>(null/*the snapshot the list shows*/);
+  const [uncertain, setUncertain] = useState(false/*a check failed; cleared by the next revision*/);
 
   // == Initialization ============================================================
+  // a deletion notice, or a refused write, is a reason to check whether the block
+  // is gone: a read of it by its id that finds nothing. The answer applies only
+  // while the list still shows exactly the snapshot checked (the block may have
+  // been restored, or another taken its place). A read that fails is an error,
+  // never an absence, and it too is about the snapshot checked
+  const confirmBlock = async (snapshot: AppContentSnapshot | null) => {
+    if(!snapshot) return;
+    let current: AppContentSnapshot | null;
+    try {
+      current = await reread(appContent, snapshot);
+    } catch{
+      const shown = shownRef.current;
+      if((shown?.id === snapshot.id) && (shown.revision === snapshot.revision)) setUncertain(true);
+      return;
+    }
+    if(current !== null) return;
+    setView(shown => ((shown.kind === 'shown') && (shown.snapshot?.id === snapshot.id) && (shown.snapshot.revision === snapshot.revision)) ? { kind: 'missing' } : shown);
+  };
+
   // the block is the truth: show what it holds, whoever changed it. Fires
   // immediately with the current value, then on every change -- including this
   // Application's own writes, which come back merged with everyone else's
   useEffect(() => {
     const sub = appContent.onChange$(BLOCK).subscribe({
       next: change => {
-        if(change.deleted) return/*bookkeeping, not a cleared list*/;
-        setView({ kind: 'shown', snapshot: snapshotOf(change), records: records(change.content) });
+        if(change.deleted) { void confirmBlock(snapshotOf(change)); return; }
+        shownRef.current = snapshotOf(change);
+        setUncertain(false)/*a new revision: the block is there*/;
+        setView({ kind: 'shown', snapshot: shownRef.current, records: records(change.content) });
       },
       error: failure => setView(unreadable(failure)),
     });
@@ -48,16 +71,6 @@ export const App = () => {
     );
     return () => sub.unsubscribe()/*cleanup on unmount*/;
   }, [appContent]/*run once on mount*/);
-
-  // a refusal means the block changed, and the change that shows it has arrived or
-  // is on its way -- unless the block is gone, which sends none. The answer applies
-  // only while the list still shows that block: another may have taken its place
-  const confirmBlock = async (snapshot: AppContentSnapshot | null) => {
-    if(!snapshot) return;
-    const current = await reread(appContent, snapshot).catch(() => undefined/*unknown: keep the list*/);
-    if(current !== null) return;
-    setView(shown => ((shown.kind === 'shown') && (shown.snapshot?.id === snapshot.id)) ? { kind: 'missing' } : shown);
-  };
 
   // == Handlers ==================================================================
   // every write is measured on a snapshot and refused if the block has changed
@@ -99,6 +112,7 @@ export const App = () => {
       {!canGuard(appContent) && <p className="notice">This page can't make safe edits. Reload it to edit the list.</p>}
       {(view.kind === 'missing') && <p className="notice">The list isn't in the document.</p>}
       {(view.kind === 'unreadable') && <p className="notice" role="alert">{view.reason}</p>}
+      {uncertain && (view.kind === 'shown') && <p className="notice" role="alert">The list could not be checked. Reload to try again.</p>}
       {error && (view.kind === 'shown') && <p className="error" role="alert">{error}</p>}
       {(view.kind === 'shown') && (
         <ul className="items">

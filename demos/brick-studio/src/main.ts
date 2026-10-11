@@ -47,14 +47,18 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 const showStatus = (model: Model) => {
   const result = build.check();
   const count = model.placements.length + model.others.length;
+  const builds = build.builds().length;
   const notes = [
+    (builds > 1) ? `${builds} builds in this document · edits paused` : undefined,
+    build.isUncertain() ? 'could not check the document · reload to try again' : undefined,
+    result.truncated ? 'read in part' : undefined,
     (result.collisions.length > 0) ? plural(result.collisions.length, 'collision') : undefined,
     (result.floating.length > 0) ? `${result.floating.length} floating` : undefined,
     (result.unchecked > 0) ? `${result.unchecked} off grid` : undefined,
   ].filter(Boolean);
-  statusText.textContent = (count < 1) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
-  status.classList.toggle('is-warning', !isSound(result));
-  hint.hidden = (count > 0);
+  statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
+  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1));
+  hint.hidden = (count > 0) || result.truncated;
 };
 
 const plural = (count: number, noun: string): string => `${count} ${noun}${(count === 1) ? '' : 's'}`;
@@ -147,6 +151,7 @@ const start = async () => {
     else viewer.keepInView();
     showStatus(model);
   });
+  build.onUncertain(() => showStatus(build.getModel()));
   commands.init()/*each command waits for the build*/;
   try {
     await build.init();

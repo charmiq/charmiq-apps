@@ -95,8 +95,10 @@ The subscription is the only way the list changes. It fires immediately with the
 ```tsx bN4fPm8kWs
 const sub = appContent.onChange$(BLOCK).subscribe({
   next: change => {
-    if(change.deleted) return;
-    setView({ kind: 'shown', snapshot: snapshotOf(change), records: records(change.content) });
+    if(change.deleted) { void confirmBlock(snapshotOf(change)); return; }
+    shownRef.current = snapshotOf(change);
+    setUncertain(false); // a new revision: the block is there
+    setView({ kind: 'shown', snapshot: shownRef.current, records: records(change.content) });
   },
   error: failure => setView(unreadable(failure)),
 });
@@ -138,14 +140,20 @@ const removeItem = async (snapshot, record) => {
 
 Neither handler touches the list: it changes when the block does. Clicking Remove twice is safe. The first removal gives the block a new revision, so the second is refused instead of deleting whatever moved into the span.
 
-**A removed block sends no change.** A deletion notice is bookkeeping, not proof the list is gone, so after a refusal the list asks: `snapshot()` by the block's id returns `null` only when it really is gone. The list then says so and stops editing:
+**Gone means checked.** A deletion notice is a reason to check, not proof the list is gone: the Platform also sends one while saving a new block. A refused write is another reason. Either way the list asks: `snapshot()` by the block's id returns `null` only when it really is gone. That answer applies only while the list still shows exactly the snapshot it checked, since the block may have been restored (undo gives it a new revision) or another may have taken its place. A read that fails is an error, never an absence:
 
 ```tsx 3IJkZW5yVi
 const confirmBlock = async (snapshot) => {
-  const current = await reread(appContent, snapshot).catch(() => undefined);
+  let current;
+  try {
+    current = await reread(appContent, snapshot);
+  } catch {
+    const shown = shownRef.current; // a failure, like an answer, is about the snapshot checked
+    if((shown?.id === snapshot.id) && (shown.revision === snapshot.revision)) setUncertain(true); // until the next revision
+    return;
+  }
   if(current !== null) return;
-  // only while the list still shows that block: another may have taken its place
-  setView(shown => ((shown.kind === 'shown') && (shown.snapshot?.id === snapshot.id)) ? { kind: 'missing' } : shown);
+  setView(shown => ((shown.kind === 'shown') && (shown.snapshot?.id === snapshot.id) && (shown.snapshot.revision === snapshot.revision)) ? { kind: 'missing' } : shown);
 };
 ```
 

@@ -63,7 +63,9 @@
           "type": "object",
           "properties": {
             "parts":     { "type": "array", "items": { "type": "object" } },
-            "unchecked": { "type": "integer", "description": "Parts off the grid or outside the catalog" }
+            "unchecked": { "type": "integer", "description": "Parts off the grid or outside the catalog" },
+            "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
+            "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" }
           },
           "required": ["parts"]
         }
@@ -147,7 +149,7 @@
       },
       {
         "name": "check",
-        "description": "Find collisions and parts not held up from the baseplate",
+        "description": "Find collisions and parts not held up from the baseplate. Never ok while the build was read only in part or the document holds more than one build",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
@@ -158,7 +160,9 @@
             "collidingPairs":{ "type": "array", "items": { "type": "object" } },
             "floating":      { "type": "integer" },
             "floatingParts": { "type": "array", "items": { "type": "string" } },
-            "unchecked":     { "type": "integer" }
+            "unchecked":     { "type": "integer" },
+            "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
+            "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" }
           },
           "required": ["ok", "parts", "collisions", "floating"]
         }
@@ -204,9 +208,21 @@
       },
       {
         "name": "getModel",
-        "description": "The build as LDraw text",
+        "description": "The build as LDraw text. While the document holds more than one build: the conflict and each build's LDraw text, to recover from",
         "inputSchema": { "type": "object", "properties": {} },
-        "outputSchema": { "type": "string" }
+        "outputSchema": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "object",
+              "properties": {
+                "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" },
+                "builds":   { "type": "array", "items": { "type": "object", "properties": { "block": { "type": "string" }, "ldraw": { "type": "string" } }, "required": ["block", "ldraw"] } }
+              },
+              "required": ["conflict", "builds"]
+            }
+          ]
+        }
       },
       {
         "name": "setModel",

@@ -9,7 +9,7 @@ Apps embedded by the CharmIQ platform via an app iframe. No `package.json` or `t
 ## Content bridge — the block is the truth
 
 - An app-content bridge follows `tutorials/03-writing-data` (and the public App-Content guide, §Collaborating): show what `onChange$()` delivers and never an edit before the block has it; write whole records with guarded `applyChanges()` (measured on a snapshot, sent with its revision); and treat your own writes, coming back, like any change. Every new revision is the block's state, an equal text included, so never drop one as an echo; skipping a redraw of identical text is fine.
-- A `ContentChange` with `deleted=true` is **platform bookkeeping**, not an authoritative clear: it fires during a block's first-save and can arrive late, after an unrelated action. Skip it, and confirm a block is gone with `snapshot("[id='…']")` returning `null`.
+- A `ContentChange` with `deleted=true` is **a reason to check, not proof**: the platform also sends one during a block's first-save, and it can arrive late, after an unrelated action. Check with `snapshot("[id='…']")`: the block is gone when that returns `null` while the app still shows exactly the snapshot it checked (it may have been restored or replaced meanwhile). Apply any read's answer only while the app still shows what it showed when the read began, and treat a failed read as a visible error, never an absence.
 - `demos/brick-studio`'s content bridge is the line-record example; `custom-drawing`'s whole-text `set()` predates guarded edits and is not an example.
 
 ## Typecheck

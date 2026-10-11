@@ -39,6 +39,8 @@ export type AppContentChange = Readonly<{
   /** the block's exact state: every change to the block gives it a new revision,
    *  never one it had before. Absent where the Platform cannot guard edits */
   revision?: string;
+  /** a reason to check whether the block is gone, not proof: it is gone when
+   *  {@link AppContentAPI.snapshot} by its id returns `null` */
   deleted?: boolean;
 }>;
 

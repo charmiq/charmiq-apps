@@ -1,5 +1,5 @@
 import { cellKey, filledCells, frameKey, getPart, getShape, studCells, type Placement } from './grid';
-import type { Model } from './model';
+import { READ_IN_PART, type Model } from './model';
 
 // checks a build on the grid. A part fills the cells and levels its shape measures
 // (SEE: parts.generated.ts `fill`). Two parts collide when they fill the same cell
@@ -16,6 +16,9 @@ export type CheckResult = Readonly<{
   floating: ReadonlyArray<string>;
   /** part lines outside the catalog or off the grid, which the check does not see */
   unchecked: number;
+  /** the build was read only in part (SEE: READ_IN_PART): the check covers what
+   *  was read */
+  truncated: boolean;
 }>;
 
 // == Constants ===================================================================
@@ -101,12 +104,12 @@ export const checkModel = (model: Model): CheckResult => {
   }
   const floating = placements.flatMap((placement, index) => grounded.has(index) ? [] : [describePlacement(placement)]);
 
-  return { parts: placements.length, collisions, floating, unchecked: model.others.length };
+  return { parts: placements.length, collisions, floating, unchecked: model.others.length, truncated: !!model.truncated };
 };
 
 // == Summary =====================================================================
 /** whether a build passes the check */
-export const isSound = (result: CheckResult): boolean => (result.collisions.length < 1) && (result.floating.length < 1);
+export const isSound = (result: CheckResult): boolean => !result.truncated && (result.collisions.length < 1) && (result.floating.length < 1);
 
 /** the result as model-facing data: exact counts with bounded lists */
 export const reportCheck = (result: CheckResult) => ({
@@ -117,7 +120,11 @@ export const reportCheck = (result: CheckResult) => ({
   floating: result.floating.length,
   ...((result.floating.length > 0) ? { floatingParts: result.floating.slice(0, MAX_LISTED) } : {}),
   ...((result.unchecked > 0) ? { unchecked: result.unchecked } : {}),
+  ...(result.truncated ? { truncated: TRUNCATED } : {}),
 });
+
+/** what a build read only in part means, model-facing */
+export const TRUNCATED = `${READ_IN_PART} This covers that part alone.`;
 
 /** a placement in one line, e.g. `brick-2x4 red at x 3 z 4 level 6 rotation 90` */
 export const describePlacement = (placement: Placement): string =>

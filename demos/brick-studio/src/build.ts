@@ -1,7 +1,7 @@
 import { checkModel, describePlacement, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, frameKey, getColor, getPart, getShape, toRotation, type Placement } from './grid';
-import { appendLines, deleteLines, EMPTY_MODEL, MAX_PARTS, parseModel, placementLine, serializeModel, type Model, type ModelLayout } from './model';
+import { appendLines, deleteLines, EMPTY_MODEL, MAX_PARTS, parseModel, placementLine, READ_IN_PART, serializeModel, type Model, type ModelLayout } from './model';
 
 // owns the current build: the `model` block's text, as last seen. Every edit is
 // validated against the block's text it is measured on, and the build changes
@@ -29,6 +29,7 @@ export class BuildError extends Error {}
 export class Build {
   private model: Model = EMPTY_MODEL;
   private onModelChanged: ((model: Model, source: ModelSource) => void) | null = null;
+  private onUncertainChanged: (() => void) | null = null;
   private ready: Promise<void> | null = null;
 
   // == Lifecycle =================================================================
@@ -37,12 +38,20 @@ export class Build {
   public onChange(callback: (model: Model, source: ModelSource) => void): void {
     this.onModelChanged = callback;
   }
+  /** register the callback for a change to what the status reports beside the
+   *  model: the build becoming uncertain or certain (SEE: isUncertain), or the
+   *  document's builds changing (SEE: conflict) */
+  public onUncertain(callback: () => void): void {
+    this.onUncertainChanged = callback;
+  }
 
   /** loads the document's build and follows every change to it. Rejects, with the
    *  reason, when the build cannot be read */
   public init(): Promise<void> {
     this.ready ??= (async () => {
       this.bridge.onChange(text => this.show(parseModel(text), 'document'));
+      this.bridge.onUncertain(() => this.onUncertainChanged?.());
+      this.bridge.onBuilds(() => this.onUncertainChanged?.());
       this.show(parseModel(await this.bridge.open()), 'load');
     })();
     return this.ready;
@@ -53,7 +62,18 @@ export class Build {
 
   // == Read ======================================================================
   public getModel(): Model { return this.model; }
-  public getText(): string { return serializeModel(this.model); }
+  /** whether the build may no longer be in the document (SEE: ContentBridge#isUncertain) */
+  public isUncertain(): boolean { return this.bridge.isUncertain(); }
+  /** why edits wait, when the document holds more than one build (SEE: ContentBridge#conflict) */
+  public conflict(): string | undefined { return this.bridge.conflict(); }
+  /** every build the document holds, by block */
+  public builds(): ReadonlyArray<Readonly<{ block: string; ldraw: string; }>> { return this.bridge.builds(); }
+  /** the build as LDraw text; refused for a build read only in part, which would
+   *  otherwise pass for the whole build (and replace it, given back to setModel) */
+  public getText(): string {
+    if(this.model.truncated) throw new BuildError(`${READ_IN_PART} Its text cannot be given back whole from here; the whole text is in the document's model block.`);
+    return serializeModel(this.model);
+  }
   public check(): CheckResult { return checkModel(this.model); }
 
   // == Edit ======================================================================
@@ -155,7 +175,8 @@ export class Build {
   public async replace(text: string): Promise<Model> {
     await this.whenReady();
     const model = parseModel(text);
-    if(model.truncated || (partCount(model) > MAX_PARTS)) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
+    if(model.truncated) throw new BuildError(`That LDraw is too large to take: ${READ_IN_PART} Nothing was changed.`);
+    if(partCount(model) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
     await this.bridge.replace(serializeModel(model));
     return model;
   }
@@ -172,7 +193,7 @@ export class Build {
 /** the model a block's text holds, when an edit can apply to it line by line */
 const editable = (text: string): Readonly<{ model: Model; layout: ModelLayout; }> => {
   const model = parseModel(text);
-  if(model.truncated) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
+  if(model.truncated) throw new BuildError(`This build cannot be edited here: ${READ_IN_PART} Replace it with a smaller one (setModel) to edit.`);
   if(!model.layout) throw new BuildError('This build is a multi-file LDraw model, so edits cannot change it line by line. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept).');
   return { model, layout: model.layout };
 };

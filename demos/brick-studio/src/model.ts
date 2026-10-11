@@ -32,7 +32,7 @@ export type Model = Readonly<{
   header: ReadonlyArray<string>;
   placements: ReadonlyArray<Placement>;
   others: ReadonlyArray<OtherPart>;
-  /** the text expands past the part limit: only its first parts were read */
+  /** the text expands past what is read (SEE: READ_IN_PART): only its first parts were read */
   truncated?: boolean;
   /** where the parts lie, when the text is one flat file (no `0 FILE` sections) */
   layout?: ModelLayout;
@@ -41,6 +41,12 @@ export type Model = Readonly<{
 // == Constants ===================================================================
 /** the most parts a build holds */
 export const MAX_PARTS = 3000;
+/** the most submodel lines read while expanding references: a submodel is read
+ *  again for every reference to it */
+const MAX_EXPANDED_LINES = 100_000;
+
+/** why a truncated model was read only in part, model-facing */
+export const READ_IN_PART = `Its submodels expand past what Brick Studio reads (${MAX_PARTS} parts, ${MAX_PARTS} submodel references or ${MAX_EXPANDED_LINES} submodel lines), so it was read only in part.`;
 
 const DEFAULT_HEADER = ['0 Brick Studio model', '0 Name: model.ldr'];
 
@@ -88,13 +94,16 @@ export const parseModel = (text: string): Model => {
   const otherSpans: Span[] = [];
 
   // submodels can reference each other many times over, so the parts they expand
-  // to, and the references followed to reach them, are bounded as they are read
+  // to, the references followed to reach them and the lines read inside them are
+  // bounded as they are read (the main file's own lines are read once)
   let references = 0;
+  let expandedLines = 0;
   let truncated = false;
-  const exceeded = () => truncated ||= (((placements.length + others.length) > MAX_PARTS) || (references > MAX_PARTS));
+  const exceeded = () => truncated ||= (((placements.length + others.length) > MAX_PARTS) || (references > MAX_PARTS) || (expandedLines > MAX_EXPANDED_LINES));
 
   const walk = (name: string, transform: Transform, inheritedColor: number, depth: number, isMain: boolean): void => {
     for(const { text: line, from, to } of files.get(name) ?? []) {
+      if(!isMain) expandedLines++;
       if(exceeded()) return;
       const fields = line.trim().split(/\s+/);
       if(fields[0] !== '1') {
