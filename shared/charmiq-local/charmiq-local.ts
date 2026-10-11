@@ -151,22 +151,6 @@ const makeAppContent = () => {
   };
 
   return {
-    // every call crosses the Platform bridge, so a refusal is a rejection, never a throw
-    get: async (selector?: string) => { const current = blocks(); return current[resolveAppContent(current, selector)]?.content ?? ''; },
-    // omitted content keeps a block's text (a rename); a block it creates is empty
-    set: async (content: string | undefined, selector?: string, name?: string) => {
-      const next = blocks();
-      const index = resolveAppContent(next, selector);
-      if(index < 0) next.push({ id: newBlockId(next), name: name ?? selectorName(selector), content: content ?? '' });
-      else next[index] = { ...next[index], ...((name !== undefined) ? { name } : {}), ...((content !== undefined) ? { content } : {}) };
-      write(next);
-    },
-    applyChanges: () => Promise.resolve()/*OT is a Platform concern; the harness only round-trips full content*/,
-    remove: async (selector?: string) => {
-      const next = blocks();
-      const index = resolveAppContent(next, selector);
-      if(index >= 0) { next.splice(index, 1); write(next); }
-    },
     onChange$: (selector?: string) => {
       const observable = {
         subscribe(next: ((value: AppContentChange) => void) | Partial<{ next: (value: AppContentChange) => void; }>) {
@@ -180,6 +164,33 @@ const makeAppContent = () => {
         pipe: () => observable,
       };
       return observable;
+    },
+    // a call's changes apply in order, each position measured after the changes
+    // before it; a missing block is created, named from a `[name='x']` selector.
+    // There is no other writer here, so there is nothing to merge
+    applyChanges: async (edits: ReadonlyArray<Readonly<{ from: number; to: number; insert?: string; }>>, selector?: string) => {
+      const next = blocks();
+      let index = resolveAppContent(next, selector);
+      if(index < 0) index = next.push({ id: newBlockId(next), name: selectorName(selector), content: '' }) - 1;
+      const content = edits.reduce((text, edit) => text.slice(0, edit.from) + (edit.insert ?? '') + text.slice(edit.to), next[index].content);
+      next[index] = { ...next[index], content };
+      write(next);
+    },
+
+    // every call crosses the Platform bridge, so a refusal is a rejection, never a throw
+    get: async (selector?: string) => { const current = blocks(); return current[resolveAppContent(current, selector)]?.content ?? ''; },
+    // omitted content keeps a block's text (a rename); a block it creates is empty
+    set: async (content: string | undefined, selector?: string, name?: string) => {
+      const next = blocks();
+      const index = resolveAppContent(next, selector);
+      if(index < 0) next.push({ id: newBlockId(next), name: name ?? selectorName(selector), content: content ?? '' });
+      else next[index] = { ...next[index], ...((name !== undefined) ? { name } : {}), ...((content !== undefined) ? { content } : {}) };
+      write(next);
+    },
+    remove: async (selector?: string) => {
+      const next = blocks();
+      const index = resolveAppContent(next, selector);
+      if(index >= 0) { next.splice(index, 1); write(next); }
     },
   };
 };

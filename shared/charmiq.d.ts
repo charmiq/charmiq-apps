@@ -48,16 +48,21 @@ export type ContentChange = Readonly<{
 
 // --------------------------------------------------------------------------------
 export interface AppContentAPI {
-  /** Observable stream of content changes from the document. Emits whenever the
-   *  content is updated (by you or other collaborators)
+  /** Observable stream of content changes from the document: the source of truth
+   *  to render from. Emits the current content, then on every change by anyone,
+   *  including your own writes as they come back alongside others' edits
    *  @param selector optional selector to identify which app-content to observe
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
    *  @returns Observable that emits the current content as an {@link AppContentChange} */
   onChange$: (selector?: string) => Observable<AppContentChange>;
 
-  /** apply incremental text changes to the persisted content. This method is
-   *  designed to be for efficient updates
-   *  @param changes array of incremental changes to apply
+  /** apply edits to the content: the way to change part of a block while others may
+   *  be writing too. A call's changes apply in order, each position measured after
+   *  the changes before it (send several from one original text last-first).
+   *  Positions apply to the block's text when the call arrives, which another
+   *  writer may have changed since you read it. Creates the block when the selector
+   *  matches none
+   *  @param changes the edits, in the order they apply
    *  @param selector optional selector to identify which app-content to update
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
    *  @returns Promise that resolves when changes are applied to the document */
@@ -68,13 +73,14 @@ export interface AppContentAPI {
    *  @param selector optional selector to identify which app-content to get
    *  @returns Promise that resolves to current content as a string */
   get: (selector?: string) => Promise<string>;
-  /** set the full content (replaces everything). Use applyChanges for incremental
-   *  updates instead when possible for better collaboration
-   *  @param content new text content
+  /** replace the full content, creating the block when the selector matches none.
+   *  Anything another writer changed meanwhile is lost: use it to create a block or
+   *  replace everything on purpose, and {@link applyChanges} to edit
+   *  @param content new text content; omitted, the block keeps its text (a rename)
    *  @param selector optional selector to identify which app-content to set
    *  @param name optional name attribute to set on the app-content node
    *  @returns Promise that resolves when content is saved to the document */
-  set: (content: string, selector?: string, name?: string) => Promise<void>;
+  set: (content: string | undefined, selector?: string, name?: string) => Promise<void>;
   /** remove the app-content node
    *  @param selector optional selector to identify which app-content to remove
    *  @returns Promise that resolves when the node is removed from the document */
@@ -92,7 +98,6 @@ export interface AppStateAPI {
    *  @param state JSON-serializable state object
    *  @returns Promise that resolves when state is saved to the document */
   set: (state: any) => Promise<void>;
-
   /** get current state value (one-time read). Use onChange$ for reactive updates
    *  instead of polling with get()
    *  @returns Promise that resolves to current state or null */
@@ -115,6 +120,7 @@ export type AdvertiseCapability = (
   capability: string,
   methods: Record<string/*method name*/, Function>
 ) => void;
+
 // --------------------------------------------------------------------------------
 /** discover a single provider. The type parameter narrows the proxy to the
  *  concrete capability shape — callers usually know the remote's method set
@@ -400,21 +406,24 @@ export interface CharmIQAPI {
    *  plain text directly in the document that supports collaborative editing.
    *  Separate from AppState which is for configuration (last-write-wins).
    *  @example
-   *  // subscribe to content changes from collaborators
-   *  window.charmiq.appContent.onChange$().subscribe(content => {
-   *    if(editor.state.doc.toString() !== content) {
+   *  // show what the block holds, whoever changed it (your own writes included).
+   *  // The editor's own update is tagged so it is not sent back as a new edit
+   *  window.charmiq.appContent.onChange$('[0]').subscribe(change => {
+   *    if(!change.deleted && (editor.state.doc.toString() !== change.content)) {
    *      editor.dispatch({
-   *        changes: { from: 0, to: editor.state.doc.length, insert: content }
+   *        changes: { from: 0, to: editor.state.doc.length, insert: change.content },
+   *        annotations: Transaction.remote.of(true)
    *      });
    *    }
    *  });
    *
-   *  // forward changes to app-content
+   *  // forward the user's changes: positions are in the original text, so the
+   *  // last change goes first and no earlier one shifts it
    *  editor.onUpdate(update => {
-   *    if(update.docChanged) {
+   *    if(update.docChanged && !update.transactions.some(tr => tr.annotation(Transaction.remote))) {
    *      const changes = [];
    *      update.changes.iterChanges((fromA, toA, fromB, toB, text) => {
-   *        changes.push({
+   *        changes.unshift({
    *          from: fromA,
    *          to: toA,
    *          insert: text.length ? text.toString() : ''
