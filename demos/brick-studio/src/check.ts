@@ -1,11 +1,13 @@
-import { cellKey, footprintCells, getPart, getShape, studCells, type Placement } from './grid';
+import { cellKey, filledCells, frameKey, getPart, getShape, studCells, type Placement } from './grid';
 import type { Model } from './model';
 
-// checks a build on the grid. A part fills its footprint from its bottom level up
-// through its height (a slope fills its whole box). Two parts collide when they fill
-// the same cell at the same level. A part connects to a part directly above it
-// where one of its top studs lies under that part's footprint; a part at level 0
-// stands on the ground. A part with no chain of connections to the ground floats
+// checks a build on the grid. A part fills the cells and levels its shape measures
+// (SEE: parts.generated.ts `fill`). Two parts collide when they fill the same cell
+// at the same level. A part connects to a part directly above it where one of its
+// top studs lies under a cell that part fills from its bottom level; a part at
+// level 0 stands on the ground. A glass pane fills nothing and is held by the frame
+// at its own position; two panes in one frame collide. A part with no chain of
+// connections to the ground floats
 // ********************************************************************************
 // == Types =======================================================================
 export type CheckResult = Readonly<{
@@ -28,19 +30,38 @@ export const checkModel = (model: Model): CheckResult => {
   const filled = new Map<string, number>()/*cell key -> placement index*/;
   const collided = new Set<string>()/*`a|b` index pair*/;
   const collisions: Array<{ a: string; b: string; }> = [];
+  const collide = (other: number, index: number) => {
+    const pair = `${other}|${index}`;
+    if(collided.has(pair)) return;
+    collided.add(pair);
+    collisions.push({ a: describePlacement(placements[other]), b: describePlacement(placements[index]) });
+  };
   placements.forEach((placement, index) => {
     const shape = getShape(getPart(placement.part)!/*by contract*/);
-    for(const [x, z] of footprintCells(shape, placement)) {
-      for(let level=placement.level; level<(placement.level + shape.height); level++) {
+    for(const { x, z, bottom, top } of filledCells(shape, placement)) {
+      for(let level=bottom; level<top; level++) {
         const key = cellKey(x, z, level);
         const other = filled.get(key);
-        if(other === undefined) { filled.set(key, index); continue; }
-        const pair = `${other}|${index}`;
-        if(collided.has(pair)) continue;
-        collided.add(pair);
-        collisions.push({ a: describePlacement(placements[other]), b: describePlacement(placement) });
+        if(other === undefined) filled.set(key, index);
+        else collide(other, index);
       }
     }
+  });
+
+  // each pane's frame: the frame part at the pane's own position
+  const frames = new Map<string, number>()/*frame key -> placement index*/;
+  placements.forEach((placement, index) => frames.set(frameKey(getPart(placement.part)!.ldraw/*by contract*/, placement), index));
+  const panes = new Map<number, number>()/*pane index -> frame index*/;
+  const filledFrames = new Map<number, number>()/*frame index -> its first pane*/;
+  placements.forEach((placement, index) => {
+    const frame = getPart(placement.part)!.frame/*by contract*/;
+    if(frame === undefined) return/*not a pane*/;
+    const holder = frames.get(frameKey(frame, placement));
+    if(holder === undefined) return/*no frame here: it floats*/;
+    panes.set(index, holder);
+    const first = filledFrames.get(holder);
+    if(first === undefined) filledFrames.set(holder, index);
+    else collide(first, index);
   });
 
   // .. Connections ...............................................................
@@ -48,10 +69,13 @@ export const checkModel = (model: Model): CheckResult => {
   const bottoms = new Map<string, number>();
   placements.forEach((placement, index) => {
     const shape = getShape(getPart(placement.part)!/*by contract*/);
-    for(const [x, z] of footprintCells(shape, placement)) bottoms.set(cellKey(x, z, placement.level), index);
+    for(const { x, z, bottom } of filledCells(shape, placement)) {
+      if(bottom === placement.level) bottoms.set(cellKey(x, z, placement.level), index)/*an open underside holds nothing*/;
+    }
   });
 
   const neighbors = placements.map(() => new Set<number>());
+  for(const [pane, frame] of panes) { neighbors[pane].add(frame); neighbors[frame].add(pane); }
   placements.forEach((placement, index) => {
     const shape = getShape(getPart(placement.part)!/*by contract*/);
     const top = placement.level + shape.height;
@@ -65,7 +89,7 @@ export const checkModel = (model: Model): CheckResult => {
 
   // reach every part from the ground
   const grounded = new Set<number>();
-  const queue = placements.flatMap((placement, index) => (placement.level === 0) ? [index] : []);
+  const queue = placements.flatMap((placement, index) => ((placement.level === 0) && !getPart(placement.part)!.frame/*by contract*/) ? [index] : []);
   for(const index of queue) grounded.add(index);
   while(queue.length > 0) {
     const index = queue.pop()!;

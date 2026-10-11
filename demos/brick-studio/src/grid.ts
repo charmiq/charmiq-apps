@@ -37,7 +37,14 @@ export type PartShape = Readonly<{
   height: number/*plates*/;
   origin: readonly [number, number];
   studs: ReadonlyArray<Cell>;
+  /** the cells the part fills, as [x, z, bottom, top] levels from its own bottom
+   *  (top exclusive) */
+  fill: ReadonlyArray<readonly [number, number, number, number]>;
 }>;
+
+// ................................................................................
+/** a grid cell a placement fills, from level `bottom` up to (not including) `top` */
+export type FilledCell = Readonly<{ x: number; z: number; bottom: number; top: number; }>;
 
 // == Catalog lookup ==============================================================
 const partsByKey = new Map(CATALOG.map(part => [part.key, part]));
@@ -99,12 +106,12 @@ const placeCell = (shape: PartShape, placement: Placement, cell: Cell): Cell => 
   return [Math.round(placement.x - cornerX + dx - 0.5), Math.round(placement.z - cornerZ + dz - 0.5)];
 };
 
-/** every cell the placement covers */
-export const footprintCells = (shape: PartShape, placement: Placement): Cell[] => {
-  const cells: Cell[] = [];
-  for(let z=0; z<shape.depth; z++) for(let x=0; x<shape.width; x++) cells.push(placeCell(shape, placement, [x, z]));
-  return cells;
-};
+/** every grid cell the placement fills and the levels it fills there */
+export const filledCells = (shape: PartShape, placement: Placement): FilledCell[] =>
+  shape.fill.map(([x, z, bottom, top]) => {
+    const [gridX, gridZ] = placeCell(shape, placement, [x, z]);
+    return { x: gridX, z: gridZ, bottom: placement.level + bottom, top: placement.level + top };
+  });
 
 /** every cell holding one of the placement's top studs */
 export const studCells = (shape: PartShape, placement: Placement): Cell[] =>
@@ -130,6 +137,12 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
   if(!isWhole(x) || !isWhole(z) || !isWhole(level)) return undefined;
   return { x: Math.round(x), z: Math.round(z), level: Math.round(level) };
 };
+
+// == Frames ======================================================================
+/** a part at a placement's position: a glass pane names its frame's LDraw file
+ *  here, and the pane sits in the frame placed under the same key */
+export const frameKey = (ldraw: string, placement: Placement): string =>
+  `${ldraw}@${cellKey(placement.x, placement.z, placement.level)}/${placement.rotation}`;
 
 // == Util ========================================================================
 const isWhole = (value: number): boolean => Math.abs(value - Math.round(value)) < 1e-3;

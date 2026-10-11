@@ -1,6 +1,6 @@
 import { checkModel, describePlacement, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
-import { cellKey, footprintCells, getColor, getPart, getShape, toRotation, type Placement } from './grid';
+import { cellKey, filledCells, frameKey, getColor, getPart, getShape, toRotation, type Placement } from './grid';
 import { EMPTY_MODEL, parseModel, serializeModel, type Model } from './model';
 
 // owns the current build. Every edit is validated, applied, written to appContent
@@ -74,7 +74,7 @@ export class Build {
   }
 
   // ------------------------------------------------------------------------------
-  /** removes the part that fills each given cell */
+  /** removes the part that fills each given cell, and the glass in a removed frame */
   public async remove(cells: ReadonlyArray<unknown>): Promise<Readonly<{ removed: ReadonlyArray<string>; empty: ReadonlyArray<string>; }>> {
     if(cells.length < 1) throw new BuildError('No cells given.');
 
@@ -82,8 +82,8 @@ export class Build {
     const filled = new Map<string, number>();
     this.model.placements.forEach((placement, index) => {
       const shape = getShape(getPart(placement.part)!/*by contract*/);
-      for(const [x, z] of footprintCells(shape, placement)) {
-        for(let level=placement.level; level<(placement.level + shape.height); level++) filled.set(cellKey(x, z, level), index);
+      for(const { x, z, bottom, top } of filledCells(shape, placement)) {
+        for(let level=bottom; level<top; level++) filled.set(cellKey(x, z, level), index);
       }
     });
 
@@ -95,6 +95,13 @@ export class Build {
       const hit = filled.get(cellKey(x, z, level));
       if(hit === undefined) empty.push(`x ${x} z ${z} level ${level}`);
       else removing.add(hit);
+    });
+
+    // a pane goes with its frame (it fills no cell of its own)
+    const removedFrames = new Set([...removing].map(index => frameKey(getPart(this.model.placements[index].part)!.ldraw/*by contract*/, this.model.placements[index])));
+    this.model.placements.forEach((placement, index) => {
+      const frame = getPart(placement.part)!.frame/*by contract*/;
+      if((frame !== undefined) && removedFrames.has(frameKey(frame, placement))) removing.add(index);
     });
 
     const removed = [...removing].map(index => describePlacement(this.model.placements[index]));

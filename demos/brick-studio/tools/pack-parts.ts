@@ -13,12 +13,16 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CATALOG, COLORS } from '../src/catalog.ts';
+import { CATALOG, COLORS, hasOpenUnderside, type CatalogPart } from '../src/catalog.ts';
 
 // == Constants ===================================================================
 const LDU_PER_STUD = 20/*LDU*/;
 const LDU_PER_PLATE = 8/*LDU*/;
 const EPSILON = 0.01/*LDU*/;
+/** sample columns per cell side when measuring a cell's fill */
+const SAMPLES_PER_SIDE = 8;
+/** how far inside a cell a bottom-face vertex must lie to count as the cell's own */
+const BASE_INSET = 2/*LDU*/;
 
 const SOURCE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 
@@ -27,7 +31,8 @@ const SOURCE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 type Transform = readonly [number, number, number, number, number, number, number, number, number, number, number, number];
 const IDENTITY: Transform = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
 
-type Measure = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; studs: Array<[number, number, number]>; };
+type Point = [number, number, number];
+type Measure = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; studs: Point[]; triangles: Array<readonly [Point, Point, Point]>; };
 
 // == Files =======================================================================
 /** the name a type-1 line references, normalized as LDrawLoader normalizes it */
@@ -102,13 +107,17 @@ const measure = (library: string, name: string, transform: Transform, out: Measu
       case '3':
       case '4': {
         const values = fields.slice(2).map(Number);
-        for(let v=0; v<(Number(fields[0]) * 3); v+=3) {
-          const [x, y, z] = apply(transform, values[v], values[v + 1], values[v + 2]);
+        const points: Point[] = [];
+        for(let v=0; v<(Number(fields[0]) * 3); v+=3) points.push(apply(transform, values[v], values[v + 1], values[v + 2]));
+        for(const [x, y, z] of points) {
           if(y < -EPSILON) continue/*above the top face: a stud*/;
           out.minX = Math.min(out.minX, x); out.maxX = Math.max(out.maxX, x);
           out.minY = Math.min(out.minY, y); out.maxY = Math.max(out.maxY, y);
           out.minZ = Math.min(out.minZ, z); out.maxZ = Math.max(out.maxZ, z);
         }
+        if(points.some(([, y]) => y < -EPSILON)) break/*a stud's face*/;
+        out.triangles.push([points[0], points[1], points[2]]);
+        if(points.length > 3) out.triangles.push([points[0], points[2], points[3]]);
         break;
       }
       default: break/*meta, lines and conditional lines carry no body*/;
@@ -131,8 +140,9 @@ const isWhole = (value: number): boolean => Math.abs(value - Math.round(value)) 
 
 /** footprint (studs), height (plates), origin and top-stud cells of one part, from
  *  the footprint's minimum corner. The origin lies on the top face; -y is up (LDraw) */
-const measurePart = (library: string, ldraw: string) => {
-  const out: Measure = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity, studs: [] };
+const measurePart = (library: string, part: CatalogPart) => {
+  const { ldraw } = part;
+  const out: Measure = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity, studs: [], triangles: [] };
   measure(library, `${ldraw}.dat`, IDENTITY, out);
 
   const width = (out.maxX - out.minX) / LDU_PER_STUD;
@@ -155,7 +165,79 @@ const measurePart = (library: string, ldraw: string) => {
       return [Math.round(x), Math.round(z)] as [number, number];
     })
     .sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
-  return { width: Math.round(width), depth: Math.round(depth), height: Math.round(height), origin: [halfStud(origin[0]), halfStud(origin[1])], studs };
+  const size = { width: Math.round(width), depth: Math.round(depth), height: Math.round(height) };
+  if(part.kind === 'ridge') assertRidgeRunsEastWest(out, ldraw);
+  return { ...size, origin: [halfStud(origin[0]), halfStud(origin[1])], studs, fill: measureFill(out, size, hasOpenUnderside(part.kind)) };
+};
+
+/** a ridge's peak runs east-west across the middle of its depth, as listParts says
+ *  (SEE: command.ts GRID): its top is full height along that line and lower at its
+ *  north and south edges */
+const assertRidgeRunsEastWest = (out: Measure, ldraw: string): void => {
+  const topAt = (x: number, z: number): number => Math.min(...crossings(out.triangles, x, z));
+  const middleX = (out.minX + out.maxX) / 2, middleZ = (out.minZ + out.maxZ) / 2;
+  const peak = [out.minX + 1, middleX, out.maxX - 1].every(x => Math.abs(topAt(x, middleZ)) < EPSILON);
+  const falls = [out.minZ + 1, out.maxZ - 1].every(z => topAt(middleX, z) > 1);
+  if(!peak || !falls) throw new Error(`${ldraw}: the ridge does not run east-west across its middle.`);
+};
+
+// --------------------------------------------------------------------------------
+/** the surfaces a vertical line at (x, z) crosses, as their y (-y up) */
+const crossings = (triangles: Measure['triangles'], x: number, z: number): number[] => {
+  const ys: number[] = [];
+  for(const [a, b, c] of triangles) {
+    const area = ((b[0] - a[0]) * (c[2] - a[2])) - ((c[0] - a[0]) * (b[2] - a[2]));
+    if(Math.abs(area) < EPSILON) continue/*a vertical face: the line runs along it*/;
+    const u = (((b[0] - x) * (c[2] - z)) - ((c[0] - x) * (b[2] - z))) / area;
+    const v = (((c[0] - x) * (a[2] - z)) - ((a[0] - x) * (c[2] - z))) / area;
+    const w = 1 - u - v;
+    if((u < 0) || (v < 0) || (w < 0)) continue;
+    ys.push((u * a[1]) + (v * b[1]) + (w * c[1]));
+  }
+  return ys;
+};
+
+/** each footprint cell the part fills and the levels it fills there, from the
+ *  footprint's minimum corner as [x, z, bottom, top] (levels bottom up to, not
+ *  including, top). A cell is filled when the part reaches into it at all (a wedge's
+ *  cut cell still blocks a part beside it); a level when its middle lies below the
+ *  part's highest point in the cell (nothing fits above a slope's high edge, a
+ *  cone's tip or into a pocket in a top).
+ *  The fill reaches the part's bottom unless its underside is open, where it starts
+ *  at the underside's mean height -- except in a cell holding the part's own bottom
+ *  face (a wall or tube standing on the part's bottom), since from below a hollow
+ *  part shows only its inner ceiling */
+const measureFill = (out: Measure, size: Readonly<{ width: number; depth: number; height: number; }>, openUnderside: boolean): Array<[number, number, number, number]> => {
+  const bottomY = size.height * LDU_PER_PLATE;
+  const fill: Array<[number, number, number, number]> = [];
+  for(let cz=0; cz<size.depth; cz++) {
+    for(let cx=0; cx<size.width; cx++) {
+      const x0 = out.minX + (cx * LDU_PER_STUD), z0 = out.minZ + (cz * LDU_PER_STUD);
+      const tops: number[] = [], undersides: number[] = [];
+      for(let sz=0; sz<SAMPLES_PER_SIDE; sz++) {
+        for(let sx=0; sx<SAMPLES_PER_SIDE; sx++) {
+          const ys = crossings(out.triangles, x0 + (((sx + 0.5) / SAMPLES_PER_SIDE) * LDU_PER_STUD), z0 + (((sz + 0.5) / SAMPLES_PER_SIDE) * LDU_PER_STUD));
+          if(ys.length < 1) continue;
+          tops.push(Math.min(...ys));
+          undersides.push(Math.max(...ys));
+        }
+      }
+      if(tops.length < 1) continue/*the part never reaches into it*/;
+
+      const topRise = bottomY - Math.min(...tops)/*LDU above the bottom, at its highest*/;
+      const standsOnBottom = !openUnderside || out.triangles.some(triangle => triangle.some(([x, y, z]) =>
+        (Math.abs(y - bottomY) < EPSILON) &&
+        (x > (x0 + BASE_INSET)) && (x < (x0 + LDU_PER_STUD - BASE_INSET)) &&
+        (z > (z0 + BASE_INSET)) && (z < (z0 + LDU_PER_STUD - BASE_INSET))));
+      const bottomRise = standsOnBottom ? 0 : (bottomY - (undersides.reduce((sum, y) => sum + y, 0) / undersides.length))/*its mean height*/;
+
+      const levels = Array.from({ length: size.height }, (_, level) => level)
+        .filter(level => (((level + 0.5) * LDU_PER_PLATE) < topRise) && (((level + 0.5) * LDU_PER_PLATE) > bottomRise));
+      if(levels.length < 1) continue/*a sliver: no level's middle lies in it*/;
+      fill.push([cx, cz, levels[0], levels[levels.length - 1] + 1]);
+    }
+  }
+  return fill;
 };
 
 // == Main ========================================================================
@@ -163,7 +245,7 @@ const library = process.argv[2];
 if(!library || !existsSync(join(library, 'LDConfig.ldr'))) {
   console.error('Usage: node demos/brick-studio/tools/pack-parts.ts <path to the extracted ldraw directory>');
   process.exit(1);
-} /* else -- XXX */
+} /* else -- an LDraw library to pack from */
 
 // .. Pack ........................................................................
 const files = new Set<string>();
@@ -182,7 +264,10 @@ const pack = header + sections.join('');
 writeFileSync(join(SOURCE_DIR, 'parts.ldr'), pack);
 
 // .. Facts .......................................................................
-const geometry = Object.fromEntries(CATALOG.map(part => [part.ldraw, measurePart(library, part.ldraw)]));
+const measured = Object.fromEntries(CATALOG.filter(part => !part.frame).map(part => [part.ldraw, measurePart(library, part)]));
+// a pane takes its frame's grid shape (the two share an origin) and fills nothing:
+// it sits in the frame's opening
+const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.ldraw, { ...measured[part.frame], studs: [], fill: [] }]] : [])) };
 
 const config = readFileSync(join(library, 'LDConfig.ldr'), 'utf8');
 const colors = Object.fromEntries(COLORS.map(color => {
@@ -192,13 +277,14 @@ const colors = Object.fromEntries(COLORS.map(color => {
 }));
 
 const facts = [
-  '// each catalog part\'s footprint, height and top studs, and each catalog color\'s',
+  '// each catalog part\'s footprint, height, top studs and fill, and each catalog',
   '// value, measured from the LDraw Parts Library by tools/pack-parts.ts -- do not edit',
   '// ********************************************************************************',
   '/** footprint in studs along x (`width`) and z (`depth`), height in plates, the LDraw',
-  ' *  origin in studs from the footprint\'s minimum corner, and the top-stud cells, all',
-  ' *  at rotation 0, keyed by LDraw file stem */',
-  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; studs: ReadonlyArray<readonly [number, number]>; }>>> = ${JSON.stringify(geometry)};`,
+  ' *  origin in studs from the footprint\'s minimum corner, the top-stud cells and the',
+  ' *  filled cells ([x, z, bottom level, top level exclusive]), all at rotation 0, keyed',
+  ' *  by LDraw file stem */',
+  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; }>>> = ${JSON.stringify(geometry)};`,
   '',
   '/** LDConfig color value, keyed by LDraw color code */',
   `export const COLOR_VALUES: Readonly<Record<number, string>> = ${JSON.stringify(colors, null, 2)};`,
@@ -209,5 +295,6 @@ writeFileSync(join(SOURCE_DIR, 'parts.generated.ts'), facts);
 console.log(`Packed ${CATALOG.length} parts (${files.size} files, ${(pack.length / 1024).toFixed(0)} KB).`);
 for(const part of CATALOG) {
   const g = geometry[part.ldraw];
-  console.log(`  ${part.key.padEnd(10)} ${part.ldraw.padEnd(6)} ${g.width}x${g.depth}x${g.height}  origin ${g.origin}  studs ${g.studs.length}${(part.kind === 'slope') ? ` ${JSON.stringify(g.studs)}` : ''}`);
+  const box = g.fill.every(([, , bottom, top]) => (bottom === 0) && (top === g.height)) && (g.fill.length === (g.width * g.depth));
+  console.log(`  ${part.key.padEnd(22)} ${part.ldraw.padEnd(6)} ${g.width}x${g.depth}x${g.height}  origin ${g.origin}  studs ${g.studs.length}  ${box ? 'box' : `fill ${JSON.stringify(g.fill)}`}`);
 }

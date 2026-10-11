@@ -1,10 +1,10 @@
 // the curated parts and colors a build may use. Hand-written: a part's name, kind
-// and LDraw file. Its footprint, height and studs are measured from the LDraw
+// and LDraw file. Its footprint, height, fill and studs are measured from the LDraw
 // geometry by tools/pack-parts.ts into parts.generated.ts, never typed here
 // NOTE: this module has no imports so that tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -13,7 +13,13 @@ export type CatalogPart = Readonly<{
   /** the LDraw file stem in the LDraw Parts Library (e.g. `3001`) */
   ldraw: string;
   kind: PartKind;
+  /** a glass pane's frame (LDraw file stem): the pane sits in it, at its position */
+  frame?: string;
 }>;
+
+/** whether a kind's underside is open (an arch's span, an inverted slope's face):
+ *  its fill is measured from below there, never assumed to reach its bottom */
+export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch');
 
 // --------------------------------------------------------------------------------
 export const CATALOG: ReadonlyArray<CatalogPart> = [
@@ -86,6 +92,32 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
 
   { key: 'arch-1x4', ldraw: '3659', kind: 'arch' },
   { key: 'arch-1x6', ldraw: '3455', kind: 'arch' },
+
+  { key: 'corner-brick-2x2', ldraw: '2357', kind: 'corner' },
+  { key: 'corner-plate-2x2', ldraw: '2420', kind: 'corner' },
+
+  { key: 'wedge-plate-2x3-right', ldraw: '43722a', kind: 'wedge' },
+  { key: 'wedge-plate-2x3-left',  ldraw: '43723a', kind: 'wedge' },
+  { key: 'wedge-plate-2x4-right', ldraw: '41769a', kind: 'wedge' },
+  { key: 'wedge-plate-2x4-left',  ldraw: '41770a', kind: 'wedge' },
+
+  { key: 'inverted-slope-45-2x1', ldraw: '3665a', kind: 'inverted' },
+  { key: 'inverted-slope-45-2x2', ldraw: '3660a', kind: 'inverted' },
+  { key: 'inverted-slope-33-3x2', ldraw: '3747b', kind: 'inverted' },
+
+  { key: 'ridge-45-2x1',        ldraw: '3044b', kind: 'ridge' },
+  { key: 'ridge-45-2x2',        ldraw: '3043',  kind: 'ridge' },
+  { key: 'roof-corner-outside', ldraw: '3045',  kind: 'roof-corner' },
+  { key: 'roof-corner-inside',  ldraw: '3046',  kind: 'roof-corner' },
+
+  { key: 'window-1x2x2', ldraw: '60592', kind: 'window' },
+  { key: 'window-1x2x3', ldraw: '60593', kind: 'window' },
+  { key: 'window-1x4x3', ldraw: '60594', kind: 'window' },
+  { key: 'door-frame-1x4x6', ldraw: '60596', kind: 'window' },
+
+  { key: 'glass-1x2x2', ldraw: '60601', kind: 'glass', frame: '60592' },
+  { key: 'glass-1x2x3', ldraw: '60602', kind: 'glass', frame: '60593' },
+  { key: 'glass-1x4x3', ldraw: '60603', kind: 'glass', frame: '60594' },
 ];
 
 // == Colors ======================================================================

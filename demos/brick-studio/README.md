@@ -60,11 +60,11 @@ The Charm reads the catalog, places parts in batches, runs the check, and turns 
 
 The build is a flat LDraw file in the `model` content block. Each part is one line: its color, its position and rotation, and its part file. Edit it by hand, paste in LDraw from elsewhere, or let a Charm build it.
 
-**The parts.** Bricks, plates and tiles in the common sizes; slopes at 45, 33 and 65 degrees; round bricks, plates, a tile and a cone; and arches. Sixteen solid colors and seven see-through ones (`trans-`), which refract light at the Plastic look and up.
+**The parts.** Bricks, plates and tiles in the common sizes; slopes at 45, 33 and 65 degrees, inverted slopes, ridges and roof corners; corner bricks and plates, wedge plates, round bricks, plates, a tile and a cone; arches; and windows and a door frame, with glass panes that sit in the windows. Sixteen solid colors and seven see-through ones (`trans-`), which refract light at the Plastic look and up.
 
 **The grid.** x runs east, z north, level up. A cell is one stud; a level is one plate, and a brick is three. A part is placed by the south-west corner of its footprint and its bottom level, and turns in quarter turns clockwise seen from above. Parts from the catalog on the grid are checked; any other part line is kept, drawn when its part is in the catalog, and counted as off grid.
 
-**The check.** Two parts collide when they fill the same cell at the same level. A part holds the part above it where its top studs lie under that part: tiles have none, and a slope has studs only along its high row. A round part or cone fills its square, and an arch's opening counts as filled. A part with no chain of holds down to the baseplate floats. An edit that would collide is refused whole.
+**The check.** Each part fills the cells and levels measured from its shape: a corner brick leaves its fourth cell empty, and the space under an arch's span or an inverted slope's underside is open. A cell the part reaches into at all counts as filled, up to the part's highest point there. Two parts collide when they fill the same cell at the same level. A part holds the part above it where its top studs lie under a cell that part fills from its bottom: tiles and ridges have none, and a slope has studs only along its high row. A glass pane fills nothing; it is held by the window at its own position, and a second pane there collides. A part with no chain of holds down to the baseplate floats. An edit that would collide is refused whole.
 
 **The commands.** A Charm drives the Studio through these:
 
@@ -73,7 +73,7 @@ The build is a flat LDraw file in the `model` content block. Each part is one li
 | `listParts` | the grid conventions, the catalog parts and the colors |
 | `listPlacedParts` | every part in the build with its position |
 | `addParts` | places a batch of parts; a batch that would collide is refused |
-| `removeParts` | removes the part filling each given cell |
+| `removeParts` | removes the part filling each given cell, and a removed window's glass |
 | `clear` | removes every part |
 | `check` | lists collisions and floating parts |
 | `setView` | turns the camera and frames the build |
@@ -98,7 +98,7 @@ Every edit resolves once the parts have landed, so a screenshot taken next shows
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
 | [`src/parts.ldr`](charmiq://./src/parts.ldr) | the catalog parts and every file they use, packed (generated) |
-| [`src/parts.generated.ts`](charmiq://./src/parts.generated.ts) | each part's footprint, height and studs, measured (generated) |
+| [`src/parts.generated.ts`](charmiq://./src/parts.generated.ts) | each part's footprint, height, studs and fill, measured (generated) |
 | [`tools/pack-parts.ts`](charmiq://./tools/pack-parts.ts) | regenerates the two generated files |
 
 **Adding a part.** Add it to `src/catalog.ts`, download and extract the [LDraw Parts Library](https://library.ldraw.org/library/updates/complete.zip), then run `node demos/brick-studio/tools/pack-parts.ts <path to the ldraw directory>` (Node 22.18 or later). The tool measures each part from its geometry and fails on any part that is not on the grid.
