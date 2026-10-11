@@ -19,6 +19,13 @@ open /tmp/app.html          # or serve /tmp over http://localhost (see below)
 
 `--harness` bundles [`install.ts`](./install.ts) to an IIFE and inlines it ahead of your app, so `window.charmiq` exists before your code runs. Nothing in your app changes — it uses `window.charmiq` exactly as it does in the Platform.
 
+To film it instead (screenshots after each command call, with each call's result):
+
+```sh
+# from platform/packages/cloud-functions
+npm run film-app -- <path-to-app> --out film --content <block-name>=<file> --step '<command> {json args}'
+```
+
 
 ## What it stands in for
 
