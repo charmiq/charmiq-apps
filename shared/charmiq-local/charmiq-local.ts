@@ -67,27 +67,120 @@ const makeAppState = () => {
 };
 
 // == App Content =================================================================
-// keyed by selector so multiple named blocks coexist; the default key covers the
-// common single-block case
+// app-content blocks as the Platform holds them: an ordered list, each with an id and
+// an optional name. A selector picks a block as the Platform does -- none for the
+// first, `[n]` by index, `[name='x']` or `[id='x']` -- and every change carries the
+// block's id and name. `onChange$()` with no selector emits every block, then each
+// addition, update and deletion; with a selector, that one block appearing, changing
+// or disappearing
+type AppContentBlock = Readonly<{ id: string; name?: string; content: string; }>;
+type AppContentChange = Readonly<{ id: string; name?: string; content: string; deleted?: boolean; }>;
+
+/** the index of the block a selector picks, or -1 when none matches */
+const resolveAppContent = (blocks: readonly AppContentBlock[], selector?: string): number => {
+  const query = selector?.trim() ?? '';
+  if(!query) return (blocks.length > 0) ? 0 : -1;
+  const index = query.match(/^\[(\d+)\]$/);
+  if(index) return (Number(index[1]) < blocks.length) ? Number(index[1]) : -1;
+  const name = query.match(/^\[name=['"]([^'"]+)['"]\]$/);
+  if(name) return blocks.findIndex(block => block.name === name[1]);
+  const id = query.match(/^\[id=['"]([^'"]+)['"]\]$/);
+  if(id) return blocks.findIndex(block => block.id === id[1]);
+  throw new Error(`Invalid app-content selector: ${selector}`);
+};
+
+// --------------------------------------------------------------------------------
+/** the key the selector-keyed layout gave content stored without a selector */
+const DEFAULT_CONTENT_KEY = '__default__';
+
+/** the name a `[name='x']` selector gives a block it creates */
+const selectorName = (selector?: string): string | undefined => selector?.trim().match(/^\[name=['"]([^'"]+)['"]\]$/)?.[1];
+
+/** the id a block converted from the selector-keyed layout takes: its complete key
+ *  hex-encoded, so the same key always gives the same id (conversion repeats on every
+ *  read until a write), distinct keys give distinct ids, and the id is safe in a
+ *  `[id='x']` selector. A created block's id never repeats a stored one */
+const convertedBlockId = (key: string): string =>
+  `app-content-key-${Array.from(new TextEncoder().encode(key), byte => byte.toString(16).padStart(2, '0')).join('')}`;
+
+/** an id no stored block holds: a reload starts a new harness, so ids never come
+ *  from a counter */
+const newBlockId = (blocks: readonly AppContentBlock[]): string => {
+  for(;;) {
+    const id = `app-content-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    if(!blocks.some(block => block.id === id)) return id;
+  }
+};
+
+// --------------------------------------------------------------------------------
+const isSameBlock = (a: AppContentBlock, b: AppContentBlock): boolean => (a.name === b.name) && (a.content === b.content);
+
+// --------------------------------------------------------------------------------
 const makeAppContent = () => {
-  const listeners = new Set<(value: any) => void>();
-  const store = () => readJson<Record<string, string>>(APP_CONTENT_KEY, {});
-  const keyFor = (selector?: string) => selector ?? '__default__';
+  const writes = new Set<(blocks: readonly AppContentBlock[]) => void>();
+  const blocks = (): AppContentBlock[] => {
+    const stored = readJson<unknown>(APP_CONTENT_KEY, []);
+    if(Array.isArray(stored)) return stored as AppContentBlock[];
+    if(!stored || (typeof stored !== 'object')) return []/*nothing stored*/;
+
+    // the selector-keyed layout this harness stored before blocks (`__default__` for
+    // no selector): each entry is a block, named when its selector named one, the
+    // unselected block first. Converted on every read until the next write stores
+    // blocks (SEE: convertedBlockId)
+    return Object.entries(stored as Record<string, string>)
+      .sort(([a], [b]) => Number(b === DEFAULT_CONTENT_KEY) - Number(a === DEFAULT_CONTENT_KEY))
+      .map(([key, content]) => ({ id: convertedBlockId(key), name: selectorName(key), content }));
+  };
+  const write = (next: AppContentBlock[]) => { writeJson(APP_CONTENT_KEY, next); writes.forEach(notify => notify(next)); };
+
+  // the changes between two lists of blocks, as one subscription sees them
+  const changes = (selector: string | undefined, prev: readonly AppContentBlock[], next: readonly AppContentBlock[]): AppContentChange[] => {
+    if(selector === undefined) {
+      const prevById = new Map(prev.map(block => [block.id, block]));
+      const nextIds = new Set(next.map(block => block.id));
+      return [
+        ...next.filter(block => { const before = prevById.get(block.id); return !before || !isSameBlock(before, block); }),
+        ...prev.filter(block => !nextIds.has(block.id)).map(block => ({ ...block, deleted: true })),
+      ];
+    } /* else -- one selected block */
+    const before = prev[resolveAppContent(prev, selector)];
+    const after = next[resolveAppContent(next, selector)];
+    if(after && (!before || (before.id !== after.id) || !isSameBlock(before, after))) return [after];
+    if(before && !after) return [{ ...before, deleted: true }];
+    return []/*unchanged*/;
+  };
+
   return {
-    get: (selector?: string) => Promise.resolve(store()[keyFor(selector)] ?? ''),
-    set: (content: string, selector?: string) => {
-      const next = { ...store(), [keyFor(selector)]: content };
-      writeJson(APP_CONTENT_KEY, next);
-      listeners.forEach(emit => emit({ id: keyFor(selector), content }));
-      return Promise.resolve();
+    // every call crosses the Platform bridge, so a refusal is a rejection, never a throw
+    get: async (selector?: string) => { const current = blocks(); return current[resolveAppContent(current, selector)]?.content ?? ''; },
+    // omitted content keeps a block's text (a rename); a block it creates is empty
+    set: async (content: string | undefined, selector?: string, name?: string) => {
+      const next = blocks();
+      const index = resolveAppContent(next, selector);
+      if(index < 0) next.push({ id: newBlockId(next), name: name ?? selectorName(selector), content: content ?? '' });
+      else next[index] = { ...next[index], ...((name !== undefined) ? { name } : {}), ...((content !== undefined) ? { content } : {}) };
+      write(next);
     },
     applyChanges: () => Promise.resolve()/*OT is a Platform concern; the harness only round-trips full content*/,
-    remove: (selector?: string) => {
-      const next = { ...store() }; delete next[keyFor(selector)];
-      writeJson(APP_CONTENT_KEY, next);
-      return Promise.resolve();
+    remove: async (selector?: string) => {
+      const next = blocks();
+      const index = resolveAppContent(next, selector);
+      if(index >= 0) { next.splice(index, 1); write(next); }
     },
-    onChange$: () => makeObservable(() => ({ id: '__default__', content: store().__default__ ?? '' }), listeners),
+    onChange$: (selector?: string) => {
+      const observable = {
+        subscribe(next: ((value: AppContentChange) => void) | Partial<{ next: (value: AppContentChange) => void; }>) {
+          const emit = (typeof next === 'function') ? next : (next.next ?? (() => {}));
+          let seen = blocks();
+          changes(selector, [], seen).forEach(emit);
+          const notify = (current: readonly AppContentBlock[]) => { const prev = seen; seen = [...current]; changes(selector, prev, seen).forEach(emit); };
+          writes.add(notify);
+          return { unsubscribe: () => writes.delete(notify) };
+        },
+        pipe: () => observable,
+      };
+      return observable;
+    },
   };
 };
 

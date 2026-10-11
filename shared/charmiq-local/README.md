@@ -24,7 +24,7 @@ open /tmp/app.html          # or serve /tmp over http://localhost (see below)
 
 | Surface | Local behavior |
 |----|----|
-| `appState` / `appContent` | Backed by `localStorage` — survives a reload |
+| `appState` / `appContent` | Backed by `localStorage` — survives a reload. `appContent` holds named blocks and resolves selectors (`[name='x']`, `[id='x']`, `[n]`, none for the first) and change events (each block's `id` and `name`, `deleted` on removal) as the Platform does |
 | `fetch` | The real `window.fetch` (fine for CORS-friendly APIs like Google's) |
 | `oauth.listAuth` / `getValidAuth` / `revokeAuth` | A paste-an-access-token flow (below), with the same `listAuth` / `getValidAuth({ connectionKey })` shape as the real bridge |
 | `advertise` / `discover` / `exportCommands` | An in-page registry (one page, so siblings see each other) |
