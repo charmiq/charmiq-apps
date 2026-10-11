@@ -16,7 +16,7 @@ const contentBridge = new ContentBridge(charmiq.appContent);
 const configStore = new ConfigStore(charmiq.appState);
 const tabManager = new TabManager(contentBridge, configStore, editorWrapper);
 const toolbar = new Toolbar(tabManager, configStore, editorWrapper);
-const commandSurface = new CommandSurface(tabManager, editorWrapper, contentBridge);
+const commandSurface = new CommandSurface(tabManager, editorWrapper);
 
 // == Init ========================================================================
 const start = async () => {
@@ -30,14 +30,20 @@ const start = async () => {
     DEFAULT_MODE
   );
 
-  // forward User edits to the OT layer AND mirror the post-image into TabManager
-  // so capability subscribers (changes$) see live edits without OT-echo lag
-  editorWrapper.onContentChange((from, to, insertedText) => {
-    const activeTabId = tabManager.getActiveTabId();
-    if(!activeTabId) return;
-    contentBridge.forwardChange(activeTabId, from, to, insertedText);
-    tabManager.notifyLocalEdit(activeTabId, editorWrapper.getValue());
+  // the user's changes go to the active tab's live text, which sends them and keeps
+  // them through everyone else's; undo and redo are its own
+  editorWrapper.onContentChange(changes => tabManager.localChange(changes));
+  editorWrapper.onUndoRedo(kind => tabManager.history(kind));
+
+  // where the active tab's text stands: once it can no longer be saved, say why and
+  // offer the text and a reload (the text stays in the editor, read-only)
+  const notice = document.getElementById('syncNotice')!;
+  tabManager.onActiveStatus(status => {
+    notice.hidden = (status.kind !== 'stopped');
+    if(status.kind === 'stopped') document.getElementById('syncNoticeText')!.textContent = status.message;
   });
+  document.getElementById('syncCopyBtn')!.addEventListener('click', () => void navigator.clipboard.writeText(editorWrapper.getValue()));
+  document.getElementById('syncReloadBtn')!.addEventListener('click', () => window.location.reload());
 
   // react to remote config changes
   configStore.onConfigChange((cfg) => {

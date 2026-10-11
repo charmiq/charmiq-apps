@@ -17,11 +17,15 @@
       "style": "/src/styles.scss"
     },
     "format": "esm",
+    "mounts": { "/shared": "../../shared" },
     "dependencies": {
       "importMap": {
         "rxjs": "https://esm.sh/rxjs@7.8.1",
         "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators",
-        "codemirror": "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js"
+        "codemirror": "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js",
+        "@codemirror/state": "https://esm.sh/@codemirror/state@6.7.6",
+        "@codemirror/collab": "https://esm.sh/@codemirror/collab@6.1.1?deps=@codemirror/state@6.7.6",
+        "@codemirror/commands": "https://esm.sh/@codemirror/commands@6.11.1?deps=@codemirror/state@6.7.6"
       }
     }
   },

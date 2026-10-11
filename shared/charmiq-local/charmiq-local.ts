@@ -1,4 +1,4 @@
-import type { AppContentChange, AppContentGuard, AppContentSnapshot, ContentChange, OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
+import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ContentChange, OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
 
 // the local-dev bridge harness — a stand-in `window.charmiq` so a bridge app can
 // run in a plain browser (opened from a `build-app --harness` build) instead of
@@ -74,7 +74,8 @@ const makeAppState = () => {
 // then each addition, update and deletion; with a selector, that one block appearing,
 // changing or disappearing. Revisions belong to this harness session, as they belong
 // to the Platform's editor: every write to a block gives it a new one, a removed
-// block's is forgotten, and a reload starts over
+// block's is forgotten, and a reload starts over. `edits$()` streams a block's
+// actual edits with the same revisions, naming a tagged write back as `ack`
 type AppContentBlock = Readonly<{ id: string; name?: string; content: string; }>;
 
 /** the index of the block a selector picks, or -1 when none matches */
@@ -137,6 +138,7 @@ const validChanges = (length: number, changes: unknown): ContentChange[] => {
 // --------------------------------------------------------------------------------
 const makeAppContent = () => {
   const writes = new Set<(blocks: readonly AppContentChange[]) => void>();
+  const edited = new Set<(edits: readonly AppContentEdit[]) => void>();
 
   // revisions: `${session}:${n}`, minted for a block when first read and on every write
   const session = Math.random().toString(36).slice(2, 10);
@@ -149,7 +151,7 @@ const makeAppContent = () => {
     revisions.set(id, minted);
     return minted;
   };
-  const withRevisions = (current: readonly AppContentBlock[]): AppContentChange[] => current.map(block => ({ ...block, revision: revisionOf(block.id) }));
+  const withRevisions = (current: readonly AppContentBlock[]): Array<AppContentChange & Readonly<{ revision: string; }>> => current.map(block => ({ ...block, revision: revisionOf(block.id) }));
   const blocks = (): AppContentBlock[] => {
     const stored = readJson<unknown>(APP_CONTENT_KEY, []);
     if(Array.isArray(stored)) return stored as AppContentBlock[];
@@ -163,14 +165,28 @@ const makeAppContent = () => {
       .sort(([a], [b]) => Number(b === DEFAULT_CONTENT_KEY) - Number(a === DEFAULT_CONTENT_KEY))
       .map(([key, content]) => ({ id: convertedBlockId(key), name: selectorName(key), content }));
   };
-  /** stores the blocks, the `written` one with a new revision */
-  const write = (next: AppContentBlock[], written?: string) => {
+  /** stores the blocks, the `written` one with a new revision, made by `made` (its
+   *  edits, and the write's tag) when the write was edits; otherwise its whole text
+   *  is replaced */
+  const write = (next: AppContentBlock[], written?: string, made?: Readonly<{ changes: readonly ContentChange[]; ack?: string; }>) => {
+    const before = new Map(withRevisions(blocks()).map(block => [block.id, block]));
     if(written !== undefined) revisions.delete(written);
     const ids = new Set(next.map(block => block.id));
     [...revisions.keys()].filter(id => !ids.has(id)).forEach(id => revisions.delete(id))/*gone: whatever returns is new*/;
     writeJson(APP_CONTENT_KEY, next);
     const current = withRevisions(next);
     writes.forEach(notify => notify(current));
+
+    const edits: AppContentEdit[] = [];
+    before.forEach((block, id) => { if(!ids.has(id)) edits.push({ kind: 'removed', id, base: block.revision }); });
+    current.forEach(block => {
+      const prior = before.get(block.id);
+      if(!prior) { edits.push({ kind: 'created', id: block.id, revision: block.revision, content: block.content }); return; }
+      if(prior.revision === block.revision) return/*unchanged*/;
+      const changes = ((block.id === written) && made) ? made.changes : [{ from: 0, to: prior.content.length, insert: block.content }];
+      edits.push({ kind: 'changes', id: block.id, base: prior.revision, revision: block.revision, changes, ...(((block.id === written) && made?.ack) ? { ack: made.ack } : {}) });
+    });
+    edited.forEach(notify => notify(edits));
   };
 
   // the changes between two lists of blocks, as one subscription sees them
@@ -205,6 +221,28 @@ const makeAppContent = () => {
       };
       return observable;
     },
+    // the block a selector names now (an `[id='x']` selector names that block whether
+    // or not it exists yet): where it stands, then its edits
+    edits$: (selector?: string) => {
+      const observable = {
+        subscribe(next: ((value: AppContentEdit) => void) | Partial<{ next: (value: AppContentEdit) => void; error: (error: Error) => void; }>) {
+          const emit = (typeof next === 'function') ? next : (next.next ?? (() => {}));
+          const current = withRevisions(blocks());
+          const block = current[resolveAppContent(current, selector)];
+          const id = block?.id ?? selector?.trim().match(/^\[id=['"]([^'"]+)['"]\]$/)?.[1];
+          if(!id) {
+            if(typeof next !== 'function') next.error?.(bridgeError('functions/not-found', `No app-content matches '${selector ?? ''}'.`));
+            return { unsubscribe: () => {} };
+          } /* else -- the block, or the id it will have */
+          emit(block ? { kind: 'created', id, revision: block.revision, content: block.content } : { kind: 'absent', id });
+          const notify = (edits: readonly AppContentEdit[]) => edits.filter(edit => edit.id === id).forEach(emit);
+          edited.add(notify);
+          return { unsubscribe: () => edited.delete(notify) };
+        },
+        pipe: () => observable,
+      };
+      return observable;
+    },
     snapshot: async (selector?: string): Promise<AppContentSnapshot | null> => {
       const current = blocks();
       const block = current[resolveAppContent(current, selector)];
@@ -214,11 +252,12 @@ const makeAppContent = () => {
     // a call's changes apply in order, each position measured after the changes
     // before it, and all or none apply. Guarded, they apply only to the guard's block
     // at the guard's revision; unguarded, a missing block is created, named from a
-    // `[name='x']` selector. There is no other writer here, so there is nothing to
-    // merge
-    applyChanges: async (edits: readonly ContentChange[], selector?: string, guard?: AppContentGuard) => {
+    // `[name='x']` selector. A guarded write may carry a tag, named back by the edit
+    // it makes. There is no other writer here, so there is nothing to merge
+    applyChanges: async (edits: readonly ContentChange[], selector?: string, guard?: AppContentGuard, tag?: AppContentWrite) => {
       const next = blocks();
       let index = resolveAppContent(next, selector);
+      if((tag !== undefined) && ((guard === undefined) || (typeof tag?.editId !== 'string') || !tag.editId)) throw bridgeError('functions/invalid-argument', 'An app-content write tag names an edit id, and comes with a guard.');
       if(guard !== undefined) {
         const { id, revision } = (guard ?? {}) as Partial<Record<keyof AppContentGuard, unknown>>;
         if((typeof id !== 'string') || !id || (typeof revision !== 'string') || !revision) throw bridgeError('functions/invalid-argument', 'An app-content guard names a block id and a revision.');
@@ -228,7 +267,7 @@ const makeAppContent = () => {
       if(index < 0) index = next.push({ id: newBlockId(next), name: selectorName(selector), content: '' }) - 1;
       const content = valid.reduce((text, edit) => text.slice(0, edit.from) + (edit.insert ?? '') + text.slice(edit.to), next[index].content);
       next[index] = { ...next[index], content };
-      write(next, next[index].id);
+      write(next, next[index].id, { changes: valid, ack: tag?.editId });
     },
 
     // every call crosses the Platform bridge, so a refusal is a rejection, never a throw

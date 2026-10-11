@@ -1,4 +1,7 @@
+import { ChangeSet } from '@codemirror/state';
 import { BehaviorSubject, concat, defer, from, Observable, Subject } from 'rxjs';
+
+import type { CollabText, CollabTextStatus } from '/shared/collab-text/collab-text';
 
 import type { ContentBridge, ContentChange } from './content-bridge';
 import { type ConfigStore, DEFAULT_MODE } from './config-store';
@@ -18,10 +21,15 @@ import { composeName, mintSlug, type TabContentChange, type TabId, type TabInfo,
 // write so concurrent migrations resolve without cross-talk.
 //
 // Deletion: ContentBridge filters out platform `deleted=true` events (those are
-// bookkeeping and fire spuriously during first-save). We therefore drive local
-// removal *proactively* in `delete()` — update `tabs`, switch active tab, and
-// clean up appState BEFORE asking the bridge to remove the content block. The
-// tradeoff: a remote client deleting a tab is invisible to us until reload
+// bookkeeping and fire spuriously during first-save). Local removal is therefore
+// driven  *proactively* in `delete()` — update `tabs`, switch active tab, and
+// clean up appState before asking the bridge to remove the content block. The
+// tradeoff: a remote client deleting a tab is invisible in the tab list until
+// reload; the tab's live text says the file was removed and keeps what it holds.
+//
+// Text: each tab's text is its live text's (shared/collab-text), which keeps this
+// client's changes confirmed and rebased over everyone else's. The bridge's change
+// stream carries only identity (names, new tabs) here
 // ********************************************************************************
 // == Constants ===================================================================
 /** display name for the welcome tab created when no content exists */
@@ -52,6 +60,10 @@ export class TabManager {
 
   private readonly tabs = new Map<TabId, Tab>();
   private activeTabId: TabId | null = null;
+  /** each tab's live text, and where it stands */
+  private readonly live = new Map<TabId, CollabText>();
+  private readonly statuses = new Map<TabId, CollabTextStatus>();
+  private onStatusChanged: ((status: CollabTextStatus) => void) | null = null;
 
   /** tracks slugs minted locally so only the creator auto-switches */
   private readonly locallyCreatedSlugs = new Set<TabSlug>();
@@ -60,7 +72,7 @@ export class TabManager {
   private readonly migrationsInFlight = new Set<TabId>();
 
   // reactive surface — fed by `notify()` (tabs / activeTab) and by content
-  // mutations in `applyRemoteContent` / `upsertTab` / `notifyLocalEdit` (changes)
+  // mutations from each tab's live text (`follow`) and the user's (`localChange`)
   private readonly tabsSubject      = new BehaviorSubject<ReadonlyArray<TabInfo>>([]);
   private readonly activeTabSubject = new BehaviorSubject<TabId | null>(null);
   private readonly changesSubject   = new Subject<TabContentChange>();
@@ -73,6 +85,12 @@ export class TabManager {
     this.contentBridge = contentBridge;
     this.configStore = configStore;
     this.editorWrapper = editorWrapper;
+  }
+
+  /** register callback fired with where the active tab's text stands, whenever
+   *  that changes or another tab becomes active */
+  public onActiveStatus(cb: (status: CollabTextStatus) => void): void {
+    this.onStatusChanged = cb;
   }
 
   /** register callback fired whenever the tab set or active tab changes */
@@ -289,8 +307,11 @@ export class TabManager {
       } /* else -- no other tabs */
     }
 
-    // proactive local removal — tabs map, migration tracking, appState
+    // proactive local removal — tabs map, live text, migration tracking, appState
     this.tabs.delete(tabId);
+    this.live.get(tabId)?.dispose();
+    this.live.delete(tabId);
+    this.statuses.delete(tabId);
     this.migrationsInFlight.delete(tabId);
     if(removed.slug !== null) this.configStore.removeTab(removed.slug)/*async*/;
 
@@ -309,8 +330,11 @@ export class TabManager {
 
     this.activeTabId = tabId;
 
-    this.editorWrapper.setValue(tab.content || '');
-    this.editorWrapper.unlock();
+    const live = this.live.get(tabId);
+    this.editorWrapper.setValue(live?.text() ?? tab.content ?? '');
+    if(live?.isEditable()) this.editorWrapper.unlock();
+    else this.editorWrapper.lock();
+    this.onStatusChanged?.(this.statuses.get(tabId) ?? { kind: 'loading' });
 
     // apply the tab's stored mode (slug-less tabs fall back to DEFAULT_MODE)
     if(tab.slug !== null) this.editorWrapper.setMode(this.configStore.getTabMode(tab.slug));
@@ -357,10 +381,7 @@ export class TabManager {
     // surfaces this as slug=null + displayName=''). Apply the content update
     // for existing tabs without disturbing the identity tuple. New ids that
     // arrive name-less still fall through to the migration path
-    if((change.slug === null) && (change.displayName === '') && this.tabs.has(change.id)) {
-      this.applyRemoteContent(change.id, change.content);
-      return;
-    } /* else -- not a name-less echo on an existing tab */
+    if((change.slug === null) && (change.displayName === '') && this.tabs.has(change.id)) return/*its text is its live text's*/;
 
     // legacy migration: slug-less name → mint a slug, rewrite, wait for echo
     if(change.slug === null) {
@@ -392,6 +413,7 @@ export class TabManager {
       mode: DEFAULT_MODE
     });
 
+    if(isNew) this.follow(change.id);
     if(isNew && !this.activeTabId) this.switchTab(change.id);
     this.notify();
 
@@ -445,6 +467,7 @@ export class TabManager {
         content: change.content,
         mode: this.configStore.getTabMode(slug)
       });
+      this.follow(change.id);
 
       // auto-switch only if this client created the tab
       if(this.locallyCreatedSlugs.has(slug)) {
@@ -458,10 +481,8 @@ export class TabManager {
       return;
     } /* else -- existing tab */
 
-    // existing tab — mutate identity-tuple fields in place. Content is left
-    // alone so applyRemoteContent can diff old vs new and emit through
-    // changes$ — clobbering it here would make wasUnchanged always true and
-    // suppress the emission for downstream subscribers (e.g. shader-demo)
+    // existing tab — mutate identity-tuple fields in place; its text is its live
+    // text's
     existing.slug = slug;
     existing.mode = this.configStore.getTabMode(slug);
 
@@ -471,8 +492,6 @@ export class TabManager {
       this.editorWrapper.setMode(this.configStore.getTabMode(slug));
     } /* else -- not a migration completion or not active */
 
-    this.applyRemoteContent(change.id, change.content);
-
     if(change.displayName !== existing.displayName) {
       existing.displayName = change.displayName;
       this.notify();
@@ -481,36 +500,69 @@ export class TabManager {
     } /* else -- no observable change */
   }
 
-  // .. Apply Remote Content ......................................................
-  /** apply a minimal diff for a remote content change to the active tab */
-  // REF: https://prosemirror.net/examples/codemirror/
-  private applyRemoteContent(tabId: TabId, newText: string): void {
+  // .. Live Text .................................................................
+  /** follows a tab's text: its live text tells the tab, and the editor while the
+   *  tab is shown, every change it holds */
+  private follow(tabId: TabId): void {
+    if(this.live.has(tabId)) return;
+    const live = this.contentBridge.live(tabId, {
+      reset: text => {
+        const tab = this.tabs.get(tabId);
+        if(!tab) return;
+        tab.content = text;
+        if(this.activeTabId === tabId) this.editorWrapper.setValue(text);
+        this.emitChange(tabId, tab);
+      },
+      apply: changes => {
+        const tab = this.tabs.get(tabId);
+        if(!tab) return;
+        tab.content = live.text();
+        if(this.activeTabId === tabId) this.editorWrapper.applyChanges(changes);
+        this.emitChange(tabId, tab);
+      },
+      status: status => {
+        this.statuses.set(tabId, status);
+        if(this.activeTabId !== tabId) return;
+        if(live.isEditable()) this.editorWrapper.unlock();
+        else this.editorWrapper.lock();
+        this.onStatusChanged?.(status);
+      },
+    });
+    this.live.set(tabId, live);
+    live.start();
+  }
+
+  /** the user changed the active tab's text: its live text sends it */
+  public localChange(changes: ChangeSet): void {
+    const tabId = this.activeTabId;
+    const live = tabId ? this.live.get(tabId) : undefined;
+    const tab = tabId ? this.tabs.get(tabId) : undefined;
+    if(!tabId || !live || !tab) return;
+    live.local(changes);
+    tab.content = live.text();
+    this.emitChange(tabId, tab);
+  }
+
+  /** undoes or redoes the user's own last change to the active tab */
+  public history(kind: 'undo' | 'redo'): void {
+    const live = this.activeTabId ? this.live.get(this.activeTabId) : undefined;
+    if(kind === 'undo') live?.undo();
+    else live?.redo();
+  }
+
+  /** replaces a tab's whole text, as the user's change: it is sent, and rebased,
+   *  like any other. Resolves once the document has applied it; rejects, with the
+   *  reason, when it cannot be */
+  public async replaceText(tabId: TabId, text: string): Promise<void> {
+    const live = this.live.get(tabId);
     const tab = this.tabs.get(tabId);
-    if(!tab) return;
-
-    const wasUnchanged = (tab.content === newText);
-    tab.content = newText;
-    if(!wasUnchanged) this.emitChange(tabId, tab);
-
-    if(tabId !== this.activeTabId) return;/*not the active tab — just cache it*/
-
-    const curText = this.editorWrapper.getValue();
-    if(newText === curText) return;/*already in sync*/
-
-    // find the minimal changed region
-    let start = 0;
-    let curEnd = curText.length;
-    let newEnd = newText.length;
-
-    while((start < curEnd) && (curText.charCodeAt(start) === newText.charCodeAt(start))) {
-      ++start;
-    }
-    while((curEnd > start) && (newEnd > start) && (curText.charCodeAt(curEnd - 1) === newText.charCodeAt(newEnd - 1))) {
-      curEnd--;
-      newEnd--;
-    }
-
-    this.editorWrapper.replaceRange(newText.slice(start, newEnd), start, curEnd);
+    if(!live || !tab || !live.isEditable()) throw new Error('This file cannot be changed now: it is still loading, or can no longer be saved.');
+    const changes = ChangeSet.of({ from: 0, to: live.text().length, insert: text }, live.text().length);
+    if(this.activeTabId === tabId) this.editorWrapper.applyChanges(changes);
+    live.local(changes);
+    tab.content = live.text();
+    this.emitChange(tabId, tab);
+    await live.whenSaved();
   }
 
   // -- Lookups -------------------------------------------------------------------
@@ -551,18 +603,6 @@ export class TabManager {
 
     const currentActive = this.activeTabSubject.getValue();
     if(currentActive !== this.activeTabId) this.activeTabSubject.next(this.activeTabId);
-  }
-
-  // .. Notify Local Edit .........................................................
-  /** push a local edit's post-image into the cache and the changes$ stream. Called
-   *  from main.ts on every keystroke so capability subscribers (e.g. shader-demo)
-   *  see live edits without waiting for the OT echo */
-  public notifyLocalEdit(tabId: TabId, content: string): void {
-    const tab = this.tabs.get(tabId);
-    if(!tab) return;
-
-    tab.content = content;
-    this.emitChange(tabId, tab);
   }
 
   // .. Emit Content Change .......................................................

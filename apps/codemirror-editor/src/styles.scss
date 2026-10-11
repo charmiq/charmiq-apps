@@ -275,6 +275,22 @@ body {
   display: none;
 }
 
+// == Sync Notice =================================================================
+// shown when the text can no longer be saved: it says why, and offers the text and
+// a reload
+.sync-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--warning-light);
+  border-bottom: 1px solid var(--warning);
+
+  &[hidden] { display: none; }
+  span { flex: 1; overflow-wrap: break-word; }
+}
+
 // == Editor Container ============================================================
 .editor-container {
   flex: 1;

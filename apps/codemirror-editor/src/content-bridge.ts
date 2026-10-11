@@ -1,12 +1,14 @@
-import { race, timer, Observable, Subject } from 'rxjs';
+import { race, timer, Subject } from 'rxjs';
 import { debounceTime, take } from 'rxjs/operators';
 
+import type { AppContentAPI, AppContentChange } from '../../../shared/charmiq';
+import { CollabText, type CollabTextEditor } from '/shared/collab-text/collab-text';
 import { parseName, type TabId, type TabSlug } from './tab-types';
 
-// bridges the CodeMirror editor ↔ appContent OT layer. Owns the discovery phase
-// (wait for initial content to settle) and the forward/apply logic for incremental
-// edits. Parses raw `name` into `{ slug, displayName }` so nothing downstream
-// has to know about the tuple form.
+// bridges the tabs ↔ appContent. Owns the discovery phase (wait for the blocks to
+// settle) and each block's identity: raw `name` parsed into `{ slug, displayName }`
+// so nothing downstream has to know about the tuple form. A tab's text is its live
+// text's (SEE: live()), never the snapshots this stream carries
 // ********************************************************************************
 
 // NOTE: `deleted=true` events are NON-AUTHORITATIVE — the Platform fires them as
@@ -39,32 +41,14 @@ export interface ContentChange {
 /** callback for remote changes arriving from appContent */
 type RemoteChangeCallback = (change: ContentChange) => void;
 
-// == Charmiq API (global) ========================================================
-/** the raw shape emitted by the platform stream; ContentBridge translates it
- *  into the parsed `ContentChange` above before forwarding */
-interface RawContentChange {
-  readonly id: TabId;
-  readonly name: string;
-  readonly content: string;
-  readonly deleted: boolean;
-}
-
-interface CharmiqAppContent {
-  onChange$(): Observable<RawContentChange>;
-  applyChanges(changes: ReadonlyArray<{ from: number; to: number; insert: string; }>, selector: string): Promise<void>;
-  set(content: string | undefined, selector: string, name?: string): Promise<void>;
-  remove(selector: string): Promise<void>;
-}
-
 // == Class =======================================================================
 /** manages the OT content sync between the editor and appContent */
 export class ContentBridge {
-  private readonly appContent: CharmiqAppContent;
+  private readonly appContent: AppContentAPI;
   private onRemoteChange: RemoteChangeCallback | null = null;
-  private discoveryDone = false;
 
   // == Lifecycle =================================================================
-  public constructor(appContent: CharmiqAppContent) {
+  public constructor(appContent: AppContentAPI) {
     this.appContent = appContent;
   }
 
@@ -83,7 +67,7 @@ export class ContentBridge {
       // subscribe to all app-content changes (discovery + ongoing updates). The
       // platform stream carries the raw name; parse into the identity tuple before
       // anyone downstream sees it
-      this.appContent.onChange$().subscribe((raw: RawContentChange) => {
+      this.appContent.onChange$().subscribe((raw: AppContentChange) => {
         contentReceived$.next();/*signal that content arrived (incl. bookkeeping)*/
 
         // filter out platform bookkeeping deletions — see module header. Local
@@ -92,7 +76,7 @@ export class ContentBridge {
         if(raw.deleted) return;
 
         if(this.onRemoteChange) {
-          const { slug, displayName } = parseName(raw.name);
+          const { slug, displayName } = parseName(raw.name ?? '');
           this.onRemoteChange({
             id: raw.id,
             slug,
@@ -109,23 +93,16 @@ export class ContentBridge {
         contentReceived$.pipe(debounceTime(DISCOVERY_DEBOUNCE_MS), take(1)),
         timer(DISCOVERY_TIMEOUT_MS).pipe(take(1))
       ).subscribe(() => {
-        this.discoveryDone = true;
         resolve();
       });
     });
   }
 
-  // == Outbound (editor → appContent) ============================================
-  /** forward a user edit to appContent as an OT change */
-  public forwardChange(tabId: TabId, from: number, to: number, insertedText: string): void {
-    if(!this.discoveryDone) return;/*ignore edits during discovery*/
-
-    this.appContent.applyChanges(
-      [{ from, to, insert: insertedText }],
-      `[id='${tabId}']`
-    ).catch((error: any) => {
-      console.error('failed to apply changes to app-content:', error);
-    });
+  // == Live Text =================================================================
+  /** a tab's text, kept in step with its block by the shared live text (its own
+   *  changes confirmed and rebased over everyone else's) */
+  public live(tabId: TabId, editor: CollabTextEditor): CollabText {
+    return new CollabText(this.appContent, `[id='${tabId}']`, editor);
   }
 
   // == Content CRUD (delegated to appContent) ====================================

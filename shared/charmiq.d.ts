@@ -48,6 +48,18 @@ export type AppContentChange = Readonly<{
 export type AppContentSnapshot = Readonly<{ id: string; content: string; revision: string; }>;
 /** the block and revision a guarded edit applies to */
 export type AppContentGuard = Pick<AppContentSnapshot, 'id' | 'revision'>;
+/** a guarded write's tag: its edit id, named back by the edit it makes */
+export type AppContentWrite = Readonly<{ editId: string; }>;
+
+/** a block's actual edits (SEE: AppContentAPI.edits$): where it stands (`created`,
+ *  or `absent` when the stream opens on no block), each change with the revision it
+ *  applies to (`ack` names your own tagged write), or its removal */
+export type AppContentEdit = Readonly<
+  | { kind: 'created'; id: string; revision: string; content: string; }
+  | { kind: 'changes'; id: string; base: string; revision: string; changes: readonly ContentChange[]; ack?: string; }
+  | { kind: 'removed'; id: string; base: string; }
+  | { kind: 'absent'; id: string; }
+>;
 
 /** incremental text change passed to AppContent.applyChanges */
 export type ContentChange = Readonly<{
@@ -65,6 +77,14 @@ export interface AppContentAPI {
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
    *  @returns Observable that emits the current content as an {@link AppContentChange} */
   onChange$: (selector?: string) => Observable<AppContentChange>;
+  /** a block as a stream of its actual edits, for an editor that keeps unconfirmed
+   *  changes of its own (SEE: shared/collab-text): where it stands (`created`, or
+   *  `absent` when no block matches yet), then each change in order with the
+   *  revision it applies to, naming your own tagged writes, then its removal. An
+   *  `[id='x']` selector follows that block whether or not it exists yet
+   *  @param selector optional selector to identify which app-content to follow
+   *  @returns Observable of the block's {@link AppContentEdit}s */
+  edits$?: (selector?: string) => Observable<AppContentEdit>;
 
   /** the block's current state, or `null` when no block matches. Absent where the
    *  Platform cannot guard edits: check for it before a guarded write
@@ -83,11 +103,12 @@ export interface AppContentAPI {
    *  @param selector optional selector to identify which app-content to update
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
    *  @param guard the snapshot the edits were measured on (SEE: {@link snapshot})
+   *  @param write a guarded write's tag, named back by the edit it makes (SEE: {@link edits$})
    *  @returns Promise that resolves once the editor has applied the edits. Rejects,
    *           having written nothing, with `code` `app/content-conflict` when the
    *           guarded block changed or is gone (read it again by its id), or
    *           `functions/invalid-argument` for an edit outside the block */
-  applyChanges: (changes: readonly ContentChange[], selector?: string, guard?: AppContentGuard) => Promise<void>;
+  applyChanges: (changes: readonly ContentChange[], selector?: string, guard?: AppContentGuard, write?: AppContentWrite) => Promise<void>;
 
   /** get current content value (one-time read). Use onChange$ for reactive updates
    *  instead of polling with get()
@@ -425,34 +446,28 @@ export type CharmIQError = Error & Readonly<{ code?: string; }>;
 export interface CharmIQAPI {
   /** AppContent API for Application text content with operational transforms. Store
    *  plain text directly in the document that supports collaborative editing.
-   *  Separate from AppState which is for configuration (last-write-wins).
+   *  Separate from AppState which is for configuration (last-write-wins). Records
+   *  (a list, a log) change whole lines with a guarded `applyChanges`; a live
+   *  editor, sending every keystroke, follows the block's actual edits through
+   *  `shared/collab-text`, which keeps its unconfirmed typing
    *  @example
-   *  // show what the block holds, whoever changed it (your own writes included).
-   *  // The editor's own update is tagged so it is not sent back as a new edit
-   *  window.charmiq.appContent.onChange$('[0]').subscribe(change => {
-   *    if(!change.deleted && (editor.state.doc.toString() !== change.content)) {
-   *      editor.dispatch({
-   *        changes: { from: 0, to: editor.state.doc.length, insert: change.content },
-   *        annotations: Transaction.remote.of(true)
-   *      });
-   *    }
+   *  // a live editor over one block: CollabText rebases the user's unconfirmed
+   *  // typing over everyone else's edits and keeps it when it cannot be saved
+   *  const live = new CollabText(window.charmiq.appContent, `[id='${blockId}']`, {
+   *    reset: text => editor.setText(text),
+   *    apply: changes => editor.applyChanges(changes),
+   *    status: status => showStatus(status),
    *  });
+   *  live.start();
+   *  editor.onUserChange(changes => live.local(changes));
+   *  // a command that writes resolves once the document has applied its change
+   *  await live.whenSaved();
    *
-   *  // forward the user's changes: positions are in the original text, so the
-   *  // last change goes first and no earlier one shifts it
-   *  editor.onUpdate(update => {
-   *    if(update.docChanged && !update.transactions.some(tr => tr.annotation(Transaction.remote))) {
-   *      const changes = [];
-   *      update.changes.iterChanges((fromA, toA, fromB, toB, text) => {
-   *        changes.unshift({
-   *          from: fromA,
-   *          to: toA,
-   *          insert: text.length ? text.toString() : ''
-   *        });
-   *      });
-   *      window.charmiq.appContent.applyChanges(changes);
-   *    }
-   *  });
+   *  // a record, added to the snapshot it was measured on
+   *  const shown = await window.charmiq.appContent.snapshot('[0]');
+   *  if(shown) await window.charmiq.appContent.applyChanges(
+   *    [{ from: shown.content.length, to: shown.content.length, insert: 'one more\n' }],
+   *    `[id='${shown.id}']`, { id: shown.id, revision: shown.revision });
    */
   appContent: AppContentAPI;
   /** AppState API for application state persistence. Store JSON data directly in the

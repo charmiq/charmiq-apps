@@ -63,11 +63,11 @@ useEffect(() => {
    {
      id: string;       // unique identifier for this app-content block
      content: string;  // the current text
-     deleted?: boolean; // true if the block was removed
+     deleted?: boolean; // the block may have been removed: a reason to check, not proof
    }
    ```
 
-4. **`if(!change.deleted)`** — guard against the block being removed from the document. If someone deletes the `app-content` node, you get one last emission with `deleted: true`.
+4. **`if(!change.deleted)`** — a deletion notice carries no new text, so the reader keeps showing what it has. The notice is a reason to check, not proof: the Platform also sends one while saving a new block. An Application that acts on a removal confirms it first (Tutorial 3).
 
 5. **`return () => sub.unsubscribe()`** — standard React cleanup. When the component unmounts, stop listening.
 

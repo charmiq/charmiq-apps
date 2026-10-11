@@ -20,13 +20,11 @@ import type { TabId } from './tab-types';
 export class CommandSurface {
   private readonly tabManager: TabManager;
   private readonly editorWrapper: EditorWrapper;
-  private readonly contentBridge: ContentBridge;
 
   // == Lifecycle =================================================================
-  public constructor(tabManager: TabManager, editorWrapper: EditorWrapper, contentBridge: ContentBridge) {
+  public constructor(tabManager: TabManager, editorWrapper: EditorWrapper) {
     this.tabManager = tabManager;
     this.editorWrapper = editorWrapper;
-    this.contentBridge = contentBridge;
   }
 
   /** advertise both surfaces — called once from main.ts */
@@ -55,7 +53,7 @@ export class CommandSurface {
       },
       setText: ({ text, tabId }: { text: string; tabId?: string; }) => {
         const resolved = this.tabManager.resolveTabId(tabId);
-        if(resolved === null) return;
+        if(resolved === null) throw new Error(`No tab matches '${tabId ?? ''}'.`);
         return this.setText(text, resolved);
       },
 
@@ -113,14 +111,12 @@ export class CommandSurface {
     return this.editorWrapper.getValue();
   }
 
+  /** replaces a tab's text as the user's own change, kept through others' like any
+   *  edit: resolves once the document has applied it, rejects when it cannot be */
   private async setText(text: string, tabId?: TabId): Promise<void> {
     const targetId = tabId || this.tabManager.getActiveTabId();
-    if(!targetId) return;
-
-    if(targetId === this.tabManager.getActiveTabId()) {
-      this.editorWrapper.setValue(text);
-    } /* else -- target is non-active tab */
-    await this.contentBridge.set(text, `[id='${targetId}']`);
+    if(!targetId) throw new Error('No tab is open.');
+    await this.tabManager.replaceText(targetId, text);
   }
 
   private switchTab(tabId: TabId): boolean {
