@@ -8,7 +8,7 @@ Manifest IDs follow the convention `ai.charmiq.tutorials.<name>` (e.g. `ai.charm
 |---|------|-----------|------|---------|
 | 01 | `hello-app` | — | File structure, ESM, SCSS, React | none |
 | 02 | `reading-data` | 01 | Read document content reactively | `appContent.onChange$()` |
-| 03 | `writing-data` | 02 | Write back to the document | `appContent.set()`, `applyChanges()` |
+| 03 | `writing-data` | 02 | Write back to the document as records, collaboratively and guarded | `appContent.applyChanges()`, `snapshot()` |
 | 04 | `inline-app` | 03 | The inline form: a full HTML document in `app-source` — no folder, no manifest — and why the missing manifest gates it | `discover('charmiq.service.command')`, scopes/consent |
 | 05 | `persistent-state` | 03 | Config that survives reloads | `appState.onChange$()`, `appState.set()` |
 | 06 | `charm-integration` | 05 | A Charm populates `appContent`; the Application renders it live | — |
@@ -57,14 +57,15 @@ Does NOT cover: writing data, multiple app-content blocks, selectors.
 
 ## 03 `writing-data`
 
-**Concept:** The app writes back to the document via `appContent.set()` / `applyChanges()`.
+**Concept:** The app writes back to the document as one writer among many, following the three rules of the public guide (App-Content and App-State §Collaborating): the block is the truth, write records not the whole block, your own writes come back.
 
 **Delta from 02:** Copy 02's files, then:
 
-- **`App.tsx`** — add a `<textarea>` (or simple input) that calls `appContent.set(newContent)` on change. Also demonstrate `applyChanges([{ from, to, insert }])` for incremental edits. Introduce the "guard flag" pattern to avoid infinite loops (`let updating = false`).
-- **`README.md`** — explain: `set()` replaces everything (simple); `applyChanges()` sends deltas (OT-safe, better for collaboration). Show the updating-guard pattern and why it matters.
+- **`records.ts`** — the block as records, one per line (`records`), the whole-line edits that add or remove one (`add`, `remove`), and the guarded write (`write`, `append`): edits measured on a snapshot apply only while the block is still exactly that. The same helpers as the public guide's example.
+- **`App.tsx`** — a shared list: a form adds a record, each item removes its own with the snapshot it was rendered from. The subscription is the only path to the screen; every change replaces what is shown, never skipped by flag. A page without guarded edits shows the list read-only.
+- **`README.md`** — the three rules, then records, guarded writes (an append is measured again, a removal is the user's to retry), showing what the block holds, and writing records.
 
-Key concepts: full replacement vs. incremental changes, OT safety, the update guard.
+Key concepts: you are never the only writer; whole records merge, whole-block writes overwrite; an edit is guarded by what it was measured on; your own writes come back merged.
 
 ---
 
@@ -86,7 +87,7 @@ Key concepts: full replacement vs. incremental changes, OT safety, the update gu
 **Delta from 03:** Copy 03's files, then:
 
 - **`manifest.json`** — add `runtime.appState` with a default (e.g. `{ "theme": "light" }`).
-- **`App.tsx`** — add a theme toggle (light/dark) backed by `appState.set()` / `appState.onChange$()`. Content editing still uses `appContent` from tutorial 03; theme preference uses `appState`.
+- **`App.tsx`** — add a theme toggle (light/dark) backed by `appState.set()` / `appState.onChange$()`. Content editing still uses `appContent` from tutorial 03; theme preference uses `appState`. The theme shown comes from `appState.onChange$()`, never from the toggle's own `set()` (rule 1 of 03).
 - **`README.md`** — explain: `appState` is per-instance, JSON-serializable, last-write-wins (no OT). Good for preferences/config, not for collaborative content. Contrast with `appContent`.
 
 Key distinction: `appContent` = collaborative document data (OT). `appState` = per-instance config (last-write-wins). Use each for what it's designed for.

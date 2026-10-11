@@ -1,4 +1,4 @@
-import type { OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
+import type { AppContentChange, AppContentGuard, AppContentSnapshot, ContentChange, OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
 
 // the local-dev bridge harness — a stand-in `window.charmiq` so a bridge app can
 // run in a plain browser (opened from a `build-app --harness` build) instead of
@@ -70,11 +70,12 @@ const makeAppState = () => {
 // app-content blocks as the Platform holds them: an ordered list, each with an id and
 // an optional name. A selector picks a block as the Platform does -- none for the
 // first, `[n]` by index, `[name='x']` or `[id='x']` -- and every change carries the
-// block's id and name. `onChange$()` with no selector emits every block, then each
-// addition, update and deletion; with a selector, that one block appearing, changing
-// or disappearing
+// block's id, name and revision. `onChange$()` with no selector emits every block,
+// then each addition, update and deletion; with a selector, that one block appearing,
+// changing or disappearing. Revisions belong to this harness session, as they belong
+// to the Platform's editor: every write to a block gives it a new one, a removed
+// block's is forgotten, and a reload starts over
 type AppContentBlock = Readonly<{ id: string; name?: string; content: string; }>;
-type AppContentChange = Readonly<{ id: string; name?: string; content: string; deleted?: boolean; }>;
 
 /** the index of the block a selector picks, or -1 when none matches */
 const resolveAppContent = (blocks: readonly AppContentBlock[], selector?: string): number => {
@@ -113,11 +114,42 @@ const newBlockId = (blocks: readonly AppContentBlock[]): string => {
 };
 
 // --------------------------------------------------------------------------------
-const isSameBlock = (a: AppContentBlock, b: AppContentBlock): boolean => (a.name === b.name) && (a.content === b.content);
+const isSameChange = (a: AppContentChange, b: AppContentChange): boolean => (a.name === b.name) && (a.content === b.content) && (a.revision === b.revision);
+
+/** a refusal as the Platform bridge rejects it: an Error carrying the code */
+const bridgeError = (code: string, message: string): Error => Object.assign(new Error(message), { code });
+
+/** the edits, once the whole payload is checked as the Platform checks it: a list,
+ *  each with integer offsets `0 ≤ from ≤ to ≤ length` (measured after the edits
+ *  before it) and an optional text insert */
+const validChanges = (length: number, changes: unknown): ContentChange[] => {
+  if(!Array.isArray(changes)) throw bridgeError('functions/invalid-argument', 'App-content edits are a list.');
+  let current = length;
+  changes.forEach((change: unknown, index) => {
+    const { from, to, insert } = (change ?? {}) as Partial<Record<keyof ContentChange, unknown>>;
+    if((typeof change !== 'object') || (typeof from !== 'number') || (typeof to !== 'number') || ((insert !== undefined) && (typeof insert !== 'string'))) throw bridgeError('functions/invalid-argument', `App-content edit ${index + 1} is not an edit: from and to are offsets, and insert, when present, is text.`);
+    if(!Number.isInteger(from) || !Number.isInteger(to) || (from < 0) || (from > to) || (to > current)) throw bridgeError('functions/invalid-argument', `App-content edit ${index + 1} (from ${from} to ${to}) is outside the block's ${current} characters.`);
+    current += ((insert as string | undefined)?.length ?? 0) - (to - from);
+  });
+  return changes;
+};
 
 // --------------------------------------------------------------------------------
 const makeAppContent = () => {
-  const writes = new Set<(blocks: readonly AppContentBlock[]) => void>();
+  const writes = new Set<(blocks: readonly AppContentChange[]) => void>();
+
+  // revisions: `${session}:${n}`, minted for a block when first read and on every write
+  const session = Math.random().toString(36).slice(2, 10);
+  let nextRevision = 0;
+  const revisions = new Map<string, string>();
+  const revisionOf = (id: string): string => {
+    const known = revisions.get(id);
+    if(known) return known;
+    const minted = `${session}:${nextRevision++}`;
+    revisions.set(id, minted);
+    return minted;
+  };
+  const withRevisions = (current: readonly AppContentBlock[]): AppContentChange[] => current.map(block => ({ ...block, revision: revisionOf(block.id) }));
   const blocks = (): AppContentBlock[] => {
     const stored = readJson<unknown>(APP_CONTENT_KEY, []);
     if(Array.isArray(stored)) return stored as AppContentBlock[];
@@ -131,21 +163,29 @@ const makeAppContent = () => {
       .sort(([a], [b]) => Number(b === DEFAULT_CONTENT_KEY) - Number(a === DEFAULT_CONTENT_KEY))
       .map(([key, content]) => ({ id: convertedBlockId(key), name: selectorName(key), content }));
   };
-  const write = (next: AppContentBlock[]) => { writeJson(APP_CONTENT_KEY, next); writes.forEach(notify => notify(next)); };
+  /** stores the blocks, the `written` one with a new revision */
+  const write = (next: AppContentBlock[], written?: string) => {
+    if(written !== undefined) revisions.delete(written);
+    const ids = new Set(next.map(block => block.id));
+    [...revisions.keys()].filter(id => !ids.has(id)).forEach(id => revisions.delete(id))/*gone: whatever returns is new*/;
+    writeJson(APP_CONTENT_KEY, next);
+    const current = withRevisions(next);
+    writes.forEach(notify => notify(current));
+  };
 
   // the changes between two lists of blocks, as one subscription sees them
-  const changes = (selector: string | undefined, prev: readonly AppContentBlock[], next: readonly AppContentBlock[]): AppContentChange[] => {
+  const changes = (selector: string | undefined, prev: readonly AppContentChange[], next: readonly AppContentChange[]): AppContentChange[] => {
     if(selector === undefined) {
       const prevById = new Map(prev.map(block => [block.id, block]));
       const nextIds = new Set(next.map(block => block.id));
       return [
-        ...next.filter(block => { const before = prevById.get(block.id); return !before || !isSameBlock(before, block); }),
+        ...next.filter(block => { const before = prevById.get(block.id); return !before || !isSameChange(before, block); }),
         ...prev.filter(block => !nextIds.has(block.id)).map(block => ({ ...block, deleted: true })),
       ];
     } /* else -- one selected block */
     const before = prev[resolveAppContent(prev, selector)];
     const after = next[resolveAppContent(next, selector)];
-    if(after && (!before || (before.id !== after.id) || !isSameBlock(before, after))) return [after];
+    if(after && (!before || (before.id !== after.id) || !isSameChange(before, after))) return [after];
     if(before && !after) return [{ ...before, deleted: true }];
     return []/*unchanged*/;
   };
@@ -155,9 +195,9 @@ const makeAppContent = () => {
       const observable = {
         subscribe(next: ((value: AppContentChange) => void) | Partial<{ next: (value: AppContentChange) => void; }>) {
           const emit = (typeof next === 'function') ? next : (next.next ?? (() => {}));
-          let seen = blocks();
+          let seen: readonly AppContentChange[] = withRevisions(blocks());
           changes(selector, [], seen).forEach(emit);
-          const notify = (current: readonly AppContentBlock[]) => { const prev = seen; seen = [...current]; changes(selector, prev, seen).forEach(emit); };
+          const notify = (current: readonly AppContentChange[]) => { const prev = seen; seen = current; changes(selector, prev, seen).forEach(emit); };
           writes.add(notify);
           return { unsubscribe: () => writes.delete(notify) };
         },
@@ -165,16 +205,30 @@ const makeAppContent = () => {
       };
       return observable;
     },
+    snapshot: async (selector?: string): Promise<AppContentSnapshot | null> => {
+      const current = blocks();
+      const block = current[resolveAppContent(current, selector)];
+      return block ? { id: block.id, content: block.content, revision: revisionOf(block.id) } : null;
+    },
+
     // a call's changes apply in order, each position measured after the changes
-    // before it; a missing block is created, named from a `[name='x']` selector.
-    // There is no other writer here, so there is nothing to merge
-    applyChanges: async (edits: ReadonlyArray<Readonly<{ from: number; to: number; insert?: string; }>>, selector?: string) => {
+    // before it, and all or none apply. Guarded, they apply only to the guard's block
+    // at the guard's revision; unguarded, a missing block is created, named from a
+    // `[name='x']` selector. There is no other writer here, so there is nothing to
+    // merge
+    applyChanges: async (edits: readonly ContentChange[], selector?: string, guard?: AppContentGuard) => {
       const next = blocks();
       let index = resolveAppContent(next, selector);
+      if(guard !== undefined) {
+        const { id, revision } = (guard ?? {}) as Partial<Record<keyof AppContentGuard, unknown>>;
+        if((typeof id !== 'string') || !id || (typeof revision !== 'string') || !revision) throw bridgeError('functions/invalid-argument', 'An app-content guard names a block id and a revision.');
+        if((index < 0) || (next[index].id !== id) || (revisionOf(id) !== revision)) throw bridgeError('app/content-conflict', `App-content ${id} is no longer at revision ${revision}. Nothing was written.`);
+      } /* else -- unguarded */
+      const valid = validChanges((index < 0) ? 0 : next[index].content.length, edits);
       if(index < 0) index = next.push({ id: newBlockId(next), name: selectorName(selector), content: '' }) - 1;
-      const content = edits.reduce((text, edit) => text.slice(0, edit.from) + (edit.insert ?? '') + text.slice(edit.to), next[index].content);
+      const content = valid.reduce((text, edit) => text.slice(0, edit.from) + (edit.insert ?? '') + text.slice(edit.to), next[index].content);
       next[index] = { ...next[index], content };
-      write(next);
+      write(next, next[index].id);
     },
 
     // every call crosses the Platform bridge, so a refusal is a rejection, never a throw
@@ -185,7 +239,7 @@ const makeAppContent = () => {
       const index = resolveAppContent(next, selector);
       if(index < 0) next.push({ id: newBlockId(next), name: name ?? selectorName(selector), content: content ?? '' });
       else next[index] = { ...next[index], ...((name !== undefined) ? { name } : {}), ...((content !== undefined) ? { content } : {}) };
-      write(next);
+      write(next, next[(index < 0) ? (next.length - 1) : index].id);
     },
     remove: async (selector?: string) => {
       const next = blocks();

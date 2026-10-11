@@ -36,8 +36,16 @@ export type AppContentChange = Readonly<{
   id: string;
   name?: string;
   content: string;
+  /** the block's exact state: every change to the block gives it a new revision,
+   *  never one it had before. Absent where the Platform cannot guard edits */
+  revision?: string;
   deleted?: boolean;
 }>;
+
+/** an existing block's exact observed state: what a guarded edit is measured on */
+export type AppContentSnapshot = Readonly<{ id: string; content: string; revision: string; }>;
+/** the block and revision a guarded edit applies to */
+export type AppContentGuard = Pick<AppContentSnapshot, 'id' | 'revision'>;
 
 /** incremental text change passed to AppContent.applyChanges */
 export type ContentChange = Readonly<{
@@ -56,17 +64,28 @@ export interface AppContentAPI {
    *  @returns Observable that emits the current content as an {@link AppContentChange} */
   onChange$: (selector?: string) => Observable<AppContentChange>;
 
+  /** the block's current state, or `null` when no block matches. Absent where the
+   *  Platform cannot guard edits: check for it before a guarded write
+   *  @param selector optional selector to identify which app-content to read
+   *  @returns Promise that resolves to the block's {@link AppContentSnapshot} */
+  snapshot?: (selector?: string) => Promise<AppContentSnapshot | null>;
+
   /** apply edits to the content: the way to change part of a block while others may
    *  be writing too. A call's changes apply in order, each position measured after
-   *  the changes before it (send several from one original text last-first).
-   *  Positions apply to the block's text when the call arrives, which another
-   *  writer may have changed since you read it. Creates the block when the selector
-   *  matches none
+   *  the changes before it (send several from one original text last-first), and
+   *  every one must lie inside the block. With a guard, the edits apply only while
+   *  the block it names still has its revision; otherwise they apply to the block's
+   *  text when the call arrives, which another writer may have changed since you
+   *  read it. Unguarded, a missing block is created; guarded, never
    *  @param changes the edits, in the order they apply
    *  @param selector optional selector to identify which app-content to update
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
-   *  @returns Promise that resolves when changes are applied to the document */
-  applyChanges: (changes: readonly ContentChange[], selector?: string) => Promise<void>;
+   *  @param guard the snapshot the edits were measured on (SEE: {@link snapshot})
+   *  @returns Promise that resolves once the editor has applied the edits. Rejects,
+   *           having written nothing, with `code` `app/content-conflict` when the
+   *           guarded block changed or is gone (read it again by its id), or
+   *           `functions/invalid-argument` for an edit outside the block */
+  applyChanges: (changes: readonly ContentChange[], selector?: string, guard?: AppContentGuard) => Promise<void>;
 
   /** get current content value (one-time read). Use onChange$ for reactive updates
    *  instead of polling with get()

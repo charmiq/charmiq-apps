@@ -14,24 +14,74 @@
     letter-spacing: -0.02em;
   }
 
-  .editor {
-    width: 100%;
-    min-height: 120px;
+  .add {
+    display: flex;
+    gap: 8px;
     margin-top: $spacing;
-    padding: $spacing;
-    font-family: $font-family;
-    font-size: 14px;
-    color: $primary-color;
-    background: white;
-    border: 1px solid $border-color;
+
+    input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 12px;
+      font: inherit;
+      border: 1px solid $border-color;
+      border-radius: $radius;
+
+      &:focus {
+        outline: none;
+        border-color: $accent-color;
+      }
+    }
+  }
+
+  button {
+    padding: 8px 14px;
+    font: inherit;
+    color: white;
+    background: $accent-color;
+    border: none;
     border-radius: $radius;
-    resize: vertical;
-    box-sizing: border-box;
+    cursor: pointer;
+
+    &:hover { background: $accent-hover; }
+  }
+
+  .error, .notice {
+    margin: 8px 0 0;
+    font-size: 13px;
+    text-align: left;
+  }
+  .error { color: $accent-hover; }
+  .notice { color: $text-secondary; }
+
+  .items {
+    margin: $spacing 0 0;
+    padding: 0;
+    list-style: none;
     text-align: left;
 
-    &:focus {
-      outline: none;
-      border-color: $accent-color;
+    li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid $border-color;
+
+      span {
+        flex: 1;
+        min-width: 0;
+        overflow-wrap: break-word;
+      }
+
+      button {
+        padding: 4px 10px;
+        font-size: 13px;
+        color: $text-secondary;
+        background: none;
+        border: 1px solid $border-color;
+
+        &:hover { color: $primary-color; background: none; }
+      }
     }
   }
 }
