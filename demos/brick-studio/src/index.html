@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brick Studio</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+  <div class="studio">
+    <!-- == Stage ============================================================= -->
+    <canvas class="stage" id="stage" aria-label="The build, in 3D. Drag to orbit, right-drag to pan, scroll to zoom."></canvas>
+
+    <!-- == Bar =============================================================== -->
+    <header class="bar">
+      <h1 class="title">Brick Studio</h1>
+      <div class="side">
+        <nav class="tags" aria-label="View">
+          <button class="tag tag--ink" id="fitButton" title="Fit the build" aria-label="Fit the build">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg>
+          </button>
+          <button class="tag tag--azure" id="frontButton">Front</button>
+          <button class="tag tag--yellow" id="topButton">Top</button>
+        </nav>
+        <p class="status" id="status" aria-live="polite">
+          <span id="statusText"></span><span class="status-sep">·</span><button class="status-link" id="resetButton">Reset view</button>
+        </p>
+      </div>
+    </header>
+
+    <!-- == Empty hint ======================================================== -->
+    <p class="hint" id="hint" hidden>Empty baseplate · ask the chat to build something</p>
+
+    <!-- == Credit ============================================================ -->
+    <footer class="credit">
+      Parts <a href="https://library.ldraw.org" target="_blank" rel="noopener noreferrer">LDraw Parts Library</a>
+      · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
+    </footer>
+
+    <!-- == Loading =========================================================== -->
+    <div class="loading" id="loading">
+      <span class="loading-bricks" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="loading-text" id="loadingText">Loading bricks</span>
+    </div>
+  </div>
+</body>
+</html>

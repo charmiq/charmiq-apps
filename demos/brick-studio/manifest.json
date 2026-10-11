@@ -1,0 +1,197 @@
+{
+  "id": "ai.charmiq.demos.brick-studio",
+  "name": "Brick Studio",
+  "description": "A 3D toy-brick build a Charm makes from chat: place parts on a stud grid, check what holds, and look at the result. The build is LDraw text in the document",
+  "requestedScopes": [
+    "appContent.read",
+    "appContent.write",
+    "application.advertise"
+  ],
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
+    },
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.1",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators",
+        "three": "https://esm.sh/three@0.186.1",
+        "three/addons/controls/OrbitControls.js": "https://esm.sh/three@0.186.1/examples/jsm/controls/OrbitControls.js",
+        "three/addons/environments/RoomEnvironment.js": "https://esm.sh/three@0.186.1/examples/jsm/environments/RoomEnvironment.js",
+        "three/addons/loaders/LDrawLoader.js": "https://esm.sh/three@0.186.1/examples/jsm/loaders/LDrawLoader.js",
+        "three/addons/materials/LDrawConditionalLineMaterial.js": "https://esm.sh/three@0.186.1/examples/jsm/materials/LDrawConditionalLineMaterial.js",
+        "three/addons/utils/BufferGeometryUtils.js": "https://esm.sh/three@0.186.1/examples/jsm/utils/BufferGeometryUtils.js"
+      }
+    }
+  },
+  "runtime": {
+    "appContent": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "listParts",
+        "description": "The grid conventions, the catalog parts (width and depth in studs, height in plates) and the colors. Call first",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "grid":   { "type": "string" },
+            "parts":  { "type": "array", "items": { "type": "object" } },
+            "colors": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["grid", "parts", "colors"]
+        }
+      },
+      {
+        "name": "listPlacedParts",
+        "description": "Every part in the build with its position",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "parts":     { "type": "array", "items": { "type": "object" } },
+            "unchecked": { "type": "integer", "description": "Parts off the grid or outside the catalog" }
+          },
+          "required": ["parts"]
+        }
+      },
+      {
+        "name": "addParts",
+        "description": "Place parts. A batch that would collide is refused whole. Returns parts left floating",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "parts": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 400,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "part":     { "type": "string", "description": "Catalog part, e.g. brick-2x4" },
+                  "color":    { "type": "string", "description": "Catalog color, e.g. red" },
+                  "x":        { "type": "integer", "description": "West edge, studs" },
+                  "z":        { "type": "integer", "description": "South edge, studs" },
+                  "level":    { "type": "integer", "minimum": 0, "description": "Bottom, plates" },
+                  "rotation": { "type": "integer", "enum": [0, 90, 180, 270] }
+                },
+                "required": ["part", "color", "x", "z", "level"]
+              }
+            }
+          },
+          "required": ["parts"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "added":    { "type": "integer" },
+            "total":    { "type": "integer" },
+            "floating": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["added", "total"]
+        }
+      },
+      {
+        "name": "removeParts",
+        "description": "Remove the part that fills each given cell",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "at": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "x":     { "type": "integer" },
+                  "z":     { "type": "integer" },
+                  "level": { "type": "integer" }
+                },
+                "required": ["x", "z", "level"]
+              }
+            }
+          },
+          "required": ["at"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "removed": { "type": "array", "items": { "type": "string" } },
+            "empty":   { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["removed"]
+        }
+      },
+      {
+        "name": "clear",
+        "description": "Remove every part",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "removed": { "type": "integer" } },
+          "required": ["removed"]
+        }
+      },
+      {
+        "name": "check",
+        "description": "Find collisions and parts not held up from the baseplate",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "ok":            { "type": "boolean" },
+            "parts":         { "type": "integer" },
+            "collisions":    { "type": "integer" },
+            "collidingPairs":{ "type": "array", "items": { "type": "object" } },
+            "floating":      { "type": "integer" },
+            "floatingParts": { "type": "array", "items": { "type": "string" } },
+            "unchecked":     { "type": "integer" }
+          },
+          "required": ["ok", "parts", "collisions", "floating"]
+        }
+      },
+      {
+        "name": "setView",
+        "description": "Turn the camera, framing the build unless fit is false. Use before a screenshot",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "azimuth":   { "type": "number", "description": "Degrees: 0 looks north from the south, 90 west from the east" },
+            "elevation": { "type": "number", "minimum": 0, "maximum": 90, "description": "Degrees above level" },
+            "fit":       { "type": "boolean" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "azimuth":   { "type": "number" },
+            "elevation": { "type": "number" }
+          },
+          "required": ["azimuth", "elevation"]
+        }
+      },
+      {
+        "name": "getModel",
+        "description": "The build as LDraw text",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "string" }
+      },
+      {
+        "name": "setModel",
+        "description": "Replace the build with LDraw text (LDR or MPD). Returns its check",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "ldraw": { "type": "string" }
+          },
+          "required": ["ldraw"]
+        },
+        "outputSchema": { "type": "object" }
+      }
+    ]
+  }
+}

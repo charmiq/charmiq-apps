@@ -1,0 +1,263 @@
+// toy-brick studio: a warm cream stage, primary brick colors on small outlined
+// tags, Inter for the title and spaced JetBrains Mono capitals for everything
+// else. The stage is the 3D canvas; the chrome floats over it and never covers
+// more than its corners
+// ********************************************************************************
+// == Variables ===================================================================
+// NOTE: --brick-* are set from the LDraw palette by main.ts (one source for the
+//       bricks and the tags); the values here stand until then
+:root {
+  --stage:        #FFFDF2;
+  --baseplate:    #F1ECDD;
+  --ink:          #1D1C19;
+  --ink-soft:     #6F6B60;
+  --outline:      #1D1C19;
+  --tag-text:     #1D1C19;
+  --brick-yellow: #FAC80A;
+  --brick-azure:  #68C3E2;
+  --brick-red:    #B40000;
+  --danger:       #C8361E;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --stage:     #1B1A17;
+    --baseplate: #2A2823;
+    --ink:       #F4F0E4;
+    --ink-soft:  #A39E90;
+    --outline:   #0B0B0A;
+    --danger:    #FF7A5C;
+
+    color-scheme: dark;
+  }
+}
+
+// == Reset =======================================================================
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: var(--stage);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+[hidden] { display: none !important; }
+
+%mono-caps {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+// == Studio ======================================================================
+.studio {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+
+  &:active { cursor: grabbing; }
+}
+
+// == Bar =========================================================================
+.bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px;
+  pointer-events: none/*the stage stays draggable between the chrome*/;
+
+  > * { pointer-events: auto; }
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 26px;
+  white-space: nowrap;
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+// == Tags ========================================================================
+.tags {
+  display: flex;
+  gap: 8px;
+}
+
+.tag {
+  @extend %mono-caps;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  color: var(--tag-text);
+  cursor: pointer;
+  box-shadow: 0 1px 0 var(--outline);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter 120ms ease;
+
+  &:hover { filter: brightness(1.06); }
+  &:active { transform: translateY(1px); box-shadow: 0 0 0 var(--outline); }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  svg { width: 12px; height: 12px; }
+
+  &--ink    { background: var(--outline); color: #FFFDF2; padding: 0; width: 22px; }
+  &--azure  { background: var(--brick-azure); }
+  &--yellow { background: var(--brick-yellow); }
+}
+
+// == Status ======================================================================
+.status {
+  @extend %mono-caps;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 9px;
+  white-space: nowrap;
+
+  &.is-warning #statusText { color: var(--danger); }
+}
+
+.status-link {
+  @extend %mono-caps;
+  font-size: 9px;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover { color: var(--ink); }
+  &:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+}
+
+// == Hint ========================================================================
+.hint {
+  @extend %mono-caps;
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  padding: 0 16px;
+  max-width: 100%;
+  color: var(--ink-soft);
+  text-align: center;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+// == Credit ======================================================================
+.credit {
+  @extend %mono-caps;
+  position: absolute;
+  left: 24px;
+  bottom: 16px;
+  font-size: 8px;
+  color: var(--ink-soft);
+  opacity: 0.75;
+  white-space: nowrap;
+
+  a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+
+    &:hover { color: var(--ink); }
+  }
+}
+
+// == Loading =====================================================================
+.loading {
+  @extend %mono-caps;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--stage);
+  color: var(--ink-soft);
+  transition: opacity 280ms ease;
+
+  &.is-done { opacity: 0; pointer-events: none; }
+  &.is-error .loading-text { color: var(--danger); }
+}
+
+.loading-bricks {
+  display: flex;
+  gap: 6px;
+
+  i {
+    width: 14px;
+    height: 10px;
+    border: 1px solid var(--outline);
+    border-radius: 1px;
+    animation: hop 900ms ease-in-out infinite;
+
+    &:nth-child(1) { background: var(--brick-red); }
+    &:nth-child(2) { background: var(--brick-yellow); animation-delay: 120ms; }
+    &:nth-child(3) { background: var(--brick-azure); animation-delay: 240ms; }
+  }
+}
+
+@keyframes hop {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%           { transform: translateY(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-bricks i { animation: none; }
+}
+
+// == Narrow ======================================================================
+@media (max-width: 420px) {
+  .bar { padding: 14px 16px; }
+  .credit { left: 16px; bottom: 12px; }
+}
