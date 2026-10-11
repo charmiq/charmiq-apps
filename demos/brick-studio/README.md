@@ -41,7 +41,7 @@
   </app-content>
 </iframe-app>
 
-Drag to orbit, right-drag to pan, scroll to zoom.
+Drag to orbit, right-drag to pan, scroll to zoom. The corner button takes the studio full screen; Esc leaves.
 
 
 ## Try It

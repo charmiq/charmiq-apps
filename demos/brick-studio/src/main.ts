@@ -65,6 +65,23 @@ element('frontButton').addEventListener('click', () => void viewer.setView({ azi
 element('topButton').addEventListener('click', () => void viewer.setView({ azimuth: 0, elevation: 89 }, true));
 element('resetButton').addEventListener('click', () => void viewer.setView(DEFAULT_VIEW, true));
 
+// .. Full screen .................................................................
+// the whole studio goes full screen, its controls with it; Esc (the browser's own)
+// or the button leaves. The button shows only where the page may go full screen
+// (an embedding frame allows it; some phones never do)
+const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/;
+const fullscreenButton = element<HTMLButtonElement>('fullscreenButton');
+fullscreenButton.hidden = !document.fullscreenEnabled;
+fullscreenButton.addEventListener('click', () => {
+  if(document.fullscreenElement) void document.exitFullscreen();
+  else studio.requestFullscreen().catch(error => console.error('brick-studio: full screen failed:', error));
+});
+document.addEventListener('fullscreenchange', () => {
+  const full = (document.fullscreenElement === studio);
+  fullscreenButton.setAttribute('aria-pressed', String(full));
+  fullscreenButton.title = full ? 'Leave full screen' : 'Full screen';
+});
+
 // == Init ========================================================================
 const start = async () => {
   try {
