@@ -1,7 +1,7 @@
 {
   "id": "ai.charmiq.tutorials.writing-data",
   "name": "Writing Data",
-  "description": "A shared list: writing whole records to the document with appContent.applyChanges(), as one writer among many",
+  "description": "A shared list: writing lines to the document through its block, as one writer among many",
   "requestedScopes": [
     "appContent.read",
     "appContent.write"

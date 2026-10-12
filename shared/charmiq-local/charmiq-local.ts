@@ -1,3 +1,6 @@
+import { appContentBlocks, type BlockObservableFactory, type BlockObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentBlock';
+import { Observable } from 'rxjs';
+
 import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ContentChange, OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
 
 // the local-dev bridge harness — a stand-in `window.charmiq` so a bridge app can
@@ -67,6 +70,11 @@ const makeAppState = () => {
 };
 
 // == App Content =================================================================
+/** the block layer's streams as the bridge's are: RxJS, so operators apply and an
+ *  error ends the stream and releases what it held */
+const blockObservable: BlockObservableFactory = <T, >(producer: (observer: BlockObserver<T>) => () => void) =>
+  new Observable<T>(subscriber => producer({ next: value => subscriber.next(value), error: failure => subscriber.error(failure) }));
+
 // app-content blocks as the Platform holds them: an ordered list, each with an id and
 // an optional name. A selector picks a block as the Platform does -- none for the
 // first, `[n]` by index, `[name='x']` or `[id='x']` -- and every change carries the
@@ -206,7 +214,7 @@ const makeAppContent = () => {
     return []/*unchanged*/;
   };
 
-  return {
+  const primitives = {
     onChange$: (selector?: string) => {
       const observable = {
         subscribe(next: ((value: AppContentChange) => void) | Partial<{ next: (value: AppContentChange) => void; }>) {
@@ -280,12 +288,37 @@ const makeAppContent = () => {
       else next[index] = { ...next[index], ...((name !== undefined) ? { name } : {}), ...((content !== undefined) ? { content } : {}) };
       write(next, next[(index < 0) ? (next.length - 1) : index].id);
     },
-    remove: async (selector?: string) => {
+    // with a guard, only the guard's block and only at the guard's revision
+    remove: async (selector?: string, guard?: AppContentGuard) => {
       const next = blocks();
       const index = resolveAppContent(next, selector);
+      if(guard !== undefined) {
+        const { id, revision } = (guard ?? {}) as Partial<Record<keyof AppContentGuard, unknown>>;
+        if((typeof id !== 'string') || !id || (typeof revision !== 'string') || !revision) throw bridgeError('functions/invalid-argument', 'An app-content guard names a block id and a revision.');
+        if((index < 0) || (next[index].id !== id) || (revisionOf(id) !== revision)) throw bridgeError('app/content-conflict', `App-content ${id} is no longer at revision ${revision}. Nothing was removed.`);
+      } /* else -- unguarded */
       if(index >= 0) { next.splice(index, 1); write(next); }
     },
   };
+
+  // the block of that name (no name: the first), created in one step when there is
+  // none: an existing block, empty or not, is never written
+  const createBlock = async (name?: string, content = '') => {
+    // a name is stored without the spaces around it, as the Platform's is; a name of
+    // nothing else is refused before anything is written
+    const named = name?.trim();
+    if((named !== undefined) && !/^[^'"\]\[]+$/.test(named)) throw bridgeError('functions/invalid-argument', 'An app-content name is text without quotes or brackets.');
+    const next = blocks();
+    const index = resolveAppContent(next, (named !== undefined) ? `[name='${named}']` : undefined);
+    if(index >= 0) return { id: next[index].id, created: false };
+    next.push({ id: newBlockId(next), ...((named !== undefined) ? { name: named } : {}), content });
+    write(next, next[next.length - 1].id);
+    return { id: next[next.length - 1].id, created: true };
+  };
+
+  // the blocks an Application reads and writes, from the Platform's own layer over
+  // these primitives: one behavior with the bridge (SEE: the CLI's harness bundler)
+  return { ...primitives, ...appContentBlocks({ ...primitives, createBlock }, blockObservable) };
 };
 
 // == OAuth =======================================================================

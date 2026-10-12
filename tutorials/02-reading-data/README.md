@@ -17,7 +17,7 @@ The text above lives in the document, not in the Application. Edit the `app-cont
 | File | Change |
 |------|--------|
 | [`manifest.json`](charmiq://./manifest.json) | Added `runtime.appContent` — declares the content this app reads |
-| [`App.tsx`](charmiq://./App.tsx) | Replaced the counter with a `window.charmiq.appContent.onChange$()` subscription |
+| [`App.tsx`](charmiq://./App.tsx) | Replaced the counter with a `window.charmiq.appContent.block$()` subscription |
 | [`styles.scss`](charmiq://./styles.scss) | Styled the content display area |
 | [`index.html`](charmiq://./index.html) | Unchanged |
 | [`main.tsx`](charmiq://./main.tsx) | Unchanged |
@@ -37,17 +37,15 @@ The text above lives in the document, not in the Application. Edit the `app-cont
 
 The `runtime.appContent` block tells CharmIQ that this Application expects content from the document. The key (`"message"`) names the field, `"type": "text"` declares it as plain text.
 
-## The subscription — `onChange$()`
+## The subscription — `block$()`
 
 This is the new code in `App.tsx`:
 
 ```tsx 9fKp2mRtNw
-const [content, setContent] = useState('');
+const [block, setBlock] = useState<AppContentBlock | null>();
 
 useEffect(() => {
-  const sub = window.charmiq.appContent.onChange$().subscribe(change => {
-    if(!change.deleted) setContent(change.content);
-  });
+  const sub = window.charmiq.appContent.block$().subscribe({ next: setBlock, error: setFailure });
   return () => sub.unsubscribe();
 }, []);
 ```
@@ -56,18 +54,11 @@ useEffect(() => {
 
 1. **`window.charmiq`** — the global CharmIQ SDK, injected into every Application iframe automatically. You don't import it.
 
-2. **`appContent.onChange$()`** — returns an RxJS Observable. It fires immediately with the current content, then again every time the content changes (by you, by a collaborator, by a Charm).
+2. **`appContent.block$()`** — the Application's block, kept current. It gives the block as it stands now, then again every time it changes (by you, by a collaborator, by a Charm). With no argument it is the Application's first block; pass a selector (`block$("[name='message']")`) to name another.
 
-3. **The `change` object** has this shape:
-   ```ts
-   {
-     id: string;       // unique identifier for this app-content block
-     content: string;  // the current text
-     deleted?: boolean; // the block may have been removed: a reason to check, not proof
-   }
-   ```
+3. **The block** has the text (`block.text`, and `block.lines`), its `id`, and the writes Tutorial 3 uses. It is `null` while the document holds no block, and becomes `null` the moment the block is removed — the Platform knows exactly when that happens, so there is nothing to check.
 
-4. **`if(!change.deleted)`** — a deletion notice carries no new text, so the reader keeps showing what it has. The notice is a reason to check, not proof: the Platform also sends one while saving a new block. An Application that acts on a removal confirms it first (Tutorial 3).
+4. **`error`** — a read the Platform refuses (the Application did not declare `appContent.read`, say) arrives here, with a `code`; the Application says why instead of showing nothing.
 
 5. **`return () => sub.unsubscribe()`** — standard React cleanup. When the component unmounts, stop listening.
 
@@ -75,7 +66,7 @@ useEffect(() => {
 
 **The app doesn't own the data.** In Hello App, the counter was local React state — it reset on every reload. Here, the content persists in the document. Reload the page and it's still there.
 
-**`onChange$` fires immediately.** You don't need a separate "load" call. Subscribe once and you get the current value plus all future changes. This is a reactive pattern — no polling.
+**`block$` fires immediately.** You don't need a separate "load" call. Subscribe once and you get the current value plus all future changes. This is a reactive pattern — no polling.
 
 **This is read-only.** The app displays content but doesn't write it. Editing happens outside the app (directly in the document, or via a Charm). The next tutorial adds writing.
 

@@ -69,7 +69,58 @@ export type ContentChange = Readonly<{
 }>;
 
 // --------------------------------------------------------------------------------
+/** a block as it stands, with the writes measured on it. Every write is guarded by
+ *  this block: if the block has changed since, it rejects with `code`
+ *  `app/content-conflict`, writing nothing (except `appendLine`, which measures
+ *  again and resends on its own) */
+export type AppContentBlock = Readonly<{
+  id: string;
+  /** the block's exact state */
+  revision: string;
+  text: string;
+  /** the text as lines, without the line break that ends each */
+  lines: readonly string[];
+
+  /** guarded edits of any range, each measured after the ones before it */
+  edit: (changes: readonly ContentChange[]) => Promise<void>;
+  /** adds a line after the last (a line break first when the text does not end
+   *  its last line); measured again and resent if another writer got there first */
+  appendLine: (line: string) => Promise<void>;
+  /** removes the line at `index`, with its line break */
+  removeLine: (index: number) => Promise<void>;
+  /** replaces the text of the line at `index` */
+  replaceLine: (index: number, line: string) => Promise<void>;
+  /** makes the block these lines, each ending its line, writing only the runs of
+   *  lines that differ (refused when the block changed since, even when nothing
+   *  differs; refused with `functions/out-of-range`, writing nothing, when the
+   *  lines differ too much to tell which stayed the same) */
+  setLines: (lines: readonly string[]) => Promise<void>;
+  /** removes the block from the document, refused when it changed since */
+  remove: () => Promise<void>;
+}>;
+
 export interface AppContentAPI {
+  /** the Application's block, kept current: the block the selector names (no
+   *  selector: the first), followed by its id, or `null` while there is none. Once
+   *  it is removed, the next block the selector names is followed. A refused read
+   *  errors the stream with its `code`
+   *  @example
+   *  window.charmiq.appContent.block$().subscribe(block => show(block ? block.text : 'nothing yet'));
+   *  // later, from the block shown
+   *  await block.appendLine('one more');
+   *  @param selector optional selector (e.g. "[name='list']", "[id='xyz']") */
+  block$: (selector?: string) => Observable<AppContentBlock | null>;
+  /** every block the selector names (no selector: every block), in the order each
+   *  first appeared: several blocks of one name are each given
+   *  @param selector optional `[name='x']` or `[id='x']` */
+  blocks$: (selector?: string) => Observable<AppContentBlock[]>;
+  /** the block named `name` (no name: the first; spaces around a name are dropped)
+   *  when one exists, its text kept whatever it is, otherwise a new one holding
+   *  `text`. It gives the block back, so
+   *  it needs `appContent.read` as well as `appContent.write`. Two collaborators
+   *  creating one at the same moment each make one: `blocks$` shows both */
+  create: (text: string, name?: string) => Promise<AppContentBlock>;
+
   /** Observable stream of content changes from the document: the source of truth
    *  to render from. Emits the current content, then on every change by anyone,
    *  including your own writes as they come back alongside others' edits
@@ -448,24 +499,17 @@ export type CharmIQError = Error & Readonly<{ code?: string; }>;
 export interface CharmIQAPI {
   /** AppContent API for Application text content with operational transforms. Store
    *  plain text directly in the document that supports collaborative editing.
-   *  Separate from AppState which is for configuration (last-write-wins). Change a
-   *  block with guarded text actions: `applyChanges` inserts, deletes or replaces
-   *  any range, measured on the snapshot it names, and is refused whole when the
-   *  block has changed since. A live text editor, whose typing runs ahead of
-   *  confirmation, also follows the block's actual edits (`edits$`) and tags its
-   *  writes (SEE: apps/codemirror-editor)
+   *  Separate from AppState which is for configuration (last-write-wins). Read and
+   *  write it as blocks (`block$`, `blocks$`, `create`): each write is measured on
+   *  the block it is called on, and refused whole when the block has changed since.
+   *  A live text editor, whose typing runs ahead of confirmation, also follows the
+   *  block's actual edits (`edits$`) and tags its writes (SEE: apps/codemirror-editor)
    *  @example
-   *  // append a line to the snapshot it was measured on: refused, writing nothing,
-   *  // if the block changed since. A text that does not end its last line gets a
-   *  // line break first, so the new line never joins it
-   *  const shown = await window.charmiq.appContent.snapshot('[0]');
-   *  if(shown) {
-   *    const end = shown.content.length;
-   *    const lead = (shown.content && !shown.content.endsWith('\n')) ? '\n' : '';
-   *    await window.charmiq.appContent.applyChanges(
-   *      [{ from: end, to: end, insert: `${lead}one more\n` }],
-   *      `[id='${shown.id}']`, { id: shown.id, revision: shown.revision });
-   *  }
+   *  // the Application's block, kept current (null while there is none)
+   *  window.charmiq.appContent.block$().subscribe(block => show(block));
+   *  // a write through the block shown, measured on it: refused, writing nothing,
+   *  // if the block changed since (appendLine measures again on its own)
+   *  await block.appendLine('one more');
    */
   appContent: AppContentAPI;
   /** AppState API for application state persistence. Store JSON data directly in the
