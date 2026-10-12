@@ -52,8 +52,8 @@ export type AppContentGuard = Pick<AppContentSnapshot, 'id' | 'revision'>;
 export type AppContentWrite = Readonly<{ editId: string; }>;
 
 /** a block's actual edits (SEE: AppContentAPI.edits$): where it stands (`created`,
- *  or `absent` when the stream opens on no block), each change with the revision it
- *  applies to (`ack` names your own tagged write), or its removal */
+ *  or `absent` when an `[id='x']` stream opens on no block), each change with the
+ *  revision it applies to (`ack` names your own tagged write), or its removal */
 export type AppContentEdit = Readonly<
   | { kind: 'created'; id: string; revision: string; content: string; }
   | { kind: 'changes'; id: string; base: string; revision: string; changes: readonly ContentChange[]; ack?: string; }
@@ -77,11 +77,13 @@ export interface AppContentAPI {
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
    *  @returns Observable that emits the current content as an {@link AppContentChange} */
   onChange$: (selector?: string) => Observable<AppContentChange>;
-  /** a block as a stream of its actual edits, for an editor that keeps unconfirmed
-   *  changes of its own (SEE: shared/collab-text): where it stands (`created`, or
-   *  `absent` when no block matches yet), then each change in order with the
-   *  revision it applies to, naming your own tagged writes, then its removal. An
-   *  `[id='x']` selector follows that block whether or not it exists yet
+  /** a block as a stream of its actual edits, for a live text editor that keeps
+   *  unconfirmed changes of its own (SEE: apps/codemirror-editor): where it stands
+   *  (`created`), then each change in order with the revision it applies to, naming
+   *  your own tagged writes, then its removal. An `[id='x']` selector follows that
+   *  block whether or not it exists yet, opening with `absent` when it does not;
+   *  any other selector names the block it matches now, and fails with
+   *  `functions/not-found` when none does
    *  @param selector optional selector to identify which app-content to follow
    *  @returns Observable of the block's {@link AppContentEdit}s */
   edits$?: (selector?: string) => Observable<AppContentEdit>;
@@ -446,28 +448,24 @@ export type CharmIQError = Error & Readonly<{ code?: string; }>;
 export interface CharmIQAPI {
   /** AppContent API for Application text content with operational transforms. Store
    *  plain text directly in the document that supports collaborative editing.
-   *  Separate from AppState which is for configuration (last-write-wins). Records
-   *  (a list, a log) change whole lines with a guarded `applyChanges`; a live
-   *  editor, sending every keystroke, follows the block's actual edits through
-   *  `shared/collab-text`, which keeps its unconfirmed typing
+   *  Separate from AppState which is for configuration (last-write-wins). Change a
+   *  block with guarded text actions: `applyChanges` inserts, deletes or replaces
+   *  any range, measured on the snapshot it names, and is refused whole when the
+   *  block has changed since. A live text editor, whose typing runs ahead of
+   *  confirmation, also follows the block's actual edits (`edits$`) and tags its
+   *  writes (SEE: apps/codemirror-editor)
    *  @example
-   *  // a live editor over one block: CollabText rebases the user's unconfirmed
-   *  // typing over everyone else's edits and keeps it when it cannot be saved
-   *  const live = new CollabText(window.charmiq.appContent, `[id='${blockId}']`, {
-   *    reset: text => editor.setText(text),
-   *    apply: changes => editor.applyChanges(changes),
-   *    status: status => showStatus(status),
-   *  });
-   *  live.start();
-   *  editor.onUserChange(changes => live.local(changes));
-   *  // a command that writes resolves once the document has applied its change
-   *  await live.whenSaved();
-   *
-   *  // a record, added to the snapshot it was measured on
+   *  // append a line to the snapshot it was measured on: refused, writing nothing,
+   *  // if the block changed since. A text that does not end its last line gets a
+   *  // line break first, so the new line never joins it
    *  const shown = await window.charmiq.appContent.snapshot('[0]');
-   *  if(shown) await window.charmiq.appContent.applyChanges(
-   *    [{ from: shown.content.length, to: shown.content.length, insert: 'one more\n' }],
-   *    `[id='${shown.id}']`, { id: shown.id, revision: shown.revision });
+   *  if(shown) {
+   *    const end = shown.content.length;
+   *    const lead = (shown.content && !shown.content.endsWith('\n')) ? '\n' : '';
+   *    await window.charmiq.appContent.applyChanges(
+   *      [{ from: end, to: end, insert: `${lead}one more\n` }],
+   *      `[id='${shown.id}']`, { id: shown.id, revision: shown.revision });
+   *  }
    */
   appContent: AppContentAPI;
   /** AppState API for application state persistence. Store JSON data directly in the
