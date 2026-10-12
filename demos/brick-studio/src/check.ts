@@ -22,8 +22,8 @@ export type CheckResult = Readonly<{
 }>;
 
 // == Constants ===================================================================
-/** the most collisions or floating parts a result lists (the counts stay exact) */
-const MAX_LISTED = 12;
+/** the most parts a result or a refusal names in each list (the counts stay exact) */
+export const MAX_LISTED = 12;
 
 // == Check =======================================================================
 export const checkModel = (model: Model): CheckResult => {

@@ -1,4 +1,4 @@
-import { checkModel, describePlacement, type CheckResult } from './check';
+import { checkModel, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, frameKey, getColor, getPart, getShape, toRotation, type Placement } from './grid';
 import { appendLines, deleteLines, EMPTY_MODEL, MAX_PARTS, parseModel, placementLine, READ_IN_PART, serializeModel, type Model, type ModelLayout } from './model';
@@ -96,12 +96,26 @@ export class Build {
       const { model, layout } = editable(text);
       if((partCount(model) + added.length) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
 
-      // refuse any collision the batch introduces
+      // refuse any collision the batch introduces. A part identical to one already in
+      // the build was most likely added by an earlier call (one whose answer was lost),
+      // and one listed twice is a slip: each is named as such, not as a collision
       const next: Model = { ...model, placements: [...model.placements, ...added] };
       const before = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
       const result = checkModel(next);
-      const introduced = result.collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`));
-      if(introduced.length > 0) throw new BuildError('Nothing was added: these parts would collide.\n' + introduced.slice(0, 12).map(pair => `${pair.b} overlaps ${pair.a}`).join('\n'));
+      const introduced = result.collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`) && (pair.a !== pair.b)/*a repeat, named below*/);
+      const existing = new Set(model.placements.map(describePlacement));
+      const listed = new Set<string>();
+      const placed: string[] = [], repeated: string[] = [];
+      for(const name of added.map(describePlacement)) {
+        if(existing.has(name)) placed.push(name);
+        else if(listed.has(name)) repeated.push(name);
+        listed.add(name);
+      }
+      if((placed.length + repeated.length + introduced.length) > 0) throw new BuildError(['Nothing was added.',
+        ...refusal('Already placed (an earlier call added them; leave them out):', placed),
+        ...refusal('Listed twice in this call:', repeated),
+        ...refusal('These parts would collide:', introduced.map(pair => `${pair.b} overlaps ${pair.a}`)),
+      ].join('\n'));
 
       const addedNames = new Set(added.map(describePlacement));
       outcome = { added: added.length, total: partCount(next), floating: result.floating.filter(name => addedNames.has(name)) };
@@ -210,6 +224,10 @@ const toPlacement = (item: unknown): Placement | string => {
   if(turn === undefined) return 'rotation must be 0, 90, 180 or 270';
   return { part, color, x, z, level, rotation: turn };
 };
+
+/** one section of a refusal: its heading and a bounded list, or nothing */
+const refusal = (heading: string, lines: ReadonlyArray<string>): string[] =>
+  (lines.length < 1) ? [] : [heading, ...lines.slice(0, MAX_LISTED), ...((lines.length > MAX_LISTED) ? [`and ${lines.length - MAX_LISTED} more`] : [])];
 
 const isInteger = (value: unknown): value is number => (typeof value === 'number') && Number.isInteger(value);
 
