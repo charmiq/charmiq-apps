@@ -120,20 +120,22 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'glass-1x2x3', ldraw: '60602', kind: 'glass', frame: '60593' },
   { key: 'glass-1x4x3', ldraw: '60603', kind: 'glass', frame: '60594' },
 
+  // a plant or rock is named without a size: its foliage or points spread past its
+  // base, and its listParts row gives the cells it fills
   { key: 'tree-pine-small', ldraw: '2435',  kind: 'plant' },
   { key: 'tree-pine',       ldraw: '3471',  kind: 'plant' },
   { key: 'tree-oval',       ldraw: '3470',  kind: 'plant' },
   { key: 'tree-tall',       ldraw: '3778',  kind: 'plant' },
   { key: 'bush',            ldraw: '6064b', kind: 'plant' },
-  { key: 'plant-leaves-1x1', ldraw: '6255', kind: 'plant' },
-  { key: 'bamboo-1x1',      ldraw: '30176', kind: 'plant' },
-  { key: 'leaves-plate-1x1', ldraw: '32607', kind: 'plant' },
+  { key: 'leafy-plant',     ldraw: '6255',  kind: 'plant' },
+  { key: 'bamboo',          ldraw: '30176', kind: 'plant' },
+  { key: 'leaf-plate',      ldraw: '32607', kind: 'plant' },
   { key: 'flower-plate-1x1', ldraw: '24866', kind: 'plant' },
   { key: 'grass-stem',      ldraw: '15279', kind: 'plant' },
 
   { key: 'rock-4x4',        ldraw: '42284', kind: 'rock' },
-  { key: 'crystal-1x1',     ldraw: '30385', kind: 'rock' },
-  { key: 'crystal-2x2',     ldraw: '30213', kind: 'rock' },
+  { key: 'crystal-small',   ldraw: '30385', kind: 'rock' },
+  { key: 'crystal-large',   ldraw: '30213', kind: 'rock' },
 
   { key: 'fence-lattice-1x4x1', ldraw: '3633',  kind: 'fence' },
   { key: 'fence-lattice-1x4x2', ldraw: '3185',  kind: 'fence' },
