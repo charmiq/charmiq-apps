@@ -39,6 +39,8 @@ export type PartShape = Readonly<{
   /** plates from the part's bottom up to its LDraw origin (its height, for a part
    *  whose origin is on its top face) */
   base: number;
+  /** a glass pane's LDU below its frame's origin (SEE: parts.generated.ts) */
+  drop?: number;
   studs: ReadonlyArray<Cell>;
   /** the cells the part fills, as [x, z, bottom, top] levels from its own bottom
    *  (top exclusive) */
@@ -126,7 +128,7 @@ export const ldrawPosition = (shape: PartShape, placement: Placement): readonly 
   const [cornerX, cornerZ] = cornerFromOrigin(shape, placement.rotation);
   return [
     (placement.x - cornerX) * LDU_PER_STUD,
-    -(placement.level + shape.base) * LDU_PER_PLATE,
+    (-(placement.level + shape.base) * LDU_PER_PLATE) + (shape.drop ?? 0),
     (placement.z - cornerZ) * LDU_PER_STUD,
   ];
 };
@@ -136,7 +138,7 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
   const [cornerX, cornerZ] = cornerFromOrigin(shape, rotation);
   const x = (position[0] / LDU_PER_STUD) + cornerX;
   const z = (position[2] / LDU_PER_STUD) + cornerZ;
-  const level = (-position[1] / LDU_PER_PLATE) - shape.base;
+  const level = (-(position[1] - (shape.drop ?? 0)) / LDU_PER_PLATE) - shape.base;
   if(!isWhole(x) || !isWhole(z) || !isWhole(level)) return undefined;
   return { x: Math.round(x), z: Math.round(z), level: Math.round(level) };
 };

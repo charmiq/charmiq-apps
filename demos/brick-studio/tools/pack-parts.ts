@@ -28,6 +28,8 @@ const BASE_INSET = 2/*LDU*/;
 /** how thick a part must be in a cell to fill any level there (less is a measuring
  *  sliver) */
 const SLIVER = 1/*LDU*/;
+/** how deep a pane may sit into its frame's sill (the groove that holds it) */
+const SILL_GROOVE = LDU_PER_PLATE / 2/*LDU*/;
 
 const SOURCE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
 
@@ -193,15 +195,39 @@ const gridSpan = (min: number, max: number, baseMin: number, baseMax: number): r
   ];
 };
 
+/** a part's body, walked from its own file */
+const bodyOfPart = (library: string, ldraw: string): Measure => {
+  const walked: Walk = { faces: [], studs: [], discs: [] };
+  walk(library, `${ldraw}.dat`, IDENTITY, walked);
+  return bodyOf(walked);
+};
+
+// --------------------------------------------------------------------------------
+/** how far (LDU) a glass pane sits below its frame's origin. A pane drawn at the
+ *  frame's origin that already reaches the frame's sill (seated in its groove)
+ *  stays; one that stops short of it (the 1x4x3's, which hangs from pins) drops
+ *  onto it. The sill is the bottom of the opening, the widest open span between
+ *  the frame's surfaces straight down through its origin */
+const paneDrop = (library: string, pane: string, frame: string): number => {
+  const surfaces = [...new Set(crossings(bodyOfPart(library, frame).triangles, 0, 0).map(y => Math.round(y * 100) / 100))].sort((a, b) => a - b);
+  let sill = Number.NaN, widest = 0;
+  for(let index=1; index<surfaces.length; index++) {
+    const span = surfaces[index] - surfaces[index - 1];
+    if(span > widest) { widest = span; sill = surfaces[index]; }
+  }
+  const short = sill - bodyOfPart(library, pane).maxY/*LDU the pane stops above the sill*/;
+  if(!(short > -SILL_GROOVE)) throw new Error(`${pane}: the pane reaches into the sill of its frame ${frame} past a groove.`);
+  return Math.max(0, Math.round(short * 100) / 100);
+};
+
+// --------------------------------------------------------------------------------
 /** footprint (studs), height (plates), origin, base and top-stud cells of one part,
  *  from the footprint's minimum corner; -y is up (LDraw). A part that reaches beyond
  *  whole studs or levels (a tree) takes every cell and level it reaches into, laid
  *  out from its base */
 const measurePart = (library: string, part: CatalogPart) => {
   const { ldraw } = part;
-  const walked: Walk = { faces: [], studs: [], discs: [] };
-  walk(library, `${ldraw}.dat`, IDENTITY, walked);
-  const body = bodyOf(walked);
+  const body = bodyOfPart(library, ldraw);
 
   const base = body.maxY / LDU_PER_PLATE/*plates from the origin down to the bottom*/;
   if(!isWhole(base)) throw new Error(`${ldraw}: bottom ${base} plates below the origin is not on a level.`);
@@ -334,9 +360,9 @@ writeFileSync(join(SOURCE_DIR, 'parts.ldr'), pack);
 
 // .. Facts .......................................................................
 const measured = Object.fromEntries(CATALOG.filter(part => !part.frame).map(part => [part.ldraw, measurePart(library, part)]));
-// a pane takes its frame's grid shape (the two share an origin) and fills nothing:
-// it sits in the frame's opening
-const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.ldraw, { ...measured[part.frame], studs: [], fill: [] }]] : [])) };
+// a pane takes its frame's grid shape and fills nothing: it sits in the frame's
+// opening, dropped to the frame's sill
+const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.ldraw, { ...measured[part.frame], studs: [], fill: [], drop: paneDrop(library, part.ldraw, part.frame) }]] : [])) };
 
 const config = readFileSync(join(library, 'LDConfig.ldr'), 'utf8');
 const colors = Object.fromEntries(COLORS.map(color => {
@@ -352,8 +378,9 @@ const facts = [
   '/** footprint in studs along x (`width`) and z (`depth`), height in plates, the LDraw',
   ' *  origin in studs from the footprint\'s minimum corner and its `base` in plates above',
   ' *  the part\'s bottom, the top-stud cells and the filled cells ([x, z, bottom level,',
-  ' *  top level exclusive]), all at rotation 0, keyed by LDraw file stem */',
-  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; }>>> = ${JSON.stringify(geometry)};`,
+  ' *  top level exclusive]), all at rotation 0, and a glass pane\'s `drop` (LDU) below',
+  ' *  its frame\'s origin, keyed by LDraw file stem */',
+  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; drop?: number; }>>> = ${JSON.stringify(geometry)};`,
   '',
   '/** LDConfig color value, keyed by LDraw color code */',
   `export const COLOR_VALUES: Readonly<Record<number, string>> = ${JSON.stringify(colors, null, 2)};`,
