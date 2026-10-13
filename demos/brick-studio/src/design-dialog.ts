@@ -75,28 +75,33 @@ export class DesignDialog {
     const name = input('designName', 'text', 'Name', this.lastName);
     const message = paragraph('designs-message');
     const save = button('Save', 'designs-primary', 'submit');
+    const changeFolder = button('Change folder', 'designs-link', 'button', () => { this.lastName = name.value; this.path = folder.id ? [TOP_OF_DRIVE, folder] : [TOP_OF_DRIVE]; this.search = ''; this.show({ kind: 'choose' }); });
+    const cancel = button('Cancel', 'designs-secondary', 'button', () => this.dialog.close());
     const form = element('form', { className: 'designs-form' },
       heading('Save design'),
       label('Name', name),
-      element('p', { className: 'designs-where' }, 'In ', element('strong', {}, folder.name), ' ',
-        button('Change folder', 'designs-link', 'button', () => { this.lastName = name.value; this.path = folder.id ? [TOP_OF_DRIVE, folder] : [TOP_OF_DRIVE]; this.search = ''; this.show({ kind: 'choose' }); })),
+      element('p', { className: 'designs-where' }, 'In ', element('strong', {}, folder.name), ' ', changeFolder),
       message,
-      actions(button('Cancel', 'designs-secondary', 'button', () => this.dialog.close()), save));
+      actions(cancel, save));
 
+    // the whole form waits while saving; a save that lands stays that way until the
+    // dialog closes, so nothing in it comes back to life in between
     let replace = false;
     form.addEventListener('submit', event => {
       event.preventDefault();
-      void this.run(message, [save], async () => {
+      save.textContent = 'Saving…';
+      void this.run(message, [name, changeFolder, cancel, save], async () => {
         const saved = await this.designs.save(name.value, replace);
         this.lastName = saved.name;
+        save.textContent = 'Saved';
         message.className = 'designs-message is-done';
         message.textContent = saved.replaced ? `Replaced "${saved.name}" in ${saved.folder.name}.` : `Saved "${saved.name}" to ${saved.folder.name}.`;
         window.setTimeout(() => this.dialog.close(), SAVED_SHOWN_MS);
       }, error => {
-        if(!(error instanceof DesignExists)) return false;
-        replace = true;
-        save.textContent = 'Replace';
-        message.textContent = `${error.message} Replace it?`;
+        replace = (error instanceof DesignExists);
+        save.textContent = replace ? 'Replace' : 'Save';
+        if(!replace) return false;
+        message.textContent = `${(error as DesignExists).message} Replace it?`;
         return true;
       });
     });
@@ -215,18 +220,18 @@ export class DesignDialog {
   }
 
   // .. Util ......................................................................
-  /** runs an action with its buttons disabled, showing a refusal in the message;
-   *  `handled` takes a refusal the caller answers itself */
-  private async run(message: HTMLElement, busy: ReadonlyArray<HTMLButtonElement>, action: () => Promise<void>, handled?: (error: unknown) => boolean): Promise<void> {
+  /** runs an action with its controls disabled, showing a refusal in the message;
+   *  `handled` takes a refusal the caller answers itself. The controls come back on
+   *  a refusal only: an action that lands moves the dialog on or closes it */
+  private async run(message: HTMLElement, busy: ReadonlyArray<HTMLButtonElement | HTMLInputElement>, action: () => Promise<void>, handled?: (error: unknown) => boolean): Promise<void> {
     for(const control of busy) control.disabled = true;
     message.className = 'designs-message';
     message.textContent = '';
     try {
       await action();
     } catch(error) {
-      if(!handled?.(error)) showError(message, error);
-    } finally {
       for(const control of busy) control.disabled = false;
+      if(!handled?.(error)) showError(message, error);
     }
   }
 }

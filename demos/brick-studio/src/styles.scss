@@ -410,6 +410,7 @@ body {
   border-radius: 2px;
 
   &:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  &:disabled { color: var(--ink-soft); opacity: 0.6; }
 }
 
 .designs-where, .designs-confirm {
@@ -516,7 +517,7 @@ $designs-list-least: 112px;
 
   &:active { transform: translateY(1px); box-shadow: none; }
   &:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  &:disabled { opacity: 0.5; cursor: default; }
+  &:disabled { color: var(--ink-soft); background: var(--baseplate); box-shadow: none; cursor: default; }
 }
 
 .designs-primary { color: var(--tag-text); background: var(--brick-yellow); }
@@ -533,8 +534,9 @@ $designs-list-least: 112px;
   text-underline-offset: 2px;
   cursor: pointer;
 
-  &:hover { color: var(--ink); }
+  &:hover:not(:disabled) { color: var(--ink); }
   &:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+  &:disabled { opacity: 0.5; text-decoration: none; cursor: default; }
 }
 
 // == Loading =====================================================================
