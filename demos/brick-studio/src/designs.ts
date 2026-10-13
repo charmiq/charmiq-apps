@@ -3,8 +3,9 @@ import type { Build } from './build';
 import { DESIGN_EXTENSION, type Design, type Drive, type Folder, type FolderListing } from './drive';
 
 // saving the build as a design in the Drive and loading one back: what a design's
-// name may be, which folder designs go to (the top of the Drive until another is
-// chosen, then that one, kept in the app state) and what a save or a load does
+// name may be, which folder designs go to and what a save or a load does. The app
+// state is the folder's source of truth: the folder is the one it names (the top of
+// the Drive when it names none), followed as it changes from anywhere
 // ********************************************************************************
 // == Constants ===================================================================
 /** where designs go until another folder is chosen */
@@ -36,32 +37,38 @@ export class Designs {
   private folder: Folder = TOP_OF_DRIVE;
   /** settles once the chosen folder is read: every save, list and load waits for it */
   private ready: Promise<void> = Promise.resolve();
+  private readonly folderListeners = new Set<() => void>();
 
   public constructor(private readonly drive: Drive, private readonly build: Build, private readonly appState: AppStateAPI) {}
 
-  /** reads the folder chosen earlier, if any. A folder that cannot be read leaves
-   *  the top of the Drive */
+  /** follows the folder the app state names. A state that cannot be read leaves the
+   *  top of the Drive */
   public init(): Promise<void> {
     this.ready = (async () => {
       try {
-        const chosen = ((await this.appState.get()) as Record<string, unknown> | null)?.[FOLDER_STATE];
-        if(isFolder(chosen)) this.folder = chosen;
+        this.appState.onChange$().subscribe({ next: state => this.follow(state), error: error => console.warn('brick-studio: the designs folder stopped following the app state:', error) });
+        this.follow(await this.appState.get());
       } catch(error) {
-        console.warn('brick-studio: the chosen designs folder could not be read:', error);
+        console.warn('brick-studio: the designs folder could not be read:', error);
       }
     })();
     return this.ready;
   }
 
+  /** register a callback for the folder changing */
+  public onFolderChange(callback: () => void): void { this.folderListeners.add(callback); }
+
   // == Folder ====================================================================
   public getFolder(): Folder { return this.folder; }
 
-  /** chooses the folder designs go to; kept beside whatever else the app state holds */
+  /** chooses the folder designs go to: writes it to the app state, beside whatever
+   *  else the state holds, and follows what was written */
   public async setFolder(folder: Folder): Promise<void> {
     await this.ready;
-    this.folder = folder;
     const state = ((await this.appState.get()) as Record<string, unknown> | null) ?? {};
-    await this.appState.set({ ...state, [FOLDER_STATE]: { ...(folder.id ? { id: folder.id } : {}), name: folder.name } });
+    const next = { ...state, [FOLDER_STATE]: { ...(folder.id ? { id: folder.id } : {}), name: folder.name } };
+    await this.appState.set(next);
+    this.follow(next);
   }
 
   // == Browse ====================================================================
@@ -116,6 +123,15 @@ export class Designs {
   }
 
   // == Internal ==================================================================
+  /** takes the folder the app state names, telling listeners when it changed */
+  private follow(state: unknown): void {
+    const chosen = (state as Record<string, unknown> | null)?.[FOLDER_STATE];
+    const next = isFolder(chosen) ? chosen : TOP_OF_DRIVE;
+    if((next.id === this.folder.id) && (next.name === this.folder.name)) return/*unchanged*/;
+    this.folder = next;
+    for(const listener of this.folderListeners) listener();
+  }
+
   /** the design of that name in the folder */
   private async named(typed: string): Promise<Design> {
     const name = designName(typed);

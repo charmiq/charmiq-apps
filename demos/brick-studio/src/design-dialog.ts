@@ -40,6 +40,12 @@ export class DesignDialog {
 
   public constructor(private readonly dialog: HTMLDialogElement, private readonly designs: Designs, private readonly host: DesignDialogHost) {
     dialog.addEventListener('close', () => { window.clearTimeout(this.searchTimer); this.generation++; });
+    // the save view shows the folder the app state names now, keeping a name being typed
+    designs.onFolderChange(() => {
+      if(!this.dialog.open || (this.view.kind !== 'save')) return/*nothing shows the folder*/;
+      this.lastName = this.dialog.querySelector<HTMLInputElement>('#designName')?.value ?? this.lastName;
+      this.renderSave();
+    });
   }
 
   public get isOpen(): boolean { return this.dialog.open; }
