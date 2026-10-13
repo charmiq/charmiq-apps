@@ -151,6 +151,9 @@ body {
   svg { width: 12px; height: 12px; }
   &[aria-pressed='true'] .fullscreen-enter,
   &[aria-pressed='false'] .fullscreen-exit { display: none; }
+  &[aria-pressed='true'] .step-play,
+  &[aria-pressed='false'] .step-pause { display: none; }
+  &:disabled { opacity: 0.4; cursor: default; filter: none; }
 
   &--ink    { background: var(--outline); color: #FFFDF2; padding: 0; width: 22px; }
   &--azure  { background: var(--brick-azure); }
@@ -322,6 +325,21 @@ body {
   @extend %mono-caps;
   font-size: 9px;
   color: var(--ink-soft);
+}
+
+// == Steps =======================================================================
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.steps-label {
+  @extend %mono-caps;
+  min-width: 11ch/*"Step 10 / 12", so the buttons never shift*/;
+  font-size: 9px;
+  color: var(--ink-soft);
+  white-space: nowrap;
 }
 
 // == Designs =====================================================================

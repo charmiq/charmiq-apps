@@ -77,8 +77,9 @@ export class Build {
   public check(): CheckResult { return checkModel(this.model); }
 
   // == Edit ======================================================================
-  /** adds parts; refuses the whole batch when any part is invalid or collides */
-  public async add(input: ReadonlyArray<unknown>): Promise<Readonly<{ added: number; total: number; floating: ReadonlyArray<string>; }>> {
+  /** adds parts to the last building step, or as a new step after it (`newStep`);
+   *  refuses the whole batch when any part is invalid or collides */
+  public async add(input: ReadonlyArray<unknown>, newStep: boolean): Promise<Readonly<{ added: number; total: number; floating: ReadonlyArray<string>; }>> {
     await this.whenReady();
     if(input.length < 1) throw new BuildError('No parts given.');
     if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per call.`);
@@ -119,7 +120,7 @@ export class Build {
 
       const addedNames = new Set(added.map(describePlacement));
       outcome = { added: added.length, total: partCount(next), floating: result.floating.filter(name => addedNames.has(name)) };
-      return [appendLines(layout, added.map(placementLine))];
+      return [appendLines(layout, added.map(placementLine), newStep)];
     });
     return outcome;
   }
@@ -179,7 +180,7 @@ export class Build {
     await this.bridge.edit(text => {
       const { model, layout } = editable(text);
       removed = partCount(model);
-      return deleteLines([...layout.placements, ...layout.others]);
+      return deleteLines([...layout.placements, ...layout.others, ...layout.steps]);
     });
     return removed;
   }

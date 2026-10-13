@@ -43,6 +43,22 @@
         <p class="status" id="status" aria-live="polite">
           <span id="statusText"></span><span class="status-sep">·</span><button class="status-link" id="resetButton">Reset view</button>
         </p>
+        <div class="steps" id="steps" role="group" aria-label="Building steps" hidden>
+          <button class="tag tag--ink" id="stepFirst" title="First step" aria-label="First step">
+            <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M220-240v-480h80v480h-80Zm520 0L380-480l360-240v480Z"/></svg>
+          </button>
+          <button class="tag tag--ink" id="stepPrevious" title="Previous step" aria-label="Previous step">
+            <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/></svg>
+          </button>
+          <button class="tag tag--ink" id="stepPlay" title="Play the steps" aria-label="Play the steps" aria-pressed="false">
+            <svg class="step-play" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M320-200v-560l440 280-440 280Z"/></svg>
+            <svg class="step-pause" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Z"/></svg>
+          </button>
+          <button class="tag tag--ink" id="stepNext" title="Next step" aria-label="Next step">
+            <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/></svg>
+          </button>
+          <span class="steps-label" id="stepLabel" aria-live="polite"></span>
+        </div>
       </div>
     </header>
 

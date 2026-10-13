@@ -26,6 +26,7 @@ const GRID = [
   'Trees, bushes and plants stand on their base (the cells their fill starts at 0) and spread over the cells around it from higher up, so smaller parts fit under the foliage.',
   'A glass part fills nothing: place it at its frame\'s exact x, z, level and rotation (its row names the frame). Removing the frame removes its glass; glass with no frame floats.',
   'Colors named trans- are see-through plastic.',
+  'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east.',
 ].join(' ');
 
@@ -60,11 +61,13 @@ export class CommandSurface {
         await this.build.whenReady();
         const model = this.build.getModel();
         const conflict = this.build.conflict();
-        return { parts: model.placements, ...((model.others.length > 0) ? { unchecked: model.others.length } : {}), ...(model.truncated ? { truncated: TRUNCATED } : {}), ...(conflict ? { conflict } : {}) };
+        const steps = model.steps;
+        const parts = steps ? model.placements.map((placement, index) => ({ ...placement, step: steps.placements[index] })) : model.placements;
+        return { parts, ...((model.others.length > 0) ? { unchecked: model.others.length } : {}), ...(model.truncated ? { truncated: TRUNCATED } : {}), ...(conflict ? { conflict } : {}) };
       },
 
-      addParts: async ({ parts }: { parts?: unknown; }) => {
-        const result = await this.build.add(Array.isArray(parts) ? parts : []);
+      addParts: async ({ parts, newStep }: { parts?: unknown; newStep?: unknown; }) => {
+        const result = await this.build.add(Array.isArray(parts) ? parts : [], newStep === true);
         await this.viewer.whenSettled();
         return { added: result.added, total: result.total, ...((result.floating.length > 0) ? { floating: result.floating } : {}) };
       },

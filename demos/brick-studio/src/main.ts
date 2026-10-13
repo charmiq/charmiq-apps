@@ -9,6 +9,7 @@ import { Drive } from './drive';
 import { FidelityControl } from './fidelity-control';
 import { getColor, getColorValue } from './grid';
 import type { Model } from './model';
+import { StepControl } from './step-control';
 import { DEFAULT_VIEW, STANDING, Viewer, type Walk } from './viewer';
 
 // entry point: creates the modules, wires them, loads the parts, then the build
@@ -44,6 +45,7 @@ const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), viewer);
 const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
 const commands = new CommandSurface(build, designs, viewer, look);
+const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);
 const designDialog = new DesignDialog(element('designs'), designs, {
   partCount: () => { const model = build.getModel(); return model.placements.length + model.others.length; },
   onLoaded: () => void viewer.setView(viewer.getView(), true)/*a loaded design is framed whole*/,
@@ -162,7 +164,7 @@ const start = async () => {
   await look.init();
   void designs.init()/*every save, list and load waits for it*/;
   build.onChange((model, source) => {
-    viewer.setModel(model, (source !== 'load') && !reducedMotion.matches);
+    steps.show(model, (source !== 'load') && !reducedMotion.matches)/*the build whole: any playback ends*/;
     if(source === 'load') viewer.jumpToView(DEFAULT_VIEW);
     else viewer.keepInView();
     showStatus(model);

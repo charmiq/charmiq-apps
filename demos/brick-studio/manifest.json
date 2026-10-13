@@ -65,7 +65,7 @@
         "outputSchema": {
           "type": "object",
           "properties": {
-            "parts":     { "type": "array", "items": { "type": "object" } },
+            "parts":     { "type": "array", "items": { "type": "object" }, "description": "Each with its step when the build has more than one" },
             "unchecked": { "type": "integer", "description": "Parts off the grid or outside the catalog" },
             "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
             "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" }
@@ -95,7 +95,8 @@
                 },
                 "required": ["part", "color", "x", "z", "level"]
               }
-            }
+            },
+            "newStep": { "type": "boolean", "description": "Put these parts in a new building step after the last" }
           },
           "required": ["parts"]
         },

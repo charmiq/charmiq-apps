@@ -68,6 +68,8 @@ The build is a flat LDraw file in the `model` content block. Each part is one li
 
 **The check.** Each part fills the cells and levels measured from its shape: a corner brick leaves its fourth cell empty, and the space under an arch's span or an inverted slope's underside is open. A tree's or plant's foliage spreads over the cells around its base from higher up, so smaller parts fit beneath it. A cell the part reaches into at all counts as filled, up to the part's highest point there. Two parts collide when they fill the same cell at the same level. A part holds the part above it where its top studs lie under a cell that part fills from its bottom: tiles and ridges have none, and a slope has studs only along its high row. A glass pane fills nothing; it is held by the window at its own position, and a second pane there collides. A part with no chain of holds down to the baseplate floats. An edit that would collide is refused whole.
 
+**Steps.** A build can be split into building steps, LDraw's own `0 STEP` lines, so other LDraw tools show the same steps. The play, step and back buttons under the status show the build as it stands after each step, its parts dropping in; playback never changes the document, and any change to the build ends it. A Charm starts a new step by adding parts with `newStep: true`.
+
 **Designs.** The save and open buttons keep builds in your Drive. Each design is a Source document of plain LDraw text, named for the design (`Beach house.ldr`). Designs go to My Drive until you choose another folder, which the Studio then remembers. Saving a name already there (in any case) asks before replacing it, and opening a design over a build asks before replacing the build. Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any document you can.
 
 **The commands.** A Charm drives the Studio through these:
@@ -76,7 +78,7 @@ The build is a flat LDraw file in the `model` content block. Each part is one li
 |---|---|
 | `listParts` | the grid conventions, the catalog parts and the colors |
 | `listPlacedParts` | every part in the build with its position |
-| `addParts` | places a batch of parts; a batch that would collide is refused |
+| `addParts` | places a batch of parts, in the last step or (`newStep`) a new one; a batch that would collide is refused |
 | `removeParts` | removes the part filling each given cell, and a removed window's glass |
 | `clear` | removes every part |
 | `check` | lists collisions and floating parts |
@@ -107,6 +109,7 @@ Every edit resolves once the parts have landed, so a screenshot taken next shows
 | [`src/designs.ts`](charmiq://./src/designs.ts) | saving and loading designs: names, the remembered folder, replacing |
 | [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog and its folder chooser |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
+| [`src/step-control.ts`](charmiq://./src/step-control.ts) | playing the building steps |
 | [`src/parts.ldr`](charmiq://./src/parts.ldr) | the catalog parts and every file they use, packed (generated) |
 | [`src/parts.generated.ts`](charmiq://./src/parts.generated.ts) | each part's footprint, height, studs and fill, measured (generated) |
 | [`tools/pack-parts.ts`](charmiq://./tools/pack-parts.ts) | regenerates the two generated files |
