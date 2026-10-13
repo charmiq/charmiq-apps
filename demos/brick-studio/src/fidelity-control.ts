@@ -12,7 +12,7 @@ export class FidelityControl {
   private poll: ReturnType<typeof setInterval> | undefined;
   private chosen: Fidelity | undefined;
 
-  public constructor(private readonly input: HTMLInputElement, private readonly label: HTMLElement, private readonly viewer: Viewer) {}
+  public constructor(private readonly input: HTMLInputElement, private readonly label: HTMLElement, private readonly state: HTMLElement, private readonly viewer: Viewer) {}
 
   /** restores this browser's stop and follows the slider */
   public async init(): Promise<void> {
@@ -34,7 +34,8 @@ export class FidelityControl {
     this.chosen = stop;
     this.input.value = String(stop);
     clearInterval(this.poll);
-    this.label.textContent = fidelityLabel(stop) + ((stop === MAX_FIDELITY) ? ' · loading' : '')/*the path tracer downloads and compiles first*/;
+    this.label.textContent = fidelityLabel(stop);
+    this.state.textContent = (stop === MAX_FIDELITY) ? 'loading' : ''/*the path tracer downloads and compiles first*/;
     const reached = await this.viewer.setFidelity(stop);
     if(this.chosen !== stop) return/*a later choice owns the slider*/;
     this.input.value = String(reached)/*lower when the path tracer cannot run here*/;
@@ -45,7 +46,8 @@ export class FidelityControl {
   /** shows the stop's name, and that the path tracer is refining until it settles */
   private follow(stop: Fidelity): void {
     clearInterval(this.poll);
-    const show = () => { this.label.textContent = fidelityLabel(stop) + (this.viewer.refining ? ' · refining' : ''); };
+    this.label.textContent = fidelityLabel(stop);
+    const show = () => { this.state.textContent = this.viewer.refining ? 'refining' : ''; };
     show();
     if(stop === MAX_FIDELITY) this.poll = setInterval(show, REFINING_POLL_MS);
   }

@@ -42,7 +42,7 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const viewer = new Viewer(canvas, readTheme());
 const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
-const look = new FidelityControl(element('fidelity'), element('fidelityName'), viewer);
+const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
 const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
 const commands = new CommandSurface(build, designs, viewer, look);
 const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);

@@ -199,8 +199,14 @@ body {
 }
 
 .look-value {
-  min-width: 13ch/*the longest stop, so the slider never shifts*/;
+  min-width: 14ch/*"Path traced", letter spacing included, so the slider never shifts*/;
   color: var(--ink);
+}
+
+// the path tracer's loading or refining: its own slot, as wide as its longest word
+// whether or not it says anything, so the slider never moves as it changes
+.look-state {
+  min-width: 10ch/*"refining", letter spacing included*/;
 }
 
 .look-slider {
