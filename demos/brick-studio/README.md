@@ -68,6 +68,8 @@ The build is a flat LDraw file in the `model` content block. Each part is one li
 
 **The check.** Each part fills the cells and levels measured from its shape: a corner brick leaves its fourth cell empty, and the space under an arch's span or an inverted slope's underside is open. A tree's or plant's foliage spreads over the cells around its base from higher up, so smaller parts fit beneath it. A cell the part reaches into at all counts as filled, up to the part's highest point there. Two parts collide when they fill the same cell at the same level. A part holds the part above it where its top studs lie under a cell that part fills from its bottom: tiles and ridges have none, and a slope has studs only along its high row. A glass pane fills nothing; it is held by the window at its own position, and a second pane there collides. A part with no chain of holds down to the baseplate floats. An edit that would collide is refused whole.
 
+**Designs.** The save and open buttons keep builds in your Drive. Each design is a Source document of plain LDraw text, named for the design (`Beach house.ldr`). Designs go to My Drive until you choose another folder, which the Studio then remembers. Saving a name already there (in any case) asks before replacing it, and opening a design over a build asks before replacing the build. Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any document you can.
+
 **The commands.** A Charm drives the Studio through these:
 
 | Command | Does |
@@ -81,6 +83,9 @@ The build is a flat LDraw file in the `model` content block. Each part is one li
 | `setView` | turns the camera and frames the build |
 | `setFidelity` | sets how real the bricks look, from Draft to Path traced, as the Look slider does |
 | `getModel` / `setModel` | reads or replaces the build as LDraw text |
+| `listDesigns` | the designs in your designs folder |
+| `loadDesign` | replaces the build with a saved design |
+| `saveDesign` | saves the build as a design in your designs folder; a name already there needs `replace` |
 
 Every edit resolves once the parts have landed, so a screenshot taken next shows the result.
 
@@ -98,6 +103,9 @@ Every edit resolves once the parts have landed, so a screenshot taken next shows
 | [`src/build.ts`](charmiq://./src/build.ts) | the current build and its edits |
 | [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` content block, edited with guarded edits |
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
+| [`src/drive.ts`](charmiq://./src/drive.ts) | the Drive's folders and designs, through the VFS server |
+| [`src/designs.ts`](charmiq://./src/designs.ts) | saving and loading designs: names, the remembered folder, replacing |
+| [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog and its folder chooser |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
 | [`src/parts.ldr`](charmiq://./src/parts.ldr) | the catalog parts and every file they use, packed (generated) |
 | [`src/parts.generated.ts`](charmiq://./src/parts.generated.ts) | each part's footprint, height, studs and fill, measured (generated) |

@@ -19,6 +19,12 @@
       <h1 class="title">Brick Studio</h1>
       <div class="side">
         <nav class="tags" aria-label="View">
+          <button class="tag tag--ink" id="saveButton" title="Save design" aria-label="Save design" aria-haspopup="dialog">
+            <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M840-680v480q0 33-23.5 56.5T760-120H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h480l160 160Zm-360 440q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35ZM240-560h360v-160H240v160Z"/></svg>
+          </button>
+          <button class="tag tag--ink" id="openButton" title="Open design" aria-label="Open design" aria-haspopup="dialog">
+            <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240l80 80h320q33 0 56.5 23.5T880-640H447l-80-80H160v480l96-320h684L837-217q-8 26-29.5 41.5T760-160H160Z"/></svg>
+          </button>
           <button class="tag tag--ink" id="fitButton" title="Fit the build" aria-label="Fit the build">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
           </button>
@@ -63,6 +69,9 @@
       </dl>
       <p class="help-close">Click anywhere to close</p>
     </dialog>
+
+    <!-- == Designs =========================================================== -->
+    <dialog class="designs" id="designs" aria-label="Designs"></dialog>
 
     <!-- == Loading =========================================================== -->
     <div class="loading" id="loading">

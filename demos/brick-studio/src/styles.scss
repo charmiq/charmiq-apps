@@ -12,6 +12,8 @@
   --ink:          #1D1C19;
   --ink-soft:     #6F6B60;
   --outline:      #1D1C19;
+  /** the edge of a panel over the stage, which must show on it in either scheme */
+  --edge:         #1D1C19;
   --tag-text:     #1D1C19;
   --brick-yellow: #FAC80A;
   --brick-azure:  #68C3E2;
@@ -28,6 +30,7 @@
     --ink:       #F4F0E4;
     --ink-soft:  #A39E90;
     --outline:   #0B0B0A;
+    --edge:      #A39E90;
     --danger:    #FF7A5C;
 
     color-scheme: dark;
@@ -319,6 +322,184 @@ body {
   @extend %mono-caps;
   font-size: 9px;
   color: var(--ink-soft);
+}
+
+// == Designs =====================================================================
+// the save and open dialog: a panel over the dimmed studio
+.designs {
+  width: min(440px, calc(100% - 32px));
+  max-height: min(560px, calc(100% - 32px));
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  box-shadow: 0 2px 0 var(--edge);
+  color: var(--ink);
+  background: var(--stage);
+
+  &::backdrop { background: color-mix(in srgb, var(--stage) 70%, transparent); }
+}
+
+.designs-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  min-width: 0;
+}
+
+.designs-title {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.designs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.designs-label {
+  @extend %mono-caps;
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.designs-input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--baseplate);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+}
+
+.designs-where, .designs-confirm {
+  font-size: 13px;
+  overflow-wrap: break-word;
+}
+
+.designs-path {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.designs-here {
+  @extend %mono-caps;
+  min-width: 0;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.designs-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+}
+
+.designs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--baseplate);
+  cursor: pointer;
+
+  svg { flex: none; width: 16px; height: 16px; color: var(--ink-soft); }
+  &:hover, &:focus-visible { background: var(--baseplate); outline: none; }
+}
+
+.designs-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.designs-note {
+  @extend %mono-caps;
+  padding: 10px;
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.designs-new {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+
+  .designs-field { flex: 1; }
+}
+
+.designs-message {
+  font-size: 12px;
+  overflow-wrap: break-word;
+  &:empty { display: none; }
+  &.is-error { color: var(--danger); }
+}
+
+.designs-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.designs-primary, .designs-secondary {
+  @extend %mono-caps;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--edge);
+  cursor: pointer;
+
+  &:active { transform: translateY(1px); box-shadow: none; }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+.designs-primary { color: var(--tag-text); background: var(--brick-yellow); }
+.designs-secondary { color: var(--ink); background: var(--stage); }
+
+.designs-link {
+  @extend %mono-caps;
+  padding: 0;
+  font-size: 9px;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover { color: var(--ink); }
+  &:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
 }
 
 // == Loading =====================================================================

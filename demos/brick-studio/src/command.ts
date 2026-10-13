@@ -3,6 +3,7 @@ import type { Build } from './build';
 import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, type CatalogPart } from './catalog';
 import { reportCheck, TRUNCATED } from './check';
+import { DesignExists, type Designs } from './designs';
 import { getShape, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { Viewer } from './viewer';
@@ -30,13 +31,19 @@ const GRID = [
 
 // == Class =======================================================================
 export class CommandSurface {
-  public constructor(private readonly build: Build, private readonly viewer: Viewer, private readonly look: FidelityControl) {}
+  public constructor(private readonly build: Build, private readonly designs: Designs, private readonly viewer: Viewer, private readonly look: FidelityControl) {}
 
   /** the build's check, model-facing: never sound while the document holds more
    *  than one build, since it covers only the one shown */
   private report() {
     const conflict = this.build.conflict();
     return { ...reportCheck(this.build.check()), ...(conflict ? { ok: false, conflict } : {}) };
+  }
+
+  /** frames a build that has just replaced the last one whole, once it is drawn */
+  private async showWhole(): Promise<void> {
+    await this.viewer.setView(this.viewer.getView(), true);
+    await this.viewer.whenSettled();
   }
 
   /** registers the commands; called once from main.ts */
@@ -88,9 +95,27 @@ export class CommandSurface {
       },
       setModel: async ({ ldraw }: { ldraw?: unknown; }) => {
         await this.build.replace((typeof ldraw === 'string') ? ldraw : '');
-        await this.viewer.setView(this.viewer.getView(), true)/*a new build is framed whole*/;
-        await this.viewer.whenSettled();
+        await this.showWhole();
         return this.report();
+      },
+
+      listDesigns: async () => {
+        const designs = await this.designs.list()/*waits for the chosen folder*/;
+        return { folder: this.designs.getFolder().name, designs };
+      },
+      loadDesign: async ({ name }: { name?: unknown; }) => {
+        const loaded = await this.designs.load((typeof name === 'string') ? name : '');
+        await this.showWhole();
+        return { loaded, ...this.report() };
+      },
+      saveDesign: async ({ name, replace }: { name?: unknown; replace?: unknown; }) => {
+        try {
+          const saved = await this.designs.save((typeof name === 'string') ? name : '', replace === true);
+          return { saved: saved.name, folder: saved.folder.name, ...(saved.replaced ? { replaced: true } : {}) };
+        } catch(error) {
+          if(error instanceof DesignExists) throw new Error(`${error.message} Pass replace: true to write over it.`);
+          throw error;
+        }
       },
 
       check: async () => { await this.build.whenReady(); return this.report(); },

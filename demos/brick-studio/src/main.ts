@@ -3,6 +3,9 @@ import { Build } from './build';
 import { isSound } from './check';
 import { CommandSurface } from './command';
 import { ContentBridge } from './content-bridge';
+import { DesignDialog } from './design-dialog';
+import { Designs } from './designs';
+import { Drive } from './drive';
 import { FidelityControl } from './fidelity-control';
 import { getColor, getColorValue } from './grid';
 import type { Model } from './model';
@@ -39,7 +42,12 @@ const viewer = new Viewer(canvas, readTheme());
 const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), viewer);
-const commands = new CommandSurface(build, viewer, look);
+const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
+const commands = new CommandSurface(build, designs, viewer, look);
+const designDialog = new DesignDialog(element('designs'), designs, {
+  partCount: () => { const model = build.getModel(); return model.placements.length + model.others.length; },
+  onLoaded: () => void viewer.setView(viewer.getView(), true)/*a loaded design is framed whole*/,
+});
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => viewer.setTheme(readTheme()));
 
@@ -69,6 +77,12 @@ element('frontButton').addEventListener('click', () => void viewer.setView({ azi
 element('topButton').addEventListener('click', () => void viewer.setView({ azimuth: 0, elevation: 89 }, true));
 element('resetButton').addEventListener('click', () => void viewer.setView(DEFAULT_VIEW, true));
 
+// .. Designs .....................................................................
+// save the build as a design in the Drive, or open one in its place
+const standStill = () => { held.clear(); viewer.walk(STANDING); };
+element('saveButton').addEventListener('click', () => { standStill(); designDialog.openSave(); });
+element('openButton').addEventListener('click', () => { standStill(); designDialog.openOpen(); });
+
 // .. Full screen .................................................................
 // the whole studio goes full screen, its controls with it; Esc (the browser's own)
 // or the button leaves. The button shows only where the page may go full screen
@@ -92,7 +106,7 @@ document.addEventListener('fullscreenchange', () => {
 const help = element<HTMLDialogElement>('help');
 const toggleHelp = () => {
   if(help.open) { help.close(); return; }
-  held.clear(); viewer.walk(STANDING)/*the studio stands still under the help*/;
+  standStill()/*the studio stands still under the help*/;
   help.showModal();
 };
 element('helpButton').addEventListener('click', toggleHelp);
@@ -121,6 +135,7 @@ const isForOthers = (event: KeyboardEvent): boolean =>
     ((event.target instanceof HTMLInputElement) && (event.target.type !== 'range'))));
 
 const onWalkKey = (event: KeyboardEvent, down: boolean) => {
+  if(designDialog.isOpen) return/*the dialog has the keys*/;
   if(down && (event.code === 'KeyI') && !isForOthers(event)) { toggleHelp(); return; }
   if(!(event.code in WALK_KEYS)) { if(event.key === 'Shift') viewer.walk(walkFromKeys(down)); return; }
   if(down && (isForOthers(event) || help.open)) return;
@@ -145,6 +160,7 @@ const start = async () => {
   }
 
   await look.init();
+  void designs.init()/*every save, list and load waits for it*/;
   build.onChange((model, source) => {
     viewer.setModel(model, (source !== 'load') && !reducedMotion.matches);
     if(source === 'load') viewer.jumpToView(DEFAULT_VIEW);

@@ -5,9 +5,12 @@
   "requestedScopes": [
     "appContent.read",
     "appContent.write",
+    "appState.read",
+    "appState.write",
     "application.advertise",
     "command.editor.redo",
-    "command.editor.undo"
+    "command.editor.undo",
+    "mcp.platform.vfs"
   ],
   "bundle": {
     "entry": {
@@ -235,6 +238,52 @@
           "required": ["ldraw"]
         },
         "outputSchema": { "type": "object" }
+      },
+      {
+        "name": "listDesigns",
+        "description": "The designs saved in the User's designs folder, by name",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "folder": { "type": "string" },
+            "designs": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["folder", "designs"]
+        }
+      },
+      {
+        "name": "loadDesign",
+        "description": "Replace the build with a saved design, by name. Returns its check",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" }
+          },
+          "required": ["name"]
+        },
+        "outputSchema": { "type": "object" }
+      },
+      {
+        "name": "saveDesign",
+        "description": "Save the build as a design in the User's designs folder (My Drive until they choose another). A name already there is refused unless replace is true",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "replace": { "type": "boolean", "description": "Write over the design of that name" }
+          },
+          "required": ["name"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "saved": { "type": "string" },
+            "folder": { "type": "string" },
+            "replaced": { "type": "boolean" }
+          },
+          "required": ["saved", "folder"]
+        }
       }
     ]
   }
