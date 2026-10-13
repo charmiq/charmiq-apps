@@ -325,18 +325,21 @@ body {
 }
 
 // == Designs =====================================================================
-// the save and open dialog: a panel over the dimmed studio
+// the save and open dialog: a panel over the dimmed studio, no taller than the
+// window. The list gives way first; below its least height the panel scrolls
 .designs {
   width: min(440px, calc(100% - 32px));
-  max-height: min(560px, calc(100% - 32px));
+  max-height: min(600px, calc(100vh - 32px));
   margin: auto;
   padding: 0;
+  overflow: hidden;
   border: 1px solid var(--edge);
   border-radius: 2px;
   box-shadow: 0 2px 0 var(--edge);
   color: var(--ink);
   background: var(--stage);
 
+  &[open] { display: flex; flex-direction: column; }
   &::backdrop { background: color-mix(in srgb, var(--stage) 70%, transparent); }
 }
 
@@ -344,8 +347,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 20px;
   min-width: 0;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto/*only once the list is at its least height*/;
+
+  > * { flex-shrink: 0; }
+  > .designs-list { flex-shrink: 1; }
 }
 
 .designs-title {
@@ -401,11 +409,14 @@ body {
   text-overflow: ellipsis;
 }
 
+/** about three rows: the least the list gives way to before the panel scrolls */
+$designs-list-least: 112px;
+
 .designs-list {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-  max-height: 260px;
+  flex: 1 1 auto;
+  min-height: $designs-list-least;
   overflow-y: auto;
   margin: 0;
   padding: 0;
