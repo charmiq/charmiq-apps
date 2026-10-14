@@ -40,7 +40,7 @@ interface TabContentChange {
 
 // == Constants ===================================================================
 /** the canonical tab name the demo seeds into the editor. Matches the
- *  `<app-content name="shader:shader.frag">` block in README.md */
+ *  `<app-content name="shader:shader.frag">` in README.md */
 const SHADER_TAB_NAME = 'shader.frag';
 
 /** capability advertised by the codemirror-editor app — same string as its

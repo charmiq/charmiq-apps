@@ -3,7 +3,7 @@ import { CommandSurface } from './command';
 import { ConfigStore } from './config-store';
 import { ContentBridge } from './content-bridge';
 
-// entry point — creates all modules, wires dependencies, starts discovery
+// entry point — creates all modules, wires dependencies, follows the app-content
 // ********************************************************************************
 const charmiq: CharmIQAPI = window.charmiq;
 
@@ -32,7 +32,7 @@ const start = async () => {
     contentBridge.applyConfig(cfg);
   });
 
-  // subscribe to appContent and render — creates no default content (read-only)
-  await contentBridge.discover();
+  // follow the app-content and render it — creates no content (read-only)
+  await contentBridge.follow();
 };
 start();

@@ -10,7 +10,7 @@ import type { Viewer } from './viewer';
 
 // the Charm command surface (SEE: manifest.json `advertise`). Results are terse
 // model-facing data. Every command waits for the build to load; an edit resolves
-// once the build has the block's new text and it is drawn, so a following
+// once the build has the app-content's new text and it is drawn, so a following
 // Application screenshot shows it
 // ********************************************************************************
 // == Constants ===================================================================

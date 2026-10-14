@@ -1,119 +1,131 @@
-import { race, timer, Observable, Subject } from 'rxjs';
-import { debounceTime, take } from 'rxjs/operators';
+import type { AppContent, AppContentAPI } from '../../../shared/charmiq';
+import { changeTo, isConflict, parseRecord, recordLines } from '/shared/line-records/line-records';
 
 import type { DrawingElement } from './element-model';
 
-// bridges the drawing elements <-> appContent layer. The elements array is
-// serialized as JSONL (one element per line) into a single named content
-// block. The bridge owns the discovery phase (wait for initial content to
-// settle on start up) and routes remote updates back to the app
+// bridges the drawing's elements <-> appContent. The elements live in the
+// app-content named `elements`, one element per line (JSON Lines), in drawing order
+// (the last is drawn on top). Another tab, another User, a Charm or another
+// Application can change the drawing at the same moment, so the canvas and the
+// app-content are kept apart by element id:
 //
-// OT concurrency
-// --------------
-// The appContent store is OT-backed: remote edits can arrive at any time,
-// including during a live local edit (picker open, drag in flight, ...).
-// Two pieces of state resolve concurrent writes:
-//   shadow       the last-seen remote elements, keyed by id. Updated on
-//                every inbound event and every local save; always mirrors
-//                what the OT store currently holds
-//   activeEdits  (elementId, propertyName) pairs the app has declared under
-//                live local modification; pushed via beginEdit() / endEdit()
+// Shown: the records last shown, by id and in order. The canvas is the shown
+// records plus this client's own changes not yet written (a drag in flight, a
+// property picked). Another writer's change reaches the canvas as a change to the
+// records it touched: an element they changed is taken from the app-content (keeping
+// any property this client is editing live, SEE: beginEdit), one they added is
+// added, one they removed is removed, and every other element keeps this client's
+// version, unsaved changes included. This client's own writes coming back change
+// nothing on the canvas.
 //
-// Inbound: the parsed remote is diffed against the shadow per (id, prop).
-// Diffs that hit an activeEdits entry are overlaid with the app's current
-// local value (read via a getter the app registers) so in-flight edits are
-// not clobbered. The merged result is emitted to the app. The shadow is
-// replaced with the parsed remote (not the merged result), so later diffs
-// stay honest about what the store actually holds
+// Saving: what this client changed since the records shown (elements changed,
+// added, removed or moved) is written onto the app-content as it is now, by id, as
+// one guarded edit through the app-content shown. A refused edit is measured again
+// on the app-content as it is now, so another writer's change to other elements is
+// never overwritten. An element another writer removed stays removed. Saves run
+// one at a time, each with the canvas as it then is.
 //
-// Outbound: JSONL is written and the shadow is updated optimistically to
-// match what was written. The inbound event that follows is not assumed
-// to be a pure echo: under concurrent remote writes the OT store may
-// return a merged state containing other users' work. Diffing that merged
-// state against the shadow (= what this client wrote) surfaces exactly
-// the remote contribution and lets it propagate; a true no-contention
-// echo naturally diffs empty and is a no-op
-//
-// Element-level remote deletions (an element absent from the parsed
-// content) propagate as a removal in the emitted array; the app is
-// expected to drop it from selection and from activeEdits. A block-level
-// `deleted=true` event is treated as non-authoritative and ignored: this
-// app never calls appContent.remove(), so the flag only fires as platform
-// book-keeping during first-save block creation
+// Two collaborators who each draw the first element at once create two
+// `elements` app-contents: both are kept and drawn (the first one's elements below
+// the second's), and an element is written in the app-content it is in
+// SEE: tutorials/03-writing-data for the line-record pattern, explained
 // ********************************************************************************
 // == Constants ===================================================================
-/** ms to debounce content emissions before declaring discovery complete */
-const DISCOVERY_DEBOUNCE_MS = 200/*ms*/;
-/** ms to wait for any content at all before declaring discovery complete */
-const DISCOVERY_TIMEOUT_MS = 500/*ms*/;
-
-/** selector + name for the single content block that holds the elements JSON */
+/** name + selector of the app-content that holds the elements */
 const ELEMENTS_NAME = 'elements';
 const ELEMENTS_SELECTOR = `[name='${ELEMENTS_NAME}']`;
 
+/** how many times a save is measured again after its app-content changed under it */
+const EDIT_ATTEMPTS = 3;
+/** how long a refused save waits for the app-content's newer revision: it reaches
+ *  `contents$()` in one bridge round trip */
+const NEWER_REVISION_WAIT_MS = 5_000/*ms*/;
+
+/** the refusal on a page opened before `contents$()` */
+const RELOAD = 'This page cannot save the drawing safely. Reload it to keep drawing.';
+
 // == Types =======================================================================
-interface ContentChange {
-  readonly id: string;
-  readonly name: string;
-  readonly content: string;
-  readonly deleted: boolean;
-}
+/** a save the drawing could not make: its message is shown to the User */
+export class DrawingSaveError extends Error {}
 
 // --------------------------------------------------------------------------------
+/** records by id (each element's line) and the ids in drawing order */
+type Records = Readonly<{ lines: ReadonlyMap<string, string>; order: ReadonlyArray<string>; }>;
+const NO_RECORDS: Records = { lines: new Map(), order: [] };
+
+/** what this client changed since the records shown */
+type Delta = Readonly<{
+  /** the line of each element changed or added */
+  lines: ReadonlyMap<string, string>;
+  removed: ReadonlySet<string>;
+  /** elements added or moved: each is placed after its predecessor on the canvas */
+  placed: ReadonlySet<string>;
+  /** each element's predecessor on the canvas (null: the first) */
+  predecessor: ReadonlyMap<string, string | null>;
+  /** the canvas's ids in drawing order */
+  order: ReadonlyArray<string>;
+  /** the ids shown when the save was measured */
+  shown: ReadonlySet<string>;
+}>;
+
 type ElementsChangedCallback = (elements: DrawingElement[]) => void;
 type CurrentStateGetter = () => ReadonlyArray<DrawingElement>;
 
-// == CharmIQ API (global) ========================================================
-interface CharmiqAppContent {
-  onChange$(): Observable<ContentChange>;
-  applyChanges(changes: ReadonlyArray<{ from: number; to: number; insert: string; }>, selector: string): Promise<void>;
-  set(content: string | undefined, selector: string, name?: string): Promise<void>;
-  remove(selector: string): Promise<void>;
-}
-
 // == Class =======================================================================
-/** mediates elements JSON sync between the drawing app and the OT-backed
- *  appContent store. see the OT-concurrency block at the top of this file
- *  for the design */
+/** follows the elements app-content and saves the canvas onto it by element id */
 export class ContentBridge {
-  private readonly appContent: CharmiqAppContent;
+  private readonly appContent: AppContentAPI;
   private onElementsChanged: ElementsChangedCallback | null = null;
+  private onReadFailed: ((failure: unknown) => void) | null = null;
   private currentStateGetter: CurrentStateGetter | null = null;
-  private discoveryDone = false;
 
-  /** last-seen remote elements keyed by id; updated on inbound events and
-   *  on local saves. diffed against parsed remote on each inbound event to
-   *  skip pure echoes */
-  private shadow: Map<string, DrawingElement> = new Map();
+  private contents: ReadonlyArray<AppContent> = [];
+  /** the records last shown: what the canvas's own changes are measured from */
+  private shown: Records = NO_RECORDS;
+  /** each element's line as this client last wrote it, until it is shown */
+  private readonly written = new Map<string, string>();
+  /** saves waiting for an app-content's newer revision */
+  private readonly waiting = new Set<() => void>();
+
+  private saving: Promise<void> | null = null/*none in flight*/;
+  private saveAgain = false;
 
   /** elementId -> set of property names currently under live local
-   *  modification. inbound remote changes to a declared (id, property)
-   *  pair are overlaid with the local value (local wins) */
+   *  modification. Another writer's change to a declared (id, property) pair
+   *  is overlaid with the local value (local wins) */
   private readonly activeEdits: Map<string, Set<string>> = new Map();
 
   // == Lifecycle =================================================================
-  public constructor(appContent: CharmiqAppContent) {
+  public constructor(appContent: AppContentAPI) {
     this.appContent = appContent;
   }
 
   // ------------------------------------------------------------------------------
-  /** register callback for remote element changes */
+  /** register callback for the canvas's elements after another writer's change */
   public onChange(cb: ElementsChangedCallback): void {
     this.onElementsChanged = cb;
   }
 
+  /** register the callback for a read refused after the drawing was first shown */
+  public onReadFailure(cb: (failure: unknown) => void): void {
+    this.onReadFailed = cb;
+  }
+
   // ------------------------------------------------------------------------------
-  /** register a getter the bridge calls to read the app's current
-   *  in-memory elements. used to overlay active-edit property values onto
-   *  inbound remote changes so in-flight user edits survive */
+  /** register a getter the bridge calls to read the app's current in-memory
+   *  elements: the canvas a save writes and another writer's change merges into */
   public setCurrentStateGetter(getter: CurrentStateGetter): void {
     this.currentStateGetter = getter;
   }
 
+  /** whether this page can read and write app-contents (a page opened before
+   *  `contents$()` cannot) */
+  public canEdit(): boolean { return (typeof this.appContent.contents$ === 'function'); }
+
   // == Active-Edit Tracking ======================================================
   /** declare that `property` is under live local modification on every id
-   *  in `ids`. while declared, inbound remote changes to that specific
-   *  (id, property) pair are suppressed -- local wins */
+   *  in `ids`. while declared, another writer's change to that specific
+   *  (id, property) pair is suppressed -- local wins */
   public beginEdit(ids: ReadonlyArray<string>, property: string): void {
     for(const id of ids) {
       let set = this.activeEdits.get(id);
@@ -142,153 +154,224 @@ export class ContentBridge {
     this.activeEdits.clear();
   }
 
-  // == Discover ==================================================================
-  /** subscribe to appContent changes and wait for the discovery phase to
-   *  settle. resolves when discovery is complete (content has stopped
-   *  arriving, or timeout) */
-  public discover(): Promise<void> {
-    return new Promise((resolve) => {
-      const contentReceived$ = new Subject<void>();
-
-      this.appContent.onChange$().subscribe((change: ContentChange) => {
-        contentReceived$.next();
-        if(!this.isElementsBlock(change)) return;
-        this.handleInbound(change);
-      });
-
-      race(
-        contentReceived$.pipe(debounceTime(DISCOVERY_DEBOUNCE_MS), take(1)),
-        timer(DISCOVERY_TIMEOUT_MS).pipe(take(1))
-      ).subscribe(() => {
-        this.discoveryDone = true;
-        resolve();
+  // == Follow ====================================================================
+  /** follows the elements app-content: resolves once it is first shown, rejects
+   *  when the read is refused */
+  public follow(): Promise<void> {
+    if(!this.canEdit()) return Promise.reject(new DrawingSaveError(RELOAD));
+    return new Promise((resolve, reject) => {
+      let shown = false;
+      this.appContent.contents$(ELEMENTS_SELECTOR).subscribe({
+        next: contents => {
+          this.receive(contents);
+          if(!shown) { shown = true; resolve(); }
+        },
+        error: failure => {
+          if(!shown) { shown = true; reject(failure); }
+          else this.onReadFailed?.(failure);
+        },
       });
     });
   }
 
-  // == Outbound (app → appContent) ===============================================
-  /** write the current elements as JSONL (one element per line) to
-   *  appContent. JSONL is used instead of a single JSON array so that
-   *  incremental edits on a single element produce a localized diff rather
-   *  than rewriting the entire document */
-  public async save(elements: DrawingElement[]): Promise<void> {
-    const jsonl = this.serialize(elements);
-    // update shadow to the parsed form of what was written. using parse(jsonl)
-    // instead of the caller's array guarantees fresh allocations that are
-    // insulated from later in-place mutation on the app's elements array
-    this.shadow = new Map(this.parse(jsonl).map(e => [e.id, e]));
-    try {
-      await this.appContent.set(jsonl, ELEMENTS_SELECTOR, ELEMENTS_NAME);
-    } catch(error) {
-      console.error('failed to save elements to app-content:', error);
-    }
+  /** merges the app-contents' change into the canvas, by element id */
+  private receive(contents: ReadonlyArray<AppContent>): void {
+    const previous = this.shown,
+          next = recordsOf(contents);
+    this.contents = contents;
+    this.shown = next;
+    this.waiting.forEach(wake => wake());
+
+    const canvas = this.currentStateGetter?.() ?? [];
+    const merged = this.merge(canvas, previous, next);
+    for(const [id, line] of this.written) if(next.lines.get(id) === line) this.written.delete(id)/*shown*/;
+    if(!sameElements(merged, canvas)) this.onElementsChanged?.(merged);
   }
 
-  // == Internal ==================================================================
-  /** inbound event handler: resolve the parsed remote against shadow +
-   *  activeEdits and emit the merged result to the app. see the
-   *  OT-concurrency block at the top of this file */
-  private handleInbound(change: ContentChange): void {
-    // block-level deleted events are ignored (see top-of-file doc)
-    if(change.deleted) return;
+  /** the canvas with another writer's change from `previous` to `next` */
+  private merge(canvas: ReadonlyArray<DrawingElement>, previous: Records, next: Records): DrawingElement[] {
+    const local = new Map(canvas.map(element => [element.id, element]));
+    const merged: DrawingElement[] = [];
+    for(const id of next.order) {
+      const line = next.lines.get(id)!,
+            before = previous.lines.get(id),
+            element = local.get(id);
+      const theirs = (line !== before) && (line !== this.written.get(id))/*not this client's write coming back*/;
+      if(!element) {
+        if(before !== undefined) continue/*removed here, not yet saved*/;
+        const added = parseElement(line);
+        if(added) merged.push(added);
+      } else if(theirs) {
+        const changed = parseElement(line);
+        if(changed) merged.push(this.keepActiveEdits(changed, element));
+      } else merged.push(element)/*this client's version, unsaved changes included*/;
+    }
 
-    const parsed = this.parse(change.content);
-    const parsedMap = new Map(parsed.map(e => [e.id, e]));
-
-    // skip pure echoes: parsed is structurally identical to shadow means
-    // the OT store holds exactly what this client last saw / wrote
-    if(this.matchesShadow(parsedMap)) return;
-
-    // overlay active-edit properties from the app's current in-memory state
-    // so live edits survive concurrent remote changes on the same element
-    const current = this.currentStateGetter?.() ?? [];
-    const currentById = new Map(current.map(e => [e.id, e]));
-
-    const merged: DrawingElement[] = parsed.map(remoteEl => {
-      const activeProps = this.activeEdits.get(remoteEl.id);
-      if(!activeProps || activeProps.size < 1) return remoteEl;
-      const localEl = currentById.get(remoteEl.id);
-      if(!localEl) return remoteEl;/*remote added an element this client is not editing*/
-      const overlay: any = { ...remoteEl };
-      for(const prop of activeProps) {
-        if(prop in localEl) overlay[prop] = (localEl as any)[prop];
-      }
-      return overlay as DrawingElement;
+    // elements added here and not yet saved, each after its predecessor
+    canvas.forEach((element, index) => {
+      if(previous.lines.has(element.id) || next.lines.has(element.id)) return/*shown, or removed by another writer*/;
+      const predecessor = (index > 0) ? canvas[index - 1].id : null;
+      const at = (predecessor === null) ? 0 : (merged.findIndex(candidate => candidate.id === predecessor) + 1);
+      merged.splice((at > 0) || (predecessor === null) ? at : merged.length, 0, element);
     });
-
-    // shadow always tracks the raw parsed remote (not the merged result)
-    // so subsequent diffs stay honest about what the OT store actually
-    // holds
-    this.shadow = parsedMap;
-    this.emit(merged);
+    return merged;
   }
 
-  // ------------------------------------------------------------------------------
-  /** structural equality between a parsed-remote map and the shadow. used
-   *  to skip pure-echo re-emits */
-  private matchesShadow(parsedMap: ReadonlyMap<string, DrawingElement>): boolean {
-    if(parsedMap.size !== this.shadow.size) return false;
-    for(const [id, remoteEl] of parsedMap) {
-      const shadowEl = this.shadow.get(id);
-      if(!shadowEl) return false;
-      if(JSON.stringify(shadowEl) !== JSON.stringify(remoteEl)) return false;
+  /** another writer's version of an element with the properties this client is
+   *  editing live */
+  private keepActiveEdits(theirs: DrawingElement, mine: DrawingElement): DrawingElement {
+    const active = this.activeEdits.get(theirs.id);
+    if(!active || (active.size < 1)) return theirs;
+    const overlay: Record<string, unknown> = { ...theirs };
+    for(const property of active) if(property in mine) overlay[property] = (mine as unknown as Record<string, unknown>)[property];
+    return overlay as unknown as DrawingElement;
+  }
+
+  // == Save ======================================================================
+  /** writes what the canvas changed since the records shown onto the app-content
+   *  as it is now. Saves run one at a time; a save asked for while one runs runs once
+   *  more after it, with the canvas as it then is */
+  public save(): Promise<void> {
+    this.saveAgain = true;
+    if(!this.saving) this.saving = this.drain().finally(() => { this.saving = null; });
+    return this.saving;
+  }
+
+  private async drain(): Promise<void> {
+    while(this.saveAgain) {
+      this.saveAgain = false;
+      await this.saveOnce();
     }
-    return true;
   }
 
-  // ------------------------------------------------------------------------------
-  /** test whether a content change relates to our elements block */
-  private isElementsBlock(change: ContentChange): boolean {
-    return change.name === ELEMENTS_NAME;
-  }
+  private async saveOnce(): Promise<void> {
+    if(!this.canEdit()) throw new DrawingSaveError(RELOAD);
+    const delta = deltaOf(this.currentStateGetter?.() ?? [], this.shown);
+    if((delta.lines.size < 1) && (delta.removed.size < 1) && (delta.placed.size < 1)) return/*nothing changed*/;
 
-  // ------------------------------------------------------------------------------
-  /** serialize elements as JSON Lines (one element per line) */
-  private serialize(elements: DrawingElement[]): string {
-    return elements.map(el => JSON.stringify(el)).join('\n');
-  }
+    for(let attempt=1; ; attempt++) {
+      if(this.contents.length < 1) {
+        if(delta.lines.size < 1) return/*no app-content, and nothing to write*/;
+        try {
+          await this.appContent.create(''/*no elements*/, ELEMENTS_NAME);
+        } catch(error) {
+          throw new DrawingSaveError('The drawing could not be saved. Try again.', { cause: error });
+        }
+        await this.newerThan(undefined)/*the created app-content shown*/;
+      } /* else -- an app-content to write in */
 
-  // ------------------------------------------------------------------------------
-  /** parse elements from app-content. Accepts JSON Lines (one element per
-   *  line, current format) and, for backward compatibility, a single JSON
-   *  array on one line (legacy format) */
-  private parse(content: string): DrawingElement[] {
-    if(!content) return [];
+      // the edit each app-content needs, measured on it as it is now
+      const elsewhere = (content: AppContent) => new Set(this.contents.filter(other => other !== content).flatMap(other => recordLines(other).map(idOf)).filter(isId));
+      const edits = this.contents.map((content, index) => ({ content, change: changeTo(content.text, applyDelta(recordLines(content), delta, index === 0, elsewhere(content))) }))
+                               .filter(edit => edit.change !== null);
+      if(edits.length < 1) return/*the app-contents already hold it*/;
 
-    const trimmed = content.trim();
-    if(!trimmed) return [];
-
-    // legacy: a single JSON array
-    if(trimmed.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(trimmed);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch(error) {
-        console.error('failed to parse elements JSON array from app-content:', error);
-        return [];
+      for(const [id, line] of delta.lines) this.written.set(id, line);
+      let refused: AppContent | undefined;
+      for(const { content, change } of edits) {
+        try {
+          await content.edit([ change! ]);
+        } catch(error) {
+          if(!isConflict(error)) throw new DrawingSaveError('The drawing could not be saved. Try again.', { cause: error });
+          refused = content;
+          break;
+        }
       }
-    } /* else -- treat as JSON Lines */
-
-    const out: DrawingElement[] = [];
-    const lines = trimmed.split('\n');
-    for(const line of lines) {
-      const s = line.trim();
-      if(!s) continue;/*skip blank lines*/
-      try {
-        out.push(JSON.parse(s));
-      } catch(error) {
-        console.error('failed to parse element line from app-content:', s, error);
-      }
+      if(!refused) { await this.newerThan(edits[edits.length - 1].content); return/*shown*/; }
+      if(attempt >= EDIT_ATTEMPTS) throw new DrawingSaveError('The drawing kept changing while it was saved. Your last change was not saved; try again.');
+      await this.newerThan(refused);
     }
-    return out;
   }
 
-  // ------------------------------------------------------------------------------
-  private emit(elements: DrawingElement[]): void {
-    if(this.onElementsChanged) this.onElementsChanged(elements);
+  /** resolves once the app-contents no longer show `content` as it was (with none,
+   *  once any app-content is shown) */
+  private newerThan(content: AppContent | undefined): Promise<void> {
+    const moved = () => content ? !this.contents.some(candidate => (candidate.id === content.id) && (candidate.revision === content.revision))
+                                : (this.contents.length > 0);
+    if(moved()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const wake = () => { if(!moved()) return; done(); resolve(); };
+      const timeout = setTimeout(() => { done(); reject(new DrawingSaveError('The drawing did not update. Reload to see the latest.')); }, NEWER_REVISION_WAIT_MS);
+      const done = () => { clearTimeout(timeout); this.waiting.delete(wake); };
+      this.waiting.add(wake);
+    });
   }
-
-  // ------------------------------------------------------------------------------
-  /** whether initial discovery has completed (used to suppress early writes) */
-  public get isDiscoveryDone(): boolean { return this.discoveryDone; }
 }
+
+// == Records =====================================================================
+const idOf = (line: string): string | null => {
+  const id = parseRecord(line)?.id;
+  return ((typeof id === 'string') && (id.length > 0)) ? id : null;
+};
+const isId = (id: string | null): id is string => (id !== null);
+
+/** an element's line: what a save writes and a merge compares */
+const lineOf = (element: DrawingElement): string => JSON.stringify(element);
+
+/** an element from its line, or null for a line that is not one */
+const parseElement = (line: string): DrawingElement | null => (idOf(line) !== null) ? parseRecord(line) as unknown as DrawingElement : null;
+
+/** every app-content's elements by id (the first of each id) in drawing order */
+const recordsOf = (contents: ReadonlyArray<AppContent>): Records => {
+  const lines = new Map<string, string>(), order: string[] = [];
+  for(const line of contents.flatMap(content => recordLines(content))) {
+    const id = idOf(line);
+    if(!id || lines.has(id)) continue/*not an element, or a later copy*/;
+    lines.set(id, line);
+    order.push(id);
+  }
+  return { lines, order };
+};
+
+const sameElements = (a: ReadonlyArray<DrawingElement>, b: ReadonlyArray<DrawingElement>): boolean =>
+  (a.length === b.length) && a.every((element, index) => (element === b[index]) || (lineOf(element) === lineOf(b[index])));
+
+// == Delta =======================================================================
+/** what the canvas changed since the records shown */
+const deltaOf = (canvas: ReadonlyArray<DrawingElement>, shown: Records): Delta => {
+  const order = canvas.map(element => element.id);
+  const lines = new Map<string, string>(), placed = new Set<string>(), predecessor = new Map<string, string | null>();
+  canvas.forEach((element, index) => {
+    const line = lineOf(element);
+    if(shown.lines.get(element.id) !== line) lines.set(element.id, line);
+    if(!shown.lines.has(element.id)) placed.add(element.id)/*added*/;
+    predecessor.set(element.id, (index > 0) ? canvas[index - 1].id : null);
+  });
+  const removed = new Set(shown.order.filter(id => !predecessor.has(id)));
+
+  // moved: an element whose predecessor among the elements both hold changed
+  const both = (ids: ReadonlyArray<string>, other: ReadonlySet<string> | ReadonlyMap<string, unknown>) => ids.filter(id => other.has(id));
+  const before = predecessorsOf(both(shown.order, predecessor)),
+        after = predecessorsOf(both(order, shown.lines));
+  for(const [id, previous] of after) if(before.get(id) !== previous) placed.add(id);
+
+  return { lines, removed, placed, predecessor, order, shown: new Set(shown.order) };
+};
+
+const predecessorsOf = (ids: ReadonlyArray<string>): ReadonlyMap<string, string | null> =>
+  new Map(ids.map((id, index) => [id, (index > 0) ? ids[index - 1] : null]));
+
+/** an app-content's lines with the delta made on them. Repeating it changes nothing
+ *  more. An element changed, moved or removed here that another writer removed
+ *  stays removed; an added element goes in the first app-content unless another
+ *  holds it */
+const applyDelta = (lines: ReadonlyArray<string>, delta: Delta, first: boolean, elsewhere: ReadonlySet<string>): ReadonlyArray<string> => {
+  const held = new Map(lines.map(line => [idOf(line), line]).filter((entry): entry is [string, string] => entry[0] !== null));
+  const out = lines.filter(line => { const id = idOf(line); return !id || !(delta.removed.has(id) || delta.placed.has(id)); })
+                   .map(line => { const id = idOf(line); return (id && delta.lines.has(id)) ? delta.lines.get(id)! : line; });
+
+  for(const id of delta.order) {
+    if(!delta.placed.has(id)) continue;
+    const added = !delta.shown.has(id);
+    const here = held.has(id) || (added && first && !elsewhere.has(id));
+    if(!here) continue/*another app-content's, or removed by another writer*/;
+
+    const line = delta.lines.get(id) ?? held.get(id)!;
+    const predecessor = delta.predecessor.get(id) ?? null;
+    const after = (predecessor === null) ? -1 : out.findIndex(candidate => idOf(candidate) === predecessor);
+    if(predecessor === null) out.splice(0, 0, line);
+    else if(after >= 0) out.splice(after + 1, 0, line);
+    else out.push(line)/*its predecessor is not in this app-content*/;
+  }
+  return out;
+};

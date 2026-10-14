@@ -3,9 +3,9 @@ import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, frameKey, getColor, getPart, getShape, toRotation, type Placement } from './grid';
 import { appendLines, deleteLines, EMPTY_MODEL, MAX_PARTS, parseModel, placementLine, READ_IN_PART, serializeModel, type Model, type ModelLayout } from './model';
 
-// owns the current build: the `model` block's text, as last seen. Every edit is
-// validated against the block's text it is measured on, and the build changes
-// when the block does, never before. An edit that would collide is refused whole,
+// owns the current build: the `model` app-content's text, as last seen. Every
+// edit is validated against the app-content's text it is measured on, and the
+// build changes when the app-content does, never before. An edit that would collide is refused whole,
 // so a build never gains a collision through an edit made on what it shows; a part
 // may float while its support is pending. Edits change their own lines alone
 // NOTE: a collision check covers the text it was measured on. Two editors can
@@ -18,7 +18,7 @@ const MAX_COORDINATE = 200/*studs from the origin*/;
 const MAX_LEVEL = 600/*plates*/;
 
 // == Types =======================================================================
-/** why the build changed: the first load, or a change to the block */
+/** why the build changed: the first load, or a change to the app-content */
 export type ModelSource = 'document' | 'load';
 
 // ................................................................................
@@ -66,12 +66,12 @@ export class Build {
   public isUncertain(): boolean { return this.bridge.isUncertain(); }
   /** why edits wait, when the document holds more than one build (SEE: ContentBridge#conflict) */
   public conflict(): string | undefined { return this.bridge.conflict(); }
-  /** every build the document holds, by block */
-  public builds(): ReadonlyArray<Readonly<{ block: string; ldraw: string; }>> { return this.bridge.builds(); }
+  /** every build the document holds, by app-content id */
+  public builds(): ReadonlyArray<Readonly<{ id: string; ldraw: string; }>> { return this.bridge.builds(); }
   /** the build as LDraw text; refused for a build read only in part, which would
    *  otherwise pass for the whole build (and replace it, given back to setModel) */
   public getText(): string {
-    if(this.model.truncated) throw new BuildError(`${READ_IN_PART} Its text cannot be given back whole from here; the whole text is in the document's model block.`);
+    if(this.model.truncated) throw new BuildError(`${READ_IN_PART} Its text cannot be given back whole from here; the whole text is in the document's model app-content.`);
     return serializeModel(this.model);
   }
   public check(): CheckResult { return checkModel(this.model); }
@@ -205,7 +205,7 @@ export class Build {
 }
 
 // == Validation ==================================================================
-/** the model a block's text holds, when an edit can apply to it line by line */
+/** the model an app-content's text holds, when an edit can apply to it line by line */
 const editable = (text: string): Readonly<{ model: Model; layout: ModelLayout; }> => {
   const model = parseModel(text);
   if(model.truncated) throw new BuildError(`This build cannot be edited here: ${READ_IN_PART} Replace it with a smaller one (setModel) to edit.`);

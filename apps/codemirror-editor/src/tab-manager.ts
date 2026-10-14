@@ -23,7 +23,7 @@ import { composeName, mintSlug, type TabContentChange, type TabId, type TabInfo,
 // Deletion: ContentBridge filters out platform `deleted=true` events (those are
 // bookkeeping and fire spuriously during first-save). Local removal is therefore
 // driven  *proactively* in `delete()` — update `tabs`, switch active tab, and
-// clean up appState before asking the bridge to remove the content block. The
+// clean up appState before asking the bridge to remove the app-content. The
 // tradeoff: a remote client deleting a tab is invisible in the tab list until
 // reload; the tab's live text says the file was removed and keeps what it holds.
 //
@@ -289,8 +289,8 @@ export class TabManager {
 
   // -- Delete Tab ----------------------------------------------------------------
   /** delete a tab (shows confirmation first — see toolbar.ts for dialog flow).
-   *  Updates local state + appState first, THEN tells the bridge to remove the
-   *  content block — see module header on why we don't react to bridge events */
+   *  Updates local state + appState first, then tells the bridge to remove the
+   *  app-content — see module header on why we don't react to bridge events */
   public async delete(tabId: TabId): Promise<void> {
     const removed = this.tabs.get(tabId);
     if(!removed || (this.tabs.size <= 1)) return;

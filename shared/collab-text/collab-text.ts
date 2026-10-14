@@ -4,7 +4,7 @@ import { ChangeSet, EditorState, Text, Transaction, type ChangeSpec } from '@cod
 
 import type { AppContentAPI, AppContentEdit, ContentChange } from '../charmiq';
 
-// a live text editor over one app-content block, as CodeMirror's collaborative
+// a live text editor over one app-content, as CodeMirror's collaborative
 // editing model has it: the host is the authority, and this client keeps the text
 // it last confirmed, the one batch of its own changes it has sent, and the changes
 // made since, separately. CodeMirror's collab extension (over a state with no view)
@@ -28,7 +28,7 @@ export type CollabTextStatus =
 /** the editor a CollabText keeps in step: it shows `text()` and applies every change
  *  the CollabText makes to it (another's change, an undo), mapping its selection */
 export type CollabTextEditor = Readonly<{
-  /** the text is replaced whole: the first load, or the block created anew */
+  /** the text is replaced whole: the first load, or the app-content created anew */
   reset: (text: string) => void;
   /** a change to the text the editor shows */
   apply: (changes: ChangeSet) => void;
@@ -49,8 +49,8 @@ const HOST = 'host';
 export class CollabText {
   /** the editor's text as this client holds it: confirmed, plus its own changes */
   private state: EditorState | null = null;
-  /** the block, at the revision last confirmed, and its text there */
-  private block: Readonly<{ id: string; revision: string; text: Text; }> | null = null;
+  /** the app-content, at the revision last confirmed, and its text there */
+  private content: Readonly<{ id: string; revision: string; text: Text; }> | null = null;
   private inFlight: InFlight | null = null;
   /** the batch in flight was refused: it is sent again once the host's change that
    *  refused it has arrived */
@@ -67,7 +67,7 @@ export class CollabText {
   // == Lifecycle =================================================================
   public constructor(private readonly appContent: AppContentAPI, private readonly selector: string, private readonly editor: CollabTextEditor) {}
 
-  /** follows the block; the editor is reset once it stands */
+  /** follows the app-content; the editor is reset once it stands */
   public start(): void {
     this.editor.status({ kind: 'loading' });
     if(!this.appContent.edits$) { this.stop('unsupported', 'This page cannot save live edits. Reload it to edit.'); return; }
@@ -78,8 +78,8 @@ export class CollabText {
     this.unsubscribe = () => subscription.unsubscribe();
   }
 
-  /** stops following the block: a write still in flight settles unanswered and is
-   *  never sent again, and every caller waiting on one is refused */
+  /** stops following the app-content: a write still in flight settles unanswered and
+   *  is never sent again, and every caller waiting on one is refused */
   public dispose(): void {
     this.closed = true;
     this.unsubscribe?.();
@@ -131,7 +131,7 @@ export class CollabText {
   /** sends the changes not yet sent, as one guarded write tagged with an edit id;
    *  one batch is in flight at a time */
   private flush(): void {
-    if(!this.state || !this.block || this.inFlight || this.stopped || this.closed) return;
+    if(!this.state || !this.content || this.inFlight || this.stopped || this.closed) return;
     const updates = sendableUpdates(this.state);
     if(updates.length < 1) { this.editor.status({ kind: 'synced' }); return; }
 
@@ -147,12 +147,12 @@ export class CollabText {
       return;
     } /* else -- something to send */
 
-    const block = this.block;
-    const inFlight: InFlight = { editId: `${getClientID(this.state)}:${Math.random().toString(36).slice(2, 10)}`, count: updates.length, base: block.revision };
+    const content = this.content;
+    const inFlight: InFlight = { editId: `${getClientID(this.state)}:${Math.random().toString(36).slice(2, 10)}`, count: updates.length, base: content.revision };
     this.inFlight = inFlight;
     this.refused = false;
     this.editor.status({ kind: 'saving' });
-    this.appContent.applyChanges(changes, `[id='${block.id}']`, { id: block.id, revision: block.revision }, { editId: inFlight.editId }).then(
+    this.appContent.applyChanges(changes, `[id='${content.id}']`, { id: content.id, revision: content.revision }, { editId: inFlight.editId }).then(
       () => undefined/*confirmed by the edit that names it*/,
       (error: { code?: unknown; }) => this.failed(inFlight, error)
     );
@@ -163,15 +163,15 @@ export class CollabText {
   private failed(inFlight: InFlight, error: { code?: unknown; }): void {
     if(this.closed || (this.inFlight !== inFlight)) return/*closed, or confirmed or replaced meanwhile*/;
     if(error?.code !== 'app/content-conflict') { this.stop('refused', 'Your latest changes could not be saved. Copy them, then reload.'); return; }
-    if(this.block && (this.block.revision !== inFlight.base)) { this.inFlight = null; this.flush(); return; }
+    if(this.content && (this.content.revision !== inFlight.base)) { this.inFlight = null; this.flush(); return; }
     this.refused = true/*the change that refused it is still on its way*/;
   }
 
   // == Receive ===================================================================
   private receive(edit: AppContentEdit): void {
     if(this.closed) return;
-    // a block removed (or absent) while this client held nothing unsent resumes if
-    // it returns
+    // an app-content removed (or absent) while this client held nothing unsent
+    // resumes if it returns
     if(this.stopped?.reason === 'removed' && (edit.kind === 'created') && !this.hasUnsent()) this.stopped = null;
     if(this.stopped) return;
     switch(edit.kind) {
@@ -185,10 +185,10 @@ export class CollabText {
   /** whether this client holds changes the host has not confirmed */
   private hasUnsent(): boolean { return !!this.state && (sendableUpdates(this.state).length > 0); }
 
-  /** the block stands: its text, unless this client holds changes it never sent */
+  /** the app-content stands: its text, unless this client holds changes never sent */
   private created(id: string, revision: string, content: string): void {
     if(this.hasUnsent()) { this.stop('broken', 'This file changed in a way your edits cannot follow. Copy your text, then reload.'); return; }
-    this.block = { id, revision, text: Text.of(content.split('\n')) };
+    this.content = { id, revision, text: Text.of(content.split('\n')) };
     this.state = EditorState.create({ doc: content, extensions: [collab({ startVersion: 0 }), history()] });
     this.inFlight = null;
     this.editor.reset(content);
@@ -196,27 +196,27 @@ export class CollabText {
   }
 
   private changed(edit: Extract<AppContentEdit, { kind: 'changes'; }>): void {
-    if(!this.state || !this.block) return/*not yet standing: its creation comes first*/;
-    if(edit.base !== this.block.revision) { this.stop('broken', 'This file missed a change. Copy your text, then reload.'); return; }
+    if(!this.state || !this.content) return/*not yet standing: its creation comes first*/;
+    if(edit.base !== this.content.revision) { this.stop('broken', 'This file missed a change. Copy your text, then reload.'); return; }
 
     const inFlight = this.inFlight;
     if(inFlight && (edit.ack === inFlight.editId)) {
       // this client's batch, applied as sent: confirmed
       const own = getClientID(this.state);
       const sent = sendableUpdates(this.state).slice(0, inFlight.count);
-      const changes = sent.reduce((composed, update) => composed.compose(update.changes), ChangeSet.empty(this.block.text.length));
+      const changes = sent.reduce((composed, update) => composed.compose(update.changes), ChangeSet.empty(this.content.text.length));
       this.state = receiveUpdates(this.state, sent.map(update => ({ changes: update.changes, clientID: own }))).state;
-      this.block = { id: this.block.id, revision: edit.revision, text: changes.apply(this.block.text) };
+      this.content = { id: this.content.id, revision: edit.revision, text: changes.apply(this.content.text) };
       this.inFlight = null;
       this.confirm(inFlight.count);
       this.flush();
       return;
     } /* else -- another's change, rebased under this client's own */
 
-    const changes = toChangeSet(edit.changes, this.block.text.length);
+    const changes = toChangeSet(edit.changes, this.content.text.length);
     const tr = receiveUpdates(this.state, [{ changes, clientID: HOST }]);
     this.state = tr.state;
-    this.block = { id: this.block.id, revision: edit.revision, text: changes.apply(this.block.text) };
+    this.content = { id: this.content.id, revision: edit.revision, text: changes.apply(this.content.text) };
     this.editor.apply(tr.changes);
     if(this.refused) { this.inFlight = null; this.refused = false; this.flush(); }
   }
@@ -246,7 +246,7 @@ export class CollabText {
 }
 
 // == Util ========================================================================
-/** a block's edits, each measured after the ones before it, as one change set on
+/** an app-content's edits, each measured after the ones before it, as one change set on
  *  the text they start from */
 const toChangeSet = (changes: ReadonlyArray<ContentChange>, length: number): ChangeSet =>
   changes.reduce((composed, { from, to, insert }) => {

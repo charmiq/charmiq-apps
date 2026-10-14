@@ -3,13 +3,13 @@ import type { CharmIQServices } from '../../../shared/charmiq-services';
 import { AssetResolver } from './asset-resolver';
 import { CommandSurface, type GalleryActions } from './command-surface';
 import { ConfigStore, type ConfigField, type GalleryConfig, type OrientationMode } from './config-store';
-import { ContentBridge, type BindingRecord, type GalleryItem } from './content-bridge';
+import { ContentBridge, GalleryWriteError, type GalleryItem } from './content-bridge';
 import { GalleryModel } from './gallery-model';
 import { GridView } from './grid-view';
 import { SlotStrip } from './slot-strip';
 
 // entry point — constructs every module, wires the data flow, advertises the
-// external surfaces, and kicks off discovery
+// external surfaces, and follows the gallery's app-contents
 //
 // Data flow
 //   ContentBridge  <-->  GalleryModel  <-->  GridView / SlotStrip
@@ -34,49 +34,28 @@ const slotStrip      = new SlotStrip();
 
 // == Actions =====================================================================
 // these are the imperative operations the CommandSurface, the GridView, and the
-// SlotStrip all dispatch into. each one mutates the model, persists via the content
-// bridge and re-renders the UI
+// SlotStrip all dispatch into. Each one writes through the content bridge and
+// resolves once the gallery shows the result: the screen follows the app-contents,
+// never a write before the app-contents have it. A write that fails rejects with a
+// GalleryWriteError, which the UI shows and a Charm receives
 // ................................................................................
-/** append newly-picked items to the end of the current list. respects maxItems */
+/** append newly-picked items to the end of the collection, then keep the newest
+ *  `maxItems` */
 const appendItems = async (newItems: ReadonlyArray<GalleryItem>): Promise<ReadonlyArray<string>> => {
   if(newItems.length < 1) return [];
 
-  const current = model.getItems();
+  await contentBridge.addItems(newItems);
   const { maxItems } = configStore.getConfig();
-  let next = [...current, ...newItems];
-  if((maxItems > 0) && (next.length > maxItems)) {
-    next = next.slice(next.length - maxItems)/*keep the most-recent window*/;
-  } /* else -- no cap, or within cap */
-
-  model.setItems(next);
-  await contentBridge.saveItems(next);
-  syncSlotStrip();
-  gridView.render(next);
+  if(maxItems > 0) await contentBridge.keepNewest(maxItems);
   return newItems.map(i => i.itemId);
 };
 
 // ................................................................................
 /** remove a single item by id, unbinding it from any slots it occupies */
 const removeItem = async (itemId: string): Promise<boolean> => {
-  const current = model.getItems();
-  const next = current.filter(i => i.itemId !== itemId);
-  if(next.length === current.length) return false;/*no such item*/
-
-  // null out any bindings that pointed at the removed item
-  const bindings = model.getBindings();
-  const nextBindings = bindings.map(b => (b.itemId === itemId) ? { ...b, itemId: null } : b);
-  const bindingsChanged = nextBindings.some((b, i) => b.itemId !== bindings[i].itemId);
-
-  model.setItems(next);
-  await contentBridge.saveItems(next);
-  if(bindingsChanged) {
-    model.setBindings(nextBindings);
-    await contentBridge.saveBindings(nextBindings);
-  } /* else -- nothing bound to the removed item */
-
-  syncSlotStrip();
-  gridView.render(next);
-  return true;
+  const removed = await contentBridge.removeItem(itemId);
+  await contentBridge.unbindItem(itemId)/*also after another writer removed it*/;
+  return removed;
 };
 
 // ................................................................................
@@ -88,53 +67,26 @@ const bindSlot = async (slotId: string, itemId: string | null): Promise<boolean>
   // reject binding to an itemId that doesn't exist
   if(itemId && !model.getItems().some(i => i.itemId === itemId)) return false;
 
-  const bindings = model.getBindings();
-  const existing = bindings.find(b => b.slotId === slotId);
-  let nextBindings: BindingRecord[];
-  if(existing) {
-    nextBindings = bindings.map(b => (b.slotId === slotId) ? { ...b, itemId } : b);
-  } else {
-    nextBindings = [...bindings, { slotId, itemId }];
-  }
-
-  model.setBindings(nextBindings);
-  await contentBridge.saveBindings(nextBindings);
-  syncSlotStrip();
+  await contentBridge.setBinding(slotId, current => ({ slotId, itemId, meta: current?.meta }));
   slotStrip.clearActiveSlot();
   return true;
 };
 
 // ................................................................................
-/** move a binding from one slot to another (source becomes empty — MOVE not SWAP) */
+/** move a binding from one slot to another (source becomes empty — MOVE not SWAP).
+ *  The target is bound first, so a move that stops halfway leaves the item in both
+ *  slots, never in neither */
 const moveBinding = async (fromSlotId: string, toSlotId: string): Promise<boolean> => {
   if(fromSlotId === toSlotId) return false;
 
   const slots = configStore.getConfig().slots;
   if(!slots || !slots.some(s => s.id === fromSlotId) || !slots.some(s => s.id === toSlotId)) return false;
 
-  const bindings = model.getBindings();
-  const src = bindings.find(b => b.slotId === fromSlotId);
+  const src = model.getBindings().find(b => b.slotId === fromSlotId);
   if(!src || !src.itemId) return false;/*nothing to move*/
 
-  const nextBindings: BindingRecord[] = [];
-  let sawTarget = false;
-  for(const b of bindings) {
-    if(b.slotId === fromSlotId) {
-      nextBindings.push({ slotId: fromSlotId, itemId: null, meta: b.meta });
-      continue;
-    } /* else -- not the source slot */
-    if(b.slotId === toSlotId) {
-      nextBindings.push({ slotId: toSlotId, itemId: src.itemId, meta: src.meta ?? b.meta });
-      sawTarget = true;
-      continue;
-    } /* else -- not the target slot */
-    nextBindings.push(b);
-  }
-  if(!sawTarget) nextBindings.push({ slotId: toSlotId, itemId: src.itemId, meta: src.meta });
-
-  model.setBindings(nextBindings);
-  await contentBridge.saveBindings(nextBindings);
-  syncSlotStrip();
+  await contentBridge.setBinding(toSlotId, current => ({ slotId: toSlotId, itemId: src.itemId, meta: src.meta ?? current?.meta }));
+  await contentBridge.setBinding(fromSlotId, current => ({ slotId: fromSlotId, itemId: null, meta: current?.meta }));
   return true;
 };
 
@@ -144,28 +96,24 @@ const setSlotMeta = async (slotId: string, meta: unknown): Promise<boolean> => {
   const slots = configStore.getConfig().slots;
   if(!slots || !slots.some(s => s.id === slotId)) return false;/*unknown slot*/
 
-  const bindings = model.getBindings();
-  const existing = bindings.find(b => b.slotId === slotId);
-  const nextBindings: BindingRecord[] = existing
-    ? bindings.map(b => (b.slotId === slotId) ? { ...b, meta } : b)
-    : [...bindings, { slotId, itemId: null, meta }];
-
-  model.setBindings(nextBindings);
-  await contentBridge.saveBindings(nextBindings);
-  syncSlotStrip();
+  await contentBridge.setBinding(slotId, current => ({ slotId, itemId: current?.itemId ?? null, meta }));
   return true;
 };
 
 // ................................................................................
 /** unbind every slot (meta is cleared too — a full reset) */
 const clearAllSlots = async (): Promise<boolean> => {
-  const bindings = model.getBindings();
-  if(bindings.length < 1) return false;/*already clear*/
+  if(model.getBindings().length < 1) return false;/*already clear*/
 
-  model.setBindings([]);
   await contentBridge.clearBindings();
-  syncSlotStrip();
   return true;
+};
+
+// ................................................................................
+/** runs a User's action, showing why when it fails */
+const fromUi = (action: () => Promise<unknown>): void => {
+  gridView.setNotice(null);
+  action().catch(error => gridView.setNotice((error instanceof GalleryWriteError) ? error.message : 'That didn\'t work. Try again.'));
 };
 
 // ................................................................................
@@ -232,18 +180,18 @@ const reflectAutoOrientation = (root: HTMLElement): void => {
 
 // == Wire Callbacks ==============================================================
 // grid view -> actions
-gridView.setOnAdd(() => { void pickAndAdd(); });
-gridView.setOnRemove((itemId) => { void removeItem(itemId); });
+gridView.setOnAdd(() => fromUi(pickAndAdd));
+gridView.setOnRemove((itemId) => fromUi(() => removeItem(itemId)));
 gridView.setOnBindSelected((itemId) => {
   const slotId = slotStrip.getActiveSlotId();
   if(!slotId) return;/*no active slot — shouldn't happen but be defensive*/
-  void bindSlot(slotId, itemId);
+  fromUi(() => bindSlot(slotId, itemId));
 });
 gridView.setOnZoomCommit((zoom) => { void configStore.updateZoomSize(zoom); });
 
 // slot strip -> actions
-slotStrip.setOnBind((slotId, itemId) => { void bindSlot(slotId, itemId); });
-slotStrip.setOnMoveBinding((from, to) => { void moveBinding(from, to); });
+slotStrip.setOnBind((slotId, itemId) => fromUi(() => bindSlot(slotId, itemId)));
+slotStrip.setOnMoveBinding((from, to) => fromUi(() => moveBinding(from, to)));
 slotStrip.setOnSelecting((slotId) => { gridView.setSelectingSlot(slotId !== null); });
 
 // global escape fired by grid-view when nothing else swallows it
@@ -272,6 +220,7 @@ contentBridge.onBindingsChange((bindings) => {
   model.setBindings(bindings);
   syncSlotStrip();
 });
+contentBridge.onReadFailure(() => gridView.setNotice('The gallery stopped updating. Reload to see the latest.'));
 
 // == Init ========================================================================
 const start = async (): Promise<void> => {
@@ -305,14 +254,20 @@ const start = async (): Promise<void> => {
   ro.observe(root);
   if(configStore.getConfig().orientation === 'auto') reflectAutoOrientation(root);
 
-  // advertise before discovery so external subscribers can attach early
+  // advertise before following the app-contents so external subscribers can attach
+  // early
   commandSurface.init();
 
-  // discover initial items + bindings from the content bridge; inbound
-  // callbacks registered above will push the first renders
-  await contentBridge.discover();
-
-  // if discovery saw nothing, render the empty grid explicitly
+  // follow the items + bindings app-contents; the callbacks registered above render
+  // each change, the first included
+  try {
+    await contentBridge.follow();
+  } catch(failure) {
+    const code = (failure as { code?: unknown; } | null)?.code;
+    gridView.setNotice((failure instanceof GalleryWriteError) ? failure.message
+                     : (code === 'functions/permission-denied') ? 'This Application isn\'t allowed to read the gallery.'
+                     : 'The gallery could not be read. Reload to try again.');
+  }
   gridView.render(model.getItems());
   syncSlotStrip();
 };

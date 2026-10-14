@@ -1,49 +1,29 @@
 import mermaid from 'mermaid';
-import { race, timer, Subject } from 'rxjs';
-import { debounceTime, take } from 'rxjs/operators';
-import type { Observable } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
+
+import type { AppContent, AppContentAPI } from '../../../shared/charmiq';
 import type { DiagramConfig } from './config-store';
 
-// bridges appContent → Mermaid renderer. Read-only: subscribes to content
-// changes and re-renders the diagram. No outbound writes
+// bridges appContent → Mermaid renderer. Read-only: follows the Application's
+// app-content and re-renders the diagram as it changes. No outbound writes
 // ********************************************************************************
 // == Constants ===================================================================
-/** ms to debounce content emissions before declaring discovery complete */
-const DISCOVERY_DEBOUNCE_MS = 200/*ms*/;
-/** ms to wait for any content at all before declaring discovery complete */
-const DISCOVERY_TIMEOUT_MS = 500/*ms*/;
 /** unique id passed to mermaid.render (must be a valid element id) */
 const RENDER_ID = 'mermaid-svg';
 
-// == Types =======================================================================
-/** shape of an appContent change event */
-export interface ContentChange {
-  readonly id: string;
-  readonly name: string;
-  readonly content: string;
-  readonly deleted: boolean;
-}
-
-// == Charmiq API (global) ========================================================
-interface CharmiqAppContent {
-  onChange$(): Observable<ContentChange>;
-  set(content: string | undefined, selector: string, name?: string): Promise<void>;
-}
-
 // == Class =======================================================================
-/** subscribes to appContent and renders Mermaid diagrams into the container */
+/** follows the Application's app-content and renders it as a Mermaid diagram */
 export class ContentBridge {
-  private readonly appContent: CharmiqAppContent;
+  private readonly appContent: AppContentAPI;
   private readonly diagramEl: HTMLElement;
   private readonly errorEl: HTMLElement;
 
   private currentContentId: string | null = null;
   private currentSource: string = '';
   private renderCounter = 0;/*monotonic counter to discard stale renders*/
-  private discoveryDone = false;
 
   // == Lifecycle =================================================================
-  public constructor(appContent: CharmiqAppContent, diagramEl: HTMLElement, errorEl: HTMLElement) {
+  public constructor(appContent: AppContentAPI, diagramEl: HTMLElement, errorEl: HTMLElement) {
     this.appContent = appContent;
     this.diagramEl = diagramEl;
     this.errorEl = errorEl;
@@ -64,27 +44,13 @@ export class ContentBridge {
     if(this.currentSource) await this.render(this.currentSource);
   }
 
-  /** subscribe to appContent changes, wait for discovery, then resolve */
-  public discover(): Promise<void> {
-    return new Promise((resolve) => {
-      const contentReceived$ = new Subject<void>();
+  /** follows the app-content: resolves once it is first shown (or its read refused) */
+  public async follow(): Promise<void> {
+    if(!this.appContent.content$) { this.showProblem('Reload this page to show the diagram.'); return/*a page opened before content$*/; }
 
-      this.appContent.onChange$().subscribe((change: ContentChange) => {
-        contentReceived$.next();/*signal that content arrived*/
-        this.handleRemoteChange(change);
-      });
-
-      // discovery is complete when either:
-      // 1. content arrives and settles (debounce) or
-      // 2. no content at all after timeout
-      race(
-        contentReceived$.pipe(debounceTime(DISCOVERY_DEBOUNCE_MS), take(1)),
-        timer(DISCOVERY_TIMEOUT_MS).pipe(take(1))
-      ).subscribe(() => {
-        this.discoveryDone = true;
-        resolve();
-      });
-    });
+    const content$ = this.appContent.content$();
+    content$.subscribe({ next: content => this.show(content), error: failure => this.showReadFailure(failure) });
+    await firstValueFrom(content$).catch(() => undefined/*shown by the subscription*/);
   }
 
   // == Getters ===================================================================
@@ -92,28 +58,25 @@ export class ContentBridge {
   public getCurrentContentId(): string | null { return this.currentContentId; }
 
   // == Inbound (appContent → Mermaid) ============================================
-  /** handle an incoming remote change from appContent */
-  private handleRemoteChange(change: ContentChange): void {
-    if(change.deleted) {
-      if(change.id === this.currentContentId) {
-        this.currentContentId = null;
-        this.currentSource = '';
-        this.diagramEl.innerHTML = '';
-      } /* else -- deleted content isn't ours */
-      return;
-    } /* else -- not a deletion */
+  /** shows the app-content as it stands: none is no diagram */
+  private show(content: AppContent | null): void {
+    this.currentContentId = content?.id ?? null;
+    const source = content?.text ?? '';
+    if(source === this.currentSource) return/*unchanged*/;
 
-    // pick the first content id if none set yet
-    if(!this.currentContentId) this.currentContentId = change.id;
+    this.currentSource = source;
+    this.render(source);
+  }
 
-    // only process updates for our current content
-    if(change.id !== this.currentContentId) return;
-
-    // state comparison — skip if source hasn't changed
-    if(change.content === this.currentSource) return/*unchanged*/;
-
-    this.currentSource = change.content;
-    this.render(change.content);
+  /** a refused read says why instead of showing nothing */
+  private showReadFailure(failure: unknown): void {
+    const code = (failure as { code?: unknown; } | null)?.code;
+    this.showProblem((code === 'functions/permission-denied') ? 'This Application isn\'t allowed to read the diagram.' : 'The diagram could not be read. Reload to try again.');
+  }
+  private showProblem(message: string): void {
+    this.diagramEl.innerHTML = '';
+    this.errorEl.textContent = message;
+    this.errorEl.hidden = false;
   }
 
   // == Render ====================================================================

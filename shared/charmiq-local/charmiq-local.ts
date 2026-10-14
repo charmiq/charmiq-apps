@@ -1,4 +1,4 @@
-import { appContentBlocks, type BlockObservableFactory, type BlockObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentBlock';
+import { appContentLayer, type AppContentObservableFactory, type AppContentObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentLayer';
 import { Observable } from 'rxjs';
 
 import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ContentChange, OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
@@ -70,32 +70,33 @@ const makeAppState = () => {
 };
 
 // == App Content =================================================================
-/** the block layer's streams as the bridge's are: RxJS, so operators apply and an
+/** the app-content layer's streams as the bridge's are: RxJS, so operators apply and an
  *  error ends the stream and releases what it held */
-const blockObservable: BlockObservableFactory = <T, >(producer: (observer: BlockObserver<T>) => () => void) =>
+const appContentObservable: AppContentObservableFactory = <T, >(producer: (observer: AppContentObserver<T>) => () => void) =>
   new Observable<T>(subscriber => producer({ next: value => subscriber.next(value), error: failure => subscriber.error(failure) }));
 
-// app-content blocks as the Platform holds them: an ordered list, each with an id and
-// an optional name. A selector picks a block as the Platform does -- none for the
+// app-contents as the Platform holds them: an ordered list, each with an id and an
+// optional name. A selector picks an app-content as the Platform does -- none for the
 // first, `[n]` by index, `[name='x']` or `[id='x']` -- and every change carries the
-// block's id, name and revision. `onChange$()` with no selector emits every block,
-// then each addition, update and deletion; with a selector, that one block appearing,
-// changing or disappearing. Revisions belong to this harness session, as they belong
-// to the Platform's editor: every write to a block gives it a new one, a removed
-// block's is forgotten, and a reload starts over. `edits$()` streams a block's
-// actual edits with the same revisions, naming a tagged write back as `ack`
-type AppContentBlock = Readonly<{ id: string; name?: string; content: string; }>;
+// app-content's id, name and revision. `onChange$()` with no selector emits every
+// app-content, then each addition, update and deletion; with a selector, that one
+// app-content appearing, changing or disappearing. Revisions belong to this harness
+// session, as they belong to the Platform's editor: every write to an app-content gives
+// it a new one, a removed app-content's is forgotten, and a reload starts over.
+// `edits$()` streams an app-content's actual edits with the same revisions, naming a
+// tagged write back as `ack`
+type StoredAppContent = Readonly<{ id: string; name?: string; content: string; }>;
 
-/** the index of the block a selector picks, or -1 when none matches */
-const resolveAppContent = (blocks: readonly AppContentBlock[], selector?: string): number => {
+/** the index of the app-content a selector picks, or -1 when none matches */
+const resolveAppContent = (appContents: readonly StoredAppContent[], selector?: string): number => {
   const query = selector?.trim() ?? '';
-  if(!query) return (blocks.length > 0) ? 0 : -1;
+  if(!query) return (appContents.length > 0) ? 0 : -1;
   const index = query.match(/^\[(\d+)\]$/);
-  if(index) return (Number(index[1]) < blocks.length) ? Number(index[1]) : -1;
+  if(index) return (Number(index[1]) < appContents.length) ? Number(index[1]) : -1;
   const name = query.match(/^\[name=['"]([^'"]+)['"]\]$/);
-  if(name) return blocks.findIndex(block => block.name === name[1]);
+  if(name) return appContents.findIndex(appContent => appContent.name === name[1]);
   const id = query.match(/^\[id=['"]([^'"]+)['"]\]$/);
-  if(id) return blocks.findIndex(block => block.id === id[1]);
+  if(id) return appContents.findIndex(appContent => appContent.id === id[1]);
   throw new Error(`Invalid app-content selector: ${selector}`);
 };
 
@@ -103,22 +104,23 @@ const resolveAppContent = (blocks: readonly AppContentBlock[], selector?: string
 /** the key the selector-keyed layout gave content stored without a selector */
 const DEFAULT_CONTENT_KEY = '__default__';
 
-/** the name a `[name='x']` selector gives a block it creates */
+/** the name a `[name='x']` selector gives an app-content it creates */
 const selectorName = (selector?: string): string | undefined => selector?.trim().match(/^\[name=['"]([^'"]+)['"]\]$/)?.[1];
 
-/** the id a block converted from the selector-keyed layout takes: its complete key
- *  hex-encoded, so the same key always gives the same id (conversion repeats on every
- *  read until a write), distinct keys give distinct ids, and the id is safe in a
- *  `[id='x']` selector. A created block's id never repeats a stored one */
-const convertedBlockId = (key: string): string =>
+/** the id an app-content converted from the selector-keyed layout takes: its
+ *  complete key hex-encoded, so the same key always gives the same id (conversion
+ *  repeats on every read until a write), distinct keys give distinct ids, and the id
+ *  is safe in a `[id='x']` selector. A created app-content's id never repeats a
+ *  stored one */
+const convertedAppContentId = (key: string): string =>
   `app-content-key-${Array.from(new TextEncoder().encode(key), byte => byte.toString(16).padStart(2, '0')).join('')}`;
 
-/** an id no stored block holds: a reload starts a new harness, so ids never come
+/** an id no stored app-content holds: a reload starts a new harness, so ids never come
  *  from a counter */
-const newBlockId = (blocks: readonly AppContentBlock[]): string => {
+const newAppContentId = (appContents: readonly StoredAppContent[]): string => {
   for(;;) {
     const id = `app-content-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    if(!blocks.some(block => block.id === id)) return id;
+    if(!appContents.some(appContent => appContent.id === id)) return id;
   }
 };
 
@@ -137,7 +139,7 @@ const validChanges = (length: number, changes: unknown): ContentChange[] => {
   changes.forEach((change: unknown, index) => {
     const { from, to, insert } = (change ?? {}) as Partial<Record<keyof ContentChange, unknown>>;
     if((typeof change !== 'object') || (typeof from !== 'number') || (typeof to !== 'number') || ((insert !== undefined) && (typeof insert !== 'string'))) throw bridgeError('functions/invalid-argument', `App-content edit ${index + 1} is not an edit: from and to are offsets, and insert, when present, is text.`);
-    if(!Number.isInteger(from) || !Number.isInteger(to) || (from < 0) || (from > to) || (to > current)) throw bridgeError('functions/invalid-argument', `App-content edit ${index + 1} (from ${from} to ${to}) is outside the block's ${current} characters.`);
+    if(!Number.isInteger(from) || !Number.isInteger(to) || (from < 0) || (from > to) || (to > current)) throw bridgeError('functions/invalid-argument', `App-content edit ${index + 1} (from ${from} to ${to}) is outside the app-content's ${current} characters.`);
     current += ((insert as string | undefined)?.length ?? 0) - (to - from);
   });
   return changes;
@@ -145,10 +147,11 @@ const validChanges = (length: number, changes: unknown): ContentChange[] => {
 
 // --------------------------------------------------------------------------------
 const makeAppContent = () => {
-  const writes = new Set<(blocks: readonly AppContentChange[]) => void>();
+  const writes = new Set<(appContents: readonly AppContentChange[]) => void>();
   const edited = new Set<(edits: readonly AppContentEdit[]) => void>();
 
-  // revisions: `${session}:${n}`, minted for a block when first read and on every write
+  // revisions: `${session}:${n}`, minted for an app-content when first read and on
+  // every write
   const session = Math.random().toString(36).slice(2, 10);
   let nextRevision = 0;
   const revisions = new Map<string, string>();
@@ -159,54 +162,54 @@ const makeAppContent = () => {
     revisions.set(id, minted);
     return minted;
   };
-  const withRevisions = (current: readonly AppContentBlock[]): Array<AppContentChange & Readonly<{ revision: string; }>> => current.map(block => ({ ...block, revision: revisionOf(block.id) }));
-  const blocks = (): AppContentBlock[] => {
+  const withRevisions = (current: readonly StoredAppContent[]): Array<AppContentChange & Readonly<{ revision: string; }>> => current.map(appContent => ({ ...appContent, revision: revisionOf(appContent.id) }));
+  const appContents = (): StoredAppContent[] => {
     const stored = readJson<unknown>(APP_CONTENT_KEY, []);
-    if(Array.isArray(stored)) return stored as AppContentBlock[];
+    if(Array.isArray(stored)) return stored as StoredAppContent[];
     if(!stored || (typeof stored !== 'object')) return []/*nothing stored*/;
 
-    // the selector-keyed layout this harness stored before blocks (`__default__` for
-    // no selector): each entry is a block, named when its selector named one, the
-    // unselected block first. Converted on every read until the next write stores
-    // blocks (SEE: convertedBlockId)
+    // the selector-keyed layout this harness stored before the list (`__default__`
+    // for no selector): each entry is an app-content, named when its selector named
+    // one, the unselected one first. Converted on every read until the next write
+    // stores the list (SEE: convertedAppContentId)
     return Object.entries(stored as Record<string, string>)
       .sort(([a], [b]) => Number(b === DEFAULT_CONTENT_KEY) - Number(a === DEFAULT_CONTENT_KEY))
-      .map(([key, content]) => ({ id: convertedBlockId(key), name: selectorName(key), content }));
+      .map(([key, content]) => ({ id: convertedAppContentId(key), name: selectorName(key), content }));
   };
-  /** stores the blocks, the `written` one with a new revision, made by `made` (its
-   *  edits, and the write's tag) when the write was edits; otherwise its whole text
-   *  is replaced */
-  const write = (next: AppContentBlock[], written?: string, made?: Readonly<{ changes: readonly ContentChange[]; ack?: string; }>) => {
-    const before = new Map(withRevisions(blocks()).map(block => [block.id, block]));
+  /** stores the app-contents, the `written` one with a new revision, made by `made`
+   *  (its edits, and the write's tag) when the write was edits; otherwise its whole
+   *  text is replaced */
+  const write = (next: StoredAppContent[], written?: string, made?: Readonly<{ changes: readonly ContentChange[]; ack?: string; }>) => {
+    const before = new Map(withRevisions(appContents()).map(appContent => [appContent.id, appContent]));
     if(written !== undefined) revisions.delete(written);
-    const ids = new Set(next.map(block => block.id));
+    const ids = new Set(next.map(appContent => appContent.id));
     [...revisions.keys()].filter(id => !ids.has(id)).forEach(id => revisions.delete(id))/*gone: whatever returns is new*/;
     writeJson(APP_CONTENT_KEY, next);
     const current = withRevisions(next);
     writes.forEach(notify => notify(current));
 
     const edits: AppContentEdit[] = [];
-    before.forEach((block, id) => { if(!ids.has(id)) edits.push({ kind: 'removed', id, base: block.revision }); });
-    current.forEach(block => {
-      const prior = before.get(block.id);
-      if(!prior) { edits.push({ kind: 'created', id: block.id, revision: block.revision, content: block.content }); return; }
-      if(prior.revision === block.revision) return/*unchanged*/;
-      const changes = ((block.id === written) && made) ? made.changes : [{ from: 0, to: prior.content.length, insert: block.content }];
-      edits.push({ kind: 'changes', id: block.id, base: prior.revision, revision: block.revision, changes, ...(((block.id === written) && made?.ack) ? { ack: made.ack } : {}) });
+    before.forEach((appContent, id) => { if(!ids.has(id)) edits.push({ kind: 'removed', id, base: appContent.revision }); });
+    current.forEach(appContent => {
+      const prior = before.get(appContent.id);
+      if(!prior) { edits.push({ kind: 'created', id: appContent.id, revision: appContent.revision, content: appContent.content }); return; }
+      if(prior.revision === appContent.revision) return/*unchanged*/;
+      const changes = ((appContent.id === written) && made) ? made.changes : [{ from: 0, to: prior.content.length, insert: appContent.content }];
+      edits.push({ kind: 'changes', id: appContent.id, base: prior.revision, revision: appContent.revision, changes, ...(((appContent.id === written) && made?.ack) ? { ack: made.ack } : {}) });
     });
     edited.forEach(notify => notify(edits));
   };
 
-  // the changes between two lists of blocks, as one subscription sees them
+  // the changes between two lists of app-contents, as one subscription sees them
   const changes = (selector: string | undefined, prev: readonly AppContentChange[], next: readonly AppContentChange[]): AppContentChange[] => {
     if(selector === undefined) {
-      const prevById = new Map(prev.map(block => [block.id, block]));
-      const nextIds = new Set(next.map(block => block.id));
+      const prevById = new Map(prev.map(appContent => [appContent.id, appContent]));
+      const nextIds = new Set(next.map(appContent => appContent.id));
       return [
-        ...next.filter(block => { const before = prevById.get(block.id); return !before || !isSameChange(before, block); }),
-        ...prev.filter(block => !nextIds.has(block.id)).map(block => ({ ...block, deleted: true })),
+        ...next.filter(appContent => { const before = prevById.get(appContent.id); return !before || !isSameChange(before, appContent); }),
+        ...prev.filter(appContent => !nextIds.has(appContent.id)).map(appContent => ({ ...appContent, deleted: true })),
       ];
-    } /* else -- one selected block */
+    } /* else -- one selected app-content */
     const before = prev[resolveAppContent(prev, selector)];
     const after = next[resolveAppContent(next, selector)];
     if(after && (!before || (before.id !== after.id) || !isSameChange(before, after))) return [after];
@@ -219,7 +222,7 @@ const makeAppContent = () => {
       const observable = {
         subscribe(next: ((value: AppContentChange) => void) | Partial<{ next: (value: AppContentChange) => void; }>) {
           const emit = (typeof next === 'function') ? next : (next.next ?? (() => {}));
-          let seen: readonly AppContentChange[] = withRevisions(blocks());
+          let seen: readonly AppContentChange[] = withRevisions(appContents());
           changes(selector, [], seen).forEach(emit);
           const notify = (current: readonly AppContentChange[]) => { const prev = seen; seen = current; changes(selector, prev, seen).forEach(emit); };
           writes.add(notify);
@@ -229,20 +232,20 @@ const makeAppContent = () => {
       };
       return observable;
     },
-    // the block a selector names now (an `[id='x']` selector names that block whether
-    // or not it exists yet): where it stands, then its edits
+    // the app-content a selector names now (an `[id='x']` selector names that
+    // app-content whether or not it exists yet): where it stands, then its edits
     edits$: (selector?: string) => {
       const observable = {
         subscribe(next: ((value: AppContentEdit) => void) | Partial<{ next: (value: AppContentEdit) => void; error: (error: Error) => void; }>) {
           const emit = (typeof next === 'function') ? next : (next.next ?? (() => {}));
-          const current = withRevisions(blocks());
-          const block = current[resolveAppContent(current, selector)];
-          const id = block?.id ?? selector?.trim().match(/^\[id=['"]([^'"]+)['"]\]$/)?.[1];
+          const current = withRevisions(appContents());
+          const appContent = current[resolveAppContent(current, selector)];
+          const id = appContent?.id ?? selector?.trim().match(/^\[id=['"]([^'"]+)['"]\]$/)?.[1];
           if(!id) {
             if(typeof next !== 'function') next.error?.(bridgeError('functions/not-found', `No app-content matches '${selector ?? ''}'.`));
             return { unsubscribe: () => {} };
-          } /* else -- the block, or the id it will have */
-          emit(block ? { kind: 'created', id, revision: block.revision, content: block.content } : { kind: 'absent', id });
+          } /* else -- the app-content, or the id it will have */
+          emit(appContent ? { kind: 'created', id, revision: appContent.revision, content: appContent.content } : { kind: 'absent', id });
           const notify = (edits: readonly AppContentEdit[]) => edits.filter(edit => edit.id === id).forEach(emit);
           edited.add(notify);
           return { unsubscribe: () => edited.delete(notify) };
@@ -252,73 +255,75 @@ const makeAppContent = () => {
       return observable;
     },
     snapshot: async (selector?: string): Promise<AppContentSnapshot | null> => {
-      const current = blocks();
-      const block = current[resolveAppContent(current, selector)];
-      return block ? { id: block.id, content: block.content, revision: revisionOf(block.id) } : null;
+      const current = appContents();
+      const appContent = current[resolveAppContent(current, selector)];
+      return appContent ? { id: appContent.id, content: appContent.content, revision: revisionOf(appContent.id) } : null;
     },
 
     // a call's changes apply in order, each position measured after the changes
-    // before it, and all or none apply. Guarded, they apply only to the guard's block
-    // at the guard's revision; unguarded, a missing block is created, named from a
-    // `[name='x']` selector. A guarded write may carry a tag, named back by the edit
-    // it makes. There is no other writer here, so there is nothing to merge
+    // before it, and all or none apply. Guarded, they apply only to the guard's
+    // app-content at the guard's revision; unguarded, a missing app-content is
+    // created, named from a `[name='x']` selector. A guarded write may carry a tag,
+    // named back by the edit it makes. There is no other writer here, so there is
+    // nothing to merge
     applyChanges: async (edits: readonly ContentChange[], selector?: string, guard?: AppContentGuard, tag?: AppContentWrite) => {
-      const next = blocks();
+      const next = appContents();
       let index = resolveAppContent(next, selector);
       if((tag !== undefined) && ((guard === undefined) || (typeof tag?.editId !== 'string') || !tag.editId)) throw bridgeError('functions/invalid-argument', 'An app-content write tag names an edit id, and comes with a guard.');
       if(guard !== undefined) {
         const { id, revision } = (guard ?? {}) as Partial<Record<keyof AppContentGuard, unknown>>;
-        if((typeof id !== 'string') || !id || (typeof revision !== 'string') || !revision) throw bridgeError('functions/invalid-argument', 'An app-content guard names a block id and a revision.');
+        if((typeof id !== 'string') || !id || (typeof revision !== 'string') || !revision) throw bridgeError('functions/invalid-argument', 'An app-content guard names an app-content id and a revision.');
         if((index < 0) || (next[index].id !== id) || (revisionOf(id) !== revision)) throw bridgeError('app/content-conflict', `App-content ${id} is no longer at revision ${revision}. Nothing was written.`);
       } /* else -- unguarded */
       const valid = validChanges((index < 0) ? 0 : next[index].content.length, edits);
-      if(index < 0) index = next.push({ id: newBlockId(next), name: selectorName(selector), content: '' }) - 1;
+      if(index < 0) index = next.push({ id: newAppContentId(next), name: selectorName(selector), content: '' }) - 1;
       const content = valid.reduce((text, edit) => text.slice(0, edit.from) + (edit.insert ?? '') + text.slice(edit.to), next[index].content);
       next[index] = { ...next[index], content };
       write(next, next[index].id, { changes: valid, ack: tag?.editId });
     },
 
     // every call crosses the Platform bridge, so a refusal is a rejection, never a throw
-    get: async (selector?: string) => { const current = blocks(); return current[resolveAppContent(current, selector)]?.content ?? ''; },
-    // omitted content keeps a block's text (a rename); a block it creates is empty
+    get: async (selector?: string) => { const current = appContents(); return current[resolveAppContent(current, selector)]?.content ?? ''; },
+    // omitted content keeps an app-content's text (a rename); one it creates is empty
     set: async (content: string | undefined, selector?: string, name?: string) => {
-      const next = blocks();
+      const next = appContents();
       const index = resolveAppContent(next, selector);
-      if(index < 0) next.push({ id: newBlockId(next), name: name ?? selectorName(selector), content: content ?? '' });
+      if(index < 0) next.push({ id: newAppContentId(next), name: name ?? selectorName(selector), content: content ?? '' });
       else next[index] = { ...next[index], ...((name !== undefined) ? { name } : {}), ...((content !== undefined) ? { content } : {}) };
       write(next, next[(index < 0) ? (next.length - 1) : index].id);
     },
-    // with a guard, only the guard's block and only at the guard's revision
+    // with a guard, only the guard's app-content and only at the guard's revision
     remove: async (selector?: string, guard?: AppContentGuard) => {
-      const next = blocks();
+      const next = appContents();
       const index = resolveAppContent(next, selector);
       if(guard !== undefined) {
         const { id, revision } = (guard ?? {}) as Partial<Record<keyof AppContentGuard, unknown>>;
-        if((typeof id !== 'string') || !id || (typeof revision !== 'string') || !revision) throw bridgeError('functions/invalid-argument', 'An app-content guard names a block id and a revision.');
+        if((typeof id !== 'string') || !id || (typeof revision !== 'string') || !revision) throw bridgeError('functions/invalid-argument', 'An app-content guard names an app-content id and a revision.');
         if((index < 0) || (next[index].id !== id) || (revisionOf(id) !== revision)) throw bridgeError('app/content-conflict', `App-content ${id} is no longer at revision ${revision}. Nothing was removed.`);
       } /* else -- unguarded */
       if(index >= 0) { next.splice(index, 1); write(next); }
     },
   };
 
-  // the block of that name (no name: the first), created in one step when there is
-  // none: an existing block, empty or not, is never written
-  const createBlock = async (name?: string, content = '') => {
+  // the app-content of that name (no name: the first), created in one step when there
+  // is none: an existing app-content, empty or not, is never written
+  const createContent = async (name?: string, content = '') => {
     // a name is stored without the spaces around it, as the Platform's is; a name of
     // nothing else is refused before anything is written
     const named = name?.trim();
     if((named !== undefined) && !/^[^'"\]\[]+$/.test(named)) throw bridgeError('functions/invalid-argument', 'An app-content name is text without quotes or brackets.');
-    const next = blocks();
+    const next = appContents();
     const index = resolveAppContent(next, (named !== undefined) ? `[name='${named}']` : undefined);
     if(index >= 0) return { id: next[index].id, created: false };
-    next.push({ id: newBlockId(next), ...((named !== undefined) ? { name: named } : {}), content });
+    next.push({ id: newAppContentId(next), ...((named !== undefined) ? { name: named } : {}), content });
     write(next, next[next.length - 1].id);
     return { id: next[next.length - 1].id, created: true };
   };
 
-  // the blocks an Application reads and writes, from the Platform's own layer over
-  // these primitives: one behavior with the bridge (SEE: the CLI's harness bundler)
-  return { ...primitives, ...appContentBlocks({ ...primitives, createBlock }, blockObservable) };
+  // the app-contents an Application reads and writes, from the Platform's own layer
+  // over these primitives: one behavior with the bridge (SEE: the CLI's harness
+  // bundler)
+  return { ...primitives, ...appContentLayer({ ...primitives, createContent }, appContentObservable) };
 };
 
 // == OAuth =======================================================================

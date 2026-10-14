@@ -137,6 +137,16 @@ body {
   color: var(--text-sub);
 }
 
+// why a User's action (or the gallery's read) failed
+.notice {
+  flex-shrink: 0;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 12px;
+  color: var(--text-main);
+  overflow-wrap: break-word;
+}
+
 .icon-btn {
   background: none;
   border: none;

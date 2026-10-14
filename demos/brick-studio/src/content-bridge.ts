@@ -1,56 +1,56 @@
 import type { AppContentAPI, AppContentChange, AppContentSnapshot, ContentChange } from '../../../shared/charmiq';
 import { BuildError } from './build';
 
-// the build's LDraw text lives in the `model` appContent block, and the block is
+// the build's LDraw text lives in the `model` app-content, and the app-content is
 // the truth: the build shows what it holds, whoever changed it. Every edit is
-// measured on a snapshot of the block and applies only while the block is still
+// measured on a snapshot of the app-content and applies only while it is still
 // exactly that (a guarded edit), an edit that changes nothing included; on a
-// conflict it is measured again on the same block as it is now. A deletion notice
-// is a reason to check, never proof the block is gone: it is gone when a read of
-// it by its id finds nothing while the build still shows what was checked. Any
-// read's answer applies only while the build still shows what it showed when the
-// read began (otherwise the change stream has moved on, and carries the newer
+// conflict it is measured again on the same app-content as it is now. A deletion
+// notice is a reason to check, never proof the app-content is gone: it is gone when
+// a read of it by its id finds nothing while the build still shows what was checked.
+// Any read's answer applies only while the build still shows what it showed when
+// the read began (otherwise the change stream has moved on, and carries the newer
 // state). A read that fails is an error, never an absence.
-// Two collaborators who each find no block and add a part create two `model`
-// blocks, both kept when their edits merge. No pair of guarded edits can move one
-// build into the other exactly once, so a document holding more than one is a
+// Two collaborators who each find no app-content and add a part create two `model`
+// app-contents, both kept when their edits merge. No pair of guarded edits can move
+// one build into the other exactly once, so a document holding more than one is a
 // conflict: every build is kept and readable, and edits wait until one remains
 // SEE: tutorials/03-writing-data for the same pattern, explained
 // ********************************************************************************
 // == Constants ===================================================================
-/** name + selector of the content block that holds the LDraw text */
+/** name + selector of the app-content that holds the LDraw text */
 const MODEL_NAME = 'model';
 const MODEL_SELECTOR = `[name='${MODEL_NAME}']`;
 
-/** how many times an edit is measured again after the block changed under it */
+/** how many times an edit is measured again after the app-content changed under it */
 const EDIT_ATTEMPTS = 3;
 
 /** the refusal on a page opened before guarded edits existed */
 const RELOAD = 'This page cannot make safe edits. Reload it to edit the build.';
 /** the refusal while the document holds more than one build */
-const conflict = (count: number) => `This document holds ${count} builds named ${MODEL_NAME}, made at once by different people. Nothing was changed: edits wait until one build remains. getModel returns each build's text; combine them into one ${MODEL_NAME} block in the document and remove the others.`;
+const conflict = (count: number) => `This document holds ${count} builds named ${MODEL_NAME}, made at once by different people. Nothing was changed: edits wait until one build remains. getModel returns each build's text; combine them into one ${MODEL_NAME} app-content in the document and remove the others.`;
 
 // == Types =======================================================================
-/** the block as last seen: an older page sees no revision */
+/** the app-content as last seen: an older page sees no revision */
 type Seen = Readonly<{ id: string; content: string; revision?: string; }>;
 
 // == Class =======================================================================
 export class ContentBridge {
-  private seen: Seen | null = null/*no block*/;
-  private following = false/*changes reach the build once the block is known*/;
+  private seen: Seen | null = null/*no app-content*/;
+  private following = false/*changes reach the build once the app-content is known*/;
   private onTextChanged: ((text: string) => void) | null = null;
   private onUncertainChanged: ((uncertain: boolean) => void) | null = null;
-  /** a check of the block shown failed: whether it is still there is unknown
-   *  until the block's next revision, or its confirmed absence */
+  /** a check of the app-content shown failed: whether it is still there is unknown
+   *  until the app-content's next revision, or its confirmed absence */
   private uncertain = false;
-  /** every block named `model`, by id, as last seen */
+  /** every app-content named `model`, by id, as last seen */
   private readonly models = new Map<string, Seen>();
   private onBuildsChanged: (() => void) | null = null;
 
   // == Lifecycle =================================================================
   public constructor(private readonly appContent: AppContentAPI) {}
 
-  /** register the callback for each change to the block's text after it is known */
+  /** register the callback for each change to the app-content's text once known */
   public onChange(callback: (text: string) => void): void {
     this.onTextChanged = callback;
   }
@@ -60,7 +60,7 @@ export class ContentBridge {
     this.onUncertainChanged = callback;
   }
 
-  /** whether the build may no longer be in the document: a check of its block
+  /** whether the build may no longer be in the document: a check of its app-content
    *  failed, and it is shown as last seen */
   public isUncertain(): boolean { return this.uncertain; }
 
@@ -69,9 +69,9 @@ export class ContentBridge {
     this.onBuildsChanged = callback;
   }
 
-  /** every build the document holds, by block: more than one is a conflict */
-  public builds(): ReadonlyArray<Readonly<{ block: string; ldraw: string; }>> {
-    return [...this.models].map(([block, seen]) => ({ block, ldraw: seen.content }));
+  /** every build the document holds, by app-content id: more than one is a conflict */
+  public builds(): ReadonlyArray<Readonly<{ id: string; ldraw: string; }>> {
+    return [...this.models].map(([id, seen]) => ({ id, ldraw: seen.content }));
   }
 
   /** why edits wait, when the document holds more than one build */
@@ -83,8 +83,8 @@ export class ContentBridge {
   public canEdit(): boolean { return (typeof this.appContent.snapshot === 'function'); }
 
   // ------------------------------------------------------------------------------
-  /** follows the block and resolves with its text once it is known: its first
-   *  change, or its confirmed absence (an empty build). Rejects when the block
+  /** follows the app-content and resolves with its text once it is known: its first
+   *  change, or its confirmed absence (an empty build). Rejects when the app-content
    *  cannot be read */
   public open(): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -100,7 +100,7 @@ export class ContentBridge {
         error: failure => this.following ? console.error('brick-studio: the build stopped following the document:', failure) : fail(failure),
       });
 
-      // every block named `model`: more than one is a conflict
+      // every app-content named `model`: more than one is a conflict
       this.appContent.onChange$().subscribe({
         next: (change: AppContentChange) => {
           if(change.deleted) { this.confirmModel(change.id); return; }
@@ -111,18 +111,18 @@ export class ContentBridge {
         error: failure => console.error('brick-studio: the builds stopped following the document:', failure),
       });
 
-      // a block that does not exist sends no change: ask whether there is one
+      // an app-content that does not exist sends no change: ask whether there is one
       if(this.appContent.snapshot) this.read(MODEL_SELECTOR).then(settle, fail);
       else this.appContent.get(MODEL_SELECTOR).then(text => { if(!this.seen && text) this.accept({ id: '', content: text }); settle(); }, fail)/*an older page: its text, read once*/;
     });
   }
 
   // == Edit ======================================================================
-  /** applies the edits `measure` makes on the block's text, guarded by the snapshot
-   *  measured. A missing block is created first when there is anything to write,
-   *  and the edits are measured on what it holds. On a conflict the edits are
-   *  measured again on the same block as it is now; `measure` throws to refuse.
-   *  Resolves once the build has the block's new text */
+  /** applies the edits `measure` makes on the app-content's text, guarded by the
+   *  snapshot measured. A missing app-content is created first when there is anything
+   *  to write, and the edits are measured on what it holds. On a conflict the edits are
+   *  measured again on the same app-content as it is now; `measure` throws to refuse.
+   *  Resolves once the build has the app-content's new text */
   public async edit(measure: (text: string) => ReadonlyArray<ContentChange>): Promise<void> {
     if(!this.appContent.snapshot) throw new BuildError(RELOAD);
     this.refuseConflict();
@@ -130,14 +130,14 @@ export class ContentBridge {
     if(!snapshot) {
       const existing = await this.read(MODEL_SELECTOR)/*one the build has not seen yet*/;
       if(existing) snapshot = existing;
-      else if(measure('').length < 1) return/*no block, and nothing to write*/;
+      else if(measure('').length < 1) return/*no app-content, and nothing to write*/;
       else snapshot = await this.create();
-    } /* else -- the block as last seen */
+    } /* else -- the app-content as last seen */
 
     for(let attempt=1; ; attempt++) {
       this.refuseConflict()/*another build may have arrived meanwhile*/;
       const changes = measure(snapshot.content);
-      // nothing to change on this text still needs this text to be the block's
+      // nothing to change on this text still needs this text to be the app-content's
       if((changes.length < 1) ? await this.isCurrent(snapshot) : await this.apply(changes, snapshot)) break;
 
       const current = await this.read(byId(snapshot.id), snapshot.id);
@@ -148,8 +148,8 @@ export class ContentBridge {
     await this.reconcile(snapshot.id);
   }
 
-  /** replaces the block's whole text on purpose: anything another writer changed
-   *  meanwhile is replaced too. Creates the block when there is none */
+  /** replaces the app-content's whole text on purpose: anything another writer changed
+   *  meanwhile is replaced too. Creates the app-content when there is none */
   public async replace(text: string): Promise<void> {
     if(!this.appContent.snapshot) throw new BuildError(RELOAD);
     this.refuseConflict()/*a replacement would make one build pass for all*/;
@@ -158,13 +158,13 @@ export class ContentBridge {
   }
 
   // == Internal ==================================================================
-  /** the block as last seen, when it can guard an edit */
+  /** the app-content as last seen, when it can guard an edit */
   private current(): AppContentSnapshot | null {
     const seen = this.seen;
     return (seen?.revision !== undefined) ? { id: seen.id, content: seen.content, revision: seen.revision } : null;
   }
 
-  /** creates the block when the document has none, leaving one that exists as it
+  /** creates the app-content when the document has none, leaving one that exists as it
    *  is (no edit), then reads it: the edit is measured on whatever it holds */
   private async create(): Promise<AppContentSnapshot> {
     await this.appContent.applyChanges([], MODEL_SELECTOR);
@@ -174,7 +174,7 @@ export class ContentBridge {
   }
 
   /** applies edits guarded by the snapshot they were measured on: false when the
-   *  block has changed since (a conflict) */
+   *  app-content has changed since (a conflict) */
   private async apply(changes: ReadonlyArray<ContentChange>, snapshot: AppContentSnapshot): Promise<boolean> {
     try {
       await this.appContent.applyChanges(changes, byId(snapshot.id), { id: snapshot.id, revision: snapshot.revision });
@@ -185,12 +185,12 @@ export class ContentBridge {
     }
   }
 
-  /** whether the block still has the snapshot's revision */
+  /** whether the app-content still has the snapshot's revision */
   private async isCurrent(snapshot: AppContentSnapshot): Promise<boolean> {
     return (await this.appContent.snapshot!(byId(snapshot.id)))?.revision === snapshot.revision/*SEE: edit()*/;
   }
 
-  /** brings the build to the block as it is now, once an edit has applied */
+  /** brings the build to the app-content as it is now, once an edit has applied */
   private async reconcile(id: string): Promise<void> {
     await this.read(byId(id), id);
   }
@@ -200,7 +200,7 @@ export class ContentBridge {
     if(reason) throw new BuildError(reason);
   }
 
-  /** a deletion notice for a block named `model`: it is no longer a build once a
+  /** a deletion notice for an app-content named `model`: it is no longer a build once a
    *  read of it by id finds nothing while the build is still as checked (SEE: read()) */
   private confirmModel(id: string): void {
     const checked = this.models.get(id);
@@ -215,19 +215,19 @@ export class ContentBridge {
     );
   }
 
-  /** a deletion notice for the block with this id: reads it to learn whether it is
-   *  gone. An older page cannot read it, and keeps the build */
+  /** a deletion notice for the app-content with this id: reads it to learn whether it
+   *  is gone. An older page cannot read it, and keeps the build */
   private confirm(id: string): void {
     const checked = this.seen;
-    if(!this.appContent.snapshot || (checked?.id !== id)) return/*not the block shown*/;
+    if(!this.appContent.snapshot || (checked?.id !== id)) return/*not the app-content shown*/;
     this.read(byId(id), id).catch(failure => {
       console.error('brick-studio: the build could not be checked after a deletion notice:', failure);
-      if(this.seen === checked) this.setUncertain(true)/*a failure, like an answer, is about the block checked*/;
+      if(this.seen === checked) this.setUncertain(true)/*a failure, like an answer, is about the app-content checked*/;
     });
   }
 
-  /** reads the block, taking the answer (the block, or for `id`, its absence) only
-   *  while the build still shows what it showed when the read began */
+  /** reads the app-content, taking the answer (the app-content, or for `id`, its
+   *  absence) only while the build still shows what it showed when the read began */
   private async read(selector: string, id?: string): Promise<AppContentSnapshot | null> {
     const checked = this.seen;
     const current = await this.appContent.snapshot!(selector)/*every caller has checked support*/;
@@ -238,13 +238,13 @@ export class ContentBridge {
     return current;
   }
 
-  /** takes the block as seen: every new revision is the block's state, an equal
-   *  text included; the build is told when its text is new */
+  /** takes the app-content as seen: every new revision is the app-content's state, an
+   *  equal text included; the build is told when its text is new */
   private accept(change: Seen): void {
     const previous = this.seen;
     if(previous && (previous.id === change.id) && (change.revision !== undefined) && (previous.revision === change.revision)) return/*already seen*/;
     this.seen = { id: change.id, content: change.content, revision: change.revision };
-    this.setUncertain(false)/*a new revision: the block is there*/;
+    this.setUncertain(false)/*a new revision: the app-content is there*/;
     if(this.following && (change.content !== previous?.content)) this.onTextChanged?.(change.content);
   }
 
@@ -254,10 +254,10 @@ export class ContentBridge {
     this.onUncertainChanged?.(uncertain);
   }
 
-  /** the block with this id is confirmed gone while the build still shows it
+  /** the app-content with this id is confirmed gone while the build still shows it
    *  (SEE: read()): the build is empty */
   private gone(id: string): void {
-    if(this.seen?.id !== id) return/*the build shows another block*/;
+    if(this.seen?.id !== id) return/*the build shows another app-content*/;
     this.seen = null;
     this.setUncertain(false)/*confirmed gone*/;
     if(this.following) this.onTextChanged?.('');

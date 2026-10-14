@@ -147,12 +147,12 @@ The [`manifest.json`](charmiq://./manifest.json) declares a static `bundle.forma
 }
 ```
 
-Each `charmiq://` URI resolves to an `<app-content>` block inside one of the CodeMirror editors above. The server extracts the plain text, assembles the HTML document, and serves it as the preview iframe.
+Each `charmiq://` URI resolves to an `<app-content>` inside one of the CodeMirror editors above. The server extracts the plain text, assembles the HTML document, and serves it as the preview iframe.
 
 Edit the CSS — change a color, adjust the animation timing. Edit the HTML — swap "lifeStyle" for "Vacation". Reload the preview. Your changes are live.
 
 **What's demonstrated:**
-- `bundle.files` pulling content from `<app-content>` blocks in a sibling document
+- `bundle.files` pulling content from app-contents in a sibling document
 - Two CodeMirror editors embedded side by side, each locked to a single tab
 - A static application whose source lives entirely inside the document that presents it
 

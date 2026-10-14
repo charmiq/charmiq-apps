@@ -38,7 +38,7 @@ The Application is folder-based, with each module owning a single concern. This 
 | [`src/index.html`](charmiq://./src/index.html) | Structural shell — tabs, menus, editor container. No inline JS or CSS |
 | [`src/styles.scss`](charmiq://./src/styles.scss) | All visual styling — custom properties, nesting, mobile breakpoint |
 | [`src/editor-wrapper.ts`](charmiq://./src/editor-wrapper.ts) | Thin facade over CodeMirror 5: reports the user's changes as CodeMirror change sets and applies others' with the selection mapped. If the editor library is ever swapped, only this file changes |
-| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | Tab discovery and block identity over `appContent`; gives each tab its live text (`shared/collab-text`) |
+| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | Tab discovery and app-content identity over `appContent`; gives each tab its live text (`shared/collab-text`) |
 | [`src/config-store.ts`](charmiq://./src/config-store.ts) | Editor config and tab metadata, persisted via `appState`. Fetch-merge-set writes |
 | [`src/tab-manager.ts`](charmiq://./src/tab-manager.ts) | Tab lifecycle — create, delete, switch, rename, reorder. Holds each tab's live text and follows the active one in the editor |
 | [`src/toolbar.ts`](charmiq://./src/toolbar.ts) | Settings menu, mobile drawer, toggles, drag-and-drop, import/export |
@@ -64,20 +64,20 @@ graph TD
   <app-state>{"theme":"neutral"}</app-state>
 </iframe-app>
 
-**`appContent`** holds each tab's text. It uses OT — multiple writers can edit simultaneously without data loss. `ContentBridge` watches `onChange$()` to discover the tabs; each tab's text then lives in a `CollabText` (`shared/collab-text`), which follows the block's actual edits through `edits$()` and sends the user's changes as tagged, guarded `applyChanges()` writes.
+**`appContent`** holds each tab's text. It uses OT — multiple writers can edit simultaneously without data loss. `ContentBridge` watches `onChange$()` to discover the tabs; each tab's text then lives in a `CollabText` (`shared/collab-text`), which follows the app-content's actual edits through `edits$()` and sends the user's changes as tagged, guarded `applyChanges()` writes.
 
 **`appState`** holds everything else: which tabs exist, their names, language settings, UI preferences. It uses last-write-wins semantics — appropriate here because one user at a time controls configuration. `ConfigStore` always reads the current state before writing, merging its update rather than clobbering the whole object.
 
 
 ### Design Decisions Worth Noting
 
-**Actual edits, not snapshots.** A live editor sends a change on every keystroke, and the user goes on typing before it is confirmed. A snapshot of the block cannot say which of those changes it already holds, or where the unconfirmed typing belongs in someone else's edit; diffing texts guesses, and a guess drops or duplicates text. So each tab follows the block's actual edits (`edits$()`), and `CollabText` keeps three things apart: the text the document confirmed, the one batch it sent, and the typing since. Every other writer's change is rebased under the last two by CodeMirror's own collaboration model (`@codemirror/collab`), over a headless CodeMirror 6 state. Each batch goes out as a guarded write tagged with an edit id, and the edit it makes names it back, so the editor recognizes its own change whether the write's answer or the edit arrives first. None of this lives in the Application: it is the shared adapter, and any editor that can apply a change set can use it.
+**Actual edits, not snapshots.** A live editor sends a change on every keystroke, and the user goes on typing before it is confirmed. A snapshot of the app-content cannot say which of those changes it already holds, or where the unconfirmed typing belongs in someone else's edit; diffing texts guesses, and a guess drops or duplicates text. So each tab follows the app-content's actual edits (`edits$()`), and `CollabText` keeps three things apart: the text the document confirmed, the one batch it sent, and the typing since. Every other writer's change is rebased under the last two by CodeMirror's own collaboration model (`@codemirror/collab`), over a headless CodeMirror 6 state. Each batch goes out as a guarded write tagged with an edit id, and the edit it makes names it back, so the editor recognizes its own change whether the write's answer or the edit arrives first. None of this lives in the Application: it is the shared adapter, and any editor that can apply a change set can use it.
 
 **CodeMirror 5 reports a batch in order.** One keystroke can be several changes (Enter inserts a line break, then indents the new line), each measured on the text the one before it left. `EditorWrapper` measures each against that running text, not the text before the batch, and recognizes the changes it applies itself by their origin, since CodeMirror 5 reports them after the call that made them.
 
 **Undo is yours only.** CodeMirror 5's own history is off; undo and redo go to the tab's `CollabText`, whose history undoes the user's own changes only, mapped over everyone else's made since.
 
-**Nothing typed is lost.** When a tab can no longer be saved (its block was removed, a write was refused, or an edit was missed), its text stays in the editor, read-only, and a notice says why, with Copy text and Reload. A write whose result is unknown is never sent again. A tab whose block comes back while nothing was unsent resumes on its own.
+**Nothing typed is lost.** When a tab can no longer be saved (its app-content was removed, a write was refused, or an edit was missed), its text stays in the editor, read-only, and a notice says why, with Copy text and Reload. A write whose result is unknown is never sent again. A tab whose app-content comes back while nothing was unsent resumes on its own.
 
 **CodeMirror 5 via CDN globals.** CM5 isn't an ES module — it attaches to `window.CodeMirror`. Language modes load the same way, as additional `<script>` tags declared in the manifest. The `editor-wrapper.ts` facade means the rest of the Application never touches `window.CodeMirror` directly.
 

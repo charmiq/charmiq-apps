@@ -45,7 +45,7 @@ Because the gallery is generic, it knows nothing about what its slots mean. Cons
 | [`src/index.html`](charmiq://./src/index.html) | Structural shell — header, slot strip, grid, lightbox |
 | [`src/styles.scss`](charmiq://./src/styles.scss) | Swiss-minimal styling; orientation + selecting-mode class hooks |
 | [`src/config-store.ts`](charmiq://./src/config-store.ts) | Gallery configuration (slot definitions, orientation, zoom) via `appState` |
-| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | Two named `appContent` blocks — `items` and `bindings` — as JSONL |
+| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | Two named app-contents — `items` and `bindings` — as JSONL |
 | [`src/asset-resolver.ts`](charmiq://./src/asset-resolver.ts) | Opens the media picker, resolves Assets into `GalleryItem` records |
 | [`src/gallery-model.ts`](charmiq://./src/gallery-model.ts) | Reactive model — BehaviorSubjects for items, slots, bindings, and a combined public state |
 | [`src/grid-view.ts`](charmiq://./src/grid-view.ts) | Grid + lightbox + zoom slider DOM |
@@ -84,9 +84,11 @@ Because the gallery is generic, it knows nothing about what its slots mean. Cons
 
 **State vs content** — a deliberate split
  - *State* is configuration: slot *definitions* (id + label), orientation, zoom, maxItems. Lives in `appState`.
- - *Content* is data: the collection of items and their slot *bindings*. Lives in two named `appContent` blocks (`items`, `bindings`), each serialized as JSON Lines for OT-friendly diffs.
+ - *Content* is data: the collection of items and their slot *bindings*. Lives in two named app-contents (`items`, `bindings`), each serialized as JSON Lines for OT-friendly diffs.
 
 Bindings persist even when `itemId=null` so slot order stays stable and so opaque `meta` can outlive a binding.
+
+**Shared with every other writer** — another tab, another User, a Charm or another Application can change the gallery at the same moment. The app-contents are the truth: the gallery follows them through `contents$()` and shows what they hold, its own writes included as they come back, and a removed app-content leaves the gallery exactly. Every write is made through the app-content shown, one record per line, and is refused whole when it has changed since. Adding an image appends its own line (`appendLine`), so two people adding at once both keep theirs. Every other write names its record by id (an item's `itemId`, a binding's `slotId`) and is measured again on the app-content as it is now, so it never overwrites a line someone else changed. A write that still cannot be made says why in the gallery and rejects the command. Two people adding the first image at once each create an `items` app-content: both are kept and shown, and a write goes to the app-content its record is in. An app-content holding one JSON array (an older gallery's) is read as its elements and turned into lines by the first write.
 
 
 ### The Capability (`ai.charmiq.shared.imageGallery`)

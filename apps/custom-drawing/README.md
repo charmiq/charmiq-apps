@@ -58,11 +58,11 @@ The Application is folder-based, with each module owning a single concern. This 
 | [`src/generation-handler.ts`](charmiq://./src/generation-handler.ts) | AI image generation |
 | [`src/properties-panel.ts`](charmiq://./src/properties-panel.ts) | Property dropdowns and layer ordering |
 | [`src/clipboard-handler.ts`](charmiq://./src/clipboard-handler.ts) | Copy/cut/paste, SVG paste, group/ungroup |
-| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | Elements JSON sync with `appContent`. Owns the discovery phase |
+| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | Follows the `elements` app-content and saves the canvas onto it by element id, as guarded edits |
 | [`src/config-store.ts`](charmiq://./src/config-store.ts) | Drawing configuration persisted via `appState`. Fetch-merge-set writes |
 | [`src/settings-panel.ts`](charmiq://./src/settings-panel.ts) | Settings modal UI |
 | [`src/command-surface.ts`](charmiq://./src/command-surface.ts) | Charm command surface via `charmiq.advertise` |
-| [`src/main.ts`](charmiq://./src/main.ts) | Entry point. Creates instances, wires dependencies, starts discovery |
+| [`src/main.ts`](charmiq://./src/main.ts) | Entry point. Creates instances, wires dependencies, follows the drawing's app-content |
 
 
 ### Data Flow
@@ -102,7 +102,7 @@ Two storage channels — one for the drawing's elements, one for its configurati
 {"type":"line","x":210,"y":195,"x2":270,"y2":195,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_cb_sr"}
 {"type":"text","x":222,"y":178,"text":"render","fontSize":11,"fill":"#1a1a18","width":60,"height":14,"id":"l_cb_sr"}
 {"type":"line","x":150,"y":230,"x2":150,"y2":290,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_cb_ac"}
-{"type":"text","x":158,"y":252,"text":"set()","fontSize":11,"fill":"#1a1a18","width":50,"height":14,"id":"l_cb_ac"}
+{"type":"text","x":158,"y":252,"text":"edit()","fontSize":11,"fill":"#1a1a18","width":50,"height":14,"id":"l_cb_ac"}
 {"type":"line","x":90,"y":290,"x2":90,"y2":230,"stroke":"#d94a00","strokeWidth":2,"strokeDasharray":"4,4","endDecoration":"arrow","id":"a_ac_cb"}
 {"type":"text","x":6,"y":252,"text":"onChange$","fontSize":11,"fill":"#d94a00","width":80,"height":14,"id":"l_ac_cb"}
 {"type":"line","x":660,"y":80,"x2":610,"y2":160,"stroke":"#1a1a18","strokeWidth":2,"endDecoration":"arrow","id":"a_sp_cs"}
@@ -117,7 +117,7 @@ Two storage channels — one for the drawing's elements, one for its configurati
   <app-state>{"config":{"readOnly":true,"showGrid":false,"showToolbar":false,"showPropertiesPanel":false,"showInfoBar":false,"backgroundColor":"#f7f7f4","initialPanX":20,"initialPanY":20}}</app-state>
 </iframe-app>
 
-**`appContent`** holds the drawing's elements, serialized as JSON Lines in a single named content block (`[name='elements']`). `ContentBridge` watches `onChange$()`, parses incoming content into `DrawingElement[]`, and hands it to the renderer. Locally-made mutations are flushed back via `set()`.
+**`appContent`** holds the drawing's elements, serialized as JSON Lines in a single named app-content (`[name='elements']`). `ContentBridge` follows it through `contents$()` and hands the elements to the renderer; each save writes the canvas's own changes onto the app-content (see *Drawing together*).
 
 **`appState`** holds the drawing's configuration — grid visibility and color, background color, read-only flag, and UI chrome toggles. It uses last-write-wins semantics, appropriate for settings that one user at a time controls. `ConfigStore` always reads the current state before writing so partial updates don't clobber unrelated fields.
 
@@ -159,25 +159,34 @@ Users can edit these values through the Settings gear in the toolbar, or Charms 
 
 ### Content Format (`appContent`)
 
-Elements are stored in a single named block (`[name='elements']`) as **JSON Lines** — one element per line:
+Elements are stored in a single named app-content (`[name='elements']`) as **JSON Lines** — one element per line:
 
 ```jsonl
 { "id": "el_...", "type": "rectangle", "x": 0, "y": 0, "width": 100, "height": 80, "stroke": "#000", ... }
 { "id": "el_...", "type": "line", "x": 10, "y": 10, "x2": 100, "y2": 100, ... }
 ```
 
-JSONL is used instead of a single JSON array so that edits to one element produce a localized diff, rather than rewriting the entire document on every change. The content bridge also accepts a legacy single-array format on read for backward compatibility. The element schema matches the original `drawing.html` format, so drawings migrated from that source continue to work.
+One element per line is what lets a save change only the elements it changed. An app-content holding a single JSON array (an older drawing's) is read as its elements and turned into lines by the first save. The element schema matches the original `drawing.html` format, so drawings migrated from that source continue to work.
+
+
+### Drawing together
+
+Another tab, another user, a Charm or another Application can change the drawing at the same moment. The canvas and the app-content are kept apart by element id:
+
+- **Another writer's change** reaches the canvas as a change to the elements it touched: an element they changed is taken from the app-content (keeping any property you are editing live in a picker), one they added appears, one they removed disappears. Every other element keeps your version, including changes not yet saved. Your own saves coming back change nothing on the canvas.
+- **A save** writes what you changed since the drawing was last shown (elements changed, added, removed or moved in drawing order) onto the app-content as it is now, by id, as one guarded edit through the app-content shown. A refused edit is measured again on the app-content as it is now, so another writer's change to other elements is never overwritten, and an element another writer removed stays removed. Saves run one at a time; a save that still cannot be made says so, and your change stays on the canvas for the next one.
+- **Two people drawing the first element at once** each create an `elements` app-content: both are kept and drawn, and an element is saved in the app-content it is in.
 
 
 ### Design Decisions Worth Noting
 
-**Elements in `appContent`, settings in `appState`.** The two storage channels exist for different reasons. `appContent` is OT-backed and merges concurrent writes; it's where the collaborative document lives. `appState` is last-write-wins and is where configuration lives — things one user at a time controls. Putting the element array in `appContent` means two people can draw at the same time without either losing work; putting the configuration in `appState` means a flip of the "read-only" switch propagates cleanly without fighting anyone's edits.
+**Elements in `appContent`, settings in `appState`.** The two storage channels exist for different reasons. `appContent` merges concurrent edits, and each save edits only the elements it changed; it's where the collaborative document lives. `appState` is last-write-wins and is where configuration lives — things one user at a time controls. Putting the element array in `appContent` means two people can draw at the same time without either losing work; putting the configuration in `appState` means a flip of the "read-only" switch propagates cleanly without fighting anyone's edits.
 
 **Read-only is gated at the interaction layer, not by removing handlers.** `InteractionHandler` and `ToolManager` both check a shared `readOnly` flag. Mouse-down on an element still selects it; it just doesn't start a move operation. Shape tools can't be chosen. Keyboard shortcuts skip mutations. This keeps pan, zoom, marquee selection, and copy working — which is what "display-only" should feel like when people are discussing a drawing.
 
 **Chrome visibility via body classes.** Each "show X" config flag toggles a body class (`hide-toolbar`, `hide-info-bar`, `hide-properties-panel`). CSS owns the actual visibility. This keeps the toggle logic a single line per flag and makes the effect inspectable in the DOM.
 
-**RxJS at the boundary only.** `appContent.onChange$()` and `appState.onChange$()` return Observables; the bridges subscribe to them. But RxJS doesn't appear inside the drawing modules themselves — only at the integration points where the CharmIQ API requires it.
+**RxJS at the boundary only.** `appContent.contents$()` and `appState.onChange$()` return Observables; the bridges subscribe to them. But RxJS doesn't appear inside the drawing modules themselves — only at the integration points where the CharmIQ API requires it.
 
 
 ## Next Steps

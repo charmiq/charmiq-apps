@@ -40,6 +40,7 @@ export class GridView {
   private readonly addBtn:       HTMLButtonElement;
   private readonly zoomSlider:   HTMLInputElement;
   private readonly statusEl:     HTMLElement;
+  private readonly noticeEl:     HTMLElement;
 
   private readonly lightboxEl:   HTMLElement;
   private readonly lbImageEl:    HTMLImageElement;
@@ -83,6 +84,7 @@ export class GridView {
     this.addBtn       = document.getElementById('addBtn')      as HTMLButtonElement;
     this.zoomSlider   = document.getElementById('zoomSlider')  as HTMLInputElement;
     this.statusEl     = document.getElementById('status')!;
+    this.noticeEl     = document.getElementById('notice')!;
 
     this.lightboxEl   = document.getElementById('lightbox')!;
     this.lbImageEl    = document.getElementById('lbImage')  as HTMLImageElement;
@@ -175,6 +177,13 @@ export class GridView {
   /** set the status label shown in the header (e.g. "4 items", "Loading…") */
   public setStatus(text: string): void {
     this.statusEl.textContent = text;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** show why something the User did, or the gallery's read, failed (null hides it) */
+  public setNotice(text: string | null): void {
+    this.noticeEl.textContent = text ?? '';
+    this.noticeEl.hidden = (text === null);
   }
 
   // ------------------------------------------------------------------------------

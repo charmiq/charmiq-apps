@@ -36,24 +36,26 @@ export type AppContentChange = Readonly<{
   id: string;
   name?: string;
   content: string;
-  /** the block's exact state: every change to the block gives it a new revision,
+  /** the app-content's exact state: every change to it gives it a new revision,
    *  never one it had before. Absent where the Platform cannot guard edits */
   revision?: string;
-  /** a reason to check whether the block is gone, not proof: it is gone when
+  /** a reason to check whether the app-content is gone, not proof: it is gone when
    *  {@link AppContentAPI.snapshot} by its id returns `null` */
   deleted?: boolean;
 }>;
 
-/** an existing block's exact observed state: what a guarded edit is measured on */
+/** an existing app-content's exact observed state: what a guarded edit is measured
+ *  on */
 export type AppContentSnapshot = Readonly<{ id: string; content: string; revision: string; }>;
-/** the block and revision a guarded edit applies to */
+/** the app-content and revision a guarded edit applies to */
 export type AppContentGuard = Pick<AppContentSnapshot, 'id' | 'revision'>;
 /** a guarded write's tag: its edit id, named back by the edit it makes */
 export type AppContentWrite = Readonly<{ editId: string; }>;
 
-/** a block's actual edits (SEE: AppContentAPI.edits$): where it stands (`created`,
- *  or `absent` when an `[id='x']` stream opens on no block), each change with the
- *  revision it applies to (`ack` names your own tagged write), or its removal */
+/** an app-content's actual edits (SEE: AppContentAPI.edits$): where it stands
+ *  (`created`, or `absent` when an `[id='x']` stream opens on no app-content), each
+ *  change with the revision it applies to (`ack` names your own tagged write), or its
+ *  removal */
 export type AppContentEdit = Readonly<
   | { kind: 'created'; id: string; revision: string; content: string; }
   | { kind: 'changes'; id: string; base: string; revision: string; changes: readonly ContentChange[]; ack?: string; }
@@ -69,13 +71,13 @@ export type ContentChange = Readonly<{
 }>;
 
 // --------------------------------------------------------------------------------
-/** a block as it stands, with the writes measured on it. Every write is guarded by
- *  this block: if the block has changed since, it rejects with `code`
+/** an app-content as it stands, with the writes measured on it. Every write is guarded
+ *  by this app-content: if it has changed since, it rejects with `code`
  *  `app/content-conflict`, writing nothing (except `appendLine`, which measures
  *  again and resends on its own) */
-export type AppContentBlock = Readonly<{
+export type AppContent = Readonly<{
   id: string;
-  /** the block's exact state */
+  /** the app-content's exact state */
   revision: string;
   text: string;
   /** the text as lines, without the line break that ends each */
@@ -90,36 +92,36 @@ export type AppContentBlock = Readonly<{
   removeLine: (index: number) => Promise<void>;
   /** replaces the text of the line at `index` */
   replaceLine: (index: number, line: string) => Promise<void>;
-  /** makes the block these lines, each ending its line, writing only the runs of
-   *  lines that differ (refused when the block changed since, even when nothing
+  /** makes the app-content these lines, each ending its line, writing only the runs
+   *  of lines that differ (refused when it changed since, even when nothing
    *  differs; refused with `functions/out-of-range`, writing nothing, when the
    *  lines differ too much to tell which stayed the same) */
   setLines: (lines: readonly string[]) => Promise<void>;
-  /** removes the block from the document, refused when it changed since */
+  /** removes the app-content from the document, refused when it changed since */
   remove: () => Promise<void>;
 }>;
 
 export interface AppContentAPI {
-  /** the Application's block, kept current: the block the selector names (no
-   *  selector: the first), followed by its id, or `null` while there is none. Once
-   *  it is removed, the next block the selector names is followed. A refused read
-   *  errors the stream with its `code`
+  /** the Application's app-content, kept current: the app-content the selector
+   *  names (no selector: the first), followed by its id, or `null` while there is
+   *  none. Once it is removed, the next app-content the selector names is followed.
+   *  A refused read errors the stream with its `code`
    *  @example
-   *  window.charmiq.appContent.block$().subscribe(block => show(block ? block.text : 'nothing yet'));
-   *  // later, from the block shown
-   *  await block.appendLine('one more');
+   *  window.charmiq.appContent.content$().subscribe(content => show(content ? content.text : 'nothing yet'));
+   *  // later, from the app-content shown
+   *  await content.appendLine('one more');
    *  @param selector optional selector (e.g. "[name='list']", "[id='xyz']") */
-  block$: (selector?: string) => Observable<AppContentBlock | null>;
-  /** every block the selector names (no selector: every block), in the order each
-   *  first appeared: several blocks of one name are each given
+  content$: (selector?: string) => Observable<AppContent | null>;
+  /** every app-content the selector names (no selector: every app-content), in the
+   *  order each first appeared: several app-contents of one name are each given
    *  @param selector optional `[name='x']` or `[id='x']` */
-  blocks$: (selector?: string) => Observable<AppContentBlock[]>;
-  /** the block named `name` (no name: the first; spaces around a name are dropped)
-   *  when one exists, its text kept whatever it is, otherwise a new one holding
-   *  `text`. It gives the block back, so
+  contents$: (selector?: string) => Observable<AppContent[]>;
+  /** the app-content named `name` (no name: the first; spaces around a name are
+   *  dropped) when one exists, its text kept whatever it is, otherwise a new one
+   *  holding `text`. It gives the app-content back, so
    *  it needs `appContent.read` as well as `appContent.write`. Two collaborators
-   *  creating one at the same moment each make one: `blocks$` shows both */
-  create: (text: string, name?: string) => Promise<AppContentBlock>;
+   *  creating one at the same moment each make one: `contents$` shows both */
+  create: (text: string, name?: string) => Promise<AppContent>;
 
   /** Observable stream of content changes from the document: the source of truth
    *  to render from. Emits the current content, then on every change by anyone,
@@ -128,30 +130,31 @@ export interface AppContentAPI {
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
    *  @returns Observable that emits the current content as an {@link AppContentChange} */
   onChange$: (selector?: string) => Observable<AppContentChange>;
-  /** a block as a stream of its actual edits, for a live text editor that keeps
+  /** an app-content as a stream of its actual edits, for a live text editor that keeps
    *  unconfirmed changes of its own (SEE: apps/codemirror-editor): where it stands
    *  (`created`), then each change in order with the revision it applies to, naming
    *  your own tagged writes, then its removal. An `[id='x']` selector follows that
-   *  block whether or not it exists yet, opening with `absent` when it does not;
-   *  any other selector names the block it matches now, and fails with
+   *  app-content whether or not it exists yet, opening with `absent` when it does not;
+   *  any other selector names the app-content it matches now, and fails with
    *  `functions/not-found` when none does
    *  @param selector optional selector to identify which app-content to follow
-   *  @returns Observable of the block's {@link AppContentEdit}s */
+   *  @returns Observable of the app-content's {@link AppContentEdit}s */
   edits$?: (selector?: string) => Observable<AppContentEdit>;
 
-  /** the block's current state, or `null` when no block matches. Absent where the
+  /** the app-content's current state, or `null` when none matches. Absent where the
    *  Platform cannot guard edits: check for it before a guarded write
    *  @param selector optional selector to identify which app-content to read
-   *  @returns Promise that resolves to the block's {@link AppContentSnapshot} */
+   *  @returns Promise that resolves to the app-content's {@link AppContentSnapshot} */
   snapshot?: (selector?: string) => Promise<AppContentSnapshot | null>;
 
-  /** apply edits to the content: the way to change part of a block while others may
-   *  be writing too. A call's changes apply in order, each position measured after
-   *  the changes before it (send several from one original text last-first), and
-   *  every one must lie inside the block. With a guard, the edits apply only while
-   *  the block it names still has its revision; otherwise they apply to the block's
-   *  text when the call arrives, which another writer may have changed since you
-   *  read it. Unguarded, a missing block is created; guarded, never
+  /** apply edits to the content: the way to change part of an app-content while
+   *  others may be writing too. A call's changes apply in order, each position
+   *  measured after the changes before it (send several from one original text
+   *  last-first), and every one must lie inside the app-content. With a guard, the
+   *  edits apply only while the app-content it names still has its revision;
+   *  otherwise they apply to its text when the call arrives, which another writer may
+   *  have changed since you read it. Unguarded, a missing app-content is created;
+   *  guarded, never
    *  @param changes the edits, in the order they apply
    *  @param selector optional selector to identify which app-content to update
    *         (e.g. "[id='xyz']", "[name='editor']", "[0]")
@@ -159,8 +162,8 @@ export interface AppContentAPI {
    *  @param write a guarded write's tag, named back by the edit it makes (SEE: {@link edits$})
    *  @returns Promise that resolves once the editor has applied the edits. Rejects,
    *           having written nothing, with `code` `app/content-conflict` when the
-   *           guarded block changed or is gone (read it again by its id), or
-   *           `functions/invalid-argument` for an edit outside the block */
+   *           guarded app-content changed or is gone (read it again by its id), or
+   *           `functions/invalid-argument` for an edit outside the app-content */
   applyChanges: (changes: readonly ContentChange[], selector?: string, guard?: AppContentGuard, write?: AppContentWrite) => Promise<void>;
 
   /** get current content value (one-time read). Use onChange$ for reactive updates
@@ -168,10 +171,11 @@ export interface AppContentAPI {
    *  @param selector optional selector to identify which app-content to get
    *  @returns Promise that resolves to current content as a string */
   get: (selector?: string) => Promise<string>;
-  /** replace the full content, creating the block when the selector matches none.
-   *  Anything another writer changed meanwhile is lost: use it to create a block or
-   *  replace everything on purpose, and {@link applyChanges} to edit
-   *  @param content new text content; omitted, the block keeps its text (a rename)
+  /** replace the full content, creating the app-content when the selector matches
+   *  none. Anything another writer changed meanwhile is lost: use it to create an
+   *  app-content or replace everything on purpose, and {@link applyChanges} to edit
+   *  @param content new text content; omitted, the app-content keeps its text
+   *         (a rename)
    *  @param selector optional selector to identify which app-content to set
    *  @param name optional name attribute to set on the app-content node
    *  @returns Promise that resolves when content is saved to the document */
@@ -500,16 +504,17 @@ export interface CharmIQAPI {
   /** AppContent API for Application text content with operational transforms. Store
    *  plain text directly in the document that supports collaborative editing.
    *  Separate from AppState which is for configuration (last-write-wins). Read and
-   *  write it as blocks (`block$`, `blocks$`, `create`): each write is measured on
-   *  the block it is called on, and refused whole when the block has changed since.
-   *  A live text editor, whose typing runs ahead of confirmation, also follows the
-   *  block's actual edits (`edits$`) and tags its writes (SEE: apps/codemirror-editor)
+   *  write each app-content (`content$`, `contents$`, `create`): each write is
+   *  measured on the app-content it is called on, and refused whole when it has
+   *  changed since. A live text editor, whose typing runs ahead of confirmation, also
+   *  follows the app-content's actual edits (`edits$`) and tags its writes
+   *  (SEE: apps/codemirror-editor)
    *  @example
-   *  // the Application's block, kept current (null while there is none)
-   *  window.charmiq.appContent.block$().subscribe(block => show(block));
-   *  // a write through the block shown, measured on it: refused, writing nothing,
-   *  // if the block changed since (appendLine measures again on its own)
-   *  await block.appendLine('one more');
+   *  // the Application's app-content, kept current (null while there is none)
+   *  window.charmiq.appContent.content$().subscribe(content => show(content));
+   *  // a write through the app-content shown, measured on it: refused, writing
+   *  // nothing, if it changed since (appendLine measures again on its own)
+   *  await content.appendLine('one more');
    */
   appContent: AppContentAPI;
   /** AppState API for application state persistence. Store JSON data directly in the

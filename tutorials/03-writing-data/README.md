@@ -13,14 +13,14 @@ Bread
   </iframe-app>
 </p>
 
-Add and remove items above. Each item is one line of the document's `app-content` block. Open this document in a second tab and change the list in both at once: every item either lands whole or is refused with a message, and nothing lands on the wrong line.
+Add and remove items above. Each item is one line of the document's `app-content`. Open this document in a second tab and change the list in both at once: every item either lands whole or is refused with a message, and nothing lands on the wrong line.
 
 ## What changed from Reading Data
 
 | File | Change |
 |------|--------|
 | [`manifest.json`](charmiq://./manifest.json) | Unchanged (still declares `runtime.appContent`) |
-| [`App.tsx`](charmiq://./App.tsx) | Shows the block's lines as a list, and adds or removes a line through the block |
+| [`App.tsx`](charmiq://./App.tsx) | Shows the app-content's lines as a list, and adds or removes a line through the app-content |
 | [`styles.scss`](charmiq://./styles.scss) | Replaced `.content` display with the form and list |
 | [`index.html`](charmiq://./index.html) | Unchanged |
 | [`main.tsx`](charmiq://./main.tsx) | Unchanged |
@@ -28,15 +28,15 @@ Add and remove items above. Each item is one line of the document's `app-content
 
 ## You are never the only writer
 
-Another tab, another user, a Charm or another Application can change this block at the same moment you do. The block you were given by `block$()` handles that for you: every write is **measured on the block you call it on**. If the block has changed since, the write is refused whole and nothing is written, so your edit never lands on a line it wasn't meant for (the full guide: [Collaborating](https://team.charmiq.ai/docs/application/developer-app-content-and-app-state#collaborating)).
+Another tab, another user, a Charm or another Application can change this app-content at the same moment you do. The app-content you were given by `content$()` handles that for you: every write is **measured on the app-content you call it on**. If it has changed since, the write is refused whole and nothing is written, so your edit never lands on a line it wasn't meant for (the full guide: [Collaborating](https://team.charmiq.ai/docs/application/developer-app-content-and-app-state#collaborating)).
 
 ## Writing lines
 
-Each item is one line of the block (`block.lines`). The block writes them for you:
+Each item is one line of the app-content (`content.lines`). The app-content writes them for you:
 
 ```tsx qP3mN7rKvX
-await block.appendLine(item);   // adds a line after the last
-await block.removeLine(index);  // removes the line at index, with its line break
+await content.appendLine(item);   // adds a line after the last
+await content.removeLine(index);  // removes the line at index, with its line break
 ```
 
 - **`appendLine`** — adds the line, putting a line break first if the last line has none, so it never joins it. If another writer got there first, it is measured again on the new text and sent again on its own: adding a line never depends on what the list held.
@@ -44,16 +44,16 @@ await block.removeLine(index);  // removes the line at index, with its line brea
 
 Whole lines are what make concurrent writes merge cleanly: two people adding at once both get their item, and two removals of the same line remove it once.
 
-## Showing what the block holds
+## Showing what the app-content holds
 
 ```tsx Rk9vPq2mXw
 useEffect(() => {
-  const sub = appContent.block$().subscribe({ next: setBlock, error: setFailure });
+  const sub = appContent.content$().subscribe({ next: setContent, error: setFailure });
   return () => sub.unsubscribe();
 }, []);
 ```
 
-The list shows the block, never what this Application last wrote: its own writes come back through `block$()` like anyone's, merged with whatever others did meanwhile. Each row removes through the block it was shown from (`removeItem(block, index)`), so a click acts on exactly what the user saw.
+The list shows the app-content, never what this Application last wrote: its own writes come back through `content$()` like anyone's, merged with whatever others did meanwhile. Each row removes through the app-content it was shown from (`removeItem(content, index)`), so a click acts on exactly what the user saw.
 
 `set()` would write the whole list instead. If someone else changed it at the same moment, your whole list would replace theirs.
 

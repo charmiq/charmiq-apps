@@ -5,8 +5,9 @@ import { ClipboardHandler } from './clipboard-handler';
 import { CommandSurface } from './command-surface';
 import { ConfigStore, type DrawingConfig } from './config-store';
 import { confirm } from './confirm';
-import { ContentBridge } from './content-bridge';
+import { ContentBridge, DrawingSaveError } from './content-bridge';
 import type { DrawingElement } from './element-model';
+import { toastError } from './notifications';
 import { ExportHandler } from './export-handler';
 import { GenerationHandler } from './generation-handler';
 import { ImageHandler } from './image-handler';
@@ -19,7 +20,8 @@ import { TextEditor } from './text-editor';
 import { TextMeasurement } from './text-measurement';
 import { ToolManager } from './tool-manager';
 
-// entry point — creates all modules, wires dependencies, starts discovery
+// entry point — creates all modules, wires dependencies, follows the drawing's
+// app-content
 // ********************************************************************************
 const charmiq: CharmIQAPI = window.charmiq;
 
@@ -65,12 +67,21 @@ const syncElements = () => {
 };
 
 // --------------------------------------------------------------------------------
+/** the host's Command Service, once discovered: failures are shown through it */
+let commandService: CharmIQServices['commandService'] | undefined;
+/** shows why the drawing could not be saved or read */
+const reportFailure = (title: string, error: unknown) => {
+  const description = (error instanceof DrawingSaveError) ? error.message : 'Try again.';
+  if(commandService) toastError(commandService, title, description);
+  else console.error(`${title}:`, error)/*no host to show it*/;
+};
+
 // helper: save current elements via the content bridge
 const save = () => {
   // read back from interaction (the most common mutator), resync, then persist
   elements = interaction.elements;
   syncElements();
-  contentBridge.save(elements).catch(err => console.error('save failed:', err));
+  contentBridge.save().catch(error => reportFailure('The drawing was not saved', error));
 };
 
 // == Wire Callbacks ==============================================================
@@ -138,6 +149,7 @@ document.getElementById('clearAllBtn')!.addEventListener('click', async () => {
   textEditor.cancelIfDeleted();
   renderer.rerenderAll(elements);
   syncElements();
+  save();
 });
 
 // == Iframe-Focus Recovery =======================================================
@@ -160,6 +172,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // == Content Bridge — incoming updates ===========================================
+contentBridge.onReadFailure(error => reportFailure('The drawing stopped updating', error));
 contentBridge.onChange((newElements) => {
   elements = newElements;
   syncElements();
@@ -213,12 +226,13 @@ const start = async () => {
   // services via charmiq.discover; absent services resolve to undefined so the
   // app still starts (the handlers that need them check at use-time)
   const discover = (name: string) => charmiq.discover(name).catch(() => undefined);
-  const [commandService, assetService, generationService] = await Promise.all([
+  const [discoveredCommandService, assetService, generationService] = await Promise.all([
     discover('charmiq.service.command'),
     discover('charmiq.service.asset'),
     discover('charmiq.service.generation'),
   ]);
-  const services = { commandService, assetService, generationService } as unknown as CharmIQServices;
+  const services = { commandService: discoveredCommandService, assetService, generationService } as unknown as CharmIQServices;
+  commandService = services.commandService;
   imageHandler.setServices(services);
   exportHandler.setServices(services);
   generation.setServices(services);
@@ -250,8 +264,12 @@ const start = async () => {
 
   syncElements();
 
-  // discover initial elements content (onChange callback registered above)
-  await contentBridge.discover();
+  // follow the elements app-content (onChange callback registered above)
+  try {
+    await contentBridge.follow();
+  } catch(error) {
+    reportFailure('The drawing could not be read', error);
+  }
 };
 
 start().catch(err => console.error('Initialization error:', err));

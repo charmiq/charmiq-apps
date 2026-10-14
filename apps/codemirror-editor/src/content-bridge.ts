@@ -5,14 +5,15 @@ import type { AppContentAPI, AppContentChange } from '../../../shared/charmiq';
 import { CollabText, type CollabTextEditor } from '/shared/collab-text/collab-text';
 import { parseName, type TabId, type TabSlug } from './tab-types';
 
-// bridges the tabs ↔ appContent. Owns the discovery phase (wait for the blocks to
-// settle) and each block's identity: raw `name` parsed into `{ slug, displayName }`
-// so nothing downstream has to know about the tuple form. A tab's text is its live
-// text's (SEE: live()), never the snapshots this stream carries
+// bridges the tabs ↔ appContent. Owns the discovery phase (wait for the
+// app-contents to settle) and each app-content's identity: raw `name` parsed into
+// `{ slug, displayName }` so nothing downstream has to know about the tuple form. A
+// tab's text is its live text's (SEE: live()), never the snapshots this stream
+// carries
 // ********************************************************************************
 
 // NOTE: `deleted=true` events are NON-AUTHORITATIVE — the Platform fires them as
-//       bookkeeping (e.g. during first-save block creation, or whenever pending
+//       bookkeeping (e.g. during first-save app-content creation, or whenever pending
 //       postMessage events drain after an unrelated `appState.set`). Honoring them
 //       literally will blow up the local tab set. The bridge filters them out
 //       entirely; TabManager drives local removals proactively before calling
@@ -99,7 +100,7 @@ export class ContentBridge {
   }
 
   // == Live Text =================================================================
-  /** a tab's text, kept in step with its block by the shared live text (its own
+  /** a tab's text, kept in step with its app-content by the shared live text (its own
    *  changes confirmed and rebased over everyone else's) */
   public live(tabId: TabId, editor: CollabTextEditor): CollabText {
     return new CollabText(this.appContent, `[id='${tabId}']`, editor);
@@ -111,7 +112,7 @@ export class ContentBridge {
     await this.appContent.set(content, selector, name);
   }
 
-  /** remove a content block */
+  /** remove an app-content */
   public async remove(selector: string): Promise<void> {
     await this.appContent.remove(selector);
   }

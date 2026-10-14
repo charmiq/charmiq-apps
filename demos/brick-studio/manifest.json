@@ -221,7 +221,7 @@
               "type": "object",
               "properties": {
                 "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" },
-                "builds":   { "type": "array", "items": { "type": "object", "properties": { "block": { "type": "string" }, "ldraw": { "type": "string" } }, "required": ["block", "ldraw"] } }
+                "builds":   { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "ldraw": { "type": "string" } }, "required": ["id", "ldraw"] } }
               },
               "required": ["conflict", "builds"]
             }

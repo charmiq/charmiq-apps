@@ -7,8 +7,8 @@ Manifest IDs follow the convention `ai.charmiq.tutorials.<name>` (e.g. `ai.charm
 | # | Name | Builds on | Adds | Key API |
 |---|------|-----------|------|---------|
 | 01 | `hello-app` | — | File structure, ESM, SCSS, React | none |
-| 02 | `reading-data` | 01 | Read document content reactively | `appContent.block$()` |
-| 03 | `writing-data` | 02 | Write back to the document as lines, collaboratively and guarded | `block.appendLine()`, `block.removeLine()` |
+| 02 | `reading-data` | 01 | Read document content reactively | `appContent.content$()` |
+| 03 | `writing-data` | 02 | Write back to the document as lines, collaboratively and guarded | `content.appendLine()`, `content.removeLine()` |
 | 04 | `inline-app` | 03 | The inline form: a full HTML document in `app-source` — no folder, no manifest — and why the missing manifest gates it | `discover('charmiq.service.command')`, scopes/consent |
 | 05 | `persistent-state` | 03 | Config that survives reloads | `appState.onChange$()`, `appState.set()` |
 | 06 | `charm-integration` | 05 | A Charm populates `appContent`; the Application renders it live | — |
@@ -32,37 +32,37 @@ Manifest IDs follow the convention `ai.charmiq.tutorials.<name>` (e.g. `ai.charm
 
 ## 02 `reading-data`
 
-**Concept:** The app reads document data reactively via `appContent.block$()`.
+**Concept:** The app reads document data reactively via `appContent.content$()`.
 
 **Delta from 01:** Copy 01's files, then:
 
 - **`manifest.json`** — add `runtime.appContent` with a single field (e.g. `"message": { "type": "text" }`).
-- **`App.tsx`** — replace the counter with an `appContent.block$()` subscription that displays the block's text, `null` as no block, and a refused read's reason. Introduce the `window.charmiq` global and the RxJS subscribe/unsubscribe pattern in a `useEffect`.
-- **`README.md`** — explain: content lives in the document, not in the app; `block$` fires immediately with the block as it stands, then on each change; `null` means no block (exact: the Platform knows when a block is removed); a selector names another block; teardown the subscription on unmount.
+- **`App.tsx`** — replace the counter with an `appContent.content$()` subscription that displays the app-content's text, `null` as no app-content, and a refused read's reason. Introduce the `window.charmiq` global and the RxJS subscribe/unsubscribe pattern in a `useEffect`.
+- **`README.md`** — explain: content lives in the document, not in the app; `content$` fires immediately with the app-content as it stands, then on each change; `null` means no app-content (exact: the Platform knows when an app-content is removed); a selector names another app-content; teardown the subscription on unmount.
 
 Key code pattern:
 
 ```tsx
 useEffect(() => {
-  const sub = window.charmiq.appContent.block$().subscribe({ next: setBlock, error: setFailure });
+  const sub = window.charmiq.appContent.content$().subscribe({ next: setContent, error: setFailure });
   return () => sub.unsubscribe();
 }, []);
 ```
 
-Does NOT cover: writing data, multiple app-content blocks.
+Does NOT cover: writing data, multiple app-contents.
 
 ---
 
 ## 03 `writing-data`
 
-**Concept:** The app writes back to the document as one writer among many, through the block it was given: every write is measured on the block it is called on and refused whole if the block changed since.
+**Concept:** The app writes back to the document as one writer among many, through the app-content it was given: every write is measured on the app-content it is called on and refused whole if it changed since.
 
 **Delta from 02:** Copy 02's files, then:
 
-- **`App.tsx`** — a shared list over `block$()`: a form adds a line (`block.appendLine`), each item removes its own line through the block it was shown from (`block.removeLine`). The subscription is the only path to the screen; a refused removal says so. A page without blocks asks for a reload.
-- **`README.md`** — you are never the only writer; writes measured on the block; `appendLine` measures again by itself, `removeLine` is the user's to retry; show what the block holds; whole lines merge, `set()` overwrites.
+- **`App.tsx`** — a shared list over `content$()`: a form adds a line (`content.appendLine`), each item removes its own line through the app-content it was shown from (`content.removeLine`). The subscription is the only path to the screen; a refused removal says so. A page without `content$` asks for a reload.
+- **`README.md`** — you are never the only writer; writes measured on the app-content; `appendLine` measures again by itself, `removeLine` is the user's to retry; show what the app-content holds; whole lines merge, `set()` overwrites.
 
-Key concepts: you are never the only writer; whole lines merge, whole-block writes overwrite; a write is guarded by the block it was measured on; your own writes come back merged.
+Key concepts: you are never the only writer; whole lines merge, whole-app-content writes overwrite; a write is guarded by the app-content it was measured on; your own writes come back merged.
 
 ---
 
@@ -84,7 +84,7 @@ Key concepts: you are never the only writer; whole lines merge, whole-block writ
 **Delta from 03:** Copy 03's files, then:
 
 - **`manifest.json`** — add `runtime.appState` with a default (e.g. `{ "sort": "entered" }`).
-- **`App.tsx`** — add a sort-order toggle (as entered, A–Z) backed by `appState.set()` / `appState.onChange$()`. Content editing still uses `appContent` from tutorial 03; the sort preference uses `appState`. The order shown comes from `appState.onChange$()`, never from the toggle's own `set()` (rule 1 of 03). Never a light/dark toggle: an Application follows the document's mode through `prefers-color-scheme`.
+- **`App.tsx`** — add a sort-order toggle (as entered, A–Z) backed by `appState.set()` / `appState.onChange$()`. Content editing still uses `appContent` from tutorial 03; the sort preference uses `appState`. The order shown comes from `appState.onChange$()`, never from the toggle's own `set()`: what an Application shows is what the document holds, as in 03. Never a light/dark toggle: an Application follows the document's mode through `prefers-color-scheme`.
 - **`README.md`** — explain: `appState` is per-instance, JSON-serializable, last-write-wins (no OT). Good for preferences/config, not for collaborative content. Contrast with `appContent`.
 
 Key distinction: `appContent` = collaborative document data (OT). `appState` = per-instance config (last-write-wins). Use each for what it's designed for.

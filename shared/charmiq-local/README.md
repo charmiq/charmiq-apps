@@ -23,7 +23,7 @@ To film it instead (screenshots after each command call, with each call's result
 
 ```sh
 # from platform/packages/cloud-functions
-npm run film-app -- <path-to-app> --out film --content <block-name>=<file> --step '<command> {json args}'
+npm run film-app -- <path-to-app> --out film --content <app-content-name>=<file> --step '<command> {json args}'
 ```
 
 
@@ -31,7 +31,7 @@ npm run film-app -- <path-to-app> --out film --content <block-name>=<file> --ste
 
 | Surface | Local behavior |
 |----|----|
-| `appState` / `appContent` | Backed by `localStorage` — survives a reload. `appContent` holds named blocks and resolves selectors (`[name='x']`, `[id='x']`, `[n]`, none for the first) and change events (each block's `id` and `name`, `deleted` on removal), snapshots, guarded and tagged writes and the `edits$()` stream a live editor follows, as the Platform does |
+| `appState` / `appContent` | Backed by `localStorage` — survives a reload. `appContent` holds named app-contents and resolves selectors (`[name='x']`, `[id='x']`, `[n]`, none for the first) and change events (each app-content's `id` and `name`, `deleted` on removal), snapshots, guarded and tagged writes and the `edits$()` stream a live editor follows, as the Platform does |
 | `fetch` | The real `window.fetch` (fine for CORS-friendly APIs like Google's) |
 | `oauth.listAuth` / `getValidAuth` / `revokeAuth` | A paste-an-access-token flow (below), with the same `listAuth` / `getValidAuth({ connectionKey })` shape as the real bridge |
 | `advertise` / `discover` / `exportCommands` | An in-page registry (one page, so siblings see each other) |

@@ -5,7 +5,7 @@
 <iframe-app height="300px" width="100%" style="border: 1px solid lightgrey;" src="charmiq://.">
   <app-content name="demo">
 graph LR
-    A[appContent] -->|onChange$| B[ContentBridge]
+    A[appContent] -->|content$| B[ContentBridge]
     B -->|mermaid.render| C[SVG]
     D[appState] -->|onChange$| E[ConfigStore]
     E -->|theme / options| B
@@ -25,7 +25,7 @@ Theme and layout options are persisted in `appState`, so an agent can switch to 
 
 ## In Practice
 
-**Embedding a diagram** — Add a `<iframe-app>` pointing at this app, with the Mermaid source in an `<app-content>` block:
+**Embedding a diagram** — Add a `<iframe-app>` pointing at this app, with the Mermaid source in an `<app-content>`:
 
 ```html
 <iframe-app src="charmiq://../mermaid-diagram">
@@ -62,8 +62,8 @@ Available themes: `default`, `neutral`, `dark`, `forest`, `base`.
 | [`manifest.json`](charmiq://./manifest.json) | Application identity, import map (RxJS, Mermaid), runtime flags |
 | [`src/index.html`](charmiq://./src/index.html) | Bare shell — `<div id="diagram">` and `<div id="error">` |
 | [`src/styles.scss`](charmiq://./src/styles.scss) | Centering, SVG sizing, error display styling |
-| [`src/main.ts`](charmiq://./src/main.ts) | Entry point. Creates instances, wires config → render, starts discovery |
-| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | Subscribes to `appContent`, calls `mermaid.render()`, shows errors inline |
+| [`src/main.ts`](charmiq://./src/main.ts) | Entry point. Creates instances, wires config → render, follows the app-content |
+| [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | Follows the Application's app-content (`content$()`), calls `mermaid.render()`, shows errors inline |
 | [`src/config-store.ts`](charmiq://./src/config-store.ts) | Diagram config persisted via `appState`. Theme, flowchart options |
 | [`src/command.ts`](charmiq://./src/command.ts) | Charm command surface via `charmiq.advertise` |
 
@@ -75,7 +75,7 @@ appContent (OT)         ← Mermaid source text (read-only for this app)
 appState (last-write)   ← configuration (theme, flowchart options)
 ```
 
-Content flows **one direction**: `appContent` → `ContentBridge` → `mermaid.render()` → SVG in the DOM. There are no outbound writes. If the source contains a syntax error, the error is displayed inline and the stale diagram is cleared.
+Content flows **one direction**: `appContent.content$()` → `ContentBridge` → `mermaid.render()` → SVG in the DOM. There are no outbound writes. The app-content is followed exactly: when it is removed the diagram clears, and when the read is refused the app says why. If the source contains a syntax error, the error is displayed inline and the stale diagram is cleared.
 
 A monotonic render counter discards stale renders — if the source changes twice in quick succession, only the latest render is applied.
 
