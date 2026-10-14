@@ -192,6 +192,65 @@ const piecesOf = (part: CatalogPart): ReadonlyArray<PartLine> => {
   return pieces;
 };
 
+// == Components ================================================================
+// a component is a group of parts in its own grid, placed as a unit: a copy names
+// where the component's footprint goes and how it turns, as a part does. Its LDraw
+// line moves the component's own grid: turned about its origin, its footprint's
+// south-west corner at the copy's x and z, its level 0 at the copy's level
+
+/** the cells a group of parts covers: from the minimum corner up to (not including)
+ *  the maximum, at rotation 0 in the group's own grid */
+export type Footprint = Readonly<{ minX: number; minZ: number; maxX: number; maxZ: number; height: number/*levels from 0*/; }>;
+
+/** where a copy of a component stands */
+export type Copy = Readonly<{ component: string; x: number; z: number; level: number; rotation: Rotation; }>;
+
+/** the footprint of a group of parts, or undefined for none */
+export const footprintOf = (placements: ReadonlyArray<Placement>): Footprint | undefined => {
+  const cells = placements.flatMap(placement => filledCells(getShape(getPart(placement.part)!/*by contract*/), placement));
+  if(cells.length < 1) return undefined;
+  return {
+    minX: Math.min(...cells.map(cell => cell.x)), minZ: Math.min(...cells.map(cell => cell.z)),
+    maxX: Math.max(...cells.map(cell => cell.x)) + 1, maxZ: Math.max(...cells.map(cell => cell.z)) + 1,
+    height: Math.max(0, ...cells.map(cell => cell.top)),
+  };
+};
+
+/** the footprint's size at a rotation (width along x, depth along z) */
+export const footprintSize = (footprint: Footprint, rotation: Rotation): readonly [number, number] => {
+  const [width, depth] = [footprint.maxX - footprint.minX, footprint.maxZ - footprint.minZ];
+  return ((rotation === 90) || (rotation === 270)) ? [depth, width] : [width, depth];
+};
+
+/** the south-west corner of the footprint turned about the component's origin */
+const turnedCorner = (footprint: Footprint, rotation: Rotation): [number, number] => {
+  const corners = [[footprint.minX, footprint.minZ], [footprint.maxX, footprint.minZ], [footprint.minX, footprint.maxZ], [footprint.maxX, footprint.maxZ]]
+    .map(([x, z]) => rotate(x, z, rotation));
+  return [Math.min(...corners.map(([x]) => x)), Math.min(...corners.map(([, z]) => z))];
+};
+
+/** the LDraw transform of a copy */
+export const copyTransform = (footprint: Footprint, copy: Copy): Transform => {
+  const [cornerX, cornerZ] = turnedCorner(footprint, copy.rotation);
+  return {
+    matrix: rotationMatrix(copy.rotation),
+    position: [(copy.x - cornerX) * LDU_PER_STUD, -copy.level * LDU_PER_PLATE, (copy.z - cornerZ) * LDU_PER_STUD],
+  };
+};
+
+/** where a copy stands, from its LDraw transform, or undefined when it is not a
+ *  quarter turn on the grid */
+export const copyPosition = (footprint: Footprint, component: string, transform: Transform): Copy | undefined => {
+  const rotation = matrixRotation(transform.matrix);
+  if(rotation === undefined) return undefined;
+  const [cornerX, cornerZ] = turnedCorner(footprint, rotation);
+  const x = (transform.position[0] / LDU_PER_STUD) + cornerX;
+  const z = (transform.position[2] / LDU_PER_STUD) + cornerZ;
+  const level = -transform.position[1] / LDU_PER_PLATE;
+  if(!isWhole(x) || !isWhole(z) || !isWhole(level)) return undefined;
+  return { component, x: Math.round(x), z: Math.round(z), level: Math.round(level), rotation };
+};
+
 // == Frames ======================================================================
 /** a part at a placement's position: a glass pane names its frame's LDraw file
  *  here, and the pane sits in the frame placed under the same key */

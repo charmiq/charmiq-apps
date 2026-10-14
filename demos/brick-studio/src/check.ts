@@ -1,4 +1,4 @@
-import { cellKey, filledCells, frameKey, getPart, getShape, studCells, type Placement } from './grid';
+import { cellKey, filledCells, frameKey, getPart, getShape, studCells, type Copy, type Placement } from './grid';
 import { READ_IN_PART, type Model } from './model';
 
 // checks a build on the grid. A part fills the cells and levels its shape measures
@@ -28,6 +28,7 @@ export const MAX_LISTED = 12;
 // == Check =======================================================================
 export const checkModel = (model: Model): CheckResult => {
   const { placements } = model;
+  const name = (index: number): string => describeIn(model, index);
 
   // .. Collisions ................................................................
   const filled = new Map<string, number>()/*cell key -> placement index*/;
@@ -37,7 +38,7 @@ export const checkModel = (model: Model): CheckResult => {
     const pair = `${other}|${index}`;
     if(collided.has(pair)) return;
     collided.add(pair);
-    collisions.push({ a: describePlacement(placements[other]), b: describePlacement(placements[index]) });
+    collisions.push({ a: name(other), b: name(index) });
   };
   placements.forEach((placement, index) => {
     const shape = getShape(getPart(placement.part)!/*by contract*/);
@@ -102,7 +103,7 @@ export const checkModel = (model: Model): CheckResult => {
       queue.push(next);
     }
   }
-  const floating = placements.flatMap((placement, index) => grounded.has(index) ? [] : [describePlacement(placement)]);
+  const floating = placements.flatMap((_, index) => grounded.has(index) ? [] : [name(index)]);
 
   return { parts: placements.length, collisions, floating, unchecked: model.others.length, truncated: !!model.truncated };
 };
@@ -125,6 +126,17 @@ export const reportCheck = (result: CheckResult) => ({
 
 /** what a build read only in part means, model-facing */
 export const TRUNCATED = `${READ_IN_PART} This covers that part alone.`;
+
+/** a model's placement in one line, naming the copy it is in */
+export const describeIn = (model: Model, index: number): string => {
+  const copy = model.placementCopies?.[index];
+  const placement = describePlacement(model.placements[index]);
+  return (copy === undefined) ? placement : `${placement} in ${describeCopy(model.copies![copy]/*by contract*/)}`;
+};
+
+/** a copy in one line, e.g. `tower at x 0 z 0 level 0 rotation 90` */
+export const describeCopy = (copy: Copy): string =>
+  `${copy.component} at x ${copy.x} z ${copy.z} level ${copy.level}` + ((copy.rotation !== 0) ? ` rotation ${copy.rotation}` : '');
 
 /** a placement in one line, e.g. `brick-2x4 red at x 3 z 4 level 6 rotation 90` */
 export const describePlacement = (placement: Placement): string =>

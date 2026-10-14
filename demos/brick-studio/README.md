@@ -72,6 +72,8 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 
 **The ground.** The swatch beside the save and open buttons colors the baseplate: grass, a road, sand. The color is part of the build (a `0 !BRICKSTUDIO GROUND green` line at the top of its LDraw, which other LDraw tools pass by), so it is saved with designs and undone like any edit, and it stays that color in a dark theme. Theme returns the baseplate to the theme's color. Parts still stand on it at level 0.
 
+**Components.** A thing a build repeats (a tower, a house, a tree with its fence) is defined once as a component, in its own small grid, and placed as many copies as the build needs, each turned and moved as a part is. A copy is checked like any part, a click's worth of removal (any cell of it) removes the whole copy, and changing a component changes every copy. The build is then a standard multi-file LDraw (MPD) file: the main model first, each component a `0 FILE` section after it, and a copy one line naming its component, so other LDraw tools open it as it is. A component that places another is not edited here; `setModel` writes such a file flat.
+
 **Steps.** A build can be split into building steps, LDraw's own `0 STEP` lines, so other LDraw tools show the same steps. The play, step and back buttons under the status show the build as it stands after each step, its parts dropping in; playback never changes the document, and any change to the build ends it. A Charm starts a new step by adding parts with `newStep: true`.
 
 **Designs.** The save and open buttons keep builds in your Drive. Each design is a Source document of plain LDraw text, named for the design (`Beach house.ldr`). Designs go to My Drive until you choose another folder, which the Studio then remembers. Saving a name already there (in any case) asks before replacing it, and opening a design over a build asks before replacing the build. Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any document you can.
@@ -82,16 +84,18 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 |---|---|
 | `listParts` | the grid conventions, every part's name by kind, and the colors |
 | `findParts` | the rows (size, fills, which way it descends) of the parts a query names: names, a size such as 2x4, or a word such as roof |
-| `listPlacedParts` | the parts in the build with their positions, a page at a time |
-| `addParts` | places a batch of parts, in the last step or (`newStep`) a new one; a batch that would collide is refused; answers with the build's check |
-| `removeParts` | removes the part filling each given cell, and a removed window's glass; answers with the build's check and the parts left unsupported |
-| `clear` | removes every part, keeping the ground |
+| `listPlacedParts` | the parts and copies in the build with their positions, a page at a time |
+| `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one; a batch that would collide is refused; answers with the build's check |
+| `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy removes the whole copy); answers with the build's check and the parts left unsupported |
+| `defineComponent` | defines a component, or replaces its definition and so every copy |
+| `listComponents` | the components the build defines, their sizes and copies |
+| `clear` | removes every part, copy and component, keeping the ground |
 | `check` | lists collisions and floating parts, for a build changed some other way |
 | `setGround` | colors the baseplate, as the swatch does |
 | `setView` | turns the camera and frames the build |
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side; the next change closes it |
 | `setFidelity` | sets how real the bricks look, from Draft to Path traced, as the Look slider does |
-| `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it |
+| `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it (a file of components kept as written) |
 | `listDesigns` | the designs in your designs folder |
 | `loadDesign` | replaces the build with a saved design |
 | `saveDesign` | saves the build as a design in your designs folder; a name already there needs `replace` |
@@ -107,7 +111,7 @@ Every edit resolves once the parts have landed, so a screenshot taken next shows
 | [`src/main.ts`](charmiq://./src/main.ts) | entry point: wires the modules, loads the parts, then the build |
 | [`src/catalog.ts`](charmiq://./src/catalog.ts) | the curated parts and colors |
 | [`src/grid.ts`](charmiq://./src/grid.ts) | grid placement to and from LDraw transforms |
-| [`src/model.ts`](charmiq://./src/model.ts) | LDraw text to and from a build (MPD submodels flatten) |
+| [`src/model.ts`](charmiq://./src/model.ts) | LDraw text to and from a build: a flat file, or an MPD file of components |
 | [`src/check.ts`](charmiq://./src/check.ts) | collisions and what holds |
 | [`src/build.ts`](charmiq://./src/build.ts) | the current build and its edits |
 | [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` app-content, edited with guarded edits |

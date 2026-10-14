@@ -4,7 +4,7 @@ import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { DesignExists, type Designs } from './designs';
-import { getShape, type PartShape } from './grid';
+import { footprintSize, getShape, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { LookAround } from './look-around';
 import { BASEPLATE_MARGIN, BASEPLATE_MIN, type Viewer } from './viewer';
@@ -41,6 +41,7 @@ const GRID = [
   'A figure is a person: it stands on the middle two cells of its middle row, faces south at rotation 0, and its arms, hands and head reach into the cells around its feet (its row gives its fills), so figures side by side stand 4 studs apart. Its color is its shirt; its head and hands are yellow and its legs blue.',
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
+  'A component is a group of parts defined once (defineComponent, in its own grid: x, z and level from 0) and placed many times: an addParts item {component, x, z, level, rotation} places a copy by its footprint\'s south-west corner and its bottom level, turned as a part is. Copies are checked as parts are; removing any cell of a copy removes the whole copy, and redefining a component changes every copy. Build a repeated thing (a tower, a house, a tree with a fence) as a component.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
   `The baseplate is no boundary: it grows with the build, ${BASEPLATE_MARGIN} studs beyond it on every side and never smaller than ${BASEPLATE_MIN} x ${BASEPLATE_MIN} studs (x and z from ${-BASEPLATE_MIN / 2} to ${BASEPLATE_MIN / 2} while the build is empty). Parts stand anywhere with x and z within ${MAX_COORDINATE} of the origin; center a scene near x 0, z 0.`,
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east. lookAround shows the build from all four sides at once, so one screenshot sees every side; the next change closes it.',
@@ -84,13 +85,31 @@ export class CommandSurface {
         const model = this.build.getModel();
         const conflict = this.build.conflict();
         const steps = model.steps;
+        // a part of its own, or a copy as one entry (its parts are its component's)
+        const entries = [
+          ...model.placements.flatMap((placement, index) => (model.placementCopies?.[index] === undefined) ? [steps ? { ...placement, step: steps.placements[index] } : placement] : []),
+          ...(model.copies ?? []).map((copy, index) => steps ? { ...copy, step: steps.copies[index] } : copy),
+        ];
         const start = pageStart(from);
-        const end = Math.min(model.placements.length, start + PARTS_PER_PAGE);
-        const parts = model.placements.slice(start, end).map((placement, index) => steps ? { ...placement, step: steps.placements[start + index] } : placement);
+        const end = Math.min(entries.length, start + PARTS_PER_PAGE);
         return {
-          parts, total: model.placements.length, ...((end < model.placements.length) ? { next: end } : {}),
+          parts: entries.slice(start, end), total: entries.length, ...((end < entries.length) ? { next: end } : {}),
           ...((model.others.length > 0) ? { unchecked: model.others.length } : {}), ...(model.truncated ? { truncated: TRUNCATED } : {}), ...(conflict ? { conflict } : {}),
         };
+      },
+
+      defineComponent: async ({ name, parts }: { name?: unknown; parts?: unknown; }) => {
+        const component = await this.build.defineComponent(name, Array.isArray(parts) ? parts : []);
+        await this.viewer.whenSettled();
+        return { component, ...this.report() }/*the component's own counts apart from the build's*/;
+      },
+      listComponents: async () => {
+        await this.build.whenReady();
+        const model = this.build.getModel();
+        return { components: (model.components ?? []).map(component => {
+          const size = component.footprint ? footprintSize(component.footprint, 0) : [0, 0];
+          return { name: component.name, size: `${size[0]}x${size[1]}x${component.footprint?.height ?? 0}`, parts: component.placements.length, copies: (model.copies ?? []).filter(copy => copy.component === component.name).length };
+        }) };
       },
 
       // an edit answers with the check of the build it made, so no check call follows

@@ -117,7 +117,7 @@
       },
       {
         "name": "listPlacedParts",
-        "description": "The parts in the build with their positions, a page at a time: pass next back as from for the next page",
+        "description": "The parts and copies of components in the build with their positions, a page at a time: pass next back as from for the next page",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -139,7 +139,7 @@
       },
       {
         "name": "addParts",
-        "description": "Place parts. A batch that would collide is refused whole. Returns the check of the build it made: no check call is needed after",
+        "description": "Place parts and copies of components. A batch that would collide is refused whole. Returns the check of the build it made: no check call is needed after",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -149,15 +149,17 @@
               "maxItems": 400,
               "items": {
                 "type": "object",
+                "description": "A part (part, color) or a copy of a component (component)",
                 "properties": {
-                  "part":     { "type": "string", "description": "Catalog part, e.g. brick-2x4" },
-                  "color":    { "type": "string", "description": "Catalog color, e.g. red" },
-                  "x":        { "type": "integer", "description": "West edge, studs" },
-                  "z":        { "type": "integer", "description": "South edge, studs" },
-                  "level":    { "type": "integer", "minimum": 0, "description": "Bottom, plates" },
-                  "rotation": { "type": "integer", "enum": [0, 90, 180, 270] }
+                  "part":      { "type": "string", "description": "Catalog part, e.g. brick-2x4" },
+                  "color":     { "type": "string", "description": "Catalog color, e.g. red" },
+                  "component": { "type": "string", "description": "A component's name, to place a copy of it instead of a part" },
+                  "x":         { "type": "integer", "description": "West edge, studs" },
+                  "z":         { "type": "integer", "description": "South edge, studs" },
+                  "level":     { "type": "integer", "minimum": 0, "description": "Bottom, plates" },
+                  "rotation":  { "type": "integer", "enum": [0, 90, 180, 270] }
                 },
-                "required": ["part", "color", "x", "z", "level"]
+                "required": ["x", "z", "level"]
               }
             },
             "newStep": { "type": "boolean", "description": "Put these parts in a new building step after the last" }
@@ -182,8 +184,64 @@
         }
       },
       {
+        "name": "defineComponent",
+        "description": "Define a component: a group of parts in its own grid (x, z and level from 0), placed many times with addParts. Defining a name again replaces it and changes every copy; refused whole if a copy would then collide. Returns its size and the build's check",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name":  { "type": "string", "description": "Lower case letters, digits and dashes, e.g. tower" },
+            "parts": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 400,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "part":     { "type": "string" },
+                  "color":    { "type": "string" },
+                  "x":        { "type": "integer" },
+                  "z":        { "type": "integer" },
+                  "level":    { "type": "integer", "minimum": 0 },
+                  "rotation": { "type": "integer", "enum": [0, 90, 180, 270] }
+                },
+                "required": ["part", "color", "x", "z", "level"]
+              }
+            }
+          },
+          "required": ["name", "parts"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "component": {
+              "type": "object",
+              "properties": {
+                "name":   { "type": "string" },
+                "size":   { "type": "string", "description": "width x depth x height at rotation 0 (studs, studs, levels)" },
+                "parts":  { "type": "integer" },
+                "copies": { "type": "integer", "description": "Copies placed in the build" }
+              },
+              "required": ["name", "size", "parts", "copies"]
+            },
+            "ok":    { "type": "boolean" },
+            "parts": { "type": "integer", "description": "Parts in the build" }
+          },
+          "required": ["component", "ok", "parts"]
+        }
+      },
+      {
+        "name": "listComponents",
+        "description": "The components the build defines: name, size (width x depth x height at rotation 0), parts and copies placed",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "components": { "type": "array", "items": { "type": "object" } } },
+          "required": ["components"]
+        }
+      },
+      {
         "name": "removeParts",
-        "description": "Remove the part that fills each given cell. Returns the check of the build it made (no check call is needed after) and the parts the removal left unsupported",
+        "description": "Remove the part that fills each given cell (a cell of a copy removes the whole copy). Returns the check of the build it made (no check call is needed after) and the parts the removal left unsupported",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -240,7 +298,7 @@
       },
       {
         "name": "clear",
-        "description": "Remove every part",
+        "description": "Remove every part, copy and component, keeping the ground",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
