@@ -6,7 +6,7 @@ import { ContentBridge } from './content-bridge';
 import { LibraryHandler } from './library-handler';
 import type { ExcalidrawAPI } from './content-bridge';
 
-// entry point — creates all modules, wires dependencies, starts discovery
+// entry point — creates all modules, wires dependencies, follows the drawing
 // ********************************************************************************
 const charmiq: CharmIQAPI = window.charmiq;
 
@@ -16,8 +16,22 @@ const configStore = new ConfigStore(charmiq.appState);
 const libraryHandler = new LibraryHandler();
 const commandSurface = new CommandSurface(contentBridge, configStore);
 
+/** shows why the drawing could not be saved or read */
+const showFailure = (failure: unknown) => {
+  const notice = document.getElementById('notice')!;
+  const code = (failure as { code?: unknown; } | null)?.code;
+  notice.textContent = (code === 'functions/permission-denied') ? 'This Application isn\'t allowed to read the drawing.'
+                     : (failure instanceof Error) && failure.message ? failure.message
+                     : 'The drawing could not be read. Reload to try again.';
+  notice.hidden = false;
+};
+contentBridge.onFailure(showFailure);
+
 // == Init ========================================================================
 const start = async () => {
+  // read the drawing while Excalidraw loads: it opens with it (SEE: loadScene)
+  contentBridge.follow().catch(showFailure);
+
   // load persisted config (drives initial Excalidraw props)
   await configStore.init();
 
@@ -37,23 +51,16 @@ const start = async () => {
 
       // register LLM commands
       commandSurface.init();
-
-      // start OT content sync (subscribes to appContent, creates default if empty)
-      contentBridge.discover();
     },
 
-    onChange: (elements, appState, files) => {
-      contentBridge.handleSceneChange(elements, appState, files);
+    loadScene: () => contentBridge.loadScene(),
+
+    onChange: () => {
+      contentBridge.sceneChanged();
     },
 
-    onLibraryChange: (items, api) => {
+    onLibraryChange: (items) => {
       contentBridge.setLibraryItems(items);
-
-      // trigger a sync — library changed but scene elements may not have
-      const elements = api.getSceneElements();
-      const appState = api.getAppState();
-      const files = api.getFiles();
-      contentBridge.handleSceneChange(elements, appState, files);
     }
   });
 

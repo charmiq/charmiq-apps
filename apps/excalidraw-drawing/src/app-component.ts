@@ -1,16 +1,12 @@
+import { Excalidraw, MainMenu } from '@excalidraw/excalidraw';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+
 import type { DrawingConfig } from './config-store';
 import type { ExcalidrawAPI } from './content-bridge';
 
-// factory for the React App component. Uses React.createElement (not TSX)
-// because React is loaded as a UMD global, not an ESM import
+// factory for the React App component (React.createElement: the app has no TSX)
 // ********************************************************************************
-// == UMD Globals =================================================================
-declare const React: any;
-declare const ReactDOM: any;
-
-// access ExcalidrawLib from UMD
-const ExcalidrawLib = (window as any).ExcalidrawLib;
-const Excalidraw = ExcalidrawLib?.Excalidraw;
 
 // == Types =======================================================================
 /** callback bag passed to renderApp — wires the component to external modules */
@@ -18,6 +14,8 @@ export interface AppCallbacks {
   readonly onReady: (api: ExcalidrawAPI) => void;
   readonly onChange: (elements: any[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
   readonly onLibraryChange: (items: any[], api: ExcalidrawAPI) => void;
+  /** the drawing to open with, once it is read */
+  readonly loadScene: () => Promise<Readonly<{ elements: ReadonlyArray<unknown>; appState: Record<string, unknown>; files: Record<string, unknown>; libraryItems: ReadonlyArray<unknown>; }>>;
   readonly getConfig: () => Readonly<DrawingConfig>;
   readonly updateMenuCSS: (show: boolean) => void;
 }
@@ -33,7 +31,7 @@ export interface AppHandle {
 /** mount the App component into the given container. Returns a handle for
  *  pushing config changes from outside React */
 export const renderApp = (container: HTMLElement, callbacks: AppCallbacks): AppHandle => {
-  const root = ReactDOM.createRoot(container);
+  const root = createRoot(container);
 
   // shared mutable ref so the App component can be driven from outside
   let configSetter: ((config: Readonly<DrawingConfig>) => void) | null = null;
@@ -64,21 +62,23 @@ export const renderApp = (container: HTMLElement, callbacks: AppCallbacks): AppH
       return () => { configSetter = null; };
     }, []);
 
-    // initialData is only consumed on first mount
-    const initialData = config.viewModeEnabled !== undefined
-      ? { appState: { viewModeEnabled: config.viewModeEnabled } }
-      : undefined;
+    // the drawing opens with the scene read from the document (Excalidraw restores
+    // it, as any scene it loads), consumed on first mount
+    const initialData = React.useMemo(() => callbacks.loadScene().then(scene => ({
+      ...scene,
+      appState: { ...scene.appState, ...((config.viewModeEnabled !== undefined) ? { viewModeEnabled: config.viewModeEnabled } : {}) },
+    })), []);
 
     // when menu is hidden, inject an empty MainMenu to suppress the built-in one
     const children: any[] = [];
-    if(!config.showMainMenu && ExcalidrawLib?.MainMenu) {
+    if(!config.showMainMenu) {
       children.push(
-        React.createElement(ExcalidrawLib.MainMenu, { key: 'main-menu' })
+        React.createElement(MainMenu, { key: 'main-menu' })
       );
     } /* else -- default menu */
 
     return React.createElement(Excalidraw, {
-      ...(initialData ? { initialData } : {}),
+      initialData,
       excalidrawAPI: (api: ExcalidrawAPI) => {
         excalidrawAPIRef = api;
         if(!initializedRef.current) {

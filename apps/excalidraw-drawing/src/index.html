@@ -5,24 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Excalidraw Drawing</title>
 
-  <!-- process polyfill — Excalidraw's UMD bundle reads process.env.NODE_ENV -->
-  <script>window.process = { env: { NODE_ENV: 'production' } };</script>
-
-  <!-- Excalidraw asset path (phase 1) — point to dist/ so Webpack chunk loading
-       finds the right folder when the UMD bundle initializes -->
-  <script>window.EXCALIDRAW_ASSET_PATH = "https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/";</script>
-
-  <!-- React + Excalidraw via UMD (no usable ESM CDN builds for Excalidraw) -->
-  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/excalidraw.production.min.js"></script>
-
-  <!-- Excalidraw asset path (phase 2) — switch to root so that Fonts (which
-       internally append 'dist/') resolve correctly. Webpack already read the
-       value at startup so chunk loading is unaffected -->
-  <script>window.EXCALIDRAW_ASSET_PATH = "https://unpkg.com/@excalidraw/excalidraw@0.17.6";</script>
+  <!-- Excalidraw's stylesheet; its fonts load from the same release -->
+  <link rel="stylesheet" href="https://esm.sh/@excalidraw/excalidraw@0.18.1/dist/prod/index.css">
+  <script>window.EXCALIDRAW_ASSET_PATH = "https://esm.sh/@excalidraw/excalidraw@0.18.1/dist/prod/";</script>
 </head>
 <body>
   <div id="app"></div>
+  <p id="notice" class="notice" role="alert" hidden></p>
 </body>
 </html>

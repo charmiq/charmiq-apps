@@ -12,3 +12,25 @@ body {
   width: 100%;
   height: 100%;
 }
+
+// why the drawing could not be saved or read, over the canvas
+.notice {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fff4e5;
+  color: #5c3c00;
+  font: 13px/1.4 sans-serif;
+  overflow-wrap: break-word;
+  z-index: 10;
+
+  @media (prefers-color-scheme: dark) {
+    background: #3d2c0a;
+    color: #ffe2b0;
+  }
+}

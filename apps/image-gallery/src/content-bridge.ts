@@ -1,5 +1,5 @@
 import type { AppContent, AppContentAPI } from '../../../shared/charmiq';
-import { changeTo, isConflict, parseRecord, recordLines } from '/shared/line-records/line-records';
+import { isConflict, parseRecord, recordLines, writeLines } from '/shared/line-records/line-records';
 
 // the gallery's data lives in two kinds of named app-content, one record per line
 // (JSON Lines)
@@ -220,11 +220,10 @@ export class ContentBridge {
       const content = this.contents[kind].find(candidate => holds(recordLines(candidate)));
       if(!content) return false/*nothing holds it*/;
       const next = measure(recordLines(content));
-      const change = next && changeTo(content.text, next);
-      if(!change) return false/*nothing to change*/;
+      if(!next || ((next.length === content.lines.length) && next.every((line, index) => line === content.lines[index]))) return false/*nothing to change*/;
 
       try {
-        await content.edit([ change ]);
+        await writeLines(content, next)/*whole lines: SEE: writeLines*/;
         await this.newerThan(kind, content)/*shown once the write is in*/;
         return true;
       } catch(error) {

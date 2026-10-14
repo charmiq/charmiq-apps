@@ -1,11 +1,13 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { CharmIQServices } from '../../../shared/charmiq-services';
+import { RecordSaveError } from '/shared/line-records/record-sync';
+
 import { CanvasViewport } from './canvas-viewport';
 import { ClipboardHandler } from './clipboard-handler';
 import { CommandSurface } from './command-surface';
 import { ConfigStore, type DrawingConfig } from './config-store';
 import { confirm } from './confirm';
-import { ContentBridge, DrawingSaveError } from './content-bridge';
+import { ContentBridge } from './content-bridge';
 import type { DrawingElement } from './element-model';
 import { toastError } from './notifications';
 import { ExportHandler } from './export-handler';
@@ -71,7 +73,7 @@ const syncElements = () => {
 let commandService: CharmIQServices['commandService'] | undefined;
 /** shows why the drawing could not be saved or read */
 const reportFailure = (title: string, error: unknown) => {
-  const description = (error instanceof DrawingSaveError) ? error.message : 'Try again.';
+  const description = (error instanceof RecordSaveError) ? error.message : 'Try again.';
   if(commandService) toastError(commandService, title, description);
   else console.error(`${title}:`, error)/*no host to show it*/;
 };
@@ -173,6 +175,7 @@ document.addEventListener('visibilitychange', () => {
 
 // == Content Bridge — incoming updates ===========================================
 contentBridge.onReadFailure(error => reportFailure('The drawing stopped updating', error));
+contentBridge.onSaveFailure(error => reportFailure('The drawing was not saved', error));
 contentBridge.onChange((newElements) => {
   elements = newElements;
   syncElements();

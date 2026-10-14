@@ -30,10 +30,10 @@ export class CommandSurface {
     const charmiq: CharmIQAPI = window.charmiq;
     charmiq.exportCommands({
       getText: () => {
-        return this.contentBridge.getCurrentContent();
+        return this.contentBridge.getSceneJson();
       },
       setText: async ({ text }: { text: string; }) => {
-        await this.contentBridge.setText(text);
+        await this.contentBridge.setSceneJson(text);
       },
 
       getSceneElements: () => {
