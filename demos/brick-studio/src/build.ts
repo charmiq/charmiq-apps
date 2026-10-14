@@ -14,7 +14,7 @@ import { appendLines, deleteLines, groundEdit, parseModel, placementLines, seria
 // ********************************************************************************
 // == Constants ===================================================================
 const MAX_BATCH = 400;
-const MAX_COORDINATE = 200/*studs from the origin*/;
+export const MAX_COORDINATE = 200/*studs from the origin*/;
 const MAX_LEVEL = 600/*plates*/;
 
 // == Types =======================================================================

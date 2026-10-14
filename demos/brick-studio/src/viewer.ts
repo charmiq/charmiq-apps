@@ -37,8 +37,10 @@ const WHITE = new THREE.Color(1, 1, 1);
  *  geometry is built for */
 const PACKED = new Set(CATALOG.flatMap(partFiles));
 
-const BASEPLATE_MIN = 16/*studs*/;
-const BASEPLATE_MARGIN = 4/*studs*/;
+/** the baseplate grows with the build: this far beyond it on every side, never
+ *  smaller than its least size (centered on the origin while the build is empty) */
+export const BASEPLATE_MIN = 16/*studs*/;
+export const BASEPLATE_MARGIN = 4/*studs*/;
 const BASEPLATE_THICKNESS = 0.16/*scene units*/;
 
 const DROP_HEIGHT = 2.4/*scene units*/;

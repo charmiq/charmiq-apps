@@ -1,5 +1,5 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
-import type { Build } from './build';
+import { MAX_COORDINATE, type Build } from './build';
 import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
@@ -7,7 +7,7 @@ import { DesignExists, type Designs } from './designs';
 import { getShape, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { LookAround } from './look-around';
-import type { Viewer } from './viewer';
+import { BASEPLATE_MARGIN, BASEPLATE_MIN, type Viewer } from './viewer';
 
 // the Charm command surface (SEE: manifest.json `advertise`). Results are terse
 // model-facing data. Every command waits for the build to load; an edit resolves
@@ -39,6 +39,7 @@ const GRID = [
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
+  `The baseplate is no boundary: it grows with the build, ${BASEPLATE_MARGIN} studs beyond it on every side and never smaller than ${BASEPLATE_MIN} x ${BASEPLATE_MIN} studs (x and z from ${-BASEPLATE_MIN / 2} to ${BASEPLATE_MIN / 2} while the build is empty). Parts stand anywhere with x and z within ${MAX_COORDINATE} of the origin; center a scene near x 0, z 0.`,
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east. lookAround shows the build from all four sides at once, so one screenshot sees every side; the next change closes it.',
 ].join(' ');
 
