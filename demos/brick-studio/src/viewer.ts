@@ -8,6 +8,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CATALOG } from './catalog';
 import { getColor, getColorByCode, getColorValue, getPart, getShape, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
 import type { Model } from './model';
+import { COLOR_VALUES } from './parts.generated';
 import PARTS_LDRAW from './parts.ldr';
 import { Effects } from './render/effects';
 import type { Fidelity } from './render/fidelity';
@@ -28,6 +29,9 @@ const SCENE_TO_LDRAW = LDRAW_TO_SCENE.clone().invert();
 
 /** a color outside the palette renders as this neutral */
 const UNKNOWN_COLOR = '#A0A5A9';
+/** the color code a one-part model draws its part in (LDraw's inherited color): its
+ *  faces in any other code are drawn in that color */
+const OWN_COLOR = 16;
 const WHITE = new THREE.Color(1, 1, 1);
 /** the parts the pack holds (the catalog's and their pieces'), the only ones a
  *  geometry is built for */
@@ -66,7 +70,9 @@ export const DEFAULT_VIEW: View = { azimuth: 30, elevation: 28 };
  *  west from the east; elevation 0 is level, 90 straight down */
 export type View = Readonly<{ azimuth: number; elevation: number; }>;
 
-type RenderItem = Readonly<{ ldraw: string; color: string/*hex*/; glass: boolean; key: string; matrix: THREE.Matrix4; }>;
+/** one drawn file: `geometry` names a part's own faces (its LDraw stem) or a print's
+ *  (SEE: printKey); `drop` names the part whose drop it rides */
+type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; key: string; drop: string; matrix: THREE.Matrix4; }>;
 type Drop = { mesh: THREE.InstancedMesh; index: number; matrix: THREE.Matrix4; start: number; };
 
 /** how the keys move the camera, each -1, 0 or 1: forward (or back), right (or
@@ -101,8 +107,10 @@ export class Viewer {
   private readonly glasses = new Map<string/*tint hex*/, THREE.MeshPhysicalMaterial>();
   private readonly baseplateMaterial = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0 });
 
-  /** each part's geometry, built the first time a build shows the part */
-  private readonly geometries = new Map<string/*ldraw*/, THREE.BufferGeometry>();
+  /** each part's geometry and its prints', built the first time a build shows the part */
+  private readonly geometries = new Map<string/*ldraw or print key*/, THREE.BufferGeometry>();
+  /** the color codes each part prints in (SEE: toSceneGeometries) */
+  private readonly prints = new Map<string/*ldraw*/, ReadonlyArray<number>>();
   private readonly seams = new Map<string/*ldraw*/, THREE.Matrix4>();
   private readonly building = new Map<string/*ldraw*/, Promise<void>>();
   private loader: LDrawLoader | undefined;
@@ -167,26 +175,31 @@ export class Viewer {
     const loader = new LDrawLoader();
     loader.setConditionalLineMaterial(LDrawConditionalLineMaterial);
     loader.addDefaultMaterials();
+    // the loader names each face's color by its material: one per color the packed
+    // parts are drawn in keeps a print's code (SEE: toSceneGeometries)
+    for(const code of Object.keys(COLOR_VALUES)) loader.addMaterial(Object.assign(new THREE.MeshStandardMaterial(), { userData: { code } }));
 
     await parse(loader, PARTS_LDRAW)/*caches every packed file*/;
     this.loader = loader;
-    this.studGeometry = toSceneGeometry(await parse(loader, single('stud.dat')));
+    this.studGeometry = toSceneGeometries(await parse(loader, single('stud.dat'))).get(OWN_COLOR);
   }
 
   /** builds the geometry of the catalog parts a model shows that have none yet, then
    *  shows the model again if it is still the one shown. Settling waits for it */
   private buildGeometries(model: Model, animate: boolean): void {
     const missing = [...new Set(renderItems(model).map(item => item.ldraw))]
-      .filter(ldraw => !this.geometries.has(ldraw) && !this.building.has(ldraw) && PACKED.has(ldraw));
+      .filter(ldraw => !this.prints.has(ldraw)/*built*/ && !this.building.has(ldraw) && PACKED.has(ldraw));
     if(missing.length < 1) return/*every part shown has its geometry, or is being built*/;
 
     const loader = this.loader;
     if(!loader) return/*not loaded*/;
     const built = (async () => {
       for(const ldraw of missing) {
-        const geometry = toSceneGeometry(await parse(loader, single(`${ldraw}.dat`)));
-        this.geometries.set(ldraw, geometry);
-        this.seams.set(ldraw, seamMatrix(geometry));
+        const byColor = toSceneGeometries(await parse(loader, single(`${ldraw}.dat`)));
+        const prints = [...byColor.keys()].filter(code => code !== OWN_COLOR);
+        for(const [code, geometry] of byColor) this.geometries.set((code === OWN_COLOR) ? ldraw : printKey(ldraw, code), geometry);
+        this.prints.set(ldraw, prints);
+        this.seams.set(ldraw, seamMatrix(byColor.get(OWN_COLOR) ?? byColor.values().next().value!/*a part drawn in fixed colors alone*/));
       }
     })().catch(error => console.error('brick-studio: a part could not be built:', error))
       .finally(() => {
@@ -284,28 +297,31 @@ export class Viewer {
     this.model = model;
     this.buildGeometries(model, animate);
     const real = (this.fidelity >= 1);
-    const items = renderItems(model).filter(item => this.geometries.has(item.ldraw))
+    const items = renderItems(model).filter(item => this.prints.has(item.ldraw))
+      .flatMap(item => [item, ...this.prints.get(item.ldraw)!.map(code => printItem(item, code))])
+      .filter(item => this.geometries.has(item.geometry))
       .map(item => real ? { ...item, matrix: item.matrix.clone().multiply(this.seams.get(item.ldraw)!) } : item);
 
     // one instanced mesh per part
     for(const child of [...this.parts.children]) { this.parts.remove(child); (child as THREE.InstancedMesh).dispose(); }
     this.drops = [];
     const now = performance.now();
-    let dropIndex = 0;
+    const dropStarts = new Map<string/*drop*/, number>()/*a part's pieces and prints drop with it*/;
 
     // one instanced mesh per part in opaque plastic, and per part and tint in glass
-    const group = (item: RenderItem): string => item.glass ? `${item.ldraw}|${item.color}` : item.ldraw;
+    const group = (item: RenderItem): string => item.glass ? `${item.geometry}|${item.color}` : item.geometry;
     const byPart = new Map<string, RenderItem[]>();
     for(const item of items) byPart.set(group(item), [...(byPart.get(group(item)) ?? []), item]);
     for(const partItems of byPart.values()) {
-      const { ldraw, glass, color: tint } = partItems[0];
-      const mesh = new THREE.InstancedMesh(this.geometries.get(ldraw)!, glass ? this.glassFor(tint) : this.material, partItems.length);
+      const { geometry, glass, color: tint } = partItems[0];
+      const mesh = new THREE.InstancedMesh(this.geometries.get(geometry)!, glass ? this.glassFor(tint) : this.material, partItems.length);
       mesh.castShadow = !glass/*light passes through; the path tracer shades it physically*/;
       mesh.receiveShadow = true;
       partItems.forEach((item, index) => {
         mesh.setColorAt(index, glass ? WHITE/*the glass material carries the tint*/ : real ? tintedColor(item.color, item.key) : new THREE.Color(item.color));
         if(animate && !this.shownKeys.has(item.key)) {
-          this.drops.push({ mesh, index, matrix: item.matrix, start: now + Math.min(dropIndex++ * DROP_STAGGER_MS, DROP_STAGGER_MAX_MS) });
+          if(!dropStarts.has(item.drop)) dropStarts.set(item.drop, now + Math.min(dropStarts.size * DROP_STAGGER_MS, DROP_STAGGER_MAX_MS));
+          this.drops.push({ mesh, index, matrix: item.matrix, start: dropStarts.get(item.drop)! });
           mesh.setMatrixAt(index, dropped(item.matrix, 0));
         } else {
           mesh.setMatrixAt(index, item.matrix);
@@ -605,16 +621,27 @@ const renderItems = (model: Model): RenderItem[] => [
   ...model.placements.flatMap(placement => {
     const part = getPart(placement.part)!/*by contract*/;
     const color = getColor(placement.color)!/*by contract*/;
-    return placedLines(getShape(part), placement, color.code);
+    const lines = placedLines(getShape(part), placement, color.code);
+    const drop = lineKey(lines[0]);
+    return lines.map(line => renderItem(line, drop));
   }),
-  ...model.others,
-].map(renderItem);
+  ...model.others.map(other => renderItem(other, lineKey(other))),
+];
 
-/** a part line as drawn */
-const renderItem = (line: PartLine): RenderItem => ({
-  ldraw: line.ldraw, color: getColorValue(line.colorCode) ?? UNKNOWN_COLOR, glass: !!getColorByCode(line.colorCode)?.transparent,
-  key: `${line.ldraw}|${line.colorCode}|${line.position}|${line.matrix}`, matrix: toScene(line.position, line.matrix),
+/** a part line as drawn, dropping with the part `drop` names */
+const renderItem = (line: PartLine, drop: string): RenderItem => ({
+  ldraw: line.ldraw, geometry: line.ldraw, ...drawnColor(line.colorCode),
+  key: lineKey(line), drop, matrix: toScene(line.position, line.matrix),
 });
+
+/** a part's faces printed in a fixed color, drawn with it */
+const printItem = (item: RenderItem, code: number): RenderItem =>
+  ({ ...item, geometry: printKey(item.ldraw, code), ...drawnColor(code), key: `${item.key}#${code}` });
+
+const drawnColor = (code: number) => ({ color: getColorValue(code) ?? UNKNOWN_COLOR, glass: !!getColorByCode(code)?.transparent });
+const lineKey = (line: PartLine): string => `${line.ldraw}|${line.colorCode}|${line.position}|${line.matrix}`;
+/** the geometry key of a part's faces printed in a color */
+const printKey = (ldraw: string, code: number): string => `${ldraw}#${code}`;
 
 /** the scene transform of an LDraw position and rotation */
 const toScene = (position: readonly number[], m: readonly number[]): THREE.Matrix4 =>
@@ -628,29 +655,62 @@ const dropped = (matrix: THREE.Matrix4, t: number): THREE.Matrix4 =>
 
 // == Geometry ====================================================================
 /** a one-part LDraw model */
-const single = (file: string): string => `1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${file}\n`;
+const single = (file: string): string => `1 ${OWN_COLOR} 0 0 0 1 0 0 0 1 0 0 0 1 ${file}\n`;
 
 const parse = (loader: LDrawLoader, text: string): Promise<THREE.Group> =>
   new Promise((resolve, reject) => loader.parse(text, resolve, reject));
 
-/** the faces of a parsed LDraw group as one scene-space geometry (edge lines dropped) */
-const toSceneGeometry = (group: THREE.Group): THREE.BufferGeometry => {
+/** the faces of a parsed LDraw group as scene-space geometries by color code (edge
+ *  lines dropped): the part's own color (OWN_COLOR, as `single` draws it), and each
+ *  fixed color a print or a molded-in detail is drawn in (a face's eyes) */
+const toSceneGeometries = (group: THREE.Group): Map<number, THREE.BufferGeometry> => {
   group.updateMatrixWorld(true);
-  const pieces: THREE.BufferGeometry[] = [];
+  const pieces = new Map<number, THREE.BufferGeometry[]>();
   group.traverse((object: THREE.Object3D) => {
     const mesh = object as THREE.Mesh;
     if(!mesh.isMesh) return/*edge and conditional lines*/;
     let geometry = mesh.geometry.clone();
-    if(geometry.index) geometry = geometry.toNonIndexed();
+    if(geometry.index) geometry = geometry.toNonIndexed()/*keeps its groups*/;
     for(const name of Object.keys(geometry.attributes)) if((name !== 'position') && (name !== 'normal')) geometry.deleteAttribute(name);
-    geometry.clearGroups();
-    pieces.push(geometry.applyMatrix4(mesh.matrixWorld));
+    geometry.applyMatrix4(mesh.matrixWorld);
+    if(mesh.matrixWorld.determinant() < 0) reverseWinding(geometry)/*a mirrored file (a left arm drawn as a right one) would face inward*/;
+
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const ranges = (geometry.groups.length > 0) ? geometry.groups : [{ start: 0, count: geometry.attributes.position.count, materialIndex: 0 }];
+    for(const { start, count, materialIndex } of ranges) {
+      const code = Number(materials[materialIndex ?? 0].userData.code);
+      pieces.set(code, [...(pieces.get(code) ?? []), sliceVertices(geometry, start, count)]);
+    }
   });
-  const merged = mergeGeometries(pieces)!;
-  merged.applyMatrix4(LDRAW_TO_SCENE);
-  merged.computeBoundingBox();
-  merged.computeBoundingSphere();
-  return merged;
+  return new Map([...pieces].map(([code, parts]) => {
+    const merged = mergeGeometries(parts)!;
+    merged.applyMatrix4(LDRAW_TO_SCENE);
+    merged.computeBoundingBox();
+    merged.computeBoundingSphere();
+    return [code, merged];
+  }));
+};
+
+/** turns every triangle of a non-indexed geometry to face the other way */
+const reverseWinding = (geometry: THREE.BufferGeometry): void => {
+  for(const name of ['position', 'normal']) {
+    const attribute = geometry.getAttribute(name) as THREE.BufferAttribute;
+    for(let vertex=0; vertex<attribute.count; vertex+=3) {
+      const [x, y, z] = [attribute.getX(vertex + 1), attribute.getY(vertex + 1), attribute.getZ(vertex + 1)];
+      attribute.setXYZ(vertex + 1, attribute.getX(vertex + 2), attribute.getY(vertex + 2), attribute.getZ(vertex + 2));
+      attribute.setXYZ(vertex + 2, x, y, z);
+    }
+  }
+};
+
+/** a run of a non-indexed geometry's vertices as its own geometry */
+const sliceVertices = (geometry: THREE.BufferGeometry, start: number, count: number): THREE.BufferGeometry => {
+  const slice = new THREE.BufferGeometry();
+  for(const name of ['position', 'normal']) {
+    const attribute = geometry.getAttribute(name) as THREE.BufferAttribute;
+    slice.setAttribute(name, new THREE.BufferAttribute(attribute.array.slice(start * attribute.itemSize, (start + count) * attribute.itemSize), attribute.itemSize));
+  }
+  return slice;
 };
 
 // == Util ========================================================================

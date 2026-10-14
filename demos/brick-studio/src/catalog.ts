@@ -4,7 +4,7 @@
 // NOTE: this module has no imports so that tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'figure';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -17,15 +17,15 @@ export type CatalogPart = Readonly<{
   frame?: string;
   /** the other LDraw lines the part is assembled from (a wheel set's rims and
    *  tires), as written beside its own line at its origin and rotation 0. Each keeps
-   *  its own color: the viewer draws a file in one color, so a part of several
-   *  colors is several lines */
+   *  its own color, or takes the part's in LDraw's inherited color (16): a part of
+   *  several colors is several lines */
   pieces?: ReadonlyArray<string>;
 }>;
 
 /** whether a kind's underside is open (an arch's span, an inverted slope's face, a
  *  plant's foliage over its base): its fill is measured from below there, never
  *  assumed to reach its bottom */
-export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'plant') || (kind === 'creature');
+export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'plant') || (kind === 'creature') || (kind === 'figure');
 
 // --------------------------------------------------------------------------------
 export const CATALOG: ReadonlyArray<CatalogPart> = [
@@ -228,6 +228,19 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   ] },
   { key: 'mudguard-2x4',    ldraw: '3788',  kind: 'vehicle' },
   { key: 'windscreen-2x4x2', ldraw: '3823', kind: 'vehicle' },
+  // a figure is a torso in the placement's color with its arms, yellow hands and a
+  // smiling yellow head, on blue hips and legs, as the library's torso assembly
+  // (973c01) and hips and legs (21019bpde7) put them together
+  { key: 'figure', ldraw: '973', kind: 'figure', pieces: [
+    '1 14 0 -24 0 1 0 0 0 1 0 0 0 1 3626bp01.dat',
+    '1 16 -15.552 9 0 0.985 -0.17 0 0.17 0.985 0 0 0 1 3818.dat',
+    '1 16 15.552 9 0 0.985 0.17 0 -0.17 0.985 0 0 0 1 3819.dat',
+    '1 14 -23.6904 26.774 -9.8982 0.985 -0.1202 0.1202 0.17 0.6964 -0.6964 0 0.707 0.707 3820.dat',
+    '1 14 23.6904 26.774 -9.8982 0.985 0.1202 -0.1202 -0.17 0.6964 -0.6964 0 0.707 0.707 3820.dat',
+    '1 1 0 32 0 1 0 0 0 1 0 0 0 1 3815b.dat',
+    '1 1 0 44 0 1 0 0 0 1 0 0 0 1 3816c.dat',
+    '1 1 0 44 0 1 0 0 0 1 0 0 0 1 3817c.dat',
+  ] },
   // the stand and its black wheel, as the library's complete steering wheel (3829c01)
   { key: 'steering-wheel',  ldraw: '3829a', kind: 'vehicle', pieces: [
     '1 0 0 -26.32 -0.24 0 0 1 -0.8 0.6 0 -0.6 -0.8 0 3828.dat',

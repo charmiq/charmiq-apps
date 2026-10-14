@@ -155,11 +155,15 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
 };
 
 /** the part lines a placement is written as: its own, then its pieces' (SEE:
- *  CatalogPart#pieces) turned and moved with it */
+ *  CatalogPart#pieces) turned and moved with it. A piece in LDraw's inherited color
+ *  takes the placement's */
 export const placedLines = (shape: PartShape, placement: Placement, colorCode: number): PartLine[] => {
   const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position: ldrawPosition(shape, placement), matrix: rotationMatrix(placement.rotation) };
-  return [own, ...piecesOf(shape.part).map(piece => ({ ...piece, ...compose(own, piece) }))];
+  return [own, ...piecesOf(shape.part).map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
 };
+
+/** LDraw's inherited color: a piece written in it takes its part's color */
+const INHERITED_COLOR = 16;
 
 /** composes a child transform into its parent's */
 export const compose = (parent: Transform, child: Transform): Transform => {

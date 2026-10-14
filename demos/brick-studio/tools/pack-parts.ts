@@ -206,21 +206,27 @@ const bodyOfPart = (library: string, ldraw: string): Measure => {
   return bodyOf(walked);
 };
 
-/** an assembled part's body: its own, grown by every face of its pieces. Its studs
- *  and top face stay its own (a wheel set's tires are no top face) */
-const bodyOfAssembly = (library: string, part: CatalogPart): Measure => {
-  const own = bodyOfPart(library, part.ldraw);
-  if(!part.pieces) return own;
-  const walked: Walk = { faces: [], studs: [], discs: [] };
-  walkText(library, part.pieces.join('\n'), IDENTITY, walked);
-  const triangles = [...own.triangles, ...walked.faces.map(({ triangle }) => triangle)];
+/** an assembled part's body: its own and its pieces' bodies together, and the top
+ *  face its top studs stand on (-y up). Its top studs are those of the file (its own
+ *  or a piece's) whose studded top face is highest: a figure's head, not a wheel
+ *  set's tires, which carry none */
+const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Measure; studTop: number; }> => {
+  const bodies = [bodyOfPart(library, part.ldraw), ...(part.pieces ?? []).map(line => {
+    const walked: Walk = { faces: [], studs: [], discs: [] };
+    walkText(library, line, IDENTITY, walked);
+    return bodyOf(walked);
+  })];
+  const studded = bodies.filter(body => body.studs.length > 0);
+  const crown = (studded.length > 0) ? studded.reduce((highest, body) => (body.minY < highest.minY) ? body : highest) : bodies[0];
+
+  const triangles = bodies.flatMap(body => body.triangles);
   const points = triangles.flat();
-  return {
+  return { studTop: crown.minY, body: {
     minX: Math.min(...points.map(([x]) => x)), maxX: Math.max(...points.map(([x]) => x)),
     minY: Math.min(...points.map(([, y]) => y)), maxY: Math.max(...points.map(([, y]) => y)),
     minZ: Math.min(...points.map(([, , z]) => z)), maxZ: Math.max(...points.map(([, , z]) => z)),
-    studs: own.studs, triangles,
-  };
+    studs: crown.studs, triangles,
+  } };
 };
 
 /** the files an assembled part's pieces reference, as reference names */
@@ -252,8 +258,7 @@ const paneDrop = (library: string, pane: string, frame: string): number => {
  *  tires): it stands on the nearest level, sunk into or raised above it */
 const measurePart = (library: string, part: CatalogPart) => {
   const { ldraw } = part;
-  const own = bodyOfPart(library, ldraw);
-  const measured = bodyOfAssembly(library, part);
+  const { body: measured, studTop } = bodyOfAssembly(library, part);
 
   const lowest = measured.maxY / LDU_PER_PLATE/*plates from the origin down to the bottom*/;
   if(!isWhole(lowest) && !part.pieces) throw new Error(`${ldraw}: bottom ${lowest} plates below the origin is not on a level.`);
@@ -263,7 +268,7 @@ const measurePart = (library: string, part: CatalogPart) => {
   const [minX, maxX] = gridSpan(body.minX, body.maxX, Math.min(...bottomFace.map(([x]) => x)), Math.max(...bottomFace.map(([x]) => x)));
   const [minZ, maxZ] = gridSpan(body.minZ, body.maxZ, Math.min(...bottomFace.map(([, , z]) => z)), Math.max(...bottomFace.map(([, , z]) => z)));
   const height = Math.ceil(((body.maxY - body.minY) / LDU_PER_PLATE) - EPSILON)/*a tip short of a level reaches into it*/;
-  const top = Math.ceil(((body.maxY - own.minY) / LDU_PER_PLATE) - EPSILON)/*its top studs' level*/;
+  const top = Math.ceil(((body.maxY - studTop) / LDU_PER_PLATE) - EPSILON)/*its top studs' level*/;
 
   // the cells the part reaches into, trimmed to the ones it fills
   const spanned = measureFill({ ...body, minX, minZ }, { width: Math.round((maxX - minX) / LDU_PER_STUD), depth: Math.round((maxZ - minZ) / LDU_PER_STUD), height }, hasOpenUnderside(part.kind));
@@ -278,9 +283,11 @@ const measurePart = (library: string, part: CatalogPart) => {
   if(!isWhole(origin[0] * 2) || !isWhole(origin[1] * 2)) throw new Error(`${ldraw}: origin ${origin} is not on a half stud.`);
   const halfStud = (value: number): number => Math.round(value * 2) / 2/*a round part's facets leave float noise*/;
 
-  // a top stud sits on the top face
+  // a top stud sits on the top face. An assembled part's stud off the grid (a
+  // figure's head stud, between its feet) holds nothing placed on the grid
   const studs = out.studs
     .map(([x, , z]) => [(x - out.minX) / LDU_PER_STUD - 0.5, (z - out.minZ) / LDU_PER_STUD - 0.5] as [number, number])
+    .filter(([x, z]) => (isWhole(x) && isWhole(z)) || !part.pieces)
     .map(([x, z]) => {
       if(!isWhole(x) || !isWhole(z)) throw new Error(`${ldraw}: stud at ${x}, ${z} is not on a cell.`);
       return [Math.round(x), Math.round(z)] as [number, number];
@@ -414,11 +421,21 @@ const measured = Object.fromEntries(CATALOG.filter(part => !part.frame).map(part
 // opening, dropped to the frame's sill
 const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.ldraw, { ...measured[part.frame], studs: [], fill: [], drop: paneDrop(library, part.ldraw, part.frame) }]] : [])) };
 
+// every color the packed parts are drawn in: the catalog's, and each fixed color a
+// packed file draws a face or subfile in (a face's print, a piece's rim)
+const drawnCodes = new Set([
+  ...COLORS.map(color => color.code),
+  ...CATALOG.flatMap(part => (part.pieces ?? []).map(line => Number(line.trim().split(/\s+/)[1]))),
+  ...[...files].flatMap(name => readPart(library, name).split('\n').map(line => line.trim().split(/\s+/))
+    .filter(fields => ['1', '3', '4'].includes(fields[0]) && /^\d+$/.test(fields[1] ?? ''))
+    .map(fields => Number(fields[1]))),
+].filter(code => (code !== 16) && (code !== 24)/*the inherited colors*/));
+
 const config = readFileSync(join(library, 'LDConfig.ldr'), 'utf8');
-const colors = Object.fromEntries(COLORS.map(color => {
-  const match = new RegExp(`^0 !COLOUR \\S+\\s+CODE\\s+${color.code}\\s+VALUE\\s+(#[0-9A-Fa-f]{6})`, 'm').exec(config);
-  if(!match) throw new Error(`LDConfig.ldr has no color ${color.code}.`);
-  return [color.code, match[1].toUpperCase()];
+const colors = Object.fromEntries([...drawnCodes].sort((a, b) => a - b).map(code => {
+  const match = new RegExp(`^0 !COLOUR \\S+\\s+CODE\\s+${code}\\s+VALUE\\s+(#[0-9A-Fa-f]{6})`, 'm').exec(config);
+  if(!match) throw new Error(`LDConfig.ldr has no color ${code}.`);
+  return [code, match[1].toUpperCase()];
 }));
 
 const facts = [
@@ -433,7 +450,8 @@ const facts = [
   ' *  frame\'s origin and the side a curve `descends` to, keyed by LDraw file stem */',
   `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; top?: number; drop?: number; descends?: 'north' | 'south' | 'east' | 'west'; }>>> = ${JSON.stringify(geometry)};`,
   '',
-  '/** LDConfig color value, keyed by LDraw color code */',
+  '/** LDConfig color value of every color the packed parts are drawn in (the catalog\'s',
+  ' *  and the fixed colors their files and pieces use), keyed by LDraw color code */',
   `export const COLOR_VALUES: Readonly<Record<number, string>> = ${JSON.stringify(colors, null, 2)};`,
   '',
 ].join('\n');
