@@ -6,7 +6,7 @@ import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawCondit
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { CATALOG } from './catalog';
-import { getColor, getColorByCode, getColorValue, getPart, getShape, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
+import { getColor, getColorByCode, getColorValue, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MIN, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
 import type { Model } from './model';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
@@ -37,10 +37,6 @@ const WHITE = new THREE.Color(1, 1, 1);
  *  geometry is built for */
 const PACKED = new Set(CATALOG.flatMap(partFiles));
 
-/** the baseplate grows with the build: this far beyond it on every side, never
- *  smaller than its least size (centered on the origin while the build is empty) */
-export const BASEPLATE_MIN = 16/*studs*/;
-export const BASEPLATE_MARGIN = 4/*studs*/;
 const BASEPLATE_THICKNESS = 0.16/*scene units*/;
 
 /** how much wider than the build a framed view is */

@@ -4,10 +4,10 @@ import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { DesignExists, type Designs } from './designs';
-import { footprintSize, getShape, type PartShape } from './grid';
+import { footprintSize, getShape, BASEPLATE_MARGIN, BASEPLATE_MIN, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { LookAround } from './look-around';
-import { BASEPLATE_MARGIN, BASEPLATE_MIN, type Viewer } from './viewer';
+import type { Viewer } from './viewer';
 
 // the Charm command surface (SEE: manifest.json `advertise`). Results are terse
 // model-facing data. Every command waits for the build to load; an edit resolves

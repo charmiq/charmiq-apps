@@ -11,6 +11,11 @@ export const LDU_PER_STUD = 20/*LDU*/;
 export const LDU_PER_PLATE = 8/*LDU*/;
 export const PLATES_PER_BRICK = 3;
 
+/** the baseplate grows with the build: this far beyond it on every side, never
+ *  smaller than its least size (centered on the origin while the build is empty) */
+export const BASEPLATE_MIN = 16/*studs*/;
+export const BASEPLATE_MARGIN = 4/*studs*/;
+
 export const ROTATIONS = [0, 90, 180, 270] as const;
 export type Rotation = typeof ROTATIONS[number];
 
