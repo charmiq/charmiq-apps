@@ -5,7 +5,7 @@ import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-import { CATALOG } from './catalog';
+import { CATALOG, resourceFamily } from './catalog';
 import { getColor, getColorByCode, getColorValue, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MIN, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
 import type { Model } from './model';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
@@ -122,7 +122,10 @@ export class Viewer {
   /** parts that could not be drawn (their family could not be read, or their
    *  geometry not built): never tried again until a retry */
   private readonly unbuilt = new Set<string/*ldraw*/>();
-  private onUnbuiltChanged: (() => void) | null = null;
+  /** the families being read, and those whose read failed (until a retry) */
+  private readonly loading = new Set<string/*family*/>();
+  private readonly failed = new Set<string/*family*/>();
+  private onPartsChanged: (() => void) | null = null;
   private loader: LDrawLoader | undefined;
   private studGeometry: THREE.BufferGeometry | undefined;
 
@@ -225,19 +228,31 @@ export class Viewer {
       }
     })().finally(() => {
         for(const ldraw of missing) this.building.delete(ldraw);
-        if(missing.some(ldraw => this.unbuilt.has(ldraw))) this.onUnbuiltChanged?.();
+        if(missing.some(ldraw => this.unbuilt.has(ldraw))) this.onPartsChanged?.();
         if(this.model === model) this.setModel(model, animate)/*its parts now have geometry*/;
         this.requestFrame();
       });
     for(const ldraw of missing) this.building.set(ldraw, built);
   }
 
-  /** reads a family into the loader once; a failed read is read again on a retry */
+  /** reads a family into the loader once, saying so while it reads; a failed read
+   *  is named and read again on a retry */
   private readFamily(loader: LDrawLoader, name: string): Promise<void> {
     let read = this.families.get(name);
     if(!read) {
+      const family = resourceFamily(name);
+      this.loading.add(family);
+      this.onPartsChanged?.();
       read = this.readResource(name).then(text => parse(loader, text)).then(() => undefined/*its files are cached*/);
-      read.catch(error => { console.error(`brick-studio: the ${name} parts could not be read:`, error); this.families.delete(name); });
+      read.then(
+        () => { this.loading.delete(family); this.onPartsChanged?.(); },
+        error => {
+          console.error(`brick-studio: the ${name} parts could not be read:`, error);
+          this.families.delete(name);
+          this.loading.delete(family);
+          this.failed.add(family);
+          this.onPartsChanged?.();
+        });
       this.families.set(name, read);
     } /* else -- read, or being read */
     return read;
@@ -249,12 +264,17 @@ export class Viewer {
     const placements = model.placements.filter(placement => partFiles(getPart(placement.part)!/*by contract*/).some(ldraw => this.unbuilt.has(ldraw)));
     return placements.length + model.others.filter(other => this.unbuilt.has(other.ldraw)).length;
   }
-  /** register the callback for parts becoming undrawable, or drawable again */
-  public onUnbuilt(callback: () => void): void { this.onUnbuiltChanged = callback; }
+  /** the families being read, and those whose read failed */
+  public familiesLoading(): ReadonlyArray<string> { return [...this.loading]; }
+  public familiesFailed(): ReadonlyArray<string> { return [...this.failed]; }
+  /** register the callback for a family starting or ending its read, and for parts
+   *  becoming undrawable or drawable again */
+  public onParts(callback: () => void): void { this.onPartsChanged = callback; }
   /** tries every part that could not be drawn again */
   public retryUnbuilt(): void {
     this.unbuilt.clear();
-    this.onUnbuiltChanged?.();
+    this.failed.clear();
+    this.onPartsChanged?.();
     if(this.model) this.setModel(this.model, false);
   }
 

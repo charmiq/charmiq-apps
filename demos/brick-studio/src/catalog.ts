@@ -43,6 +43,16 @@ export const familyOf = (part: CatalogPart): string | undefined => {
   }
 };
 
+/** the resource a family is declared as in manifest.json `bundle.resources`, and the
+ *  family a resource holds */
+export const familyResource = (family: string): string => `${FAMILY_RESOURCE_PREFIX}${family}`;
+export const resourceFamily = (resource: string): string => resource.slice(FAMILY_RESOURCE_PREFIX.length);
+const FAMILY_RESOURCE_PREFIX = 'parts-';
+
+/** a family's name as a person reads it: a creature by its own name, words apart
+ *  (`creature-dog-bulldog` is `dog bulldog`) */
+export const familyLabel = (family: string): string => family.replace(/^creature-/, '').replace(/-/g, ' ');
+
 // --------------------------------------------------------------------------------
 export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'brick-1x1', ldraw: '3005',  kind: 'brick' },

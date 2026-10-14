@@ -1,5 +1,6 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import { Build } from './build';
+import { familyLabel } from './catalog';
 import { isSound } from './check';
 import { CommandSurface } from './command';
 import { ContentBridge } from './content-bridge';
@@ -65,8 +66,10 @@ const showStatus = (model: Model) => {
   const count = model.placements.length + model.others.length;
   const builds = build.builds().length;
   const unbuilt = viewer.unbuiltCount(model);
+  const failed = viewer.familiesFailed().map(familyLabel), loading = viewer.familiesLoading().map(familyLabel);
   const notes = [
-    (unbuilt > 0) ? `${unbuilt} not shown · parts failed to load` : undefined,
+    (unbuilt > 0) ? `${unbuilt} not shown · ${(failed.length > 0) ? failed.join(', ') : 'parts'} failed to load` : undefined,
+    (loading.length > 0) ? `loading ${loading.join(', ')}…` : undefined,
     (builds > 1) ? `${builds} builds in this document · edits paused` : undefined,
     build.isUncertain() ? 'could not check the document · reload to try again' : undefined,
     result.truncated ? 'read in part' : undefined,
@@ -183,7 +186,7 @@ const start = async () => {
     showStatus(model);
   });
   build.onUncertain(() => showStatus(build.getModel()));
-  viewer.onUnbuilt(() => showStatus(build.getModel()));
+  viewer.onParts(() => showStatus(build.getModel()));
   commands.init()/*each command waits for the build*/;
   try {
     await build.init();

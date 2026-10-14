@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CATALOG, COLORS, familyOf, hasOpenUnderside, type CatalogPart } from '../src/catalog.ts';
+import { familyOf, familyResource, hasOpenUnderside, type CatalogPart, CATALOG, COLORS } from '../src/catalog.ts';
 
 // == Constants ===================================================================
 const LDU_PER_STUD = 20/*LDU*/;
@@ -421,7 +421,6 @@ for(const files of familyFiles.values()) for(const name of files) users.set(name
 const builtIn = new Set([...(familyFiles.get(undefined) ?? []), ...[...users].filter(([, count]) => count > 1).map(([name]) => name)]);
 const files = new Set(users.keys());
 
-const resourceName = (family: string): string => `parts-${family}`;
 const packText = (name: string, describes: string, names: Iterable<string>): string => [
   `0 FILE ${name}`,
   `0 Brick Studio parts: ${describes}, one 0 FILE section each`,
@@ -440,7 +439,7 @@ writeFileSync(join(PARTS_DIR, 'built-in.ldr'), pack);
 const families = [...familyFiles.keys()].filter((family): family is string => family !== undefined).sort();
 const familySizes = families.map(family => {
   const own = [...familyFiles.get(family)!].filter(name => !builtIn.has(name));
-  const text = packText(`brick-studio-${resourceName(family)}.ldr`, `the ${family} family's own files`, own);
+  const text = packText(`brick-studio-${familyResource(family)}.ldr`, `the ${family} family's own files`, own);
   writeFileSync(join(PARTS_DIR, `${family}.ldr`), text);
   return [family, text.length] as const;
 });
@@ -450,13 +449,13 @@ const partResources = Object.fromEntries(CATALOG.flatMap(part => {
   const family = familyOf(part);
   return (family === undefined) ? [] : [`${part.ldraw}.dat`, ...pieceFiles(part)]
     .filter(name => !builtIn.has(referenceName(name)))
-    .map(name => [referenceName(name).replace(/\.dat$/, ''), resourceName(family)]);
+    .map(name => [referenceName(name).replace(/\.dat$/, ''), familyResource(family)]);
 }));
 
 // .. Manifest ....................................................................
 // the declarations are the families packed: `bundle.resources` is replaced whole,
 // the rest of the manifest kept as written
-const declared = Object.fromEntries(families.map(family => [resourceName(family), `/src/parts/${family}.ldr`]));
+const declared = Object.fromEntries(families.map(family => [familyResource(family), `/src/parts/${family}.ldr`]));
 const resourcesBlock = `    "resources": {\n${Object.entries(declared).map(([name, path]) => `      ${JSON.stringify(name)}: ${JSON.stringify(path)}`).join(',\n')}\n    },\n`;
 const manifest = readFileSync(MANIFEST, 'utf8');
 const RESOURCES_BLOCK = /^    "resources": \{[^}]*\},\n/m;
@@ -512,7 +511,7 @@ const facts = [
 writeFileSync(join(SOURCE_DIR, 'parts.generated.ts'), facts);
 
 console.log(`Packed ${CATALOG.length} parts (${files.size} files): ${(pack.length / 1024).toFixed(0)} KB built in, ${families.length} families read when shown.`);
-for(const [family, size] of familySizes) console.log(`  ${resourceName(family).padEnd(30)} ${(size / 1024).toFixed(0).padStart(5)} KB`);
+for(const [family, size] of familySizes) console.log(`  ${familyResource(family).padEnd(30)} ${(size / 1024).toFixed(0).padStart(5)} KB`);
 for(const part of CATALOG) {
   const g = geometry[part.ldraw];
   const box = g.fill.every(([, , bottom, top]) => (bottom === 0) && (top === g.height)) && (g.fill.length === (g.width * g.depth));
