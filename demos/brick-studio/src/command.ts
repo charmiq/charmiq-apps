@@ -24,7 +24,7 @@ const TEXT_PAGE_BYTES = 48 * 1024/*bytes*/;
 /** the grid conventions, returned once by listParts */
 const GRID = [
   'x runs east, z north, level up. A cell is one stud; a level is one plate (a brick is 3 levels tall).',
-  'A part\'s x, z is the south-west corner of its footprint and level is its bottom.',
+  'A part\'s x, z is the south-west corner of its footprint and level is its bottom. A part standing on another starts where that part ends: its level plus its height (on a plate at level 1, a figure stands at level 2).',
   'At rotation 0 a part spans width along x and depth along z; rotation 90, 180 or 270 turns it clockwise seen from above (90 and 270 swap width and depth).',
   'A part holds the part above it where its top studs lie under that part. Tiles have no top studs; a slope has studs only along its high row.',
   'Each part row reads: name, then width x depth x height (studs, studs, levels), then which way a slope or curve descends at rotation 0.',

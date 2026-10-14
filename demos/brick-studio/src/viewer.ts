@@ -43,6 +43,9 @@ export const BASEPLATE_MIN = 16/*studs*/;
 export const BASEPLATE_MARGIN = 4/*studs*/;
 const BASEPLATE_THICKNESS = 0.16/*scene units*/;
 
+/** how much wider than the build a framed view is */
+const FRAME_MARGIN = 1.08;
+
 const DROP_HEIGHT = 2.4/*scene units*/;
 const DROP_MS = 340/*ms*/;
 const DROP_STAGGER_MS = 22/*ms*/;
@@ -412,7 +415,7 @@ export class Viewer {
     to.phi = Math.min(to.phi, this.controls.maxPolarAngle);
     let target = this.controls.target.clone();
     if(fit) {
-      const framing = this.framing();
+      const framing = this.framing(new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, to.phi, to.theta)));
       target = framing.target;
       to.radius = framing.radius;
     } /* else -- keep the distance and target */
@@ -431,7 +434,7 @@ export class Viewer {
   /** places the camera at once (no tween), used for the first frame */
   public jumpToView(view: View): void {
     const to = new THREE.Spherical(1, THREE.MathUtils.degToRad(90 - clamp(view.elevation, 2, 89)), THREE.MathUtils.degToRad(view.azimuth));
-    const framing = this.framing();
+    const framing = this.framing(new THREE.Vector3().setFromSpherical(to));
     to.radius = framing.radius;
     this.controls.target.copy(framing.target);
     this.camera.position.copy(framing.target).add(new THREE.Vector3().setFromSpherical(to));
@@ -447,22 +450,26 @@ export class Viewer {
 
   /** resolves once every part has landed, any view change has finished and that
    *  frame is drawn */
-  /** the build from each view, framed, as a PNG data URL once settled; the camera
-   *  is put back after */
-  public async snapshots(views: ReadonlyArray<View>): Promise<string[]> {
+  /** the build from each view, framed, as a PNG data URL of the given size (CSS
+   *  pixels) once settled; the camera and the canvas's size are put back after */
+  public async snapshots(views: ReadonlyArray<View>, width: number, height: number): Promise<string[]> {
     this.tween?.resolve();
     this.tween = undefined;
     const position = this.camera.position.clone(), target = this.controls.target.clone();
+    this.setDrawingSize(width, height);
     const images: string[] = [];
-    for(const view of views) {
-      this.jumpToView(view);
-      await this.whenSettled();
-      images.push(this.canvas.toDataURL('image/png'));
+    try {
+      for(const view of views) {
+        this.jumpToView(view);
+        await this.whenSettled();
+        images.push(this.canvas.toDataURL('image/png'));
+      }
+    } finally {
+      this.camera.position.copy(position);
+      this.controls.target.copy(target);
+      this.controls.update();
+      this.resize()/*the canvas's own size*/;
     }
-    this.camera.position.copy(position);
-    this.controls.target.copy(target);
-    this.controls.update();
-    this.requestFrame();
     return images;
   }
 
@@ -506,18 +513,34 @@ export class Viewer {
     return box;
   }
 
-  /** the target and distance that frame the build (or the baseplate when empty) */
-  private framing(): { target: THREE.Vector3; radius: number; } {
+  /** the target and distance that frame the build (or the baseplate when empty)
+   *  seen from a direction: every corner of its bounds in view, the nearest edges at
+   *  the margin, so a wide, low build fills the frame as a tall one does */
+  private framing(direction: THREE.Vector3/*from the target toward the camera*/): { target: THREE.Vector3; radius: number; } {
     const box = this.buildBounds();
     if(box.isEmpty() && this.baseplate) box.setFromObject(this.baseplate);
     if(box.isEmpty()) box.set(new THREE.Vector3(-4, 0, -4), new THREE.Vector3(4, 1, 4));
 
-    const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const verticalFov = THREE.MathUtils.degToRad(this.camera.fov);
-    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * this.camera.aspect);
-    const radius = (sphere.radius / Math.sin(Math.min(verticalFov, horizontalFov) / 2)) * 1.04;
-    return { target: sphere.center, radius: Math.max(radius, this.controls.minDistance) };
+    // the camera's axes looking back along the direction (straight down looks north)
+    const target = box.getCenter(new THREE.Vector3());
+    const back = direction.clone().normalize();
+    const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), back);
+    if(right.lengthSq() < 1e-6) right.set(1, 0, 0);
+    right.normalize();
+    const up = new THREE.Vector3().crossVectors(back, right).normalize();
+
+    // back far enough that every corner of the bounds is in view
+    const tanVertical = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2) / FRAME_MARGIN;
+    const tanHorizontal = tanVertical * this.camera.aspect;
+    let distance = 0;
+    for(const x of [box.min.x, box.max.x]) for(const y of [box.min.y, box.max.y]) for(const z of [box.min.z, box.max.z]) {
+      const corner = new THREE.Vector3(x, y, z).sub(target);
+      const toward = corner.dot(back);
+      distance = Math.max(distance, toward + (Math.abs(corner.dot(right)) / tanHorizontal), toward + (Math.abs(corner.dot(up)) / tanVertical));
+    }
+    return { target, radius: Math.max(distance, this.controls.minDistance) };
   }
+
 
   // ------------------------------------------------------------------------------
   /** sizes the baseplate to the build plus a margin and places the sun over it */
@@ -568,7 +591,11 @@ export class Viewer {
 
   // ------------------------------------------------------------------------------
   private resize(): void {
-    const width = this.canvas.clientWidth, height = this.canvas.clientHeight;
+    this.setDrawingSize(this.canvas.clientWidth, this.canvas.clientHeight);
+  }
+
+  /** draws at a size (CSS pixels), whatever size the canvas shows at */
+  private setDrawingSize(width: number, height: number): void {
     if((width < 1) || (height < 1)) return/*hidden*/;
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;

@@ -48,7 +48,7 @@ const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
 const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
-const lookAround = new LookAround(element('sheet'), viewer);
+const lookAround = new LookAround(element('sheet'), document.querySelector<HTMLElement>('.bar')!/*by contract*/, viewer);
 const commands = new CommandSurface(build, designs, viewer, lookAround, look);
 const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build);
 const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);
