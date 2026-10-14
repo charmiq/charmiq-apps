@@ -99,7 +99,7 @@ The import map in [`manifest.json`](charmiq://./manifest.json) maps `preact` to 
 "format": "esm",
 "dependencies": {
   "importMap": {
-    "preact": "https://esm.sh/preact@10.24.3"
+    "preact": "https://esm.sh/preact@11.0.0"
   }
 }
 ```

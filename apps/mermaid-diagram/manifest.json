@@ -17,9 +17,9 @@
     "format": "esm",
     "dependencies": {
       "importMap": {
-        "rxjs": "https://esm.sh/rxjs@7.8.1",
-        "rxjs/operators": "https://esm.sh/rxjs@7.8.1/operators",
-        "mermaid": "https://esm.sh/mermaid@11.4.1"
+        "rxjs": "https://esm.sh/rxjs@7.8.2",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.2/operators",
+        "mermaid": "https://esm.sh/mermaid@12.0.0"
       }
     }
   },

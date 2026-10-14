@@ -10,6 +10,12 @@ import type { DiagramConfig } from './config-store';
 // == Constants ===================================================================
 /** unique id passed to mermaid.render (must be a valid element id) */
 const RENDER_ID = 'mermaid-svg';
+/** the diagram types laid out by dagre before Mermaid 12 made ELK the default: they
+ *  keep dagre unless a diagram asks for another layout in its own configuration.
+ *  Every other type keeps its own default (a mindmap: cose-bilkent). The layout is
+ *  set for the type alone because Mermaid reads one top-level `layout` for every
+ *  diagram, and a mindmap takes it as the author's */
+const DAGRE_DIAGRAM_TYPES: ReadonlySet<string> = new Set([ 'flowchart-v2', 'flowchart', 'stateDiagram', 'state', 'classDiagram', 'class', 'er', 'requirement' ]);
 
 // == Class =======================================================================
 /** follows the Application's app-content and renders it as a Mermaid diagram */
@@ -21,6 +27,7 @@ export class ContentBridge {
   private currentContentId: string | null = null;
   private currentSource: string = '';
   private renderCounter = 0;/*monotonic counter to discard stale renders*/
+  private config: Readonly<DiagramConfig> | null = null/*until initMermaid*/;
 
   // == Lifecycle =================================================================
   public constructor(appContent: AppContentAPI, diagramEl: HTMLElement, errorEl: HTMLElement) {
@@ -29,10 +36,15 @@ export class ContentBridge {
     this.errorEl = errorEl;
   }
 
-  /** initialize Mermaid with the given config */
-  public initMermaid(config: Readonly<DiagramConfig>): void {
+  /** initialize Mermaid with the given config. A diagram is drawn as it always was
+   *  (the classic look, and its type's layout before Mermaid 12: SEE:
+   *  DAGRE_DIAGRAM_TYPES) unless it asks for another in its own configuration */
+  public initMermaid(config: Readonly<DiagramConfig>, diagramType?: string): void {
+    this.config = config;
     mermaid.initialize({
       startOnLoad: false,
+      look: 'classic',
+      ...((diagramType !== undefined) && DAGRE_DIAGRAM_TYPES.has(diagramType) ? { layout: 'dagre' } : {}),
       theme: config.theme,
       ...(config.flowchart ? { flowchart: config.flowchart } : {})
     });
@@ -92,6 +104,9 @@ export class ContentBridge {
     const renderToken = ++this.renderCounter;
 
     try {
+      // the layout follows the diagram's type (SEE: initMermaid), read from its
+      // opening keyword (no parse)
+      if(this.config) this.initMermaid(this.config, diagramTypeOf(source.trim()));
       const { svg } = await mermaid.render(RENDER_ID, source.trim());
       if(renderToken !== this.renderCounter) return/*stale — a newer render started*/;
 
@@ -109,3 +124,14 @@ export class ContentBridge {
     }
   }
 }
+
+// == Util ========================================================================
+/** the diagram's type from its opening keyword (a match, never a parse), or
+ *  undefined when there is none */
+const diagramTypeOf = (text: string): string | undefined => {
+  try {
+    return mermaid.detectType(text);
+  } catch{
+    return undefined/*no known type: Mermaid's own default*/;
+  }
+};
