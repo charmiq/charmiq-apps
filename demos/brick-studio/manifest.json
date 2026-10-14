@@ -237,6 +237,44 @@
         }
       },
       {
+        "name": "defineComponentFromDesign",
+        "description": "Define a component from a saved design (listDesigns names them), its footprint from x 0, z 0 and its lowest part at level 0; place copies with addParts. Its ground and steps are left out, and its parts off the grid are counted in leftOut. Named after the design unless name is given; a component of that name is redefined, every copy with it",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "design": { "type": "string", "description": "The saved design's name" },
+            "name":   { "type": "string", "description": "The component's name (lower case letters, digits and dashes); the design's own name made one when omitted" }
+          },
+          "required": ["design"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "component": {
+              "type": "object",
+              "properties": {
+                "name":   { "type": "string" },
+                "size":   { "type": "string", "description": "width x depth x height at rotation 0 (studs, studs, levels)" },
+                "parts":  { "type": "integer" },
+                "copies": { "type": "integer", "description": "Copies placed in the build" }
+              },
+              "required": ["name", "size", "parts", "copies"]
+            },
+            "leftOut":       { "type": "integer", "description": "Parts of the design off the grid, left out" },
+            "ok":            { "type": "boolean" },
+            "parts":         { "type": "integer", "description": "Parts in the build" },
+            "collisions":    { "type": "integer" },
+            "collidingPairs":{ "type": "array", "items": { "type": "object" } },
+            "floating":      { "type": "integer" },
+            "floatingParts": { "type": "array", "items": { "type": "string" } },
+            "unchecked":     { "type": "integer" },
+            "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
+            "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" }
+          },
+          "required": ["component", "ok", "parts", "collisions", "floating"]
+        }
+      },
+      {
         "name": "listComponents",
         "description": "The components the build defines: name, size (width x depth x height at rotation 0), parts and copies placed",
         "inputSchema": { "type": "object", "properties": {} },

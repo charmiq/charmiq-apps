@@ -447,6 +447,14 @@ export class Viewer {
     });
   }
 
+  /** frames the whole build once its parts are drawn (a part counts toward the
+   *  framing only once its geometry is built), resolving once settled */
+  public async frameWhole(): Promise<void> {
+    await this.whenSettled();
+    await this.setView(this.getView(), true);
+    await this.whenSettled();
+  }
+
   /** places the camera at once (no tween), used for the first frame */
   public jumpToView(view: View): void {
     const to = new THREE.Spherical(1, THREE.MathUtils.degToRad(90 - clamp(view.elevation, 2, 89)), THREE.MathUtils.degToRad(view.azimuth));

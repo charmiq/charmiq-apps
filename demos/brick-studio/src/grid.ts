@@ -1,4 +1,5 @@
 import { CATALOG, COLORS, type CatalogPart } from './catalog';
+import { maxOf, minOf } from './numbers';
 import { COLOR_VALUES, PART_GEOMETRY } from './parts.generated';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
@@ -117,7 +118,7 @@ export const footprint = (shape: PartShape, rotation: Rotation): readonly [numbe
 const cornerFromOrigin = (shape: PartShape, rotation: Rotation): [number, number] => {
   const corners = [[0, 0], [shape.width, 0], [0, shape.depth], [shape.width, shape.depth]]
     .map(([u, v]) => rotate(u - shape.origin[0], v - shape.origin[1], rotation));
-  return [Math.min(...corners.map(([x]) => x)), Math.min(...corners.map(([, z]) => z))];
+  return [minOf(corners.map(([x]) => x)), minOf(corners.map(([, z]) => z))];
 };
 
 /** the grid cell of a rotation-0 cell of the part */
@@ -215,9 +216,9 @@ export const footprintOf = (placements: ReadonlyArray<Placement>): Footprint | u
   const cells = placements.flatMap(placement => filledCells(getShape(getPart(placement.part)!/*by contract*/), placement));
   if(cells.length < 1) return undefined;
   return {
-    minX: Math.min(...cells.map(cell => cell.x)), minZ: Math.min(...cells.map(cell => cell.z)),
-    maxX: Math.max(...cells.map(cell => cell.x)) + 1, maxZ: Math.max(...cells.map(cell => cell.z)) + 1,
-    height: Math.max(0, ...cells.map(cell => cell.top)),
+    minX: minOf(cells.map(cell => cell.x)), minZ: minOf(cells.map(cell => cell.z)),
+    maxX: maxOf(cells.map(cell => cell.x)) + 1, maxZ: maxOf(cells.map(cell => cell.z)) + 1,
+    height: maxOf(cells.map(cell => cell.top), 0),
   };
 };
 
@@ -231,7 +232,7 @@ export const footprintSize = (footprint: Footprint, rotation: Rotation): readonl
 const turnedCorner = (footprint: Footprint, rotation: Rotation): [number, number] => {
   const corners = [[footprint.minX, footprint.minZ], [footprint.maxX, footprint.minZ], [footprint.minX, footprint.maxZ], [footprint.maxX, footprint.maxZ]]
     .map(([x, z]) => rotate(x, z, rotation));
-  return [Math.min(...corners.map(([x]) => x)), Math.min(...corners.map(([, z]) => z))];
+  return [minOf(corners.map(([x]) => x)), minOf(corners.map(([, z]) => z))];
 };
 
 /** the LDraw transform of a copy */

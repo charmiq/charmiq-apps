@@ -1,5 +1,6 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, placedLines, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
+import { maxOf, minOf } from './numbers';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
 // written, and each type-1 line is one part. A multi-part (MPD) file is flattened
@@ -219,8 +220,8 @@ export const parseModel = (text: string): Model => {
   const lineBreak = lines.find(line => line.lineBreak)?.lineBreak ?? '\n';
   const endsWithBreak = /[\r\n]$/.test(text);
   const sections = components.map(({ name }) => ({ name, span: sectionSpan(fileName(name), fileLines, text.length) }));
-  const mainEnd = Math.min(text.length, ...sections.map(({ span }) => span.from));
-  const lastPart = Math.max(0, ...mainParts.map(span => span.to));
+  const mainEnd = minOf(sections.map(({ span }) => span.from), text.length);
+  const lastPart = maxOf(mainParts.map(span => span.to), 0);
   const trailingStep = (mainParts.length > 0) ? stepSpans.find(span => span.from >= lastPart) : undefined;
   const mainFile = (main !== '') ? fileLines.get(main) : undefined;
   const steps = numberSteps(placementSteps, otherSteps, copySteps);
@@ -269,7 +270,7 @@ const readComponent = (file: string, componentLines: ReadonlyArray<Line>, files:
 /** a named file's section: from its `0 FILE` line up to the next file's, or the text's end */
 const sectionSpan = (file: string, fileLines: ReadonlyMap<string, Span>, length: number): Span => {
   const from = fileLines.get(file)!/*by contract*/.from;
-  return { from, to: Math.min(length, ...[...fileLines.values()].map(span => span.from).filter(start => start > from)) };
+  return { from, to: minOf([...fileLines.values()].map(span => span.from).filter(start => start > from), length) };
 };
 
 /** a component's file name */
@@ -443,7 +444,7 @@ export const groundEdit = (layout: ModelLayout, color: string | undefined): Cont
   } /* else -- no ground line yet */
   if(line === undefined) return []/*already the theme's*/;
   if(layout.length < 1) return [{ from: 0, to: 0, insert: [...DEFAULT_HEADER, line].map(text => text + layout.lineBreak).join('') }];
-  const first = Math.min(...[...layout.mainParts, ...layout.steps].map(span => span.from));
+  const first = minOf([...layout.mainParts, ...layout.steps].map(span => span.from));
   if(Number.isFinite(first)) return [{ from: first, to: first, insert: line + layout.lineBreak }];
   const lead = layout.mainEndsWithBreak ? '' : layout.lineBreak/*the last line is unfinished*/;
   return [{ from: layout.mainEnd, to: layout.mainEnd, insert: lead + line + layout.lineBreak }];

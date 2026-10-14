@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { familyOf, familyResource, hasOpenUnderside, type CatalogPart, CATALOG, COLORS } from '../src/catalog.ts';
+import { maxOf, minOf } from '../src/numbers.ts';
 
 // == Constants ===================================================================
 const LDU_PER_STUD = 20/*LDU*/;
@@ -162,7 +163,7 @@ const inDiscStud = (bases: ReadonlyArray<Point>, [x, y, z]: Point): boolean => b
  *  it (an underside tube named like a stud, `stud4.dat`) is body */
 const bodyOf = (walked: Walk): Measure => {
   const plain = walked.faces.filter(({ triangle, studBase }) => (studBase === undefined) && !triangle.every(point => inDiscStud(walked.discs, point)));
-  const topY = Math.min(...plain.flatMap(({ triangle }) => triangle.map(([, y]) => y)));
+  const topY = minOf(plain.flatMap(({ triangle }) => triangle.map(([, y]) => y)));
   const onTop = (base: Point | undefined): boolean => (base !== undefined) && (Math.abs(base[1] - topY) < EPSILON);
   const discStuds = walked.discs.filter(onTop);
   const triangles = walked.faces
@@ -171,9 +172,9 @@ const bodyOf = (walked: Walk): Measure => {
 
   const points = triangles.flat();
   return {
-    minX: Math.min(...points.map(([x]) => x)), maxX: Math.max(...points.map(([x]) => x)),
-    minY: topY, maxY: Math.max(...points.map(([, y]) => y)),
-    minZ: Math.min(...points.map(([, , z]) => z)), maxZ: Math.max(...points.map(([, , z]) => z)),
+    minX: minOf(points.map(([x]) => x)), maxX: maxOf(points.map(([x]) => x)),
+    minY: topY, maxY: maxOf(points.map(([, y]) => y)),
+    minZ: minOf(points.map(([, , z]) => z)), maxZ: maxOf(points.map(([, , z]) => z)),
     studs: [...walked.studs.filter(onTop), ...discStuds], triangles,
   };
 };
@@ -229,9 +230,9 @@ const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Me
   const triangles = bodies.flatMap(body => body.triangles);
   const points = triangles.flat();
   return { studTop: crown.minY, body: {
-    minX: Math.min(...points.map(([x]) => x)), maxX: Math.max(...points.map(([x]) => x)),
-    minY: Math.min(...points.map(([, y]) => y)), maxY: Math.max(...points.map(([, y]) => y)),
-    minZ: Math.min(...points.map(([, , z]) => z)), maxZ: Math.max(...points.map(([, , z]) => z)),
+    minX: minOf(points.map(([x]) => x)), maxX: maxOf(points.map(([x]) => x)),
+    minY: minOf(points.map(([, y]) => y)), maxY: maxOf(points.map(([, y]) => y)),
+    minZ: minOf(points.map(([, , z]) => z)), maxZ: maxOf(points.map(([, , z]) => z)),
     studs: crown.studs, triangles,
   } };
 };
@@ -272,18 +273,18 @@ const measurePart = (library: string, part: CatalogPart) => {
   const base = Math.round(lowest);
   const body = { ...measured, maxY: base * LDU_PER_PLATE/*the level it stands on*/ };
   const bottomFace = body.triangles.flat().filter(([, y]) => Math.abs(y - measured.maxY) < EPSILON)/*its lowest points*/;
-  const [minX, maxX] = gridSpan(body.minX, body.maxX, Math.min(...bottomFace.map(([x]) => x)), Math.max(...bottomFace.map(([x]) => x)));
-  const [minZ, maxZ] = gridSpan(body.minZ, body.maxZ, Math.min(...bottomFace.map(([, , z]) => z)), Math.max(...bottomFace.map(([, , z]) => z)));
+  const [minX, maxX] = gridSpan(body.minX, body.maxX, minOf(bottomFace.map(([x]) => x)), maxOf(bottomFace.map(([x]) => x)));
+  const [minZ, maxZ] = gridSpan(body.minZ, body.maxZ, minOf(bottomFace.map(([, , z]) => z)), maxOf(bottomFace.map(([, , z]) => z)));
   const height = Math.ceil(((body.maxY - body.minY) / LDU_PER_PLATE) - EPSILON)/*a tip short of a level reaches into it*/;
   const top = Math.ceil(((body.maxY - studTop) / LDU_PER_PLATE) - EPSILON)/*its top studs' level*/;
 
   // the cells the part reaches into, trimmed to the ones it fills
   const spanned = measureFill({ ...body, minX, minZ }, { width: Math.round((maxX - minX) / LDU_PER_STUD), depth: Math.round((maxZ - minZ) / LDU_PER_STUD), height }, hasOpenUnderside(part.kind));
-  const [shiftX, shiftZ] = [Math.min(...spanned.map(([x]) => x)), Math.min(...spanned.map(([, z]) => z))];
+  const [shiftX, shiftZ] = [minOf(spanned.map(([x]) => x)), minOf(spanned.map(([, z]) => z))];
   const fill = spanned.map(([x, z, bottom, top]) => [x - shiftX, z - shiftZ, bottom, top] as [number, number, number, number]);
   const out = { ...body, minX: minX + (shiftX * LDU_PER_STUD), minZ: minZ + (shiftZ * LDU_PER_STUD) };
-  const width = Math.max(...fill.map(([x]) => x)) + 1;
-  const depth = Math.max(...fill.map(([, z]) => z)) + 1;
+  const width = maxOf(fill.map(([x]) => x)) + 1;
+  const depth = maxOf(fill.map(([, z]) => z)) + 1;
 
   // the origin in studs from the minimum corner (a slope's sits over its stud row)
   const origin = [-out.minX / LDU_PER_STUD, -out.minZ / LDU_PER_STUD] as [number, number];
@@ -310,7 +311,7 @@ const measurePart = (library: string, part: CatalogPart) => {
  *  is lowest on average (north is the far edge in z) */
 const descentOf = (out: Measure, width: number, depth: number, ldraw: string): 'north' | 'south' | 'east' | 'west' => {
   const meanTop = (points: ReadonlyArray<readonly [number, number]>): number => {
-    const tops = points.map(([x, z]) => crossings(out.triangles, x, z)).filter(ys => ys.length > 0).map(ys => Math.min(...ys));
+    const tops = points.map(([x, z]) => crossings(out.triangles, x, z)).filter(ys => ys.length > 0).map(ys => minOf(ys));
     return tops.reduce((sum, y) => sum + y, 0) / Math.max(1, tops.length)/*y grows downward: the larger, the lower*/;
   };
   const along = (count: number, at: (t: number) => readonly [number, number]) => Array.from({ length: count * SAMPLES_PER_SIDE }, (_, index) => at((index + 0.5) / (count * SAMPLES_PER_SIDE)));
@@ -330,7 +331,7 @@ const descentOf = (out: Measure, width: number, depth: number, ldraw: string): '
  *  (SEE: command.ts GRID): its top is full height along that line and lower at its
  *  north and south edges */
 const assertRidgeRunsEastWest = (out: Measure, ldraw: string): void => {
-  const topAt = (x: number, z: number): number => Math.min(...crossings(out.triangles, x, z));
+  const topAt = (x: number, z: number): number => minOf(crossings(out.triangles, x, z));
   const middleX = (out.minX + out.maxX) / 2, middleZ = (out.minZ + out.maxZ) / 2;
   const peak = [out.minX + 1, middleX, out.maxX - 1].every(x => Math.abs(topAt(x, middleZ) - out.minY) < EPSILON);
   const falls = [out.minZ + 1, out.maxZ - 1].every(z => topAt(middleX, z) > (out.minY + 1));
@@ -375,13 +376,13 @@ const measureFill = (out: Measure, size: Readonly<{ width: number; depth: number
         for(let sx=0; sx<SAMPLES_PER_SIDE; sx++) {
           const ys = crossings(out.triangles, x0 + (((sx + 0.5) / SAMPLES_PER_SIDE) * LDU_PER_STUD), z0 + (((sz + 0.5) / SAMPLES_PER_SIDE) * LDU_PER_STUD));
           if(ys.length < 1) continue;
-          tops.push(Math.min(...ys));
-          undersides.push(Math.max(...ys));
+          tops.push(minOf(ys));
+          undersides.push(maxOf(ys));
         }
       }
       if(tops.length < 1) continue/*the part never reaches into it*/;
 
-      const topRise = bottomY - Math.min(...tops)/*LDU above the bottom, at its highest*/;
+      const topRise = bottomY - minOf(tops)/*LDU above the bottom, at its highest*/;
       const standsOnBottom = !openUnderside || out.triangles.some(triangle => triangle.some(([x, y, z]) =>
         (Math.abs(y - bottomY) < EPSILON) &&
         (x > (x0 + BASE_INSET)) && (x < (x0 + LDU_PER_STUD - BASE_INSET)) &&

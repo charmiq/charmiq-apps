@@ -42,6 +42,7 @@ const GRID = [
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
   'A component is a group of parts defined once (defineComponent, in its own grid: x, z and level from 0) and placed many times: an addParts item {component, x, z, level, rotation} places a copy by its footprint\'s south-west corner and its bottom level, turned as a part is. Copies are checked as parts are; removing any cell of a copy removes the whole copy, and redefining a component changes every copy. Build a repeated thing (a tower, a house, a tree with a fence) as a component.',
+  'A saved design can be a component too: defineComponentFromDesign defines one from a design in the designs folder (listDesigns names them), its footprint from x 0, z 0 and its lowest part at level 0, so a house, a car or a tree saved once is placed many times.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
   `The baseplate is no boundary: it grows with the build, ${BASEPLATE_MARGIN} studs beyond it on every side and never smaller than ${BASEPLATE_MIN} x ${BASEPLATE_MIN} studs (x and z from ${-BASEPLATE_MIN / 2} to ${BASEPLATE_MIN / 2} while the build is empty). Parts stand anywhere with x and z within ${MAX_COORDINATE} of the origin; center a scene near x 0, z 0.`,
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east. lookAround shows the build from all four sides at once, so one screenshot sees every side; the next change closes it.',
@@ -59,10 +60,7 @@ export class CommandSurface {
   }
 
   /** frames a build that has just replaced the last one whole, once it is drawn */
-  private async showWhole(): Promise<void> {
-    await this.viewer.setView(this.viewer.getView(), true);
-    await this.viewer.whenSettled();
-  }
+  private async showWhole(): Promise<void> { await this.viewer.frameWhole(); }
 
   /** registers the commands; called once from main.ts */
   public init(): void {
@@ -165,6 +163,11 @@ export class CommandSurface {
       listDesigns: async () => {
         const designs = await this.designs.list()/*waits for the chosen folder*/;
         return { folder: this.designs.getFolder().name, designs };
+      },
+      defineComponentFromDesign: async ({ design, name }: { design?: unknown; name?: unknown; }) => {
+        const { leftOut, ...component } = await this.designs.asComponent((typeof design === 'string') ? design : '', (typeof name === 'string') ? name : undefined);
+        await this.viewer.whenSettled();
+        return { component, ...((leftOut > 0) ? { leftOut } : {}), ...this.report() };
       },
       loadDesign: async ({ name }: { name?: unknown; }) => {
         const loaded = await this.designs.load((typeof name === 'string') ? name : '');

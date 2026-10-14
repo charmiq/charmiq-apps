@@ -76,7 +76,7 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 
 **Steps.** A build can be split into building steps, LDraw's own `0 STEP` lines, so other LDraw tools show the same steps. The play, step and back buttons under the status show the build as it stands after each step, its parts dropping in; playback never changes the document, and any change to the build ends it. A Charm starts a new step by adding parts with `newStep: true`.
 
-**Designs.** The save and open buttons keep builds in your Drive. Each design is a Source document of plain LDraw text, named for the design (`Beach house.ldr`). Designs go to My Drive until you choose another folder, which the Studio then remembers. Saving a name already there (in any case) asks before replacing it, and opening a design over a build asks before replacing the build. Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any document you can.
+**Designs.** The save and open buttons keep builds in your Drive. Each design is a Source document of plain LDraw text, named for the design (`Beach house.ldr`). Designs go to My Drive until you choose another folder, which the Studio then remembers. Saving a name already there (in any case) asks before replacing it. Opening a design over a build offers to add it to the build instead: the design becomes a component and one copy stands on the ground beside the build, where nothing is (adding one already in the build asks before updating its copies to the design). Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any document you can.
 
 **The commands.** A Charm drives the Studio through these:
 
@@ -88,6 +88,7 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 | `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one; a batch that would collide is refused; answers with the build's check |
 | `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy removes the whole copy); answers with the build's check and the parts left unsupported |
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
+| `defineComponentFromDesign` | defines a component from a saved design, named after it |
 | `listComponents` | the components the build defines, their sizes and copies |
 | `clear` | removes every part, copy and component, keeping the ground |
 | `check` | lists collisions and floating parts, for a build changed some other way |

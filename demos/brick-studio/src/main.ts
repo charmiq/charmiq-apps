@@ -55,7 +55,8 @@ const ground = new GroundControl({ root: element('ground'), button: element('gro
 const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);
 const designDialog = new DesignDialog(element('designs'), designs, {
   partCount: () => { const model = build.getModel(); return model.placements.length + model.others.length; },
-  onLoaded: () => void viewer.setView(viewer.getView(), true)/*a loaded design is framed whole*/,
+  onLoaded: () => void viewer.frameWhole()/*a loaded design is framed whole*/,
+  onAdded: () => void viewer.frameWhole()/*the build framed with the copy beside it*/,
 });
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => viewer.setTheme(readTheme()));

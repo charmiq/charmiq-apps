@@ -1,3 +1,4 @@
+import { ComponentPlaced } from './build';
 import { DesignError, DesignExists, displayName, TOP_OF_DRIVE, type Designs } from './designs';
 import type { Design, Folder } from './drive';
 
@@ -24,6 +25,8 @@ export type DesignDialogHost = Readonly<{
   partCount: () => number;
   /** a design has replaced the build */
   onLoaded: (name: string) => void;
+  /** a design has been added to the build as a component, one copy beside it */
+  onAdded: (component: string) => void;
 }>;
 
 // == Class =======================================================================
@@ -163,7 +166,7 @@ export class DesignDialog {
         })));
       }
       for(const design of withDesigns ? page.designs : []) {
-        list.append(element('li', {}, row('design', displayName(design), () => this.confirmLoad(design))));
+        list.append(element('li', {}, row('design', displayName(design), () => this.choose(design))));
       }
       if(page.hasMore) {
         const more = button('More', 'designs-link', 'button', () => { more.parentElement?.remove(); void this.fill(list, message, here, withDesigns, offset + ((this.search.length > 0) ? page.folders.length : page.read)); });
@@ -192,21 +195,61 @@ export class DesignDialog {
   }
 
   // .. Load ......................................................................
-  /** loads a design, asking first when it would replace parts */
-  private confirmLoad(design: Design): void {
+  /** a design picked: an empty build opens it; a build with parts takes it as a
+   *  component beside them, or is replaced by it */
+  private choose(design: Design): void {
     const name = displayName(design);
     const parts = this.host.partCount();
     if(parts < 1) { void this.load(design, paragraph('designs-message')); return; }
 
     const message = paragraph('designs-message');
-    const replace = button('Replace', 'designs-primary', 'button', () => void this.load(design, message, replace));
+    const replace = button('Replace', 'designs-secondary', 'button', () => void this.load(design, message, add, replace));
+    const add = button('Add to this build', 'designs-primary', 'button', () => void this.add(design, false, message, add, replace));
     this.generation++;
     this.dialog.replaceChildren(element('div', { className: 'designs-form' },
       heading('Open design'),
-      element('p', { className: 'designs-confirm' }, `Replace the current build (${parts} ${(parts === 1) ? 'part' : 'parts'}) with "${name}"?`),
+      element('p', { className: 'designs-confirm' }, `Add "${name}" to this build, or replace the build (${parts} ${(parts === 1) ? 'part' : 'parts'}) with it?`),
       message,
-      actions(button('Cancel', 'designs-secondary', 'button', () => this.show({ kind: 'open' })), replace)));
-    replace.focus();
+      actions(button('Cancel', 'designs-secondary', 'button', () => this.show({ kind: 'open' })), replace, add)));
+    add.focus();
+  }
+
+  /** adds a design to the build. One whose component the build places already is
+   *  refused unless `replace` says to update every copy to the design, and the
+   *  refusal asks (SEE: confirmUpdate) */
+  private async add(design: Design, replace: boolean, message: HTMLElement, ...busy: HTMLButtonElement[]): Promise<void> {
+    if(!message.isConnected) this.dialog.append(message);
+    await this.run(message, busy, async () => {
+      const { component } = await this.designs.addToBuild(design, replace);
+      this.host.onAdded(component.name);
+      if(component.leftOut < 1) { this.dialog.close(); return; }
+      // the parts the build could not take, said before the dialog goes
+      this.generation++;
+      const done = button('Done', 'designs-primary', 'button', () => this.dialog.close());
+      this.dialog.replaceChildren(element('div', { className: 'designs-form' },
+        heading('Add design'),
+        element('p', { className: 'designs-confirm' }, `Added "${component.name}". ${component.leftOut} ${(component.leftOut === 1) ? 'part' : 'parts'} of the design ${(component.leftOut === 1) ? 'is' : 'are'} off the grid and ${(component.leftOut === 1) ? 'was' : 'were'} left out.`),
+        actions(done)));
+      done.focus();
+    }, error => {
+      if(!(error instanceof ComponentPlaced)) return false;
+      this.confirmUpdate(design, error);
+      return true;
+    });
+  }
+
+  /** asks before an add that changes every copy of a component placed already */
+  private confirmUpdate(design: Design, placed: ComponentPlaced): void {
+    const { component, copies } = placed;
+    const update = button('Update and add', 'designs-primary', 'button', () => void this.add(design, true, again, update));
+    const again = paragraph('designs-message');
+    this.generation++;
+    this.dialog.replaceChildren(element('div', { className: 'designs-form' },
+      heading('Add design'),
+      element('p', { className: 'designs-confirm' }, `"${component}" is already in this build (${copies} ${(copies === 1) ? 'copy' : 'copies'}). Update ${(copies === 1) ? 'it' : 'them'} to this design and add another?`),
+      again,
+      actions(button('Cancel', 'designs-secondary', 'button', () => this.choose(design)), update)));
+    update.focus();
   }
 
   private async load(design: Design, message: HTMLElement, ...busy: HTMLButtonElement[]): Promise<void> {

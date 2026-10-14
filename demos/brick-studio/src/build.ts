@@ -1,7 +1,9 @@
+import type { ContentChange } from '../../../shared/charmiq';
 import { checkModel, describeCopy, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
-import { cellKey, filledCells, footprintSize, frameKey, getColor, getPart, getShape, toRotation, type Copy, type Placement } from './grid';
+import { cellKey, filledCells, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, toRotation, type Copy, type Footprint, type Placement } from './grid';
 import { appendLines, applyChanges, clearEdits, copyLine, defineEdits, deleteLines, groundEdit, parseModel, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
+import { minOf } from './numbers';
 
 // owns the current build: the `model` app-content's text, as last seen. Every
 // edit is validated against the app-content's text it is measured on, and the
@@ -16,6 +18,8 @@ import { appendLines, applyChanges, clearEdits, copyLine, defineEdits, deleteLin
 const MAX_BATCH = 400;
 export const MAX_COORDINATE = 400/*studs from the origin*/;
 const MAX_LEVEL = 600/*plates*/;
+/** the studs between a build and a copy placed beside it */
+const BESIDE_GAP = 2/*studs*/;
 /** a component's name: its file is `<name>.ldr` */
 const COMPONENT_NAME = /^[a-z][a-z0-9-]{0,39}$/;
 
@@ -26,6 +30,20 @@ export type ModelSource = 'document' | 'load';
 // ................................................................................
 /** a refused edit; its message is model-facing */
 export class BuildError extends Error {}
+
+/** a design's add refused because its component is placed already: the add would
+ *  change every copy, so it must say it may */
+export class ComponentPlaced extends BuildError {
+  public constructor(public readonly component: string, public readonly copies: number) {
+    super(`"${component}" is already in this build (${copies} ${(copies === 1) ? 'copy' : 'copies'}).`);
+  }
+}
+
+// ................................................................................
+/** a component defined: its size, its own parts and the copies the build places */
+export type Defined = Readonly<{ name: string; size: string; parts: number; copies: number; }>;
+/** a component defined from a design, with the design's parts off the grid it left out */
+export type DefinedFromDesign = Defined & Readonly<{ leftOut: number; }>;
 
 // == Class =======================================================================
 export class Build {
@@ -98,8 +116,7 @@ export class Build {
       if(missing.length > 0) throw new BuildError(`Nothing was added. No component named ${missing.join(', ')} holds parts on the grid (defineComponent defines one; listComponents names them).`);
       const lines = items.flatMap(item => ('component' in item) ? [copyLine(componentOf(model, item.component)!.footprint!/*by contract*/, item)] : placementLines(item));
       const change = appendLines(layout, lines, newStep);
-      const next = parseModel(applyChanges(text, [change]));
-      if(next.truncated || (partCount(next) > MAX_PARTS)) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
+      const next = readWhole(applyChanges(text, [change]));
 
       // refuse any collision the batch introduces. A part or copy identical to one
       // already in the build was most likely added by an earlier call (one whose answer
@@ -131,37 +148,59 @@ export class Build {
   /** defines a component (a group of parts in its own grid, placed as a unit), or
    *  replaces its definition: every copy then changes with it, and a definition that
    *  would make a copy collide is refused whole */
-  public async defineComponent(name: unknown, input: ReadonlyArray<unknown>): Promise<Readonly<{ name: string; size: string; parts: number; copies: number; }>> {
+  public async defineComponent(name: unknown, input: ReadonlyArray<unknown>): Promise<Defined> {
     await this.whenReady();
-    if((typeof name !== 'string') || !COMPONENT_NAME.test(name)) throw new BuildError('name must be lower case letters, digits and dashes, starting with a letter, at most 40 characters.');
-    if(getPart(name) || (name === 'model')) throw new BuildError(`'${name}' is taken (a catalog part or the main model); choose another name.`);
-    if(input.length < 1) throw new BuildError('No parts given.');
-    if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per component.`);
-    const placements = validItems(input, 'parts', false) as Placement[]/*parts alone*/;
-    const names = placements.map(describePlacement);
-    const repeated = names.filter((name, index) => names.indexOf(name) !== index);
-    const inside = checkModel({ header: [], placements, others: [] }).collisions.filter(pair => pair.a !== pair.b/*a repeat, named below*/);
-    if((repeated.length + inside.length) > 0) throw new BuildError(['Nothing was defined.',
-      ...refusal('Listed twice in this call:', repeated),
-      ...refusal('These parts of the component collide:', inside.map(pair => `${pair.b} overlaps ${pair.a}`)),
-    ].join('\n'));
-
-    let outcome = { name, size: '', parts: 0, copies: 0 };
+    const placements = componentParts(name, input);
+    let outcome: Defined | undefined;
     await this.bridge.edit(text => {
-      const { model, layout } = editable(text);
-      const changes = defineEdits(layout, name, placements.flatMap(placementLines));
-      const next = parseModel(applyChanges(text, changes));
-      if(next.truncated || (partCount(next) > MAX_PARTS)) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
-      const before = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
-      const introduced = checkModel(next).collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`));
-      if(introduced.length > 0) throw new BuildError(['Nothing was defined. Its copies would collide:', ...refusal('', introduced.map(pair => `${pair.b} overlaps ${pair.a}`)).slice(1)].join('\n'));
-
-      const footprint = componentOf(next, name)!.footprint!/*its parts are on the grid*/;
-      const [width, depth] = footprintSize(footprint, 0);
-      outcome = { name, size: `${width}x${depth}x${footprint.height}`, parts: placements.length, copies: (next.copies ?? []).filter(copy => copy.component === name).length };
-      return changes;
+      const defined = defineChecked(text, name as string/*by componentParts*/, placements);
+      outcome = defined.outcome;
+      return defined.changes;
     });
-    return outcome;
+    return outcome!/*the edit applied*/;
+  }
+
+  /** defines a component from LDraw text (a saved design): its parts on the grid,
+   *  its own components' included, moved so its footprint starts at x 0, z 0 and its
+   *  lowest part stands at level 0. Its ground and steps are left out, and so are its
+   *  parts off the grid, counted in `leftOut` */
+  public async defineComponentFromText(name: unknown, ldraw: string): Promise<DefinedFromDesign> {
+    const { parts, leftOut } = designParts(ldraw);
+    return { ...await this.defineComponent(name, parts), leftOut };
+  }
+
+  /** defines a component from LDraw text (SEE: defineComponentFromText) and places
+   *  one copy of it on the ground just outside everything the build holds, as a new
+   *  step (SEE: besideBuild), in one edit: both land or neither does. A component of
+   *  that name placed already is redefined, every copy with it, only when `replace`
+   *  says it may be (ComponentPlaced otherwise), judged on the text the edit is made
+   *  on */
+  public async addDesign(name: unknown, ldraw: string, replace: boolean): Promise<Readonly<{ component: DefinedFromDesign; copy: Copy; }>> {
+    await this.whenReady();
+    const { parts, leftOut } = designParts(ldraw);
+    const placements = componentParts(name, parts);
+    const component = name as string/*by componentParts*/;
+
+    let outcome: Readonly<{ component: DefinedFromDesign; copy: Copy; }> | undefined;
+    await this.bridge.edit(text => {
+      const placed = copiesOf(editable(text).model, component);
+      if((placed > 0) && !replace) throw new ComponentPlaced(component, placed);
+      const defined = defineChecked(text, component, placements);
+
+      // the copy goes where the redefined build leaves room: nothing fills it there,
+      // so it never collides
+      const definedText = applyChanges(text, defined.changes);
+      const { model, layout } = editable(definedText);
+      const footprint = componentOf(model, component)!.footprint!/*its parts are on the grid*/;
+      const copy = besideBuild(model, component, footprint);
+      if(!copy) throw new BuildError(`Nothing was added. There is no room beside the build within ${MAX_COORDINATE} studs of the origin.`);
+      const change = appendLines(layout, [copyLine(footprint, copy)], true);
+      readWhole(applyChanges(definedText, [change]));
+
+      outcome = { component: { ...defined.outcome, copies: defined.outcome.copies + 1, leftOut }, copy };
+      return [...defined.changes, change]/*each measured after the ones before it*/;
+    });
+    return outcome!/*the edit applied*/;
   }
 
   // ------------------------------------------------------------------------------
@@ -277,6 +316,33 @@ const editable = (text: string): Readonly<{ model: Model; layout: ModelLayout; }
   return { model, layout: model.layout };
 };
 
+/** the model an edit's result holds, refused when it would hold more parts than a
+ *  build may, or be read only in part (its submodels expanding past what is read):
+ *  a build is never written that its next edit could not apply to */
+const readWhole = (text: string): Model => {
+  const model = parseModel(text);
+  if(model.truncated || (partCount(model) > MAX_PARTS)) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
+  return model;
+};
+
+/** the parts a component of that name holds: a name free for one, and parts that
+ *  neither repeat nor collide; refuses the whole component otherwise */
+const componentParts = (name: unknown, input: ReadonlyArray<unknown>): Placement[] => {
+  if((typeof name !== 'string') || !COMPONENT_NAME.test(name)) throw new BuildError('name must be lower case letters, digits and dashes, starting with a letter, at most 40 characters.');
+  if(isReservedName(name)) throw new BuildError(`'${name}' is taken (a catalog part or the main model); choose another name.`);
+  if(input.length < 1) throw new BuildError('No parts given.');
+  if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per component.`);
+  const placements = validItems(input, 'parts', false) as Placement[]/*parts alone*/;
+  const names = placements.map(describePlacement);
+  const repeated = names.filter((name, index) => names.indexOf(name) !== index);
+  const inside = checkModel({ header: [], placements, others: [] }).collisions.filter(pair => pair.a !== pair.b/*a repeat, named below*/);
+  if((repeated.length + inside.length) > 0) throw new BuildError(['Nothing was defined.',
+    ...refusal('Listed twice in this call:', repeated),
+    ...refusal('These parts of the component collide:', inside.map(pair => `${pair.b} overlaps ${pair.a}`)),
+  ].join('\n'));
+  return placements;
+};
+
 /** the parts (and, where `copies` allows, copies) a list describes; refuses the
  *  list naming each item that is not one */
 const validItems = (input: ReadonlyArray<unknown>, field: string, copies: boolean): ReadonlyArray<Placement | Copy> => {
@@ -318,14 +384,65 @@ const toPosition = (x: unknown, z: unknown, level: unknown, rotation: unknown): 
   return { x, z, level, rotation: turn };
 };
 
-/** a part or copy in one line */
-const describeItem = (item: Placement | Copy): string => ('component' in item) ? describeCopy(item) : describePlacement(item);
+// == Components ==================================================================
+/** the edits that define (or redefine) a component on a text, refused whole when
+ *  the build would hold too many parts or a copy would collide */
+const defineChecked = (text: string, name: string, placements: ReadonlyArray<Placement>): Readonly<{ changes: ReadonlyArray<ContentChange>; outcome: Defined; }> => {
+  const { model, layout } = editable(text);
+  const changes = defineEdits(layout, name, placements.flatMap(placementLines));
+  const next = readWhole(applyChanges(text, changes));
+  const before = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
+  const introduced = checkModel(next).collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`));
+  if(introduced.length > 0) throw new BuildError(['Nothing was defined. Its copies would collide:', ...refusal('', introduced.map(pair => `${pair.b} overlaps ${pair.a}`)).slice(1)].join('\n'));
+
+  const footprint = componentOf(next, name)!.footprint!/*its parts are on the grid*/;
+  const [width, depth] = footprintSize(footprint, 0);
+  return { changes, outcome: { name, size: `${width}x${depth}x${footprint.height}`, parts: placements.length, copies: copiesOf(next, name) } };
+};
+
+/** a saved design's parts on the grid, moved so its footprint starts at x 0, z 0
+ *  and its lowest part stands at level 0, and how many of its parts are off the grid */
+const designParts = (ldraw: string): Readonly<{ parts: ReadonlyArray<Placement>; leftOut: number; }> => {
+  const design = parseModel(ldraw);
+  if(design.truncated) throw new BuildError(`That design is too large to take: ${READ_IN_PART}`);
+  const footprint = footprintOf(design.placements);
+  if(!footprint) throw new BuildError('That design holds no parts on the grid.');
+  const lowest = minOf(design.placements.map(placement => placement.level));
+  const parts = design.placements.map(placement => ({ ...placement, x: placement.x - footprint.minX, z: placement.z - footprint.minZ, level: placement.level - lowest }));
+  return { parts, leftOut: design.others.length };
+};
+
+/** where a copy of a component goes beside a build: on the ground, its footprint
+ *  BESIDE_GAP studs past the cells the build fills, east of it (else north, west or
+ *  south, the first that stays within MAX_COORDINATE of the origin), or centered on
+ *  the origin when the build fills none */
+const besideBuild = (model: Model, component: string, footprint: Footprint): Copy | undefined => {
+  const [width, depth] = footprintSize(footprint, 0);
+  const build = footprintOf(model.placements);
+  if(!build) return { component, x: -Math.floor(width / 2), z: -Math.floor(depth / 2), level: 0, rotation: 0 };
+  const { minX, minZ, maxX, maxZ } = build;
+  const spots = [[maxX + BESIDE_GAP, minZ], [minX, maxZ + BESIDE_GAP], [minX - BESIDE_GAP - width, minZ], [minX, minZ - BESIDE_GAP - depth]] as const;
+  const reach = (from: number, size: number): boolean => (Math.abs(from) <= MAX_COORDINATE) && (Math.abs(from + size - 1) <= MAX_COORDINATE);
+  const spot = spots.find(([x, z]) => reach(x, width) && reach(z, depth));
+  return spot && { component, x: spot[0], z: spot[1], level: 0, rotation: 0 };
+};
+
+/** whether the build itself takes a name: a catalog part's or the main model's,
+ *  neither of which a component may have */
+export const isReservedName = (name: string): boolean => !!getPart(name) || (name === 'model');
+
+/** how many copies of a component a model places */
+const copiesOf = (model: Model, name: string): number => (model.copies ?? []).filter(copy => copy.component === name).length;
 
 /** a model's component of a name */
 const componentOf = (model: Model, name: string) => model.components?.find(component => component.name === name);
 
 /** whether a model defines components (its text is then kept as written) */
 const hasComponents = (model: Model): boolean => (model.components?.length ?? 0) > 0;
+
+// == Util ========================================================================
+/** a part or copy in one line */
+const describeItem = (item: Placement | Copy): string => ('component' in item) ? describeCopy(item) : describePlacement(item);
 
 /** one section of a refusal: its heading and a bounded list, or nothing */
 const refusal = (heading: string, lines: ReadonlyArray<string>): string[] =>
