@@ -2,7 +2,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { Build } from './build';
 import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, type CatalogPart } from './catalog';
-import { reportCheck, TRUNCATED } from './check';
+import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { DesignExists, type Designs } from './designs';
 import { getShape, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
@@ -70,15 +70,21 @@ export class CommandSurface {
         return { parts, ...((model.others.length > 0) ? { unchecked: model.others.length } : {}), ...(model.truncated ? { truncated: TRUNCATED } : {}), ...(conflict ? { conflict } : {}) };
       },
 
+      // an edit answers with the check of the build it made, so no check call follows
       addParts: async ({ parts, newStep }: { parts?: unknown; newStep?: unknown; }) => {
         const result = await this.build.add(Array.isArray(parts) ? parts : [], newStep === true);
         await this.viewer.whenSettled();
-        return { added: result.added, total: result.total, ...((result.floating.length > 0) ? { floating: result.floating } : {}) };
+        return { added: result.added, ...this.report() };
       },
       removeParts: async ({ at }: { at?: unknown; }) => {
         const result = await this.build.remove(Array.isArray(at) ? at : []);
         await this.viewer.whenSettled();
-        return { removed: result.removed, ...((result.empty.length > 0) ? { empty: result.empty } : {}) };
+        return {
+          removed: result.removed,
+          ...((result.empty.length > 0) ? { empty: result.empty } : {}),
+          ...((result.unsupported.length > 0) ? { unsupported: result.unsupported.length, unsupportedParts: result.unsupported.slice(0, MAX_LISTED) } : {}),
+          ...this.report(),
+        };
       },
 
       clear: async () => {

@@ -79,7 +79,7 @@ export class Build {
   // == Edit ======================================================================
   /** adds parts to the last building step, or as a new step after it (`newStep`);
    *  refuses the whole batch when any part is invalid or collides */
-  public async add(input: ReadonlyArray<unknown>, newStep: boolean): Promise<Readonly<{ added: number; total: number; floating: ReadonlyArray<string>; }>> {
+  public async add(input: ReadonlyArray<unknown>, newStep: boolean): Promise<Readonly<{ added: number; }>> {
     await this.whenReady();
     if(input.length < 1) throw new BuildError('No parts given.');
     if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per call.`);
@@ -92,7 +92,7 @@ export class Build {
     });
     if(problems.length > 0) throw new BuildError(problems.join('\n'));
 
-    let outcome = { added: 0, total: 0, floating: [] as ReadonlyArray<string> };
+    let outcome = { added: 0 };
     await this.bridge.edit(text => {
       const { model, layout } = editable(text);
       if((partCount(model) + added.length) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
@@ -118,8 +118,7 @@ export class Build {
         ...refusal('These parts would collide:', introduced.map(pair => `${pair.b} overlaps ${pair.a}`)),
       ].join('\n'));
 
-      const addedNames = new Set(added.map(describePlacement));
-      outcome = { added: added.length, total: partCount(next), floating: result.floating.filter(name => addedNames.has(name)) };
+      outcome = { added: added.length };
       return [appendLines(layout, added.flatMap(placementLines), newStep)];
     });
     return outcome;
@@ -128,8 +127,9 @@ export class Build {
   // ------------------------------------------------------------------------------
   /** removes the part that fills each given cell, and the glass in a removed frame.
    *  The cells are read on the build as the edit applies to it: a part that took a
-   *  cell's place meanwhile is the one removed */
-  public async remove(cells: ReadonlyArray<unknown>): Promise<Readonly<{ removed: ReadonlyArray<string>; empty: ReadonlyArray<string>; }>> {
+   *  cell's place meanwhile is the one removed. Names the parts the removal left
+   *  floating (`unsupported`) */
+  public async remove(cells: ReadonlyArray<unknown>): Promise<Readonly<{ removed: ReadonlyArray<string>; empty: ReadonlyArray<string>; unsupported: ReadonlyArray<string>; }>> {
     await this.whenReady();
     if(cells.length < 1) throw new BuildError('No cells given.');
     const at = cells.map((cell, index) => {
@@ -138,7 +138,7 @@ export class Build {
       return { x, z, level };
     });
 
-    let outcome = { removed: [] as ReadonlyArray<string>, empty: [] as ReadonlyArray<string> };
+    let outcome = { removed: [] as ReadonlyArray<string>, empty: [] as ReadonlyArray<string>, unsupported: [] as ReadonlyArray<string> };
     await this.bridge.edit(text => {
       const { model, layout } = editable(text);
 
@@ -166,7 +166,10 @@ export class Build {
         if((frame !== undefined) && removedFrames.has(frameKey(frame, placement))) removing.add(index);
       });
 
-      outcome = { removed: [...removing].map(index => describePlacement(model.placements[index])), empty };
+      // what floats now that floated not before
+      const floatingBefore = new Set(checkModel(model).floating);
+      const after = checkModel({ ...model, placements: model.placements.filter((_, index) => !removing.has(index)) });
+      outcome = { removed: [...removing].map(index => describePlacement(model.placements[index])), empty, unsupported: after.floating.filter(name => !floatingBefore.has(name)) };
       return deleteLines([...removing].flatMap(index => [layout.placements[index], ...layout.pieces[index]]));
     });
     return outcome;

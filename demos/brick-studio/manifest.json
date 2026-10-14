@@ -75,7 +75,7 @@
       },
       {
         "name": "addParts",
-        "description": "Place parts. A batch that would collide is refused whole. Returns parts left floating",
+        "description": "Place parts. A batch that would collide is refused whole. Returns the check of the build it made: no check call is needed after",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -103,16 +103,23 @@
         "outputSchema": {
           "type": "object",
           "properties": {
-            "added":    { "type": "integer" },
-            "total":    { "type": "integer" },
-            "floating": { "type": "array", "items": { "type": "string" } }
+            "added":         { "type": "integer" },
+            "ok":            { "type": "boolean" },
+            "parts":         { "type": "integer" },
+            "collisions":    { "type": "integer" },
+            "collidingPairs":{ "type": "array", "items": { "type": "object" } },
+            "floating":      { "type": "integer" },
+            "floatingParts": { "type": "array", "items": { "type": "string" } },
+            "unchecked":     { "type": "integer" },
+            "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
+            "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" }
           },
-          "required": ["added", "total"]
+          "required": ["added", "ok", "parts", "collisions", "floating"]
         }
       },
       {
         "name": "removeParts",
-        "description": "Remove the part that fills each given cell",
+        "description": "Remove the part that fills each given cell. Returns the check of the build it made (no check call is needed after) and the parts the removal left unsupported",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -135,10 +142,21 @@
         "outputSchema": {
           "type": "object",
           "properties": {
-            "removed": { "type": "array", "items": { "type": "string" } },
-            "empty":   { "type": "array", "items": { "type": "string" } }
+            "removed":          { "type": "array", "items": { "type": "string" } },
+            "empty":            { "type": "array", "items": { "type": "string" } },
+            "unsupported":      { "type": "integer", "description": "Parts the removal left floating" },
+            "unsupportedParts": { "type": "array", "items": { "type": "string" } },
+            "ok":            { "type": "boolean" },
+            "parts":         { "type": "integer" },
+            "collisions":    { "type": "integer" },
+            "collidingPairs":{ "type": "array", "items": { "type": "object" } },
+            "floating":      { "type": "integer" },
+            "floatingParts": { "type": "array", "items": { "type": "string" } },
+            "unchecked":     { "type": "integer" },
+            "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
+            "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" }
           },
-          "required": ["removed"]
+          "required": ["removed", "ok", "parts", "collisions", "floating"]
         }
       },
       {
@@ -153,7 +171,7 @@
       },
       {
         "name": "check",
-        "description": "Find collisions and parts not held up from the baseplate. Never ok while the build was read only in part or the document holds more than one build",
+        "description": "Find collisions and parts not held up from the baseplate, for a build that changed other than by addParts or removeParts (whose results carry it). Never ok while the build was read only in part or the document holds more than one build",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
