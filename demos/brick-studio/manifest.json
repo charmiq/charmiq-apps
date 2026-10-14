@@ -83,16 +83,36 @@
     "charmiq.command": [
       {
         "name": "listParts",
-        "description": "The grid conventions, the catalog parts (one row each: name, width x depth x height) and the colors. Call first",
+        "description": "The grid conventions, every catalog part's name by kind, and the colors. Call first; findParts gives the rows of the parts you will use",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
           "properties": {
             "grid":   { "type": "string" },
-            "parts":  { "type": "array", "items": { "type": "string" } },
+            "parts":  { "type": "array", "items": { "type": "string" }, "description": "One line per kind: the kind, then its part names" },
             "colors": { "type": "array", "items": { "type": "string" } }
           },
           "required": ["grid", "parts", "colors"]
+        }
+      },
+      {
+        "name": "findParts",
+        "description": "The rows (name, width x depth x height, which way it descends, fills) of the catalog parts a query names, best first. A query is part names, a size such as 2x4, a kind, or a word such as roof, tree, animal or car",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "e.g. brick-2x4 slope-45-2x2, or roof, or 2x4" },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 40, "description": "The most rows to return (12 when omitted)" }
+          },
+          "required": ["query"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "parts": { "type": "array", "items": { "type": "string" } },
+            "total": { "type": "integer", "description": "Parts the query names, all of them" }
+          },
+          "required": ["parts", "total"]
         }
       },
       {

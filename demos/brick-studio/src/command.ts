@@ -1,7 +1,7 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import { MAX_COORDINATE, type Build } from './build';
 import type { FidelityControl } from './fidelity-control';
-import { CATALOG, COLORS, type CatalogPart } from './catalog';
+import { CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { DesignExists, type Designs } from './designs';
 import { getShape, type PartShape } from './grid';
@@ -15,6 +15,9 @@ import { BASEPLATE_MARGIN, BASEPLATE_MIN, type Viewer } from './viewer';
 // Application screenshot shows it
 // ********************************************************************************
 // == Constants ===================================================================
+/** the most rows findParts returns, and the most it returns when not told */
+const MAX_FOUND = 40;
+const DEFAULT_FOUND = 12;
 /** the most placed parts one listPlacedParts page holds */
 const PARTS_PER_PAGE = 300;
 /** the most UTF-8 bytes of LDraw one getModel page holds (whole lines) */
@@ -27,7 +30,7 @@ const GRID = [
   'A part\'s x, z is the south-west corner of its footprint and level is its bottom. A part standing on another starts where that part ends: its level plus its height (on a plate at level 1, a figure stands at level 2).',
   'At rotation 0 a part spans width along x and depth along z; rotation 90, 180 or 270 turns it clockwise seen from above (90 and 270 swap width and depth).',
   'A part holds the part above it where its top studs lie under that part. Tiles have no top studs; a slope has studs only along its high row.',
-  'Each part row reads: name, then width x depth x height (studs, studs, levels), then which way a slope or curve descends at rotation 0.',
+  'listParts names every part by kind; findParts gives the rows of the parts you will use (call it before placing a part whose size or fills you do not know). Each part row reads: name, then width x depth x height (studs, studs, levels), then which way a slope or curve descends at rotation 0.',
   'A name\'s third number counts bricks (brick-1x1x3 is 9 levels tall); the row gives every height in levels.',
   'A part that does not fill its whole box ends its row with fills: its cells at rotation 0, rows from north to south separated by /, cells west to east separated by commas; # fills the part\'s full height, . is empty, and a-b fills levels a up to but not including b counted from the part\'s bottom (an arch\'s span, an inverted slope\'s underside). Other parts fill their whole box.',
   'The slope name gives its angle (45, 33 or 65 degrees). A ridge peaks along an east-west line across its middle at rotation 0 and descends north and south. A roof corner names the corner it peaks at (outside) or dips at (inside); its only studs are on its high cells. A window or door frame\'s opening counts as filled.',
@@ -66,9 +69,15 @@ export class CommandSurface {
     charmiq.exportCommands({
       listParts: () => ({
         grid: GRID,
-        parts: CATALOG.map(partRow),
+        parts: partsByKind().map(({ kind, names }) => `${kind}: ${names.join(', ')}`),
         colors: COLORS.map(color => color.key),
       }),
+      findParts: ({ query, limit }: { query?: unknown; limit?: unknown; }) => {
+        if((typeof query !== 'string') || (query.trim().length < 1)) throw new Error('query names the parts to find: a part\'s name, a size such as 2x4, a kind or a word such as roof');
+        const count = ((typeof limit === 'number') && Number.isInteger(limit) && (limit > 0)) ? Math.min(limit, MAX_FOUND) : DEFAULT_FOUND;
+        const found = searchCatalog(query);
+        return { parts: found.slice(0, count).map(partRow), total: found.length };
+      },
 
       listPlacedParts: async ({ from }: { from?: unknown; }) => {
         await this.build.whenReady();

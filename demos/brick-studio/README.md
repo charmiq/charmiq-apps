@@ -80,7 +80,8 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 
 | Command | Does |
 |---|---|
-| `listParts` | the grid conventions, the catalog parts and the colors |
+| `listParts` | the grid conventions, every part's name by kind, and the colors |
+| `findParts` | the rows (size, fills, which way it descends) of the parts a query names: names, a size such as 2x4, or a word such as roof |
 | `listPlacedParts` | the parts in the build with their positions, a page at a time |
 | `addParts` | places a batch of parts, in the last step or (`newStep`) a new one; a batch that would collide is refused; answers with the build's check |
 | `removeParts` | removes the part filling each given cell, and a removed window's glass; answers with the build's check and the parts left unsupported |

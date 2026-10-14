@@ -300,3 +300,56 @@ export const COLORS: ReadonlyArray<CatalogColor> = [
   { key: 'trans-light-blue', code: 43, transparent: true },
   { key: 'trans-dark-blue',  code: 33, transparent: true },
 ];
+
+// == Search ======================================================================
+/** the words a kind is found by beyond its own name (a Charm asks for a roof, not
+ *  a ridge) */
+const KIND_WORDS: Readonly<Record<PartKind, ReadonlyArray<string>>> = {
+  'brick':       ['wall', 'block'],
+  'plate':       ['floor', 'base', 'flat'],
+  'tile':        ['smooth', 'flat', 'top'],
+  'slope':       ['roof', 'ramp'],
+  'round':       ['circle', 'cylinder', 'column'],
+  'arch':        ['bridge', 'doorway', 'gate'],
+  'corner':      ['l'],
+  'wedge':       ['wing', 'angled'],
+  'inverted':    ['overhang', 'underside'],
+  'ridge':       ['roof', 'peak'],
+  'roof-corner': ['roof', 'peak'],
+  'window':      ['door', 'frame', 'house'],
+  'glass':       ['pane', 'window'],
+  'curve':       ['curved', 'body', 'hood'],
+  'plant':       ['nature', 'garden', 'foliage', 'tree', 'flower'],
+  'rock':        ['nature', 'stone', 'boulder'],
+  'fence':       ['garden', 'railing'],
+  'detail':      ['decoration', 'trim'],
+  'creature':    ['animal', 'pet', 'creature'],
+  'vehicle':     ['car', 'wheel', 'truck'],
+  'figure':      ['person', 'people', 'minifigure', 'knight', 'driver', 'figure'],
+};
+
+/** the catalog parts a query names, best first: a part's own name, a word of its
+ *  name (a size such as 2x4 is one), its kind, or a word its kind is found by. A
+ *  word of three letters or more also finds the words it starts */
+export const searchCatalog = (query: string): CatalogPart[] => {
+  const words = query.toLowerCase().split(/[\s,;]+/).filter(word => word.length > 0);
+  const scored = CATALOG.map((part, order) => {
+    const nameWords = part.key.split('-');
+    const kindWords = [part.kind, ...part.kind.split('-'), ...KIND_WORDS[part.kind]];
+    const score = words.reduce((total, word) => total + (
+      (word === part.key) ? 100 :
+      nameWords.includes(word) ? 10 :
+      kindWords.includes(word) ? 5 :
+      ((word.length >= 3) && [...nameWords, ...kindWords].some(own => own.startsWith(word))) ? 3 :
+      0), 0);
+    return { part, score, order };
+  });
+  return scored.filter(({ score }) => score > 0).sort((a, b) => (b.score - a.score) || (a.order - b.order)).map(({ part }) => part);
+};
+
+/** the catalog's part names by kind, in catalog order */
+export const partsByKind = (): ReadonlyArray<Readonly<{ kind: PartKind; names: ReadonlyArray<string>; }>> => {
+  const kinds = new Map<PartKind, string[]>();
+  for(const part of CATALOG) kinds.set(part.kind, [...(kinds.get(part.kind) ?? []), part.key]);
+  return [...kinds].map(([kind, names]) => ({ kind, names }));
+};
