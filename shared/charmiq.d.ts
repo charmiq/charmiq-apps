@@ -466,6 +466,16 @@ export interface CharmIQOAuthAPI {
   revokeAuth: (auth: OAuthAuth | OAuthAuthDescriptor) => Promise<void>;
 }
 
+// == Resources ===================================================================
+export type ResourcesAPI = Readonly<{
+  /** the complete UTF-8 text of the resource the manifest declares as `name`.
+   *  Rejects for an undeclared name (`code` `functions/not-found`) and for a file
+   *  that is missing, unreadable, not UTF-8 or over 32 MB (32,000,000 bytes), with
+   *  `code` naming the refusal; a failure the Platform cannot classify (a network
+   *  failure) carries no `code`. A failed read can be retried */
+  text: (name: string) => Promise<string>;
+}>;
+
 // == Visual Editor ===============================================================
 export interface VisualEditorAPI {
   /** returns true if visual editor mode is currently active */
@@ -612,6 +622,15 @@ export interface CharmIQAPI {
    *  const blob = await imageResponse.blob();
    */
   fetch: CharmIQFetch;
+
+  /** the files the manifest declares in `bundle.resources` (a name for each path),
+   *  read by name when needed rather than built into the Application. Each read is
+   *  the file as it is now, read as the current User; a declaration grants nothing
+   *  the User cannot read. Not covered by the Application's signature
+   *  @example
+   *  const parts = await window.charmiq.resources.text('parts-creatures');
+   */
+  resources: ResourcesAPI;
 
   /** MCP (Model Context Protocol) API for connecting to MCP servers and calling
    *  tools through the platform. The platform holds real MCP SDK Client instances
