@@ -35,6 +35,9 @@ export type PartShape = Readonly<{
   width: number;
   depth: number;
   height: number/*plates*/;
+  /** the level of its top studs above its bottom, when the part reaches above them
+   *  (a wheel set's tires); otherwise its height */
+  top?: number;
   origin: readonly [number, number];
   /** plates from the part's bottom up to its LDraw origin (its height, for a part
    *  whose origin is on its top face) */
@@ -52,6 +55,12 @@ export type PartShape = Readonly<{
 // ................................................................................
 /** a grid cell a placement fills, from level `bottom` up to (not including) `top` */
 export type FilledCell = Readonly<{ x: number; z: number; bottom: number; top: number; }>;
+
+// ................................................................................
+/** an LDraw transform: its rotation rows (a b c / d e f / g h i) and position (LDU) */
+export type Transform = Readonly<{ matrix: readonly number[]; position: readonly [number, number, number]; }>;
+/** one LDraw part line: a file (its stem) in a color at a transform */
+export type PartLine = Transform & Readonly<{ ldraw: string; colorCode: number; }>;
 
 // == Catalog lookup ==============================================================
 const partsByKey = new Map(CATALOG.map(part => [part.key, part]));
@@ -143,6 +152,40 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
   const level = (-(position[1] - (shape.drop ?? 0)) / LDU_PER_PLATE) - shape.base;
   if(!isWhole(x) || !isWhole(z) || !isWhole(level)) return undefined;
   return { x: Math.round(x), z: Math.round(z), level: Math.round(level) };
+};
+
+/** the part lines a placement is written as: its own, then its pieces' (SEE:
+ *  CatalogPart#pieces) turned and moved with it */
+export const placedLines = (shape: PartShape, placement: Placement, colorCode: number): PartLine[] => {
+  const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position: ldrawPosition(shape, placement), matrix: rotationMatrix(placement.rotation) };
+  return [own, ...piecesOf(shape.part).map(piece => ({ ...piece, ...compose(own, piece) }))];
+};
+
+/** composes a child transform into its parent's */
+export const compose = (parent: Transform, child: Transform): Transform => {
+  const p = parent.matrix, c = child.matrix;
+  const matrix = [0, 1, 2].flatMap(row => [0, 1, 2].map(col => (p[row*3] * c[col]) + (p[row*3 + 1] * c[3 + col]) + (p[row*3 + 2] * c[6 + col])));
+  const position = [0, 1, 2].map(row => (p[row*3] * child.position[0]) + (p[row*3 + 1] * child.position[1]) + (p[row*3 + 2] * child.position[2]) + parent.position[row]) as [number, number, number];
+  return { matrix, position };
+};
+
+/** the LDraw files (stems) a part is drawn from: its own and its pieces' */
+export const partFiles = (part: CatalogPart): string[] => [part.ldraw, ...piecesOf(part).map(piece => piece.ldraw)];
+
+// --------------------------------------------------------------------------------
+const pieceLines = new Map<string, ReadonlyArray<PartLine>>();
+/** a part's pieces as part lines (the catalog writes them as LDraw text) */
+const piecesOf = (part: CatalogPart): ReadonlyArray<PartLine> => {
+  let pieces = pieceLines.get(part.key);
+  if(!pieces) {
+    pieces = (part.pieces ?? []).map(line => {
+      const fields = line.trim().split(/\s+/);
+      const values = fields.slice(1, 14).map(Number);
+      return { ldraw: fields[14].replace(/\.dat$/i, ''), colorCode: values[0], position: [values[1], values[2], values[3]], matrix: values.slice(4, 13) };
+    });
+    pieceLines.set(part.key, pieces);
+  } /* else -- read once */
+  return pieces;
 };
 
 // == Frames ======================================================================

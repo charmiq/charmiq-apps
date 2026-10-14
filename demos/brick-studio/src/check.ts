@@ -81,7 +81,7 @@ export const checkModel = (model: Model): CheckResult => {
   for(const [pane, frame] of panes) { neighbors[pane].add(frame); neighbors[frame].add(pane); }
   placements.forEach((placement, index) => {
     const shape = getShape(getPart(placement.part)!/*by contract*/);
-    const top = placement.level + shape.height;
+    const top = placement.level + (shape.top ?? shape.height);
     for(const [x, z] of studCells(shape, placement)) {
       const above = bottoms.get(cellKey(x, z, top));
       if((above === undefined) || (above === index)) continue;

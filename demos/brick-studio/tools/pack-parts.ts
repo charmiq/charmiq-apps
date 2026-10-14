@@ -112,8 +112,12 @@ const discStudBase = (name: string, world: Transform): Point | undefined => {
 // --------------------------------------------------------------------------------
 /** walks a file's geometry under `transform`, recording each face (tagged with the
  *  stud primitive drawing it) and each stud's base */
-const walk = (library: string, name: string, transform: Transform, out: Walk, studBase?: Point): void => {
-  for(const line of readPart(library, name).split('\n')) {
+const walk = (library: string, name: string, transform: Transform, out: Walk, studBase?: Point): void =>
+  walkText(library, readPart(library, name), transform, out, studBase);
+
+/** walks LDraw text's geometry (SEE: walk) */
+const walkText = (library: string, text: string, transform: Transform, out: Walk, studBase?: Point): void => {
+  for(const line of text.split('\n')) {
     const fields = line.trim().split(/\s+/);
     switch(fields[0]) {
       case '1': {
@@ -202,6 +206,26 @@ const bodyOfPart = (library: string, ldraw: string): Measure => {
   return bodyOf(walked);
 };
 
+/** an assembled part's body: its own, grown by every face of its pieces. Its studs
+ *  and top face stay its own (a wheel set's tires are no top face) */
+const bodyOfAssembly = (library: string, part: CatalogPart): Measure => {
+  const own = bodyOfPart(library, part.ldraw);
+  if(!part.pieces) return own;
+  const walked: Walk = { faces: [], studs: [], discs: [] };
+  walkText(library, part.pieces.join('\n'), IDENTITY, walked);
+  const triangles = [...own.triangles, ...walked.faces.map(({ triangle }) => triangle)];
+  const points = triangles.flat();
+  return {
+    minX: Math.min(...points.map(([x]) => x)), maxX: Math.max(...points.map(([x]) => x)),
+    minY: Math.min(...points.map(([, y]) => y)), maxY: Math.max(...points.map(([, y]) => y)),
+    minZ: Math.min(...points.map(([, , z]) => z)), maxZ: Math.max(...points.map(([, , z]) => z)),
+    studs: own.studs, triangles,
+  };
+};
+
+/** the files an assembled part's pieces reference, as reference names */
+const pieceFiles = (part: CatalogPart): string[] => (part.pieces ?? []).map(line => referenceName(line.trim().split(/\s+/).slice(14).join(' ')));
+
 // --------------------------------------------------------------------------------
 /** how far (LDU) a glass pane sits below its frame's origin. A pane drawn at the
  *  frame's origin that already reaches the frame's sill (seated in its groove)
@@ -224,17 +248,22 @@ const paneDrop = (library: string, pane: string, frame: string): number => {
 /** footprint (studs), height (plates), origin, base and top-stud cells of one part,
  *  from the footprint's minimum corner; -y is up (LDraw). A part that reaches beyond
  *  whole studs or levels (a tree) takes every cell and level it reaches into, laid
- *  out from its base */
+ *  out from its base. An assembled part's bottom may lie off a level (a wheel set's
+ *  tires): it stands on the nearest level, sunk into or raised above it */
 const measurePart = (library: string, part: CatalogPart) => {
   const { ldraw } = part;
-  const body = bodyOfPart(library, ldraw);
+  const own = bodyOfPart(library, ldraw);
+  const measured = bodyOfAssembly(library, part);
 
-  const base = body.maxY / LDU_PER_PLATE/*plates from the origin down to the bottom*/;
-  if(!isWhole(base)) throw new Error(`${ldraw}: bottom ${base} plates below the origin is not on a level.`);
-  const bottomFace = body.triangles.flat().filter(([, y]) => Math.abs(y - body.maxY) < EPSILON);
+  const lowest = measured.maxY / LDU_PER_PLATE/*plates from the origin down to the bottom*/;
+  if(!isWhole(lowest) && !part.pieces) throw new Error(`${ldraw}: bottom ${lowest} plates below the origin is not on a level.`);
+  const base = Math.round(lowest);
+  const body = { ...measured, maxY: base * LDU_PER_PLATE/*the level it stands on*/ };
+  const bottomFace = body.triangles.flat().filter(([, y]) => Math.abs(y - measured.maxY) < EPSILON)/*its lowest points*/;
   const [minX, maxX] = gridSpan(body.minX, body.maxX, Math.min(...bottomFace.map(([x]) => x)), Math.max(...bottomFace.map(([x]) => x)));
   const [minZ, maxZ] = gridSpan(body.minZ, body.maxZ, Math.min(...bottomFace.map(([, , z]) => z)), Math.max(...bottomFace.map(([, , z]) => z)));
   const height = Math.ceil(((body.maxY - body.minY) / LDU_PER_PLATE) - EPSILON)/*a tip short of a level reaches into it*/;
+  const top = Math.ceil(((body.maxY - own.minY) / LDU_PER_PLATE) - EPSILON)/*its top studs' level*/;
 
   // the cells the part reaches into, trimmed to the ones it fills
   const spanned = measureFill({ ...body, minX, minZ }, { width: Math.round((maxX - minX) / LDU_PER_STUD), depth: Math.round((maxZ - minZ) / LDU_PER_STUD), height }, hasOpenUnderside(part.kind));
@@ -260,7 +289,7 @@ const measurePart = (library: string, part: CatalogPart) => {
     .sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
   if(part.kind === 'ridge') assertRidgeRunsEastWest(body, ldraw);
   const descends = (part.kind === 'curve') ? descentOf(out, width, depth, ldraw) : undefined;
-  return { width, depth, height, origin: [halfStud(origin[0]), halfStud(origin[1])], base: Math.round(base), studs, fill, ...(descends ? { descends } : {}) };
+  return { width, depth, height, ...((top !== height) ? { top } : {}), origin: [halfStud(origin[0]), halfStud(origin[1])], base, studs, fill, ...(descends ? { descends } : {}) };
 };
 
 /** the side a curved slope descends to at rotation 0: the footprint edge whose top
@@ -365,7 +394,7 @@ if(!library || !existsSync(join(library, 'LDConfig.ldr'))) {
 
 // .. Pack ........................................................................
 const files = new Set<string>();
-for(const part of CATALOG) closure(library, `${part.ldraw}.dat`, files);
+for(const part of CATALOG) for(const name of [`${part.ldraw}.dat`, ...pieceFiles(part)]) closure(library, name, files);
 
 const sections = [...files].sort().map(name => `0 FILE ${cacheKey(name)}\n${readPart(library, name).trimEnd()}\n`);
 const header = [
@@ -399,9 +428,10 @@ const facts = [
   '/** footprint in studs along x (`width`) and z (`depth`), height in plates, the LDraw',
   ' *  origin in studs from the footprint\'s minimum corner and its `base` in plates above',
   ' *  the part\'s bottom, the top-stud cells and the filled cells ([x, z, bottom level,',
-  ' *  top level exclusive]), all at rotation 0, a glass pane\'s `drop` (LDU) below its',
+  ' *  top level exclusive]), all at rotation 0, the `top` level of its top studs when',
+  ' *  the part reaches above them (a wheel set\'s tires), a glass pane\'s `drop` (LDU) below its',
   ' *  frame\'s origin and the side a curve `descends` to, keyed by LDraw file stem */',
-  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; drop?: number; descends?: 'north' | 'south' | 'east' | 'west'; }>>> = ${JSON.stringify(geometry)};`,
+  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; top?: number; drop?: number; descends?: 'north' | 'south' | 'east' | 'west'; }>>> = ${JSON.stringify(geometry)};`,
   '',
   '/** LDConfig color value, keyed by LDraw color code */',
   `export const COLOR_VALUES: Readonly<Record<number, string>> = ${JSON.stringify(colors, null, 2)};`,

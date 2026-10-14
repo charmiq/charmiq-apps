@@ -4,7 +4,7 @@
 // NOTE: this module has no imports so that tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -15,6 +15,11 @@ export type CatalogPart = Readonly<{
   kind: PartKind;
   /** a glass pane's frame (LDraw file stem): the pane sits in it, at its position */
   frame?: string;
+  /** the other LDraw lines the part is assembled from (a wheel set's rims and
+   *  tires), as written beside its own line at its origin and rotation 0. Each keeps
+   *  its own color: the viewer draws a file in one color, so a part of several
+   *  colors is several lines */
+  pieces?: ReadonlyArray<string>;
 }>;
 
 /** whether a kind's underside is open (an arch's span, an inverted slope's face, a
@@ -214,6 +219,19 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'cow',             ldraw: '64452', kind: 'creature' },
   { key: 'wolf',            ldraw: '6649',  kind: 'creature' },
   { key: 'dinosaur',        ldraw: '30464', kind: 'creature' },
+
+  // a wheel set is the plate with two wheel pins and a light grey rim and black tire
+  // on each pin, as the library's sample car (models/car.ldr) mounts them
+  { key: 'wheels-4x2',      ldraw: '4600',  kind: 'vehicle', pieces: [
+    '1 71 -30 6 0 0 0 1 0 1 0 -1 0 0 4624.dat', '1 0 -30 6 0 0 0 1 0 1 0 -1 0 0 3641.dat',
+    '1 71 30 6 0 0 0 -1 0 1 0 1 0 0 4624.dat',  '1 0 30 6 0 0 0 -1 0 1 0 1 0 0 3641.dat',
+  ] },
+  { key: 'mudguard-2x4',    ldraw: '3788',  kind: 'vehicle' },
+  { key: 'windscreen-2x4x2', ldraw: '3823', kind: 'vehicle' },
+  // the stand and its black wheel, as the library's complete steering wheel (3829c01)
+  { key: 'steering-wheel',  ldraw: '3829a', kind: 'vehicle', pieces: [
+    '1 0 0 -26.32 -0.24 0 0 1 -0.8 0.6 0 -0.6 -0.8 0 3828.dat',
+  ] },
 ];
 
 // == Colors ======================================================================

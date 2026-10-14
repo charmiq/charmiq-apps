@@ -27,6 +27,7 @@ const GRID = [
   'Creatures stand on their feet and fill part of their box; leave room around them.',
   'Trees, bushes and plants stand on their base (the cells their fill starts at 0) and spread over the cells around it from higher up, so smaller parts fit under the foliage.',
   'A glass part fills nothing: place it at its frame\'s exact x, z, level and rotation (its row names the frame). Removing the frame removes its glass; glass with no frame floats.',
+  'A wheel set is a plate between two wheels on an axle running east-west at rotation 0, so it rolls north and south; it stands on its tires. Its studs are lower than its tires: its row names the level they are at, and parts over its wheel columns must clear the tires. A mudguard placed one level above a wheel set\'s studs, on a plate across them, arches over its wheels. A steering wheel faces north at rotation 0.',
   'Colors named trans- are see-through plastic.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east.',
@@ -148,7 +149,8 @@ const partRow = (part: CatalogPart): string => {
     (part.kind === 'roof-corner') ? roofCorner(shape) :
     '';
   const fills = (!frame && (part.kind !== 'creature') && !fillsBox(shape)) ? ` fills ${fillMap(shape)}` : ''/*a creature's shape is checked, not listed*/;
-  return `${part.key} ${shape.width}x${shape.depth}x${shape.height}${descent}${fills}${frame ? ` sits in ${frame.key}` : ''}`;
+  const studs = (shape.top !== undefined) ? ` studs at level ${shape.top}` : '';
+  return `${part.key} ${shape.width}x${shape.depth}x${shape.height}${descent}${studs}${fills}${frame ? ` sits in ${frame.key}` : ''}`;
 };
 
 /** where a roof corner peaks (a lone stud cell) or dips (the one cell without a stud) */

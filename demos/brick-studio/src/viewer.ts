@@ -6,7 +6,7 @@ import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawCondit
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { CATALOG } from './catalog';
-import { getColor, getColorByCode, getColorValue, getPart, getShape, ldrawPosition, LDU_PER_STUD, rotationMatrix } from './grid';
+import { getColor, getColorByCode, getColorValue, getPart, getShape, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
 import type { Model } from './model';
 import PARTS_LDRAW from './parts.ldr';
 import { Effects } from './render/effects';
@@ -29,8 +29,9 @@ const SCENE_TO_LDRAW = LDRAW_TO_SCENE.clone().invert();
 /** a color outside the palette renders as this neutral */
 const UNKNOWN_COLOR = '#A0A5A9';
 const WHITE = new THREE.Color(1, 1, 1);
-/** the parts the pack holds (the catalog's), the only ones a geometry is built for */
-const PACKED = new Set(CATALOG.map(part => part.ldraw));
+/** the parts the pack holds (the catalog's and their pieces'), the only ones a
+ *  geometry is built for */
+const PACKED = new Set(CATALOG.flatMap(partFiles));
 
 const BASEPLATE_MIN = 16/*studs*/;
 const BASEPLATE_MARGIN = 4/*studs*/;
@@ -601,18 +602,19 @@ export class Viewer {
 // == Render items ================================================================
 /** every part line of a build that has catalog geometry, with its scene transform */
 const renderItems = (model: Model): RenderItem[] => [
-  ...model.placements.map(placement => {
+  ...model.placements.flatMap(placement => {
     const part = getPart(placement.part)!/*by contract*/;
     const color = getColor(placement.color)!/*by contract*/;
-    const position = ldrawPosition(getShape(part), placement);
-    const matrix = rotationMatrix(placement.rotation);
-    return { ldraw: part.ldraw, color: getColorValue(color.code) ?? UNKNOWN_COLOR, glass: !!color.transparent, key: `${part.ldraw}|${color.code}|${position}|${matrix}`, matrix: toScene(position, matrix) };
+    return placedLines(getShape(part), placement, color.code);
   }),
-  ...model.others.map(other => ({
-    ldraw: other.ldraw, color: getColorValue(other.colorCode) ?? UNKNOWN_COLOR, glass: !!getColorByCode(other.colorCode)?.transparent,
-    key: `${other.ldraw}|${other.colorCode}|${other.position}|${other.matrix}`, matrix: toScene(other.position, other.matrix),
-  })),
-];
+  ...model.others,
+].map(renderItem);
+
+/** a part line as drawn */
+const renderItem = (line: PartLine): RenderItem => ({
+  ldraw: line.ldraw, color: getColorValue(line.colorCode) ?? UNKNOWN_COLOR, glass: !!getColorByCode(line.colorCode)?.transparent,
+  key: `${line.ldraw}|${line.colorCode}|${line.position}|${line.matrix}`, matrix: toScene(line.position, line.matrix),
+});
 
 /** the scene transform of an LDraw position and rotation */
 const toScene = (position: readonly number[], m: readonly number[]): THREE.Matrix4 =>

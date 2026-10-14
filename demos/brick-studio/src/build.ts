@@ -1,7 +1,7 @@
 import { checkModel, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, frameKey, getColor, getPart, getShape, toRotation, type Placement } from './grid';
-import { appendLines, deleteLines, EMPTY_MODEL, MAX_PARTS, parseModel, placementLine, READ_IN_PART, serializeModel, type Model, type ModelLayout } from './model';
+import { appendLines, deleteLines, EMPTY_MODEL, MAX_PARTS, parseModel, placementLines, READ_IN_PART, serializeModel, type Model, type ModelLayout } from './model';
 
 // owns the current build: the `model` app-content's text, as last seen. Every
 // edit is validated against the app-content's text it is measured on, and the
@@ -120,7 +120,7 @@ export class Build {
 
       const addedNames = new Set(added.map(describePlacement));
       outcome = { added: added.length, total: partCount(next), floating: result.floating.filter(name => addedNames.has(name)) };
-      return [appendLines(layout, added.map(placementLine), newStep)];
+      return [appendLines(layout, added.flatMap(placementLines), newStep)];
     });
     return outcome;
   }
@@ -167,7 +167,7 @@ export class Build {
       });
 
       outcome = { removed: [...removing].map(index => describePlacement(model.placements[index])), empty };
-      return deleteLines([...removing].map(index => layout.placements[index]));
+      return deleteLines([...removing].flatMap(index => [layout.placements[index], ...layout.pieces[index]]));
     });
     return outcome;
   }
@@ -180,7 +180,7 @@ export class Build {
     await this.bridge.edit(text => {
       const { model, layout } = editable(text);
       removed = partCount(model);
-      return deleteLines([...layout.placements, ...layout.others, ...layout.steps]);
+      return deleteLines([...layout.placements, ...layout.pieces.flat(), ...layout.others, ...layout.steps]);
     });
     return removed;
   }

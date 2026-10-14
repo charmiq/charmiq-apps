@@ -1,18 +1,20 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import { getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, ldrawPosition, matrixRotation, rotationMatrix, type Placement } from './grid';
+import { compose, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, placedLines, type PartLine, type Placement, type Transform } from './grid';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
 // written, and each type-1 line is one part. A multi-part (MPD) file is flattened
 // into its placed parts. A line whose part is in the catalog and lies on the grid
 // is a Placement; any other part line is kept and counted, never dropped. A flat
 // file's parts also carry where their lines lie, so an edit changes those lines
-// alone. `0 STEP` lines in the main file split the parts into building steps, in
+// alone. A part assembled from pieces (a wheel set) is its own line and its
+// pieces' lines, each where the part puts it: those lines are read as the part, and
+// the part is written whole. `0 STEP` lines in the main file split the parts into building steps, in
 // order; a step with no parts is no step
 // ********************************************************************************
 // == Types =======================================================================
 /** a part line that is not a Placement (a part outside the catalog, an unknown
  *  color, or a position or rotation off the grid) */
-export type OtherPart = Readonly<{ ldraw: string; colorCode: number; position: readonly [number, number, number]; matrix: readonly number[]; }>;
+export type OtherPart = PartLine;
 
 /** a line in the text, its line break included (UTF-16 offsets) */
 export type Span = Readonly<{ from: number; to: number; }>;
@@ -21,6 +23,8 @@ export type ModelLayout = Readonly<{
   /** the line of each of `placements` and of `others`, in order */
   placements: ReadonlyArray<Span>;
   others: ReadonlyArray<Span>;
+  /** the lines of each placement's pieces, in the order of `placements` */
+  pieces: ReadonlyArray<ReadonlyArray<Span>>;
   /** every `0 STEP` line */
   steps: ReadonlyArray<Span>;
   /** the first `0 STEP` line after the last part, when the text ends in steps:
@@ -67,15 +71,7 @@ const STEP_LINE = '0 STEP';
 export const EMPTY_MODEL: Model = { header: DEFAULT_HEADER, placements: [], others: [] };
 
 // == Parse =======================================================================
-type Transform = Readonly<{ matrix: readonly number[]; position: readonly [number, number, number]; }>;
 const IDENTITY: Transform = { matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], position: [0, 0, 0] };
-
-const compose = (parent: Transform, child: Transform): Transform => {
-  const p = parent.matrix, c = child.matrix;
-  const matrix = [0, 1, 2].flatMap(row => [0, 1, 2].map(col => (p[row*3] * c[col]) + (p[row*3 + 1] * c[3 + col]) + (p[row*3 + 2] * c[6 + col])));
-  const position = [0, 1, 2].map(row => (p[row*3] * child.position[0]) + (p[row*3 + 1] * child.position[1]) + (p[row*3 + 2] * child.position[2]) + parent.position[row]) as [number, number, number];
-  return { matrix, position };
-};
 
 // --------------------------------------------------------------------------------
 /** parses LDraw text (LDR or MPD) into a Model. Submodels are flattened; LDraw's
@@ -99,7 +95,7 @@ export const parseModel = (text: string): Model => {
     if(main === undefined) { main = ''; files.set(main, current); }
     current.push(line);
   }
-  if(main === undefined) return { ...EMPTY_MODEL, layout: { placements: [], others: [], steps: [], length: 0, lineBreak: '\n', endsWithBreak: false } }/*empty text*/;
+  if(main === undefined) return { ...EMPTY_MODEL, layout: { placements: [], others: [], pieces: [], steps: [], length: 0, lineBreak: '\n', endsWithBreak: false } }/*empty text*/;
 
   const header: string[] = [];
   const placements: Placement[] = [];
@@ -148,20 +144,50 @@ export const parseModel = (text: string): Model => {
     }
   };
   walk(main, IDENTITY, 16, 0, true);
+  const pieceSpans = absorbPieces(placements, others, otherSpans, otherSteps);
 
   exceeded();
   const flat = (files.size === 1) && (main === '')/*no `0 FILE` section: each part is its own line*/;
   const lineBreak = lines.find(line => line.lineBreak)?.lineBreak ?? '\n';
-  const lastPart = Math.max(0, ...placementSpans.map(span => span.to), ...otherSpans.map(span => span.to));
+  const lastPart = Math.max(0, ...placementSpans.map(span => span.to), ...otherSpans.map(span => span.to), ...pieceSpans.flat().map(span => span.to));
   const trailingStep = ((placementSpans.length + otherSpans.length) > 0) ? stepSpans.find(span => span.from >= lastPart) : undefined;
   const steps = numberSteps(placementSteps, otherSteps);
   return {
     header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others,
     ...(truncated ? { truncated } : {}),
-    ...(flat ? { layout: { placements: placementSpans, others: otherSpans, steps: stepSpans, ...(trailingStep ? { trailingStep } : {}), length: text.length, lineBreak, endsWithBreak: /[\r\n]$/.test(text) } } : {}),
+    ...(flat ? { layout: { placements: placementSpans, others: otherSpans, pieces: pieceSpans, steps: stepSpans, ...(trailingStep ? { trailingStep } : {}), length: text.length, lineBreak, endsWithBreak: /[\r\n]$/.test(text) } } : {}),
     ...((steps.count > 1) ? { steps } : {}),
   };
 };
+
+// ................................................................................
+/** takes each placement's pieces out of the other parts, where a line lies as its
+ *  piece would: the lines are the placement's. Returns each placement's piece lines,
+ *  in order. The arrays of other parts are changed in place */
+const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[], otherSpans: Span[], otherSteps: number[]): Span[][] => {
+  const taken = new Set<number>();
+  const pieceSpans = placements.map(placement => {
+    const part = getPart(placement.part)!/*by contract*/;
+    if(!part.pieces) return [];
+    const [, ...pieces] = placedLines(getShape(part), placement, getColor(placement.color)!.code/*by contract*/);
+    return pieces.flatMap(piece => {
+      const index = others.findIndex((other, at) => !taken.has(at) && sameLine(other, piece));
+      if(index < 0) return []/*missing: written whole again*/;
+      taken.add(index);
+      return [otherSpans[index]];
+    });
+  });
+
+  const removeTaken = <T,>(array: T[]): void => { array.splice(0, array.length, ...array.filter((_, index) => !taken.has(index))); };
+  removeTaken(others); removeTaken(otherSpans); removeTaken(otherSteps);
+  return pieceSpans;
+};
+
+/** whether two part lines are the same file, color and transform */
+const sameLine = (a: PartLine, b: PartLine): boolean =>
+  (a.ldraw.toLowerCase() === b.ldraw.toLowerCase()) && (a.colorCode === b.colorCode) &&
+  a.position.every((value, index) => Math.abs(value - b.position[index]) < 1e-2) &&
+  a.matrix.every((value, index) => Math.abs(value - b.matrix[index]) < 1e-3);
 
 // ................................................................................
 /** whether a line is LDraw's `0 STEP` meta-command */
@@ -227,17 +253,18 @@ export const serializeModel = (model: Model): string => {
   const lines = [...model.header];
   for(let step=1; step<=(steps?.count ?? 1); step++) {
     if(step > 1) lines.push(STEP_LINE);
-    lines.push(...model.placements.filter((_, index) => (steps?.placements[index] ?? 1) === step).map(placementLine));
+    lines.push(...model.placements.filter((_, index) => (steps?.placements[index] ?? 1) === step).flatMap(placementLines));
     lines.push(...model.others.filter((_, index) => (steps?.others[index] ?? 1) === step).map(other => partLine(other.colorCode, other.position, other.matrix, other.ldraw)));
   }
   return lines.join('\n') + '\n';
 };
 
-/** the LDraw line of a Placement (its part and color are catalog entries by contract) */
-export const placementLine = (placement: Placement): string => {
+/** the LDraw lines of a Placement: its own, then its pieces' (its part and color
+ *  are catalog entries by contract) */
+export const placementLines = (placement: Placement): string[] => {
   const part = getPart(placement.part)!/*by contract*/;
   const color = getColor(placement.color)!/*by contract*/;
-  return partLine(color.code, ldrawPosition(getShape(part), placement), rotationMatrix(placement.rotation), part.ldraw);
+  return placedLines(getShape(part), placement, color.code).map(line => partLine(line.colorCode, line.position, line.matrix, line.ldraw));
 };
 
 // == Line Edits ==================================================================
