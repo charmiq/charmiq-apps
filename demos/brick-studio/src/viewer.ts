@@ -8,8 +8,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CATALOG } from './catalog';
 import { getColor, getColorByCode, getColorValue, getPart, getShape, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
 import type { Model } from './model';
-import { COLOR_VALUES } from './parts.generated';
-import PARTS_LDRAW from './parts.ldr';
+import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
+import PARTS_LDRAW from './parts/built-in.ldr';
 import { Effects } from './render/effects';
 import type { Fidelity } from './render/fidelity';
 import { PathTrace } from './render/pathTrace';
@@ -113,6 +113,12 @@ export class Viewer {
   private readonly prints = new Map<string/*ldraw*/, ReadonlyArray<number>>();
   private readonly seams = new Map<string/*ldraw*/, THREE.Matrix4>();
   private readonly building = new Map<string/*ldraw*/, Promise<void>>();
+  /** each family read into the loader, or being read (SEE: PART_RESOURCES) */
+  private readonly families = new Map<string/*resource name*/, Promise<void>>();
+  /** parts that could not be drawn (their family could not be read, or their
+   *  geometry not built): never tried again until a retry */
+  private readonly unbuilt = new Set<string/*ldraw*/>();
+  private onUnbuiltChanged: (() => void) | null = null;
   private loader: LDrawLoader | undefined;
   private studGeometry: THREE.BufferGeometry | undefined;
 
@@ -130,7 +136,7 @@ export class Viewer {
   private frameRequested = false;
 
   // == Lifecycle =================================================================
-  public constructor(private readonly canvas: HTMLCanvasElement, theme: Theme) {
+  public constructor(private readonly canvas: HTMLCanvasElement, theme: Theme, private readonly readResource: (name: string) => Promise<string>/*a declared resource's text*/) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true/*the Application screenshot reads the canvas*/ });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -179,35 +185,73 @@ export class Viewer {
     // parts are drawn in keeps a print's code (SEE: toSceneGeometries)
     for(const code of Object.keys(COLOR_VALUES)) loader.addMaterial(Object.assign(new THREE.MeshStandardMaterial(), { userData: { code } }));
 
-    await parse(loader, PARTS_LDRAW)/*caches every packed file*/;
+    await parse(loader, PARTS_LDRAW)/*caches every built-in file; a family's are cached when it is read*/;
     this.loader = loader;
     this.studGeometry = toSceneGeometries(await parse(loader, single('stud.dat'))).get(OWN_COLOR);
   }
 
-  /** builds the geometry of the catalog parts a model shows that have none yet, then
-   *  shows the model again if it is still the one shown. Settling waits for it */
+  /** builds the geometry of the catalog parts a model shows that have none yet,
+   *  reading the families they are in first, then shows the model again if it is
+   *  still the one shown. A part that cannot be drawn is counted (SEE: unbuiltCount)
+   *  and left out; the build itself never changes. Settling waits for it */
   private buildGeometries(model: Model, animate: boolean): void {
     const missing = [...new Set(renderItems(model).map(item => item.ldraw))]
-      .filter(ldraw => !this.prints.has(ldraw)/*built*/ && !this.building.has(ldraw) && PACKED.has(ldraw));
-    if(missing.length < 1) return/*every part shown has its geometry, or is being built*/;
+      .filter(ldraw => !this.prints.has(ldraw)/*built*/ && !this.building.has(ldraw) && !this.unbuilt.has(ldraw) && PACKED.has(ldraw));
+    if(missing.length < 1) return/*every part shown has its geometry, is being built or cannot be*/;
 
     const loader = this.loader;
     if(!loader) return/*not loaded*/;
     const built = (async () => {
+      const families = [...new Set(missing.flatMap(ldraw => PART_RESOURCES[ldraw.toLowerCase()] ?? []))];
+      const read = await Promise.allSettled(families.map(name => this.readFamily(loader, name)));
+      const failed = new Set(families.filter((_, index) => read[index].status === 'rejected'));
       for(const ldraw of missing) {
-        const byColor = toSceneGeometries(await parse(loader, single(`${ldraw}.dat`)));
-        const prints = [...byColor.keys()].filter(code => code !== OWN_COLOR);
-        for(const [code, geometry] of byColor) this.geometries.set((code === OWN_COLOR) ? ldraw : printKey(ldraw, code), geometry);
-        this.prints.set(ldraw, prints);
-        this.seams.set(ldraw, seamMatrix(byColor.get(OWN_COLOR) ?? byColor.values().next().value!/*a part drawn in fixed colors alone*/));
+        try {
+          const family = PART_RESOURCES[ldraw.toLowerCase()];
+          if((family !== undefined) && failed.has(family)) { this.unbuilt.add(ldraw); continue; }
+          const byColor = toSceneGeometries(await parse(loader, single(`${ldraw}.dat`)));
+          const prints = [...byColor.keys()].filter(code => code !== OWN_COLOR);
+          for(const [code, geometry] of byColor) this.geometries.set((code === OWN_COLOR) ? ldraw : printKey(ldraw, code), geometry);
+          this.prints.set(ldraw, prints);
+          this.seams.set(ldraw, seamMatrix(byColor.get(OWN_COLOR) ?? byColor.values().next().value!/*a part drawn in fixed colors alone*/));
+        } catch(error) {
+          console.error(`brick-studio: part ${ldraw} could not be built:`, error);
+          this.unbuilt.add(ldraw);
+        }
       }
-    })().catch(error => console.error('brick-studio: a part could not be built:', error))
-      .finally(() => {
+    })().finally(() => {
         for(const ldraw of missing) this.building.delete(ldraw);
+        if(missing.some(ldraw => this.unbuilt.has(ldraw))) this.onUnbuiltChanged?.();
         if(this.model === model) this.setModel(model, animate)/*its parts now have geometry*/;
         this.requestFrame();
       });
     for(const ldraw of missing) this.building.set(ldraw, built);
+  }
+
+  /** reads a family into the loader once; a failed read is read again on a retry */
+  private readFamily(loader: LDrawLoader, name: string): Promise<void> {
+    let read = this.families.get(name);
+    if(!read) {
+      read = this.readResource(name).then(text => parse(loader, text)).then(() => undefined/*its files are cached*/);
+      read.catch(error => { console.error(`brick-studio: the ${name} parts could not be read:`, error); this.families.delete(name); });
+      this.families.set(name, read);
+    } /* else -- read, or being read */
+    return read;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** how many of a build's parts are not drawn because they could not be */
+  public unbuiltCount(model: Model): number {
+    const placements = model.placements.filter(placement => partFiles(getPart(placement.part)!/*by contract*/).some(ldraw => this.unbuilt.has(ldraw)));
+    return placements.length + model.others.filter(other => this.unbuilt.has(other.ldraw)).length;
+  }
+  /** register the callback for parts becoming undrawable, or drawable again */
+  public onUnbuilt(callback: () => void): void { this.onUnbuiltChanged = callback; }
+  /** tries every part that could not be drawn again */
+  public retryUnbuilt(): void {
+    this.unbuilt.clear();
+    this.onUnbuiltChanged?.();
+    if(this.model) this.setModel(this.model, false);
   }
 
   // == Theme =====================================================================

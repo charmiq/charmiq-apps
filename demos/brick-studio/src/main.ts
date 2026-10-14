@@ -24,6 +24,8 @@ const statusText = element<HTMLSpanElement>('statusText');
 const hint = element<HTMLParagraphElement>('hint');
 const loading = element<HTMLDivElement>('loading');
 const loadingText = element<HTMLSpanElement>('loadingText');
+const retryButton = element<HTMLButtonElement>('retryButton');
+const retrySep = element<HTMLSpanElement>('retrySep');
 
 // == Theme =======================================================================
 // the tags take their colors from the same palette as the bricks
@@ -39,7 +41,7 @@ const readTheme = () => {
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 // == Instances ===================================================================
-const viewer = new Viewer(canvas, readTheme());
+const viewer = new Viewer(canvas, readTheme(), name => charmiq.resources.text(name)/*a part family, read the first time a build shows it*/);
 const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
@@ -58,7 +60,9 @@ const showStatus = (model: Model) => {
   const result = build.check();
   const count = model.placements.length + model.others.length;
   const builds = build.builds().length;
+  const unbuilt = viewer.unbuiltCount(model);
   const notes = [
+    (unbuilt > 0) ? `${unbuilt} not shown · parts failed to load` : undefined,
     (builds > 1) ? `${builds} builds in this document · edits paused` : undefined,
     build.isUncertain() ? 'could not check the document · reload to try again' : undefined,
     result.truncated ? 'read in part' : undefined,
@@ -67,13 +71,15 @@ const showStatus = (model: Model) => {
     (result.unchecked > 0) ? `${result.unchecked} off grid` : undefined,
   ].filter(Boolean);
   statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
-  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1));
+  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0));
+  retryButton.hidden = retrySep.hidden = (unbuilt < 1);
   hint.hidden = (count > 0) || result.truncated;
 };
 
 const plural = (count: number, noun: string): string => `${count} ${noun}${(count === 1) ? '' : 's'}`;
 
 // == Controls ====================================================================
+retryButton.addEventListener('click', () => viewer.retryUnbuilt());
 element('fitButton').addEventListener('click', () => void viewer.setView(viewer.getView(), true));
 element('frontButton').addEventListener('click', () => void viewer.setView({ azimuth: 0, elevation: 12 }, true));
 element('topButton').addEventListener('click', () => void viewer.setView({ azimuth: 0, elevation: 89 }, true));
@@ -170,6 +176,7 @@ const start = async () => {
     showStatus(model);
   });
   build.onUncertain(() => showStatus(build.getModel()));
+  viewer.onUnbuilt(() => showStatus(build.getModel()));
   commands.init()/*each command waits for the build*/;
   try {
     await build.init();

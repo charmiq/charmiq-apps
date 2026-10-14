@@ -42,7 +42,7 @@
           <span class="look-state" id="fidelityState" aria-live="polite"></span>
         </label>
         <p class="status" id="status" aria-live="polite">
-          <span id="statusText"></span><span class="status-sep">·</span><button class="status-link" id="resetButton">Reset view</button>
+          <span id="statusText"></span><span class="status-sep" id="retrySep" hidden>·</span><button class="status-link" id="retryButton" hidden>Retry</button><span class="status-sep">·</span><button class="status-link" id="resetButton">Reset view</button>
         </p>
         <div class="steps" id="steps" role="group" aria-label="Building steps" hidden>
           <button class="tag tag--ink" id="stepFirst" title="First step" aria-label="First step">

@@ -22,10 +22,26 @@ export type CatalogPart = Readonly<{
   pieces?: ReadonlyArray<string>;
 }>;
 
+// ................................................................................
 /** whether a kind's underside is open (an arch's span, an inverted slope's face, a
  *  plant's foliage over its base): its fill is measured from below there, never
  *  assumed to reach its bottom */
 export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'plant') || (kind === 'creature') || (kind === 'figure');
+
+// ................................................................................
+/** the family a part's geometry is packed in and loaded with on first use, or
+ *  undefined for the building parts every build needs (SEE: tools/pack-parts.ts).
+ *  A creature is a family of its own: each is large and shares little */
+export const familyOf = (part: CatalogPart): string | undefined => {
+  switch(part.kind) {
+    case 'plant': case 'rock':     return 'nature';
+    case 'fence': case 'detail':   return 'details';
+    case 'vehicle':                return 'vehicles';
+    case 'figure':                 return 'figures';
+    case 'creature':               return `creature-${part.key}`;
+    default:                       return undefined/*a building part*/;
+  }
+};
 
 // --------------------------------------------------------------------------------
 export const CATALOG: ReadonlyArray<CatalogPart> = [
