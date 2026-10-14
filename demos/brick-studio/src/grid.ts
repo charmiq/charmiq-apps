@@ -251,7 +251,7 @@ export const copyPosition = (footprint: Footprint, component: string, transform:
   const [cornerX, cornerZ] = turnedCorner(footprint, rotation);
   const x = (transform.position[0] / LDU_PER_STUD) + cornerX;
   const z = (transform.position[2] / LDU_PER_STUD) + cornerZ;
-  const level = -transform.position[1] / LDU_PER_PLATE;
+  const level = 0 - (transform.position[1] / LDU_PER_PLATE)/*never -0 on the ground*/;
   if(!isWhole(x) || !isWhole(z) || !isWhole(level)) return undefined;
   return { component, x: Math.round(x), z: Math.round(z), level: Math.round(level), rotation };
 };
