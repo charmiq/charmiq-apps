@@ -223,10 +223,17 @@
               },
               "required": ["name", "size", "parts", "copies"]
             },
-            "ok":    { "type": "boolean" },
-            "parts": { "type": "integer", "description": "Parts in the build" }
+            "ok":            { "type": "boolean" },
+            "parts":         { "type": "integer", "description": "Parts in the build" },
+            "collisions":    { "type": "integer" },
+            "collidingPairs":{ "type": "array", "items": { "type": "object" } },
+            "floating":      { "type": "integer" },
+            "floatingParts": { "type": "array", "items": { "type": "string" } },
+            "unchecked":     { "type": "integer" },
+            "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
+            "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" }
           },
-          "required": ["component", "ok", "parts"]
+          "required": ["component", "ok", "parts", "collisions", "floating"]
         }
       },
       {
