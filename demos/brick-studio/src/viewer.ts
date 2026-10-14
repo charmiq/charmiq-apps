@@ -445,6 +445,25 @@ export class Viewer {
 
   /** resolves once every part has landed, any view change has finished and that
    *  frame is drawn */
+  /** the build from each view, framed, as a PNG data URL once settled; the camera
+   *  is put back after */
+  public async snapshots(views: ReadonlyArray<View>): Promise<string[]> {
+    this.tween?.resolve();
+    this.tween = undefined;
+    const position = this.camera.position.clone(), target = this.controls.target.clone();
+    const images: string[] = [];
+    for(const view of views) {
+      this.jumpToView(view);
+      await this.whenSettled();
+      images.push(this.canvas.toDataURL('image/png'));
+    }
+    this.camera.position.copy(position);
+    this.controls.target.copy(target);
+    this.controls.update();
+    this.requestFrame();
+    return images;
+  }
+
   public whenSettled(): Promise<void> {
     return new Promise(resolve => { this.settleWaiters.push(resolve); this.requestFrame(); });
   }

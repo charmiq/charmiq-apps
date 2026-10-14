@@ -97,17 +97,24 @@
       },
       {
         "name": "listPlacedParts",
-        "description": "Every part in the build with its position",
-        "inputSchema": { "type": "object", "properties": {} },
+        "description": "The parts in the build with their positions, a page at a time: pass next back as from for the next page",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "from": { "type": "integer", "minimum": 0, "description": "The index to start at (the previous page's next)" }
+          }
+        },
         "outputSchema": {
           "type": "object",
           "properties": {
             "parts":     { "type": "array", "items": { "type": "object" }, "description": "Each with its step when the build has more than one" },
+            "total":     { "type": "integer", "description": "Parts in the build" },
+            "next":      { "type": "integer", "description": "Set while parts remain: the next page's from" },
             "unchecked": { "type": "integer", "description": "Parts off the grid or outside the catalog" },
             "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
             "conflict":  { "type": "string", "description": "Set when the document holds more than one build: why, and how to recover. Edits are refused until one remains" }
           },
-          "required": ["parts"]
+          "required": ["parts", "total"]
         }
       },
       {
@@ -262,6 +269,16 @@
         }
       },
       {
+        "name": "lookAround",
+        "description": "Show the build from all four sides at once (south, east, north, west, each framed) so one screenshot sees every side. The next change closes it",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "sides": { "type": "array", "items": { "type": "string" } } },
+          "required": ["sides"]
+        }
+      },
+      {
         "name": "setFidelity",
         "description": "Set how real the bricks look: 0 Draft, 1 Plastic, 2 Shaded, 3 Photo, 4 Path traced (slow; falls back to 3 where unavailable). Resolves once settled, so a screenshot next shows it",
         "inputSchema": {
@@ -282,11 +299,24 @@
       },
       {
         "name": "getModel",
-        "description": "The build as LDraw text. While the document holds more than one build: the conflict and each build's LDraw text, to recover from",
-        "inputSchema": { "type": "object", "properties": {} },
+        "description": "The build as LDraw text, a page of whole lines at a time: pass nextLine back as fromLine for the next page. While the document holds more than one build: the conflict and each build's LDraw text, to recover from",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "fromLine": { "type": "integer", "minimum": 0, "description": "The line to start at (the previous page's nextLine)" }
+          }
+        },
         "outputSchema": {
           "oneOf": [
-            { "type": "string" },
+            {
+              "type": "object",
+              "properties": {
+                "ldraw":    { "type": "string" },
+                "lines":    { "type": "integer", "description": "Lines in the whole text" },
+                "nextLine": { "type": "integer", "description": "Set while lines remain: the next page's fromLine" }
+              },
+              "required": ["ldraw", "lines"]
+            },
             {
               "type": "object",
               "properties": {

@@ -6,6 +6,7 @@ import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { DesignExists, type Designs } from './designs';
 import { getShape, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
+import type { LookAround } from './look-around';
 import type { Viewer } from './viewer';
 
 // the Charm command surface (SEE: manifest.json `advertise`). Results are terse
@@ -14,6 +15,12 @@ import type { Viewer } from './viewer';
 // Application screenshot shows it
 // ********************************************************************************
 // == Constants ===================================================================
+/** the most placed parts one listPlacedParts page holds */
+const PARTS_PER_PAGE = 300;
+/** the most UTF-8 bytes of LDraw one getModel page holds (whole lines) */
+const TEXT_PAGE_BYTES = 48 * 1024/*bytes*/;
+
+// --------------------------------------------------------------------------------
 /** the grid conventions, returned once by listParts */
 const GRID = [
   'x runs east, z north, level up. A cell is one stud; a level is one plate (a brick is 3 levels tall).',
@@ -32,12 +39,12 @@ const GRID = [
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
-  'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east.',
+  'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east. lookAround shows the build from all four sides at once, so one screenshot sees every side; the next change closes it.',
 ].join(' ');
 
 // == Class =======================================================================
 export class CommandSurface {
-  public constructor(private readonly build: Build, private readonly designs: Designs, private readonly viewer: Viewer, private readonly look: FidelityControl) {}
+  public constructor(private readonly build: Build, private readonly designs: Designs, private readonly viewer: Viewer, private readonly lookAround: LookAround, private readonly look: FidelityControl) {}
 
   /** the build's check, model-facing: never sound while the document holds more
    *  than one build, since it covers only the one shown */
@@ -62,13 +69,18 @@ export class CommandSurface {
         colors: COLORS.map(color => color.key),
       }),
 
-      listPlacedParts: async () => {
+      listPlacedParts: async ({ from }: { from?: unknown; }) => {
         await this.build.whenReady();
         const model = this.build.getModel();
         const conflict = this.build.conflict();
         const steps = model.steps;
-        const parts = steps ? model.placements.map((placement, index) => ({ ...placement, step: steps.placements[index] })) : model.placements;
-        return { parts, ...((model.others.length > 0) ? { unchecked: model.others.length } : {}), ...(model.truncated ? { truncated: TRUNCATED } : {}), ...(conflict ? { conflict } : {}) };
+        const start = pageStart(from);
+        const end = Math.min(model.placements.length, start + PARTS_PER_PAGE);
+        const parts = model.placements.slice(start, end).map((placement, index) => steps ? { ...placement, step: steps.placements[start + index] } : placement);
+        return {
+          parts, total: model.placements.length, ...((end < model.placements.length) ? { next: end } : {}),
+          ...((model.others.length > 0) ? { unchecked: model.others.length } : {}), ...(model.truncated ? { truncated: TRUNCATED } : {}), ...(conflict ? { conflict } : {}),
+        };
       },
 
       // an edit answers with the check of the build it made, so no check call follows
@@ -101,6 +113,7 @@ export class CommandSurface {
       },
 
       setFidelity: async ({ fidelity }: { fidelity?: unknown; }) => {
+        this.lookAround.hide();
         const stop = toFidelity(fidelity);
         if(stop === undefined) throw new Error('fidelity must be 0, 1, 2, 3 or 4');
         const reached = await this.look.set(stop);
@@ -108,10 +121,11 @@ export class CommandSurface {
         return { fidelity: reached, look: fidelityLabel(reached) };
       },
 
-      getModel: async () => {
+      getModel: async ({ fromLine }: { fromLine?: unknown; }) => {
         await this.build.whenReady();
         const conflict = this.build.conflict();
-        return conflict ? { conflict, builds: this.build.builds() }/*each build's text, to recover from*/ : this.build.getText();
+        if(conflict) return { conflict, builds: this.build.builds() }/*each build's text, to recover from*/;
+        return textPage(this.build.getText(), pageStart(fromLine));
       },
       setModel: async ({ ldraw }: { ldraw?: unknown; }) => {
         await this.build.replace((typeof ldraw === 'string') ? ldraw : '');
@@ -141,6 +155,7 @@ export class CommandSurface {
       check: async () => { await this.build.whenReady(); return this.report(); },
 
       setView: async ({ azimuth, elevation, fit }: { azimuth?: unknown; elevation?: unknown; fit?: unknown; }) => {
+        this.lookAround.hide();
         const current = this.viewer.getView();
         await this.viewer.setView({
           azimuth: (typeof azimuth === 'number') ? azimuth : current.azimuth,
@@ -149,11 +164,30 @@ export class CommandSurface {
         await this.viewer.whenSettled()/*a screenshot next shows the settled frame*/;
         return this.viewer.getView();
       },
+      lookAround: async () => {
+        await this.build.whenReady();
+        await this.viewer.whenSettled()/*the build as it stands*/;
+        return { sides: await this.lookAround.show() };
+      },
     });
   }
 }
 
 // == Util ========================================================================
+/** where a page starts: a whole number from 0, else the start */
+const pageStart = (value: unknown): number => ((typeof value === 'number') && Number.isInteger(value) && (value > 0)) ? value : 0;
+
+/** whole lines of LDraw text from a line, up to a page's bytes (always at least one
+ *  line), and the line the next page starts at while any remain */
+const textPage = (text: string, fromLine: number) => {
+  const lines = text.split('\n');
+  if(lines[lines.length - 1] === '') lines.pop()/*the final line break*/;
+  const encoder = new TextEncoder();
+  let bytes = 0, end = fromLine;
+  while((end < lines.length) && ((end === fromLine) || ((bytes + encoder.encode(lines[end]).length + 1) <= TEXT_PAGE_BYTES))) bytes += encoder.encode(lines[end++]).length + 1;
+  return { ldraw: lines.slice(fromLine, end).map(line => line + '\n').join(''), lines: lines.length, ...((end < lines.length) ? { nextLine: end } : {}) };
+};
+
 /** a part's listParts row (SEE: GRID) */
 const partRow = (part: CatalogPart): string => {
   const shape = getShape(part);
