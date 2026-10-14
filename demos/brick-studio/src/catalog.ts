@@ -4,7 +4,7 @@
 // NOTE: this module has no imports so that tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'plant' | 'rock' | 'fence' | 'detail';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -20,7 +20,7 @@ export type CatalogPart = Readonly<{
 /** whether a kind's underside is open (an arch's span, an inverted slope's face, a
  *  plant's foliage over its base): its fill is measured from below there, never
  *  assumed to reach its bottom */
-export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'plant');
+export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'plant') || (kind === 'creature');
 
 // --------------------------------------------------------------------------------
 export const CATALOG: ReadonlyArray<CatalogPart> = [
@@ -148,6 +148,72 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'grille-brick-1x2', ldraw: '2877', kind: 'detail' },
   { key: 'round-tile-2x2',  ldraw: '14769', kind: 'detail' },
   { key: 'swirl-plate-1x1', ldraw: '15470', kind: 'detail' },
+  { key: 'log-brick-1x2',   ldraw: '30136', kind: 'detail' },
+  { key: 'log-brick-1x4',   ldraw: '30137', kind: 'detail' },
+  { key: 'panel-1x2x1',     ldraw: '4865b', kind: 'detail' },
+  { key: 'panel-1x2x3',     ldraw: '2362b', kind: 'detail' },
+  { key: 'panel-1x4x1',     ldraw: '30413', kind: 'detail' },
+  { key: 'grille-tile-1x2', ldraw: '2412b', kind: 'detail' },
+  { key: 'rounded-tile-1x1', ldraw: '24246', kind: 'detail' },
+  { key: 'rounded-tile-1x2', ldraw: '1126',  kind: 'detail' },
+  { key: 'corner-tile-2x2', ldraw: '14719', kind: 'detail' },
+  { key: 'quarter-round-tile-2x2', ldraw: '27925', kind: 'detail' },
+  { key: 'door-rail-plate-1x2', ldraw: '32028', kind: 'detail' },
+  { key: 'tooth-plate-1x1', ldraw: '15070', kind: 'detail' },
+
+  { key: 'curve-2x1',       ldraw: '11477', kind: 'curve' },
+  { key: 'curve-3x1',       ldraw: '50950', kind: 'curve' },
+  { key: 'curve-4x1-tall',  ldraw: '3573',  kind: 'curve' },
+  { key: 'curve-6x1',       ldraw: '42022', kind: 'curve' },
+  { key: 'curve-2x2',       ldraw: '15068', kind: 'curve' },
+  { key: 'curve-3x2',       ldraw: '24309', kind: 'curve' },
+  { key: 'curve-6x2',       ldraw: '44126', kind: 'curve' },
+  { key: 'curve-8x2',       ldraw: '42918', kind: 'curve' },
+  { key: 'curve-top-2x2',   ldraw: '30602', kind: 'curve' },
+  { key: 'inverted-curve-2x1', ldraw: '24201', kind: 'inverted' },
+  { key: 'inverted-curve-4x1', ldraw: '13547', kind: 'inverted' },
+  { key: 'inverted-curve-6x1', ldraw: '42023', kind: 'inverted' },
+  { key: 'inverted-curve-2x2', ldraw: '32803', kind: 'inverted' },
+
+  { key: 'cone-half-4x2',   ldraw: '38317', kind: 'round' },
+  { key: 'dish-2x2',        ldraw: '2654b', kind: 'round' },
+  { key: 'dish-3x3',        ldraw: '43898', kind: 'round' },
+  { key: 'dish-6x6',        ldraw: '44375b', kind: 'round' },
+  { key: 'dish-8x8',        ldraw: '3961',  kind: 'round' },
+  { key: 'dome-2x2',        ldraw: '24947', kind: 'round' },
+  { key: 'cylinder-half-2x4', ldraw: '24593', kind: 'round' },
+
+  { key: 'cat',             ldraw: '11602', kind: 'creature' },
+  { key: 'cat-crouching',   ldraw: '6251',  kind: 'creature' },
+  { key: 'dog-terrier',     ldraw: '26078', kind: 'creature' },
+  { key: 'dog-bulldog',     ldraw: '29602', kind: 'creature' },
+  { key: 'dog-dachshund',   ldraw: '53075', kind: 'creature' },
+  { key: 'puppy',           ldraw: '2889',  kind: 'creature' },
+  { key: 'bunny',           ldraw: '29685', kind: 'creature' },
+  { key: 'rabbit',          ldraw: '33207', kind: 'creature' },
+  { key: 'mouse',           ldraw: '35757', kind: 'creature' },
+  { key: 'rat',             ldraw: '40234', kind: 'creature' },
+  { key: 'squirrel',        ldraw: '11568', kind: 'creature' },
+  { key: 'frog',            ldraw: '33320', kind: 'creature' },
+  { key: 'turtle',          ldraw: '11603', kind: 'creature' },
+  { key: 'snake',           ldraw: '30115', kind: 'creature' },
+  { key: 'snake-large',     ldraw: '38801', kind: 'creature' },
+  { key: 'crab',            ldraw: '33121', kind: 'creature' },
+  { key: 'starfish',        ldraw: '33122', kind: 'creature' },
+  { key: 'spider',          ldraw: '30238', kind: 'creature' },
+  { key: 'octopus',         ldraw: '6086',  kind: 'creature' },
+  { key: 'penguin',         ldraw: '26074', kind: 'creature' },
+  { key: 'owl',             ldraw: '40232', kind: 'creature' },
+  { key: 'parrot',          ldraw: '2546',  kind: 'creature' },
+  { key: 'seagull',         ldraw: '12891', kind: 'creature' },
+  { key: 'chick',           ldraw: '3918',  kind: 'creature' },
+  { key: 'duckling',        ldraw: '49661', kind: 'creature' },
+  { key: 'flamingo',        ldraw: '57798', kind: 'creature' },
+  { key: 'piglet',          ldraw: '1410',  kind: 'creature' },
+  { key: 'lamb',            ldraw: '1569',  kind: 'creature' },
+  { key: 'cow',             ldraw: '64452', kind: 'creature' },
+  { key: 'wolf',            ldraw: '6649',  kind: 'creature' },
+  { key: 'dinosaur',        ldraw: '30464', kind: 'creature' },
 ];
 
 // == Colors ======================================================================

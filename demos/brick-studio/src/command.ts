@@ -20,10 +20,11 @@ const GRID = [
   'A part\'s x, z is the south-west corner of its footprint and level is its bottom.',
   'At rotation 0 a part spans width along x and depth along z; rotation 90, 180 or 270 turns it clockwise seen from above (90 and 270 swap width and depth).',
   'A part holds the part above it where its top studs lie under that part. Tiles have no top studs; a slope has studs only along its high row.',
-  'Each part row reads: name, then width x depth x height (studs, studs, levels), then which way a slope descends at rotation 0.',
+  'Each part row reads: name, then width x depth x height (studs, studs, levels), then which way a slope or curve descends at rotation 0.',
   'A name\'s third number counts bricks (brick-1x1x3 is 9 levels tall); the row gives every height in levels.',
   'A part that does not fill its whole box ends its row with fills: its cells at rotation 0, rows from north to south separated by /, cells west to east separated by commas; # fills the part\'s full height, . is empty, and a-b fills levels a up to but not including b counted from the part\'s bottom (an arch\'s span, an inverted slope\'s underside). Other parts fill their whole box.',
   'The slope name gives its angle (45, 33 or 65 degrees). A ridge peaks along an east-west line across its middle at rotation 0 and descends north and south. A roof corner names the corner it peaks at (outside) or dips at (inside); its only studs are on its high cells. A window or door frame\'s opening counts as filled.',
+  'Creatures stand on their feet and fill part of their box; leave room around them.',
   'Trees, bushes and plants stand on their base (the cells their fill starts at 0) and spread over the cells around it from higher up, so smaller parts fit under the foliage.',
   'A glass part fills nothing: place it at its frame\'s exact x, z, level and rotation (its row names the frame). Removing the frame removes its glass; glass with no frame floats.',
   'Colors named trans- are see-through plastic.',
@@ -143,9 +144,10 @@ const partRow = (part: CatalogPart): string => {
   const shape = getShape(part);
   const frame = part.frame ? CATALOG.find(other => other.ldraw === part.frame) : undefined;
   const descent = (part.kind === 'slope') ? ` descends ${slopeDescent(shape.studs, shape.depth)}` :
+    ((part.kind === 'curve') && shape.descends) ? ` descends ${shape.descends}` :
     (part.kind === 'roof-corner') ? roofCorner(shape) :
     '';
-  const fills = (!frame && !fillsBox(shape)) ? ` fills ${fillMap(shape)}` : '';
+  const fills = (!frame && (part.kind !== 'creature') && !fillsBox(shape)) ? ` fills ${fillMap(shape)}` : ''/*a creature's shape is checked, not listed*/;
   return `${part.key} ${shape.width}x${shape.depth}x${shape.height}${descent}${fills}${frame ? ` sits in ${frame.key}` : ''}`;
 };
 

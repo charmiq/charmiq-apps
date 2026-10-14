@@ -29,6 +29,8 @@ const SCENE_TO_LDRAW = LDRAW_TO_SCENE.clone().invert();
 /** a color outside the palette renders as this neutral */
 const UNKNOWN_COLOR = '#A0A5A9';
 const WHITE = new THREE.Color(1, 1, 1);
+/** the parts the pack holds (the catalog's), the only ones a geometry is built for */
+const PACKED = new Set(CATALOG.map(part => part.ldraw));
 
 const BASEPLATE_MIN = 16/*studs*/;
 const BASEPLATE_MARGIN = 4/*studs*/;
@@ -98,8 +100,11 @@ export class Viewer {
   private readonly glasses = new Map<string/*tint hex*/, THREE.MeshPhysicalMaterial>();
   private readonly baseplateMaterial = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0 });
 
+  /** each part's geometry, built the first time a build shows the part */
   private readonly geometries = new Map<string/*ldraw*/, THREE.BufferGeometry>();
   private readonly seams = new Map<string/*ldraw*/, THREE.Matrix4>();
+  private readonly building = new Map<string/*ldraw*/, Promise<void>>();
+  private loader: LDrawLoader | undefined;
   private studGeometry: THREE.BufferGeometry | undefined;
 
   private readonly parts = new THREE.Group();
@@ -155,19 +160,40 @@ export class Viewer {
   }
 
   // ------------------------------------------------------------------------------
-  /** parses the packed parts once; resolves when every catalog part has geometry */
+  /** parses the packed parts once. A part's geometry is built the first time a
+   *  build shows it, so a studio never pays for parts no build uses */
   public async load(): Promise<void> {
     const loader = new LDrawLoader();
     loader.setConditionalLineMaterial(LDrawConditionalLineMaterial);
     loader.addDefaultMaterials();
 
     await parse(loader, PARTS_LDRAW)/*caches every packed file*/;
-    for(const part of CATALOG) {
-      const geometry = toSceneGeometry(await parse(loader, single(`${part.ldraw}.dat`)));
-      this.geometries.set(part.ldraw, geometry);
-      this.seams.set(part.ldraw, seamMatrix(geometry));
-    }
+    this.loader = loader;
     this.studGeometry = toSceneGeometry(await parse(loader, single('stud.dat')));
+  }
+
+  /** builds the geometry of the catalog parts a model shows that have none yet, then
+   *  shows the model again if it is still the one shown. Settling waits for it */
+  private buildGeometries(model: Model, animate: boolean): void {
+    const missing = [...new Set(renderItems(model).map(item => item.ldraw))]
+      .filter(ldraw => !this.geometries.has(ldraw) && !this.building.has(ldraw) && PACKED.has(ldraw));
+    if(missing.length < 1) return/*every part shown has its geometry, or is being built*/;
+
+    const loader = this.loader;
+    if(!loader) return/*not loaded*/;
+    const built = (async () => {
+      for(const ldraw of missing) {
+        const geometry = toSceneGeometry(await parse(loader, single(`${ldraw}.dat`)));
+        this.geometries.set(ldraw, geometry);
+        this.seams.set(ldraw, seamMatrix(geometry));
+      }
+    })().catch(error => console.error('brick-studio: a part could not be built:', error))
+      .finally(() => {
+        for(const ldraw of missing) this.building.delete(ldraw);
+        if(this.model === model) this.setModel(model, animate)/*its parts now have geometry*/;
+        this.requestFrame();
+      });
+    for(const ldraw of missing) this.building.set(ldraw, built);
   }
 
   // == Theme =====================================================================
@@ -255,6 +281,7 @@ export class Viewer {
   /** shows a build; parts not shown before drop into place unless `animate` is false */
   public setModel(model: Model, animate: boolean): void {
     this.model = model;
+    this.buildGeometries(model, animate);
     const real = (this.fidelity >= 1);
     const items = renderItems(model).filter(item => this.geometries.has(item.ldraw))
       .map(item => real ? { ...item, matrix: item.matrix.clone().multiply(this.seams.get(item.ldraw)!) } : item);
@@ -501,7 +528,7 @@ export class Viewer {
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
-    const settled = (this.drops.length < 1) && !this.tween && (!this.pathTrace || this.pathTrace.settled);
+    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && (!this.pathTrace || this.pathTrace.settled);
     if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
     if(moving || (this.drops.length > 0) || refining) this.requestFrame();

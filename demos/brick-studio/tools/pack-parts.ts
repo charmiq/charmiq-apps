@@ -259,7 +259,28 @@ const measurePart = (library: string, part: CatalogPart) => {
     .filter(([x, z], index, all) => all.findIndex(([otherX, otherZ]) => (otherX === x) && (otherZ === z)) === index)/*a stud primitive's own disc*/
     .sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
   if(part.kind === 'ridge') assertRidgeRunsEastWest(body, ldraw);
-  return { width, depth, height, origin: [halfStud(origin[0]), halfStud(origin[1])], base: Math.round(base), studs, fill };
+  const descends = (part.kind === 'curve') ? descentOf(out, width, depth, ldraw) : undefined;
+  return { width, depth, height, origin: [halfStud(origin[0]), halfStud(origin[1])], base: Math.round(base), studs, fill, ...(descends ? { descends } : {}) };
+};
+
+/** the side a curved slope descends to at rotation 0: the footprint edge whose top
+ *  is lowest on average (north is the far edge in z) */
+const descentOf = (out: Measure, width: number, depth: number, ldraw: string): 'north' | 'south' | 'east' | 'west' => {
+  const meanTop = (points: ReadonlyArray<readonly [number, number]>): number => {
+    const tops = points.map(([x, z]) => crossings(out.triangles, x, z)).filter(ys => ys.length > 0).map(ys => Math.min(...ys));
+    return tops.reduce((sum, y) => sum + y, 0) / Math.max(1, tops.length)/*y grows downward: the larger, the lower*/;
+  };
+  const along = (count: number, at: (t: number) => readonly [number, number]) => Array.from({ length: count * SAMPLES_PER_SIDE }, (_, index) => at((index + 0.5) / (count * SAMPLES_PER_SIDE)));
+  const [x0, x1, z0, z1] = [out.minX + 1, out.minX + (width * LDU_PER_STUD) - 1, out.minZ + 1, out.minZ + (depth * LDU_PER_STUD) - 1];
+  const edges = [
+    ['south', along(width, t => [out.minX + (t * width * LDU_PER_STUD), z0])],
+    ['north', along(width, t => [out.minX + (t * width * LDU_PER_STUD), z1])],
+    ['west', along(depth, t => [x0, out.minZ + (t * depth * LDU_PER_STUD)])],
+    ['east', along(depth, t => [x1, out.minZ + (t * depth * LDU_PER_STUD)])],
+  ] as const;
+  const ranked = edges.map(([side, points]) => [side, meanTop(points)] as const).sort((a, b) => b[1] - a[1]);
+  if((ranked[0][1] - ranked[ranked.length - 1][1]) < LDU_PER_PLATE / 2) throw new Error(`${ldraw}: the curve descends to no side.`);
+  return ranked[0][0];
 };
 
 /** a ridge's peak runs east-west across the middle of its depth, as listParts says
@@ -378,9 +399,9 @@ const facts = [
   '/** footprint in studs along x (`width`) and z (`depth`), height in plates, the LDraw',
   ' *  origin in studs from the footprint\'s minimum corner and its `base` in plates above',
   ' *  the part\'s bottom, the top-stud cells and the filled cells ([x, z, bottom level,',
-  ' *  top level exclusive]), all at rotation 0, and a glass pane\'s `drop` (LDU) below',
-  ' *  its frame\'s origin, keyed by LDraw file stem */',
-  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; drop?: number; }>>> = ${JSON.stringify(geometry)};`,
+  ' *  top level exclusive]), all at rotation 0, a glass pane\'s `drop` (LDU) below its',
+  ' *  frame\'s origin and the side a curve `descends` to, keyed by LDraw file stem */',
+  `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; drop?: number; descends?: 'north' | 'south' | 'east' | 'west'; }>>> = ${JSON.stringify(geometry)};`,
   '',
   '/** LDConfig color value, keyed by LDraw color code */',
   `export const COLOR_VALUES: Readonly<Record<number, string>> = ${JSON.stringify(colors, null, 2)};`,

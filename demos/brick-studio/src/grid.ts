@@ -41,6 +41,8 @@ export type PartShape = Readonly<{
   base: number;
   /** a glass pane's LDU below its frame's origin (SEE: parts.generated.ts) */
   drop?: number;
+  /** the side a curve descends to at rotation 0 */
+  descends?: 'north' | 'south' | 'east' | 'west';
   studs: ReadonlyArray<Cell>;
   /** the cells the part fills, as [x, z, bottom, top] levels from its own bottom
    *  (top exclusive) */
