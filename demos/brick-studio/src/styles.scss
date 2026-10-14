@@ -160,6 +160,49 @@ body {
   &--yellow { background: var(--brick-yellow); }
 }
 
+// == Ground ======================================================================
+// the swatch shows the ground the build names, else the theme's baseplate
+.ground { position: relative; display: flex; }
+
+.tag--ground { background: var(--swatch, var(--baseplate)); width: 22px; padding: 0; }
+
+.ground-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(6, 18px);
+  gap: 5px;
+  padding: 7px;
+  background: var(--stage);
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--outline);
+}
+
+.ground-swatch,
+.ground-theme {
+  height: 18px;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  cursor: pointer;
+
+  &:hover { filter: brightness(1.08); }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  &[aria-checked='true'] { outline: 2px solid var(--ink); outline-offset: 1px; }
+}
+
+.ground-swatch { width: 18px; background: var(--swatch); }
+
+.ground-theme {
+  @extend %mono-caps;
+  grid-column: 1 / -1;
+  font-size: 9px;
+  color: var(--ink);
+  background: var(--baseplate);
+}
+
 // == Status ======================================================================
 .status {
   @extend %mono-caps;

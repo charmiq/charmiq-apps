@@ -106,6 +106,9 @@ export class Viewer {
    *  brick's depth, a material-wide property */
   private readonly glasses = new Map<string/*tint hex*/, THREE.MeshPhysicalMaterial>();
   private readonly baseplateMaterial = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0 });
+  /** the baseplate's color: the build's ground when it names one, else the theme's */
+  private themeBaseplate = '';
+  private ground: string | undefined/*hex*/;
 
   /** each part's geometry and its prints', built the first time a build shows the part */
   private readonly geometries = new Map<string/*ldraw or print key*/, THREE.BufferGeometry>();
@@ -258,7 +261,20 @@ export class Viewer {
   public setTheme(theme: Theme): void {
     this.stage.set(theme.stage);
     this.renderer.setClearColor(this.stage, 1);
-    this.baseplateMaterial.color.set(theme.baseplate);
+    this.themeBaseplate = theme.baseplate;
+    this.colorBaseplate();
+  }
+
+  /** colors the baseplate the build's ground (a hex color), or the theme's when it
+   *  names none: a green lawn stays green in a dark theme */
+  private setGround(ground: string | undefined): void {
+    if(ground === this.ground) return/*unchanged*/;
+    this.ground = ground;
+    this.colorBaseplate();
+  }
+
+  private colorBaseplate(): void {
+    this.baseplateMaterial.color.set(this.ground ?? this.themeBaseplate);
     this.pathTraceStale = true;
     this.requestFrame();
   }
@@ -339,6 +355,8 @@ export class Viewer {
   /** shows a build; parts not shown before drop into place unless `animate` is false */
   public setModel(model: Model, animate: boolean): void {
     this.model = model;
+    const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
+    this.setGround(ground);
     this.buildGeometries(model, animate);
     const real = (this.fidelity >= 1);
     const items = renderItems(model).filter(item => this.prints.has(item.ldraw))

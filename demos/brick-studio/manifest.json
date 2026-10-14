@@ -197,6 +197,21 @@
         }
       },
       {
+        "name": "setGround",
+        "description": "Color the baseplate (grass, a road, sand) instead of covering it with plates. Any catalog color that is not see-through; omit the color for the theme's",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "color": { "type": "string", "description": "Catalog color, e.g. green" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "ground": { "type": "string", "description": "The color, or theme" } },
+          "required": ["ground"]
+        }
+      },
+      {
         "name": "clear",
         "description": "Remove every part",
         "inputSchema": { "type": "object", "properties": {} },

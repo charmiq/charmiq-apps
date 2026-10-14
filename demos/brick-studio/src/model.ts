@@ -9,7 +9,9 @@ import { compose, getColor, getColorByCode, getPart, getPartByLDraw, getShape, g
 // alone. A part assembled from pieces (a wheel set) is its own line and its
 // pieces' lines, each where the part puts it: those lines are read as the part, and
 // the part is written whole. `0 STEP` lines in the main file split the parts into building steps, in
-// order; a step with no parts is no step
+// order; a step with no parts is no step. A `0 !BRICKSTUDIO GROUND <color>` line in
+// the main file colors the baseplate (LDraw's form for a program's own meta-command:
+// other LDraw tools pass it by)
 // ********************************************************************************
 // == Types =======================================================================
 /** a part line that is not a Placement (a part outside the catalog, an unknown
@@ -27,6 +29,8 @@ export type ModelLayout = Readonly<{
   pieces: ReadonlyArray<ReadonlyArray<Span>>;
   /** every `0 STEP` line */
   steps: ReadonlyArray<Span>;
+  /** the ground line, when the text has one */
+  ground?: Span;
   /** the first `0 STEP` line after the last part, when the text ends in steps:
    *  parts added to the last step go before it */
   trailingStep?: Span;
@@ -50,6 +54,8 @@ export type Model = Readonly<{
   truncated?: boolean;
   /** where the parts lie, when the text is one flat file (no `0 FILE` sections) */
   layout?: ModelLayout;
+  /** the baseplate's color (a catalog color), when the build names one */
+  ground?: string;
   /** the building steps, when the build has more than one */
   steps?: ModelSteps;
 }>;
@@ -67,6 +73,8 @@ export const READ_IN_PART = `Its submodels expand past what Brick Studio reads (
 const DEFAULT_HEADER = ['0 Brick Studio model', '0 Name: model.ldr'];
 /** LDraw's meta-command that ends a building step */
 const STEP_LINE = '0 STEP';
+/** Brick Studio's meta-command naming the baseplate's color */
+const GROUND_META = ['0', '!BRICKSTUDIO', 'GROUND'] as const;
 
 export const EMPTY_MODEL: Model = { header: DEFAULT_HEADER, placements: [], others: [] };
 
@@ -107,6 +115,7 @@ export const parseModel = (text: string): Model => {
   const otherSteps: number[] = [];
   const stepSpans: Span[] = [];
   let step = 0;
+  let ground: Readonly<{ color: string; span: Span; }> | undefined/*the first ground line naming a ground color*/;
 
   // a submodel's parts take the step of the line that places it: walk() counts
   // `0 STEP` lines in the main file alone
@@ -124,6 +133,10 @@ export const parseModel = (text: string): Model => {
       if(exceeded()) return;
       const fields = line.trim().split(/\s+/);
       if(isMain && isStepLine(fields)) { step++; stepSpans.push({ from, to }); continue; }
+      if(isMain && !ground) {
+        const color = groundColorOf(fields);
+        if(color) ground = { color, span: { from, to } }/*kept in the header as written*/;
+      } /* else -- the first names the ground */
       if(fields[0] !== '1') {
         if(isMain && (line.trim().length > 0) && !line.trim().startsWith('0 FILE')) header.push(line.trimEnd());
         continue;
@@ -155,7 +168,8 @@ export const parseModel = (text: string): Model => {
   return {
     header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others,
     ...(truncated ? { truncated } : {}),
-    ...(flat ? { layout: { placements: placementSpans, others: otherSpans, pieces: pieceSpans, steps: stepSpans, ...(trailingStep ? { trailingStep } : {}), length: text.length, lineBreak, endsWithBreak: /[\r\n]$/.test(text) } } : {}),
+    ...(ground ? { ground: ground.color } : {}),
+    ...(flat ? { layout: { placements: placementSpans, others: otherSpans, pieces: pieceSpans, steps: stepSpans, ...(ground ? { ground: ground.span } : {}), ...(trailingStep ? { trailingStep } : {}), length: text.length, lineBreak, endsWithBreak: /[\r\n]$/.test(text) } } : {}),
     ...((steps.count > 1) ? { steps } : {}),
   };
 };
@@ -192,6 +206,14 @@ const sameLine = (a: PartLine, b: PartLine): boolean =>
 // ................................................................................
 /** whether a line is LDraw's `0 STEP` meta-command */
 const isStepLine = (fields: ReadonlyArray<string>): boolean => (fields.length === 2) && (fields[0] === '0') && (fields[1].toUpperCase() === 'STEP');
+
+/** the ground color a line names, when it is the ground meta-command naming a
+ *  catalog color that is not see-through */
+const groundColorOf = (fields: ReadonlyArray<string>): string | undefined => {
+  if((fields.length !== 4) || GROUND_META.some((word, index) => fields[index].toUpperCase() !== word)) return undefined;
+  const color = getColor(fields[3].toLowerCase());
+  return (color && !color.transparent) ? color.key : undefined;
+};
 
 /** the steps as counted, numbered from 1 in order: a count no part has is no step */
 const numberSteps = (placements: ReadonlyArray<number>, others: ReadonlyArray<number>): ModelSteps => {
@@ -280,6 +302,23 @@ export const appendLines = (layout: ModelLayout, lines: ReadonlyArray<string>, n
   const opening = (layout.length < 1) ? DEFAULT_HEADER : (newStep && hasParts && !layout.trailingStep) ? [STEP_LINE] : [];
   const lead = ((layout.length < 1) || layout.endsWithBreak) ? '' : layout.lineBreak/*the last line is unfinished*/;
   return { from: layout.length, to: layout.length, insert: lead + [...opening, ...lines].map(line => line + layout.lineBreak).join('') };
+};
+
+/** the edit that sets a flat model's ground color, or returns it to the theme's
+ *  (`undefined`): the ground line is replaced or removed, or a new one goes before the
+ *  first part. An empty text gains the header first */
+export const groundEdit = (layout: ModelLayout, color: string | undefined): ContentChange[] => {
+  const line = (color === undefined) ? undefined : [...GROUND_META, color].join(' ');
+  if(layout.ground) {
+    const ending = ((layout.ground.to < layout.length) || layout.endsWithBreak) ? layout.lineBreak : ''/*the last line, unfinished*/;
+    return [{ ...layout.ground, insert: (line === undefined) ? '' : line + ending }];
+  } /* else -- no ground line yet */
+  if(line === undefined) return []/*already the theme's*/;
+  if(layout.length < 1) return [{ from: 0, to: 0, insert: [...DEFAULT_HEADER, line].map(text => text + layout.lineBreak).join('') }];
+  const first = Math.min(...[...layout.placements, ...layout.others, ...layout.pieces.flat(), ...layout.steps].map(span => span.from));
+  if(Number.isFinite(first)) return [{ from: first, to: first, insert: line + layout.lineBreak }];
+  const lead = layout.endsWithBreak ? '' : layout.lineBreak/*the last line is unfinished*/;
+  return [{ from: layout.length, to: layout.length, insert: lead + line + layout.lineBreak }];
 };
 
 /** the edits that delete lines, the last first: each edit is measured after the

@@ -1,7 +1,7 @@
 import { checkModel, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, frameKey, getColor, getPart, getShape, toRotation, type Placement } from './grid';
-import { appendLines, deleteLines, EMPTY_MODEL, MAX_PARTS, parseModel, placementLines, READ_IN_PART, serializeModel, type Model, type ModelLayout } from './model';
+import { appendLines, deleteLines, groundEdit, parseModel, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
 
 // owns the current build: the `model` app-content's text, as last seen. Every
 // edit is validated against the app-content's text it is measured on, and the
@@ -186,6 +186,16 @@ export class Build {
       return deleteLines([...layout.placements, ...layout.pieces.flat(), ...layout.others, ...layout.steps]);
     });
     return removed;
+  }
+
+  /** colors the baseplate (a catalog color that is not see-through), or returns it
+   *  to the theme's (`undefined`) */
+  public async setGround(color: unknown): Promise<string | undefined> {
+    await this.whenReady();
+    if((color !== undefined) && ((typeof color !== 'string') || !getColor(color))) throw new BuildError(`unknown color '${String(color)}' (listParts names the colors)`);
+    if((color !== undefined) && getColor(color)!.transparent) throw new BuildError('The ground cannot be see-through.');
+    await this.bridge.edit(text => groundEdit(editable(text).layout, color));
+    return color;
   }
 
   /** replaces the build with LDraw text, written flat: the deliberate way to turn

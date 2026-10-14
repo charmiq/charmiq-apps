@@ -30,6 +30,7 @@ const GRID = [
   'A wheel set is a plate between two wheels on an axle running east-west at rotation 0, so it rolls north and south; it stands on its tires. Its studs are lower than its tires: its row names the level they are at, and parts over its wheel columns must clear the tires. A mudguard placed one level above a wheel set\'s studs, on a plate across them, arches over its wheels. A steering wheel faces north at rotation 0.',
   'A figure is a person: it stands on the middle two cells of its middle row, faces south at rotation 0, and its arms, hands and head reach into the cells around its feet (its row gives its fills), so figures side by side stand 4 studs apart. Its color is its shirt; its head and hands are yellow and its legs blue.',
   'Colors named trans- are see-through plastic.',
+  'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east.',
 ].join(' ');
@@ -85,6 +86,12 @@ export class CommandSurface {
           ...((result.unsupported.length > 0) ? { unsupported: result.unsupported.length, unsupportedParts: result.unsupported.slice(0, MAX_LISTED) } : {}),
           ...this.report(),
         };
+      },
+
+      setGround: async ({ color }: { color?: unknown; }) => {
+        const ground = await this.build.setGround(color ?? undefined/*null returns it to the theme's*/);
+        await this.viewer.whenSettled();
+        return { ground: ground ?? 'theme' };
       },
 
       clear: async () => {
