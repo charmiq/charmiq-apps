@@ -4,7 +4,7 @@
 
 ## The Provider
 
-One app owns the state. It advertises a `"counter"` capability with methods (`increment`, `decrement`, `reset`) and a reactive `value$()` stream. Any app on the page can discover it.
+One app owns the state. It advertises a `"counter"` capability with methods (`increment`, `decrement`, `reset`, `add(amount)`) and a reactive `value$()` stream, and exports two commands (`lastValue`, `setValue({ value })`). Any app on the page can discover both.
 
 <iframe-app height="350px" width="100%">
   <app-source>
@@ -99,6 +99,13 @@ function initializeApp() {
         return count;
       },
 
+      // positional: `counter.add(5)` arrives as add(5)
+      add: (amount) => {
+        if(!Number.isInteger(amount)) throw new Error('add takes a whole number');
+        updateCount(count + amount);
+        return count;
+      },
+
       lastValue: () => {
         return count;
       },
@@ -111,8 +118,14 @@ function initializeApp() {
 
     log('Advertised "counter" capability');
 
+    // a command takes one named-arguments object: `setValue({ value: 10 })`
     window.charmiq.exportCommands({
-      lastValue: async () => count
+      lastValue: async () => count,
+      setValue: async ({ value }) => {
+        if(!Number.isInteger(value)) throw new Error('setValue takes { value }, a whole number');
+        updateCount(value);
+        return count;
+      }
     });
 
     log('Exported "charmiq.command" surface');
@@ -134,7 +147,7 @@ initializeApp();
 
 ## The Controller & The Observer
 
-The left panel discovers the counter and drives it — buttons call methods across iframes. The right panel subscribes to the counter's `value$()` stream and displays updates in real time, comparing `discover$()` (observable, reconnects automatically) with `discover()` (promise, self-healing proxy).
+The left panel discovers the counter and drives it — buttons call methods across iframes. Add passes the amount positionally to the counter's `add`; Set to passes it to the provider's `setValue` command as one named-arguments object, the way a Charm calls a command. The right panel subscribes to the counter's `value$()` stream and displays updates in real time, comparing `discover$()` (observable, reconnects automatically) with `discover()` (promise, self-healing proxy).
 
 <iframe-app height="350px" width="49%">
   <app-source>
@@ -191,6 +204,13 @@ button:disabled {
   background: #adb5bd;
   cursor: not-allowed;
 }
+input {
+  width: 70px;
+  padding: 10px;
+  font-size: 14px;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+}
 .status {
   background: #f8f9fa;
   border: 1px solid #e9ecef;
@@ -214,12 +234,18 @@ button:disabled {
     <button id="btnDec" onclick="handleDecrement()">Decrement</button>
     <button id="btnReset" onclick="handleReset()">Reset</button>
   </div>
+  <div class="buttons">
+    <input id="amount" type="number" step="1" value="5" aria-label="Amount">
+    <button id="btnAdd" onclick="handleAdd()">Add</button>
+    <button id="btnSet" onclick="handleSet()">Set to</button>
+  </div>
   <div class="status" id="status">Initializing...</div>
 </div>
 
 <script src="https://unpkg.com/rxjs@^7/dist/bundles/rxjs.umd.min.js"></script>
 <script>
 let counter = undefined;
+let commands = undefined;
 
 function updateStatus(text) {
   const statusEl = document.getElementById('status');
@@ -232,6 +258,11 @@ function updateButtons(enabled) {
   document.getElementById('btnInc').disabled = !enabled;
   document.getElementById('btnDec').disabled = !enabled;
   document.getElementById('btnReset').disabled = !enabled;
+  document.getElementById('btnAdd').disabled = !enabled;
+}
+
+function amount() {
+  return Number(document.getElementById('amount').value);
 }
 
 async function handleIncrement() {
@@ -266,6 +297,26 @@ async function handleReset() {
   }
 }
 
+async function handleAdd() {
+  if(!counter) { alert('Counter not available'); return; }
+  try {
+    const newVal = await counter.add(amount())/*positional*/;
+    updateStatus(`Added ${amount()}: ${newVal}`);
+  } catch(error) {
+    updateStatus(`Error: ${error.message}`);
+  }
+}
+
+async function handleSet() {
+  if(!commands) { alert('Commands not available'); return; }
+  try {
+    const newVal = await commands.setValue({ value: amount() })/*a command: one named-arguments object*/;
+    updateStatus(`Set to: ${newVal}`);
+  } catch(error) {
+    updateStatus(`Error: ${error.message}`);
+  }
+}
+
 function initializeApp() {
   try {
     window.charmiq.discover$('counter').subscribe(counters => {
@@ -286,12 +337,13 @@ function initializeApp() {
 
     updateStatus('Discovering "counter" capability...');
 
-    window.charmiq.exportCommands({
-      increment: async () => await handleIncrement(),
-      decrement: async () => await handleDecrement()
+    // every app with commands provides `charmiq.command`; in this document only the
+    // provider does, so the first is the provider's
+    window.charmiq.discover$('charmiq.command').subscribe(providers => {
+      commands = providers[0] || undefined;
+      document.getElementById('btnSet').disabled = !commands;
+      updateStatus(commands ? 'Commands connected' : 'Commands disconnected');
     });
-
-    updateStatus('Exported "charmiq.command" surface');
   } catch(error) {
     updateStatus(`Error: ${error.message}`);
     console.error('[CONTROLS] Error:', error);
@@ -505,7 +557,7 @@ These three apps share no code and have no knowledge of each other at build time
 
 **`advertise(name, surface)`** — an app declares a named app-to-app capability with an object of methods and streams. Any other app on the page can discover it. Methods receive **positional arguments** — `proxy.foo(a, b)` arrives as `foo(a, b)`.
 
-**`exportCommands(surface)`** — separate, MCP-flavored surface for the methods declared in the app's `manifest.json` under `commands`. Called by the host (`editor.application.call`) and by sibling apps via `discover('charmiq.command')`. Methods receive a **single named-args object** matching the manifest's `inputSchema`. (Calling `advertise('charmiq.command', ...)` throws — use `exportCommands` instead.)
+**`exportCommands(surface)`** — separate, MCP-flavored surface for the methods an app's `manifest.json` declares under `advertise["charmiq.command"]` (an inline app like these exports them without a manifest). Called by the host (`editor.application.call`) and by sibling apps via `discover('charmiq.command')`. Methods receive a **single named-args object** matching the manifest's `inputSchema` — `proxy.setValue({ value: 10 })` arrives as `setValue({ value: 10 })`; anything else (a number, an array, two arguments) is refused and runs nothing. Every app with commands provides `charmiq.command`, so `discover` returns the first of them; this document has one. (Calling `advertise('charmiq.command', ...)` throws — use `exportCommands` instead.)
 
 **`discover$(name)`** — returns an observable that emits whenever providers of that capability connect or disconnect. The controller uses this to auto-enable its buttons when the counter appears.
 
@@ -513,7 +565,7 @@ These three apps share no code and have no knowledge of each other at build time
 
 **Streams across iframes** — the provider's `value$()` returns a `BehaviorSubject` observable. The observer subscribes to it through the proxy, receiving live updates as the controller clicks buttons. RxJS operators like `switchMap` and `retry` work normally across the boundary.
 
-**Charms can play too** — both the provider and the controller call `exportCommands` to expose a `charmiq.command` surface. A Charm can call `lastValue` on the provider or `increment`/`decrement` on the controller, bridging the coordination API into the agent world.
+**Charms can play too** — the provider's commands are the ones a Charm calls. A Charm is told the commands of apps loaded from a `charmiq://` source with a manifest; inline apps like these three it is not told about, so it reaches them through Run Code, a short script that discovers and calls them as the controller does: `const counter = await charmiq.discover('charmiq.command'); return await counter.setValue({ value: 10 });`.
 
 
 ## The Pattern
@@ -525,14 +577,17 @@ These three apps share no code and have no knowledge of each other at build time
 │  exportCommands({ ... })                │
 └──────────────────┬──────────────────────┘
                    │ discover$('counter')
+                   │ discover$('charmiq.command')
          ┌─────────┴─────────┐
          ▼                   ▼
-┌─────────────────┐ ┌─────────────────────┐
-│  Controller     │ │  Observer           │
-│  .increment()   │ │  .value$() stream   │
-│  .decrement()   │ │  discover$() vs     │
-│  .reset()       │ │  discover()         │
-└─────────────────┘ └─────────────────────┘
+┌───────────────────────┐ ┌─────────────────────┐
+│  Controller           │ │  Observer           │
+│  .increment()         │ │  .value$() stream   │
+│  .decrement()         │ │  discover$() vs     │
+│  .reset()             │ │  discover()         │
+│  .add(5)              │ │                     │
+│  .setValue({ value }) │ │                     │
+└───────────────────────┘ └─────────────────────┘
 ```
 
 No message bus. No shared state store. No event names to coordinate. Just named capabilities, method calls, and streams — the same primitives apps already use internally, now working across iframe boundaries.
