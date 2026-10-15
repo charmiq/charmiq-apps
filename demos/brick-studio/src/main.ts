@@ -51,7 +51,9 @@ const look = new FidelityControl(element('fidelity'), element('fidelityName'), e
 const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
 const lookAround = new LookAround({ root: element('sheet'), sides: element('sheetSides'), back: element('sheetBack') }, document.querySelector<HTMLElement>('.bar')!/*by contract*/, viewer);
 const commands = new CommandSurface(build, designs, viewer, lookAround, look);
-const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build);
+/** why the last ground change was refused, until the build next changes */
+let groundRefused: string | undefined;
+const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build, reason => { groundRefused = reason; showStatus(build.getModel()); });
 const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);
 const designDialog = new DesignDialog(element('designs'), designs, {
   partCount: () => { const model = build.getModel(); return model.placements.length + model.others.length; },
@@ -74,6 +76,7 @@ const showStatus = (model: Model) => {
     (undrawn > 0) ? `${undrawn} too far or too large to draw` : undefined,
     viewer.reachesPastBaseplate() ? 'reaches past the baseplate' : undefined,
     (builds > 1) ? `${builds} builds in this document · edits paused` : undefined,
+    groundRefused ? 'ground not changed' : undefined,
     build.isUncertain() ? 'could not check the document · reload to try again' : undefined,
     result.truncated ? 'read in part' : undefined,
     (result.collisions.length > 0) ? plural(result.collisions.length, 'collision') : undefined,
@@ -81,7 +84,8 @@ const showStatus = (model: Model) => {
     (result.unchecked > 0) ? `${result.unchecked} off grid` : undefined,
   ].filter(Boolean);
   statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
-  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0));
+  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0) || !!groundRefused);
+  status.title = groundRefused ?? ''/*the refusal's reason, on hover*/;
   retryButton.hidden = retrySep.hidden = (unbuilt < 1);
   hint.hidden = (count > 0) || result.truncated;
 };
@@ -186,10 +190,10 @@ const start = async () => {
   void designs.init()/*every save, list and load waits for it*/;
   build.onChange((model, source) => {
     lookAround.hide()/*a picture of the build as it stood*/;
+    groundRefused = undefined/*a refusal is about the build as it stood*/;
     steps.show(model, (source !== 'load') && !reducedMotion.matches)/*the build whole: any playback ends*/;
     ground.show(model);
-    if(source === 'load') viewer.jumpToView(DEFAULT_VIEW);
-    else viewer.keepInView();
+    if(source !== 'load') viewer.keepInView()/*the first view is framed once its parts are drawn: SEE start*/;
     showStatus(model);
   });
   build.onUncertain(() => showStatus(build.getModel()));
@@ -206,6 +210,9 @@ const start = async () => {
     return;
   }
 
+  // the first view, framed on the build's parts once they are drawn
+  await viewer.whenSettled();
+  viewer.jumpToView(DEFAULT_VIEW);
   await viewer.whenSettled();
   loading.classList.add('is-done');
 };

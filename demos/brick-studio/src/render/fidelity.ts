@@ -16,7 +16,10 @@ export type Fidelity = typeof FIDELITY_STOPS[number]['stop'];
 export const DEFAULT_FIDELITY: Fidelity = 1;
 export const MAX_FIDELITY: Fidelity = 4;
 
+/** the stop a value names: a stop's number, or a string of one; anything else
+ *  (nothing kept, a blank) names none */
 export const toFidelity = (value: unknown): Fidelity | undefined => {
+  if((typeof value !== 'number') && ((typeof value !== 'string') || (value.trim().length < 1))) return undefined;
   const stop = Number(value);
   return FIDELITY_STOPS.find(entry => entry.stop === stop)?.stop;
 };

@@ -5,7 +5,9 @@ import type { Model } from './model';
 
 // the ground swatch: a tag in the build's ground color that opens a menu of the
 // catalog's colors and the theme's. Choosing one edits the build (its ground line);
-// the swatch follows the build, never the click, so a change from anywhere shows
+// the swatch follows the build, never the click, so a change from anywhere shows. A
+// change the build refuses is reported (`onRefused`), its reason with it, for the
+// latest choice alone: an older choice refused after a newer one landed says nothing
 // ********************************************************************************
 // == Types =======================================================================
 export type GroundControlElements = Readonly<{
@@ -17,8 +19,10 @@ export type GroundControlElements = Readonly<{
 // == Class =======================================================================
 export class GroundControl {
   private ground: string | undefined/*catalog color key*/;
+  /** counts the choices made, so only the latest one's refusal is reported */
+  private choices = 0;
 
-  public constructor(private readonly elements: GroundControlElements, private readonly build: Build) {
+  public constructor(private readonly elements: GroundControlElements, private readonly build: Build, private readonly onRefused: (reason: string) => void) {
     const { root, button, menu } = elements;
     menu.append(
       ...COLORS.filter(color => !color.transparent).map(color => this.choice(color.key, color.key.replace(/-/g, ' '), getColorValue(color.code))),
@@ -61,7 +65,11 @@ export class GroundControl {
     if(key === undefined) item.textContent = label;
     item.addEventListener('click', () => {
       this.close();
-      this.build.setGround(key).catch(error => console.error('brick-studio: the ground could not be changed:', error));
+      const choice = ++this.choices;
+      this.build.setGround(key).catch(error => {
+        console.warn('brick-studio: the ground could not be changed:', error);
+        if(choice === this.choices) this.onRefused((error instanceof Error) ? error.message : String(error))/*a later choice owns the status otherwise*/;
+      });
     });
     return item;
   }

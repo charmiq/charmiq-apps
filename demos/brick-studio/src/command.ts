@@ -203,6 +203,7 @@ export class CommandSurface {
       check: async () => { await this.build.whenReady(); return this.report(); },
 
       setView: async ({ azimuth, elevation, fit }: { azimuth?: unknown; elevation?: unknown; fit?: unknown; }) => {
+        if([azimuth, elevation].some(value => (typeof value === 'number') && !Number.isFinite(value))) throw new Error('azimuth and elevation must be finite numbers');
         this.lookAround.hide();
         const current = this.viewer.getView();
         await this.viewer.setView({

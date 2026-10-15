@@ -53,6 +53,8 @@ export class Effects {
   public setFidelity(fidelity: Fidelity): void {
     if(fidelity === this.fidelity) return;
     this.fidelity = fidelity;
+    // each pass's own targets and materials, then the composer's
+    for(const pass of this.composer?.passes ?? []) pass.dispose();
     this.composer?.dispose();
     this.composer = this.bokeh = undefined;
     if(fidelity < 2) return/*straight to the canvas*/;

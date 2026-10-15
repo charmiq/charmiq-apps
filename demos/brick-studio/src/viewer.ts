@@ -172,7 +172,7 @@ export class Viewer {
     this.controls.maxPolarAngle = Math.PI * 0.495/*never below the baseplate*/;
     this.controls.minDistance = 2;
     this.controls.maxDistance = 600;
-    this.controls.addEventListener('start', () => { this.tween = undefined; });
+    this.controls.addEventListener('start', () => { this.tween?.resolve(); this.tween = undefined; })/*a drag ends a move, settling its command*/;
     // a wheel zoom lands inside the controls' own handler, so the next frame sees no
     // movement; every change marks the camera moved for the path tracer
     this.controls.addEventListener('change', () => { this.cameraMoved = true; this.requestFrame(); });
@@ -200,8 +200,8 @@ export class Viewer {
   }
 
   /** builds the geometry of the catalog parts a model shows that have none yet,
-   *  reading the families they are in first, then shows the model again if it is
-   *  still the one shown. A part that cannot be drawn is counted (SEE: unbuiltCount)
+   *  reading the families they are in first, then shows the build shown by then
+   *  again. A part that cannot be drawn is counted (SEE: unbuiltCount)
    *  and left out; the build itself never changes. Settling waits for it */
   private buildGeometries(model: Model, animate: boolean): void {
     const missing = [...new Set(renderItems(model).map(item => item.ldraw))]
@@ -231,7 +231,10 @@ export class Viewer {
     })().finally(() => {
         for(const ldraw of missing) this.building.delete(ldraw);
         if(missing.some(ldraw => this.unbuilt.has(ldraw))) this.onPartsChanged?.();
-        if(this.model === model) this.setModel(model, animate)/*its parts now have geometry*/;
+        // the build shown now, which may have replaced this one while its parts were
+        // read (it skipped the parts being built, so it waits for these), kept in view
+        // now that they are drawn
+        if(this.model) { this.setModel(this.model, (this.model === model) && animate); this.keepInView(); }
         this.requestFrame();
       });
     for(const ldraw of missing) this.building.set(ldraw, built);
@@ -438,7 +441,7 @@ export class Viewer {
   public setView(view: View, fit: boolean): Promise<void> {
     const offset = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
     const from = new THREE.Spherical().setFromVector3(offset);
-    const to = new THREE.Spherical(from.radius, THREE.MathUtils.degToRad(90 - clamp(view.elevation, 2, 89)), THREE.MathUtils.degToRad(view.azimuth));
+    const to = new THREE.Spherical(from.radius, THREE.MathUtils.degToRad(90 - clamp(view.elevation, 2, 89)), THREE.MathUtils.degToRad(normalizeDegrees(view.azimuth)));
     to.phi = Math.min(to.phi, this.controls.maxPolarAngle);
     let target = this.controls.target.clone();
     if(fit) {
@@ -447,9 +450,9 @@ export class Viewer {
       to.radius = framing.radius;
     } /* else -- keep the distance and target */
 
-    // take the short way round
-    while((to.theta - from.theta) > Math.PI) to.theta -= Math.PI * 2;
-    while((to.theta - from.theta) < -Math.PI) to.theta += Math.PI * 2;
+    // take the short way round: the turn wrapped into a half turn either way, in one
+    // step whatever the angles' size
+    to.theta = from.theta + wrapTurn(to.theta - from.theta);
 
     this.tween?.resolve();
     return new Promise(resolve => {
@@ -483,8 +486,6 @@ export class Viewer {
     return { azimuth: Math.round(normalizeDegrees(THREE.MathUtils.radToDeg(spherical.theta))), elevation: Math.round(90 - THREE.MathUtils.radToDeg(spherical.phi)) };
   }
 
-  /** resolves once every part has landed, any view change has finished and that
-   *  frame is drawn */
   /** the build from each view, framed, as a PNG data URL of the given size (CSS
    *  pixels) once settled; the camera and the canvas's size are put back after */
   public async snapshots(views: ReadonlyArray<View>, width: number, height: number): Promise<string[]> {
@@ -508,6 +509,8 @@ export class Viewer {
     return images;
   }
 
+  /** resolves once every part has landed, any view change has finished and that
+   *  frame is drawn */
   public whenSettled(): Promise<void> {
     return new Promise(resolve => { this.settleWaiters.push(resolve); this.requestFrame(); });
   }
@@ -592,7 +595,11 @@ export class Viewer {
       const current = this.baseplate.userData as { minX: number; minZ: number; width: number; depth: number; };
       if((current.minX === minX) && (current.minZ === minZ) && (current.width === width) && (current.depth === depth)) return/*unchanged*/;
       this.scene.remove(this.baseplate);
-      this.baseplate.traverse((object: THREE.Object3D) => { if((object as THREE.Mesh).isMesh && !(object as THREE.InstancedMesh).isInstancedMesh) (object as THREE.Mesh).geometry.dispose(); });
+      // the slab's own geometry, and the studs' instances (their stud geometry is shared)
+      this.baseplate.traverse((object: THREE.Object3D) => {
+        if((object as THREE.InstancedMesh).isInstancedMesh) (object as THREE.InstancedMesh).dispose();
+        else if((object as THREE.Mesh).isMesh) (object as THREE.Mesh).geometry.dispose();
+      });
     } /* else -- first baseplate */
 
     const plate = new THREE.Group();
@@ -864,3 +871,8 @@ const lerp = (a: number, b: number, t: number): number => a + ((b - a) * t);
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t: number): number => (t < 0.5) ? (4 * t * t * t) : (1 - (Math.pow(-2 * t + 2, 3) / 2));
 const normalizeDegrees = (degrees: number): number => ((degrees % 360) + 360) % 360;
+/** a turn (radians) as the same turn within a half turn either way */
+const wrapTurn = (radians: number): number => {
+  const turn = ((((radians + Math.PI) % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2)) - Math.PI;
+  return (turn === -Math.PI) ? Math.PI : turn;
+};
