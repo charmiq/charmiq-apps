@@ -15,7 +15,16 @@
     <canvas class="stage" id="stage" aria-label="The build, in 3D. Drag to orbit, right-drag to pan, scroll to zoom."></canvas>
 
     <!-- == Four sides ======================================================== -->
-    <div class="sheet" id="sheet" role="img" aria-label="The build from four sides" hidden></div>
+    <section class="sheet" id="sheet" aria-labelledby="sheetTitle" hidden>
+      <div class="sheet-head">
+        <h2 class="sheet-title" id="sheetTitle">Your Charm is looking at every side of the build</h2>
+        <button class="tag tag--yellow sheet-back" id="sheetBack" type="button">
+          <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
+          Back to the build
+        </button>
+      </div>
+      <div class="sheet-sides" id="sheetSides" role="img" aria-label="The build from four sides"></div>
+    </section>
 
     <!-- == Bar =============================================================== -->
     <header class="bar">

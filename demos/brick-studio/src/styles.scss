@@ -282,8 +282,8 @@ body {
 .sheet {
   position: absolute;
   inset: 0;
-  display: grid;
-  grid-template: 1fr 1fr / 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   padding: calc(var(--sheet-top, 92px) + 4px) 24px 44px;
   background: var(--stage);
@@ -313,6 +313,34 @@ body {
     color: var(--ink);
     background: var(--stage);
   }
+}
+
+.sheet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.sheet-title {
+  @extend %mono-caps;
+  min-width: 0;
+  overflow-wrap: break-word;
+  color: var(--ink);
+}
+
+.sheet-back {
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.sheet-sides {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template: 1fr 1fr / 1fr 1fr;
+  gap: 10px;
 }
 
 // == Hint ========================================================================

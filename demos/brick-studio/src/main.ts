@@ -49,7 +49,7 @@ const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
 const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
-const lookAround = new LookAround(element('sheet'), document.querySelector<HTMLElement>('.bar')!/*by contract*/, viewer);
+const lookAround = new LookAround({ root: element('sheet'), sides: element('sheetSides'), back: element('sheetBack') }, document.querySelector<HTMLElement>('.bar')!/*by contract*/, viewer);
 const commands = new CommandSurface(build, designs, viewer, lookAround, look);
 const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build);
 const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);
@@ -146,6 +146,10 @@ const walkFromKeys = (fast: boolean): Walk => {
   return walk;
 };
 
+/** whether a key moves focus rather than acting: Tab, and a modifier pressed alone
+ *  (the Shift of Shift+Tab) */
+const movesFocus = (event: KeyboardEvent): boolean => ['Tab', 'Shift', 'Control', 'Alt', 'Meta'].includes(event.key);
+
 /** whether a key goes to what has focus instead (text being typed, a shortcut) */
 const isForOthers = (event: KeyboardEvent): boolean =>
   event.ctrlKey || event.metaKey || event.altKey ||
@@ -154,7 +158,7 @@ const isForOthers = (event: KeyboardEvent): boolean =>
 
 const onWalkKey = (event: KeyboardEvent, down: boolean) => {
   if(designDialog.isOpen) return/*the dialog has the keys*/;
-  if(down && lookAround.isOpen && !isForOthers(event)) { lookAround.hide(); return; }
+  if(down && lookAround.isOpen && !isForOthers(event) && !movesFocus(event)) { lookAround.hide(); return; }
   if(down && (event.code === 'KeyI') && !isForOthers(event)) { toggleHelp(); return; }
   if(!(event.code in WALK_KEYS)) { if(event.key === 'Shift') viewer.walk(walkFromKeys(down)); return; }
   if(down && (isForOthers(event) || help.open)) return;

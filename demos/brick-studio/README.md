@@ -94,7 +94,7 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 | `check` | lists collisions and floating parts, for a build changed some other way |
 | `setGround` | colors the baseplate, as the swatch does |
 | `setView` | turns the camera and frames the build |
-| `lookAround` | shows the build from all four sides at once, so one screenshot sees every side; the next change closes it |
+| `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
 | `setFidelity` | sets how real the bricks look, from Draft to Path traced, as the Look slider does |
 | `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it (a file of components kept as written) |
 | `listDesigns` | the designs in your designs folder |
