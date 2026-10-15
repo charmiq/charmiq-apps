@@ -136,6 +136,8 @@ A Charm drives the Studio through these:
 
 Every edit resolves once the parts have landed, so a screenshot taken next shows the result.
 
+A Charm can also call these from the Platform's Run Code: its script finds the Studio with `charmiq.discover('charmiq.command')` and calls each command as a method, checked as if called directly, so loops and functions build a whole scene in one action.
+
 
 ## The Files
 

@@ -393,7 +393,7 @@
       },
       {
         "name": "lookAround",
-        "description": "Show the build from all four sides at once (south, east, north, west, each framed) so one screenshot sees every side. The next change closes it",
+        "description": "Show the build from all four sides at once (south, east, north, west, each framed) so one screenshot sees every side. Take that screenshot after each object and at the end. The next change closes it",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
