@@ -1,5 +1,5 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import { compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, placedLines, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
+import { compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
@@ -84,9 +84,12 @@ export type Model = Readonly<{
   /** why edits cannot change the text line by line, model-facing (SEE: UNEDITABLE) */
   uneditable?: string;
   /** why an assembled part's pieces are not told from the lines near them,
-   *  model-facing: the model does not account for every line, so no text is ever
-   *  written from it */
+   *  model-facing (SEE: UNEDITABLE) */
   untold?: string;
+  /** why no text may be written from the model, model-facing: it does not account
+   *  for every line as written (its pieces are untold, or a part's numbers overflow
+   *  once its submodels are placed), so a flat text written from it would differ */
+  unwritable?: string;
   /** the baseplate's color (a catalog color), when the build names one */
   ground?: string;
   /** the components the file defines, and the copies its main model places; each
@@ -118,10 +121,17 @@ const UNEDITABLE = {
   undecided: 'more lines lie where an assembled part\'s pieces go than are compared, so which lines are its pieces is not told. Remove the extra lines from the text getModel returns and give it to setModel to edit it',
 } as const;
 
+/** why no text is written from a model besides an untold piece, model-facing */
+const UNWRITABLE = {
+  overflows: 'a part\'s numbers overflow once its submodels are placed, so it cannot be written flat. Give it back as written (getModel) or remove that part',
+} as const;
+
 /** why a truncated model was read only in part, model-facing */
 export const READ_IN_PART = `Its submodels expand past what Brick Studio reads (${MAX_PARTS} parts, ${MAX_PARTS} submodel references or ${MAX_EXPANDED_LINES} submodel lines), so it was read only in part.`;
 
 const DEFAULT_HEADER = ['0 Brick Studio model', '0 Name: model.ldr'];
+/** below this a number's thousandths are exact in a double, so a line rounds them */
+const ROUNDED_BELOW = 2 ** 53 / 1000;
 /** the main model's file name once the build has components */
 const MAIN_FILE = 'model.ldr';
 /** LDraw's meta-command that ends a building step */
@@ -268,6 +278,7 @@ export const parseModel = (text: string): Model => {
   const flat = (files.size === 1) && (main === '')/*no `0 FILE` section: each part is its own line*/;
   // why line edits cannot apply, when they cannot: the first reason found
   const untold = undecided || components.some(component => component.undecided);
+  const overflows = others.some(other => ![...other.position, ...other.matrix].every(Number.isFinite))/*placed through submodels whose transforms overflow*/;
   const uneditable = ((main === '') && !flat) ? UNEDITABLE.unsectioned : nested ? UNEDITABLE.nested : repeated ? UNEDITABLE.repeated
     : untold ? UNEDITABLE.undecided : undefined;
   const lineBreak = lines.find(line => line.lineBreak)?.lineBreak ?? '\n';
@@ -287,6 +298,7 @@ export const parseModel = (text: string): Model => {
     ...((copies.length > 0) ? { copies, placementCopies } : {}),
     ...((placed.length > 0) ? { placed, placementPlaced } : {}),
     ...(untold ? { untold: UNEDITABLE.undecided } : {}),
+    ...((untold || overflows) ? { unwritable: untold ? UNEDITABLE.undecided : UNWRITABLE.overflows } : {}),
     ...(uneditable ? { uneditable } : { layout: {
       placements: placementSpans, others: otherSpans, pieces: pieceSpans, placed: placedSpans, mainParts, steps: stepSpans,
       ...(ground ? { ground: ground.span } : {}), ...(trailingStep ? { trailingStep } : {}),
@@ -490,9 +502,11 @@ const toPlacement = (reference: string, colorCode: number, transform: Transform)
   const rotation = matrixRotation(transform.matrix);
   if(!part || !color || (rotation === undefined)) return undefined;
 
-  const position = gridPosition(getShape(part), rotation, transform.position);
+  const shape = getShape(part);
+  const position = gridPosition(shape, rotation, transform.position);
   if(!position) return undefined;
-  return { part: part.key, color: color.key, rotation, ...position };
+  const placement: Placement = { part: part.key, color: color.key, rotation, ...position };
+  return onSafeGrid(shape, placement) ? placement : undefined/*off the grid's safe numbers: an unchecked part*/;
 };
 
 const normalizeName = (name: string): string => name.trim().replace(/\\/g, '/').toLowerCase();
@@ -591,8 +605,12 @@ export const applyChanges = (text: string, changes: ReadonlyArray<ContentChange>
 const partLine = (colorCode: number, position: readonly number[], matrix: readonly number[], ldraw: string): string =>
   ['1', colorCode, ...position, ...matrix].map(formatNumber).join(' ') + ` ${ldraw}.dat`;
 
+/** a number as a line writes it: to three decimals, or exactly as it is where
+ *  rounding to three decimals cannot change it (a whole number, or one too large for
+ *  thousandths to count) */
 const formatNumber = (value: number | string): string => {
   if(typeof value === 'string') return value;
+  if(Number.isInteger(value) || (Math.abs(value) >= ROUNDED_BELOW)) return Object.is(value, -0) ? '0' : String(value);
   const rounded = Math.round(value * 1000) / 1000;
   return Object.is(rounded, -0) ? '0' : String(rounded);
 };

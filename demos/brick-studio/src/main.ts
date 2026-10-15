@@ -66,11 +66,13 @@ const showStatus = (model: Model) => {
   const result = build.check();
   const count = model.placements.length + model.others.length;
   const builds = build.builds().length;
-  const unbuilt = viewer.unbuiltCount(model);
+  const unbuilt = viewer.unbuiltCount(model), undrawn = viewer.undrawnCount(model);
   const failed = viewer.familiesFailed().map(familyLabel), loading = viewer.familiesLoading().map(familyLabel);
   const notes = [
     (unbuilt > 0) ? `${unbuilt} not shown · ${(failed.length > 0) ? failed.join(', ') : 'parts'} failed to load` : undefined,
     (loading.length > 0) ? `loading ${loading.join(', ')}…` : undefined,
+    (undrawn > 0) ? `${undrawn} too far or too large to draw` : undefined,
+    viewer.reachesPastBaseplate() ? 'reaches past the baseplate' : undefined,
     (builds > 1) ? `${builds} builds in this document · edits paused` : undefined,
     build.isUncertain() ? 'could not check the document · reload to try again' : undefined,
     result.truncated ? 'read in part' : undefined,
@@ -79,7 +81,7 @@ const showStatus = (model: Model) => {
     (result.unchecked > 0) ? `${result.unchecked} off grid` : undefined,
   ].filter(Boolean);
   statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
-  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0));
+  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0));
   retryButton.hidden = retrySep.hidden = (unbuilt < 1);
   hint.hidden = (count > 0) || result.truncated;
 };

@@ -1,10 +1,10 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
-import { MAX_COORDINATE, type Build } from './build';
+import type { Build } from './build';
 import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { DesignExists, type Designs } from './designs';
-import { filledCells, footprintSize, getColorByCode, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MIN, type PartShape } from './grid';
+import { filledCells, footprintSize, getColorByCode, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { LookAround } from './look-around';
 import type { Viewer } from './viewer';
@@ -44,7 +44,7 @@ const GRID = [
   'A component is a group of parts defined once (defineComponent, in its own grid: x, z and level from 0) and placed many times: an addParts item {component, x, z, level, rotation} places a copy by its footprint\'s south-west corner and its bottom level, turned as a part is. Copies are checked as parts are; removing any cell of a copy removes the whole copy, and redefining a component changes every copy. Build a repeated thing (a tower, a house, a tree with a fence) as a component.',
   'A saved design can be a component too: defineComponentFromDesign defines one from a design in the designs folder (listDesigns names them), its footprint from x 0, z 0 and its lowest part at level 0, so a house, a car or a tree saved once is placed many times.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
-  `The baseplate is no boundary: it grows with the build, ${BASEPLATE_MARGIN} studs beyond it on every side and never smaller than ${BASEPLATE_MIN} x ${BASEPLATE_MIN} studs (x and z from ${-BASEPLATE_MIN / 2} to ${BASEPLATE_MIN / 2} while the build is empty). Parts stand anywhere with x and z within ${MAX_COORDINATE} of the origin; center a scene near x 0, z 0.`,
+  `The baseplate is no boundary: it grows with the build, ${BASEPLATE_MARGIN} studs beyond it on every side, never smaller than ${BASEPLATE_MIN} x ${BASEPLATE_MIN} studs (x and z from ${-BASEPLATE_MIN / 2} to ${BASEPLATE_MIN / 2} while the build is empty) and never larger than ${BASEPLATE_MAX} x ${BASEPLATE_MAX}. Parts stand anywhere with x and z within ${MAX_COORDINATE} of the origin; center a scene near x 0, z 0.`,
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east. lookAround shows the build from all four sides at once, so one screenshot sees every side; the next change closes it.',
 ].join(' ');
 

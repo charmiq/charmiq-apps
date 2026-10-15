@@ -6,7 +6,7 @@ import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawCondit
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { CATALOG, resourceFamily } from './catalog';
-import { getColor, getColorByCode, getColorValue, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MIN, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
+import { baseplateArea, getColor, getColorByCode, getColorValue, getPart, getShape, isDrawable, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
 import type { Model } from './model';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
@@ -132,6 +132,8 @@ export class Viewer {
   private readonly parts = new THREE.Group();
   private model: Model | undefined;
   private baseplate: THREE.Group | undefined;
+  /** whether the build reaches past the baseplate (SEE: baseplateArea) */
+  private pastBaseplate = false;
   private shownKeys = new Set<string>();
   private drops: Drop[] = [];
 
@@ -259,6 +261,15 @@ export class Viewer {
   }
 
   // ------------------------------------------------------------------------------
+  /** how many of a build's parts are not drawn because they lie past the draw reach
+   *  or are outsized (SEE: isDrawable); their lines are kept */
+  public undrawnCount(model: Model): number {
+    const placements = model.placements.filter(placement => !placedLines(getShape(getPart(placement.part)!/*by contract*/), placement, getColor(placement.color)!.code/*by contract*/).every(isDrawable));
+    return placements.length + model.others.filter(other => !isDrawable(other)).length;
+  }
+  /** whether the build reaches past its baseplate (SEE: BASEPLATE_MAX) */
+  public reachesPastBaseplate(): boolean { return this.pastBaseplate; }
+
   /** how many of a build's parts are not drawn because they could not be */
   public unbuiltCount(model: Model): number {
     const placements = model.placements.filter(placement => partFiles(getPart(placement.part)!/*by contract*/).some(ldraw => this.unbuilt.has(ldraw)));
@@ -567,17 +578,15 @@ export class Viewer {
 
 
   // ------------------------------------------------------------------------------
-  /** sizes the baseplate to the build plus a margin and places the sun over it */
+  /** sizes the baseplate to the build plus a margin (SEE: baseplateArea) and places
+   *  the sun over it */
   private updateBaseplate(): void {
     if(!this.studGeometry) return/*not loaded*/;
 
-    const box = this.buildBounds();
-    const center = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+    const box = this.buildBounds()/*drawn parts alone: finite and within the draw reach*/;
     const size = box.isEmpty() ? new THREE.Vector3() : box.getSize(new THREE.Vector3());
-    const width = evenAtLeast(size.x + (BASEPLATE_MARGIN * 2), BASEPLATE_MIN);
-    const depth = evenAtLeast(size.z + (BASEPLATE_MARGIN * 2), BASEPLATE_MIN);
-    const minX = Math.round(center.x - (width / 2));
-    const minZ = Math.round(center.z - (depth / 2));
+    const { minX, minZ, width, depth, partial } = baseplateArea(box.isEmpty() ? undefined : { minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z });
+    if(partial !== this.pastBaseplate) { this.pastBaseplate = partial; this.onPartsChanged?.(); }
 
     if(this.baseplate) {
       const current = this.baseplate.userData as { minX: number; minZ: number; width: number; depth: number; };
@@ -751,15 +760,16 @@ export class Viewer {
 
 // == Render items ================================================================
 /** every part line of a build that has catalog geometry, with its scene transform */
+/** the lines a build is drawn as: every line that can be (SEE: isDrawable) */
 const renderItems = (model: Model): RenderItem[] => [
   ...model.placements.flatMap(placement => {
     const part = getPart(placement.part)!/*by contract*/;
     const color = getColor(placement.color)!/*by contract*/;
     const lines = placedLines(getShape(part), placement, color.code);
     const drop = lineKey(lines[0]);
-    return lines.map(line => renderItem(line, drop));
+    return lines.every(isDrawable) ? lines.map(line => renderItem(line, drop)) : []/*the part whole, or none of it*/;
   }),
-  ...model.others.map(other => renderItem(other, lineKey(other))),
+  ...model.others.filter(isDrawable).map(other => renderItem(other, lineKey(other))),
 ];
 
 /** a part line as drawn, dropping with the part `drop` names */
@@ -854,4 +864,3 @@ const lerp = (a: number, b: number, t: number): number => a + ((b - a) * t);
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t: number): number => (t < 0.5) ? (4 * t * t * t) : (1 - (Math.pow(-2 * t + 2, 3) / 2));
 const normalizeDegrees = (degrees: number): number => ((degrees % 360) + 360) % 360;
-const evenAtLeast = (value: number, min: number): number => Math.max(min, Math.ceil(value / 2) * 2);

@@ -1,7 +1,7 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { checkModel, describeCopy, describePlaced, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
-import { cellKey, filledCells, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, toRotation, type Copy, type Footprint, type Placement } from './grid';
+import { cellKey, filledCells, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, toRotation, MAX_COORDINATE, type Copy, type Footprint, type Placement } from './grid';
 import { appendLines, applyChanges, clearEdits, copyLine, defineEdits, deleteLines, groundEdit, parseModel, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
 import { minOf } from './numbers';
 
@@ -16,7 +16,6 @@ import { minOf } from './numbers';
 // ********************************************************************************
 // == Constants ===================================================================
 const MAX_BATCH = 400;
-export const MAX_COORDINATE = 400/*studs from the origin*/;
 const MAX_LEVEL = 600/*plates*/;
 /** the studs between a build and a copy placed beside it */
 const BESIDE_GAP = 2/*studs*/;
@@ -90,13 +89,13 @@ export class Build {
   public conflict(): string | undefined { return this.bridge.conflict(); }
   /** every build the document holds, by app-content id */
   public builds(): ReadonlyArray<Readonly<{ id: string; ldraw: string; }>> { return this.bridge.builds(); }
-  /** the build as LDraw text: a build with components, or whose pieces are untold
-   *  (SEE: Model#untold), as written; any other flat. Refused for a build read only in
+  /** the build as LDraw text: a build with components, or one no text may be written
+   *  from (SEE: Model#unwritable), as written; any other flat. Refused for a build read only in
    *  part, which would otherwise pass for the whole build (and replace it, given back
    *  to setModel) */
   public getText(): string {
     if(this.model.truncated) throw new BuildError(`${READ_IN_PART} Its text cannot be given back whole from here; the whole text is in the document's model app-content.`);
-    return (hasComponents(this.model) || this.model.untold) ? this.text : serializeModel(this.model);
+    return (hasComponents(this.model) || this.model.unwritable) ? this.text : serializeModel(this.model);
   }
   public check(): CheckResult { return checkModel(this.model); }
 
@@ -299,9 +298,10 @@ export class Build {
     await this.whenReady();
     const model = parseModel(text);
     if(model.truncated) throw new BuildError(`That LDraw is too large to take: ${READ_IN_PART} Nothing was changed.`);
-    if(model.untold) throw new BuildError(`That LDraw cannot be taken: ${model.untold}. Nothing was changed.`);
     if(partCount(model) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
-    await this.bridge.replace((hasComponents(model) && model.layout) ? text : serializeModel(model));
+    const asWritten = hasComponents(model) && !!model.layout;
+    if(!asWritten && model.unwritable) throw new BuildError(`That LDraw cannot be taken: ${model.unwritable}. Nothing was changed.`);
+    await this.bridge.replace(asWritten ? text : serializeModel(model));
     return model;
   }
 
