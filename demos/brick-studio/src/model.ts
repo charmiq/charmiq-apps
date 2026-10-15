@@ -47,7 +47,7 @@ export type ModelLayout = Readonly<{
   /** the main model's `0 FILE` line, and each component's section from its `0 FILE`
    *  line to the next, for an MPD file */
   mainFile?: Span;
-  components: ReadonlyArray<Readonly<{ name: string; span: Span; }>>;
+  components: ReadonlyArray<Readonly<{ name: string; file: string; span: Span; }>>;
   /** where the main model's lines end (the text's end for a flat file), and whether
    *  its last line ends in a line break there */
   mainEnd: number;
@@ -67,8 +67,9 @@ export type ModelSteps = Readonly<{ placements: ReadonlyArray<number>; others: R
  *  one on the grid. The line owns every part it places, a copy or not */
 export type Placed = Readonly<{ component: string; colorCode: number; copy?: number; }>;
 
-/** a component: its parts in its own grid and the cells they cover */
-export type Component = Readonly<{ name: string; placements: ReadonlyArray<Placement>; others: number/*part lines off its grid*/; footprint?: Footprint; }>;
+/** a component: its section's file as written (the name and `.ldr`, `.dat`, `.mpd`
+ *  or nothing), its parts in its own grid and the cells they cover */
+export type Component = Readonly<{ name: string; file: string; placements: ReadonlyArray<Placement>; others: number/*part lines off its grid*/; footprint?: Footprint; }>;
 
 // ................................................................................
 export type Model = Readonly<{
@@ -78,8 +79,14 @@ export type Model = Readonly<{
   others: ReadonlyArray<OtherPart>;
   /** the text expands past what is read (SEE: READ_IN_PART): only its first parts were read */
   truncated?: boolean;
-  /** where the parts lie, when the text is one flat file (no `0 FILE` sections) */
+  /** where the parts lie, when edits can change the text line by line */
   layout?: ModelLayout;
+  /** why edits cannot change the text line by line, model-facing (SEE: UNEDITABLE) */
+  uneditable?: string;
+  /** why an assembled part's pieces are not told from the lines near them,
+   *  model-facing: the model does not account for every line, so no text is ever
+   *  written from it */
+  untold?: string;
   /** the baseplate's color (a catalog color), when the build names one */
   ground?: string;
   /** the components the file defines, and the copies its main model places; each
@@ -102,6 +109,15 @@ export const MAX_PARTS = 3000;
  *  again for every reference to it */
 const MAX_EXPANDED_LINES = 100_000;
 
+/** why edits cannot change a model's text line by line, model-facing: each says what
+ *  makes it so and what to do */
+const UNEDITABLE = {
+  unsectioned: 'lines come before its first `0 FILE` section. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
+  nested: 'its submodels place other submodels. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
+  repeated: 'two of its sections share a name. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
+  undecided: 'more lines lie where an assembled part\'s pieces go than are compared, so which lines are its pieces is not told. Remove the extra lines from the text getModel returns and give it to setModel to edit it',
+} as const;
+
 /** why a truncated model was read only in part, model-facing */
 export const READ_IN_PART = `Its submodels expand past what Brick Studio reads (${MAX_PARTS} parts, ${MAX_PARTS} submodel references or ${MAX_EXPANDED_LINES} submodel lines), so it was read only in part.`;
 
@@ -116,6 +132,15 @@ const GROUND_META = ['0', '!BRICKSTUDIO', 'GROUND'] as const;
 export const EMPTY_MODEL: Model = { header: DEFAULT_HEADER, placements: [], others: [] };
 
 // == Parse =======================================================================
+/** how far apart two lines' positions (LDU) and matrix values may be and still be
+ *  the same line: LDraw's rounding of what other programs write */
+const LINE_TOLERANCE = 1e-2;
+const MATRIX_TOLERANCE = 1e-3;
+/** the most other lines a piece compares before it is missing (SEE: absorbPieces):
+ *  more than a piece's own lines and its near neighbors in any file built to be
+ *  read, few enough that lines placed to miss it stay bounded */
+const MAX_NEAR_LINES = 16;
+
 const IDENTITY: Transform = { matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], position: [0, 0, 0] };
 
 // --------------------------------------------------------------------------------
@@ -125,21 +150,27 @@ export const parseModel = (text: string): Model => {
   const lines = splitLines(text);
 
   // split into files: a plain LDR is one unnamed file. Blank lines before the first
-  // file belong to none
+  // file belong to none. A name used twice is read from its first section; the
+  // file can then not be edited line by line. The lines of the files after the
+  // main model (the component definitions) are counted toward the submodel budget
   const files = new Map<string, Line[]>();
-  const fileLines = new Map<string, Span>()/*each named file's `0 FILE` line*/;
+  const sectionStarts: Array<Readonly<{ name: string; from: number; to: number; }>> = []/*every `0 FILE` line, in order*/;
   let current: Line[] = [];
   let main: string | undefined;
+  let repeated = false;
+  let definitionLines = 0;
   for(const line of lines) {
     const trimmed = line.text.trim();
     if(trimmed.startsWith('0 FILE ')) {
       const name = normalizeName(trimmed.slice(7));
       current = [];
-      files.set(name, current);
-      fileLines.set(name, { from: line.from, to: line.to });
+      if(files.has(name)) repeated = true/*its lines are read from its first section*/;
+      else files.set(name, current);
+      sectionStarts.push({ name, from: line.from, to: line.to });
       main ??= name;
       continue;
     } /* else -- a line of the current file */
+    if((main !== undefined) && (current !== files.get(main))) definitionLines++;
     if(main === undefined) {
       if(trimmed.length < 1) continue/*before any file*/;
       main = ''; files.set(main, current);
@@ -148,10 +179,15 @@ export const parseModel = (text: string): Model => {
   }
   if(main === undefined) return { ...EMPTY_MODEL, layout: { placements: [], others: [], pieces: [], placed: [], mainParts: [], steps: [], components: [], mainEnd: 0, mainEndsWithBreak: false, length: 0, lineBreak: '\n', endsWithBreak: false } }/*empty text*/;
 
-  // each file but the main model is a component: its parts in its own grid
-  const components = [...files].filter(([name]) => name !== main).map(([name, componentLines]) => readComponent(name, componentLines, files));
-  const componentsByFile = new Map(components.map(component => [fileName(component.name), component]));
+  // each file but the main model is a component: its parts in its own grid. Past
+  // the submodel budget none is read: the model is then read only in part
+  const tooManyDefinitionLines = definitionLines > MAX_EXPANDED_LINES;
+  const components = tooManyDefinitionLines ? [] : [...files].filter(([name]) => name !== main).map(([name, componentLines]) => readComponent(name, componentLines, files));
+  const componentsByFile = new Map(components.map(component => [component.file, component]));
   let nested = components.some(component => component.nested);
+  // a name two sections share (`bare` and `bare.ldr`) names neither for an edit
+  const names = new Set(components.map(component => component.name));
+  if(names.size < components.length) repeated = true;
 
   const header: string[] = [];
   const placements: Placement[] = [];
@@ -225,33 +261,39 @@ export const parseModel = (text: string): Model => {
     }
   };
   walk(main, IDENTITY, 16, 0, undefined);
-  const pieceSpans = absorbPieces(placements, others, otherSpans, otherSteps, { placements: placementPlaced, others: otherPlaced });
+  const { pieceSpans, undecided } = absorbPieces(placements, others, otherSpans, otherSteps, { placements: placementPlaced, others: otherPlaced });
 
   exceeded();
+  truncated ||= tooManyDefinitionLines/*the main model read, its components not*/;
   const flat = (files.size === 1) && (main === '')/*no `0 FILE` section: each part is its own line*/;
-  const editable = flat || ((main !== '') && !nested)/*an MPD file of components holding none*/;
+  // why line edits cannot apply, when they cannot: the first reason found
+  const untold = undecided || components.some(component => component.undecided);
+  const uneditable = ((main === '') && !flat) ? UNEDITABLE.unsectioned : nested ? UNEDITABLE.nested : repeated ? UNEDITABLE.repeated
+    : untold ? UNEDITABLE.undecided : undefined;
   const lineBreak = lines.find(line => line.lineBreak)?.lineBreak ?? '\n';
   const endsWithBreak = /[\r\n]$/.test(text);
-  const sections = components.map(({ name }) => ({ name, span: sectionSpan(fileName(name), fileLines, text.length) }));
+  const spans = sectionSpans(sectionStarts, text.length);
+  const sections = components.map(({ name, file }) => ({ name, file, span: spans.get(file)!/*each component is a file's*/ }));
   const mainEnd = minOf(sections.map(({ span }) => span.from), text.length);
   const lastPart = maxOf(mainParts.map(span => span.to), 0);
   const trailingStep = (mainParts.length > 0) ? stepSpans.find(span => span.from >= lastPart) : undefined;
-  const mainFile = (main !== '') ? fileLines.get(main) : undefined;
+  const mainFile: Span | undefined = (main !== '') ? { from: sectionStarts[0].from, to: sectionStarts[0].to }/*the first section is the main model's*/ : undefined;
   const steps = numberSteps(placementSteps, otherSteps, copySteps);
   return {
     header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others,
     ...(truncated ? { truncated } : {}),
     ...(ground ? { ground: ground.color } : {}),
-    ...((components.length > 0) ? { components: components.map(({ nested: _, ...component }) => component) } : {}),
+    ...((components.length > 0) ? { components: components.map(({ nested: _, undecided: __, ...component }) => component) } : {}),
     ...((copies.length > 0) ? { copies, placementCopies } : {}),
     ...((placed.length > 0) ? { placed, placementPlaced } : {}),
-    ...(editable ? { layout: {
+    ...(untold ? { untold: UNEDITABLE.undecided } : {}),
+    ...(uneditable ? { uneditable } : { layout: {
       placements: placementSpans, others: otherSpans, pieces: pieceSpans, placed: placedSpans, mainParts, steps: stepSpans,
       ...(ground ? { ground: ground.span } : {}), ...(trailingStep ? { trailingStep } : {}),
       ...(mainFile ? { mainFile } : {}), components: sections,
       mainEnd, mainEndsWithBreak: (mainEnd < text.length) || endsWithBreak,
       length: text.length, lineBreak, endsWithBreak,
-    } } : {}),
+    } }),
     ...((steps.count > 1) ? { steps } : {}),
   };
 };
@@ -259,7 +301,7 @@ export const parseModel = (text: string): Model => {
 // ................................................................................
 /** a component's parts in its own grid, from its file's lines; `nested` when it
  *  places another file */
-const readComponent = (file: string, componentLines: ReadonlyArray<Line>, files: ReadonlyMap<string, ReadonlyArray<Line>>): Component & Readonly<{ nested: boolean; }> => {
+const readComponent = (file: string, componentLines: ReadonlyArray<Line>, files: ReadonlyMap<string, ReadonlyArray<Line>>): Component & Readonly<{ nested: boolean; undecided: boolean; }> => {
   const placements: Placement[] = [];
   const others: OtherPart[] = [];
   const spans: Span[] = [], steps: number[] = [];
@@ -276,36 +318,67 @@ const readComponent = (file: string, componentLines: ReadonlyArray<Line>, files:
     if(placement) placements.push(placement);
     else { others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode: values[0], position: transform.position, matrix: transform.matrix }); spans.push({ from, to }); steps.push(0); }
   }
-  absorbPieces(placements, others, spans, steps);
+  const { undecided } = absorbPieces(placements, others, spans, steps);
   const footprint = footprintOf(placements);
-  return { name: file.replace(/\.ldr$/, ''), placements, others: others.length, ...(footprint ? { footprint } : {}), nested };
+  return { name: file.replace(/\.ldr$/, ''), file, placements, others: others.length, ...(footprint ? { footprint } : {}), nested, undecided };
 };
 
-/** a named file's section: from its `0 FILE` line up to the next file's, or the text's end */
-const sectionSpan = (file: string, fileLines: ReadonlyMap<string, Span>, length: number): Span => {
-  const from = fileLines.get(file)!/*by contract*/.from;
-  return { from, to: minOf([...fileLines.values()].map(span => span.from).filter(start => start > from), length) };
+/** each named file's section, in one pass: from its first `0 FILE` line up to the
+ *  next `0 FILE` line, or the text's end */
+const sectionSpans = (starts: ReadonlyArray<Readonly<{ name: string; from: number; }>>, length: number): Map<string, Span> => {
+  const spans = new Map<string, Span>();
+  starts.forEach(({ name, from }, index) => { if(!spans.has(name)) spans.set(name, { from, to: starts[index + 1]?.from ?? length }); });
+  return spans;
 };
 
-/** a component's file name */
-export const fileName = (component: string): string => `${component}.ldr`;
+/** the file a component Brick Studio adds is written to; a section already in the
+ *  text keeps its own (SEE: Component#file) */
+const newFileName = (component: string): string => `${component}.ldr`;
 
 // ................................................................................
-/** takes each placement's pieces out of the other parts, where a line lies as its
- *  piece would and the same line of the main model placed it (`owners`, each an
- *  index into `placed`; none within one file): the lines are the placement's. A
- *  piece a component's line places is never a part of the build's own, nor of
- *  another line's. Returns each placement's piece lines, in order. The arrays of
- *  other parts are changed in place */
-const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[], otherSpans: Span[], otherSteps: number[], owners?: Readonly<{ placements: ReadonlyArray<number | undefined>; others: Array<number | undefined>; }>): Span[][] => {
+/** takes each placement's pieces out of the other parts: a line of the piece's file
+ *  and color, within LINE_TOLERANCE of where the placement puts it and placed by the
+ *  same line of the main model (`owners`, each an index into `placed`; none within
+ *  one file), is the placement's, the first such line in the text. A piece a
+ *  component's line places is never a part of the build's own, nor of another line's.
+ *  Returns each placement's piece lines, in order, and whether a piece went undecided:
+ *  more lines lay where it goes than MAX_NEAR_LINES, so which is its own is not told.
+ *  The arrays of other parts are changed in place */
+const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[], otherSpans: Span[], otherSteps: number[], owners?: Readonly<{ placements: ReadonlyArray<number | undefined>; others: Array<number | undefined>; }>): Readonly<{ pieceSpans: Span[][]; undecided: boolean; }> => {
+  // the other parts not yet taken, by owner, file, color and whole LDU, each bucket a
+  // list in text order a taken line leaves: a piece looks only in the buckets its
+  // tolerance reaches (at most two per axis), and every line it looks at counts
+  const near = new Map<string, Untaken>();
+  others.forEach((other, index) => {
+    const key = nearKey(other, owners?.others[index], other.position.map(Math.round));
+    if(!near.has(key)) near.set(key, untakenList());
+    near.get(key)!.push(index);
+  });
   const taken = new Set<number>();
+  let undecided = false;
+  /** the first line in the text that is the piece, or undefined when none is or the
+   *  look ran out (`undecided`) */
+  const take = (piece: PartLine, owner: number | undefined): number | undefined => {
+    let looked = 0;
+    let found: Readonly<{ index: number; bucket: Untaken; }> | undefined;
+    for(const key of nearKeys(piece, owner)) {
+      const bucket = near.get(key);
+      for(const index of bucket?.lines() ?? []) {
+        if(found && (index > found.index)) break/*a later line than the one found*/;
+        if(++looked > MAX_NEAR_LINES) { undecided = true; return undefined; }
+        if(sameLine(others[index], piece)) { found = { index, bucket: bucket! }; break; }
+      }
+    }
+    if(found) found.bucket.remove(found.index);
+    return found?.index;
+  };
   const pieceSpans = placements.map((placement, placementIndex) => {
     const part = getPart(placement.part)!/*by contract*/;
     if(!part.pieces) return [];
     const [, ...pieces] = placedLines(getShape(part), placement, getColor(placement.color)!.code/*by contract*/);
     return pieces.flatMap(piece => {
-      const index = others.findIndex((other, at) => !taken.has(at) && (owners?.others[at] === owners?.placements[placementIndex]) && sameLine(other, piece));
-      if(index < 0) return []/*missing: written whole again*/;
+      const index = take(piece, owners?.placements[placementIndex]);
+      if(index === undefined) return []/*missing: written whole again*/;
       taken.add(index);
       return [otherSpans[index]];
     });
@@ -314,14 +387,50 @@ const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[],
   const removeTaken = <T,>(array: T[]): void => { array.splice(0, array.length, ...array.filter((_, index) => !taken.has(index))); };
   removeTaken(others); removeTaken(otherSpans); removeTaken(otherSteps);
   if(owners) removeTaken(owners.others);
-  return pieceSpans;
+  return { pieceSpans, undecided };
 };
 
-/** whether two part lines are the same file, color and transform */
+/** a bucket's lines not yet taken, in text order: a removed line is never visited
+ *  again */
+type Untaken = Readonly<{ push: (index: number) => void; lines: () => Iterable<number>; remove: (index: number) => void; }>;
+const untakenList = (): Untaken => {
+  const next = new Map<number, number | undefined>(), previous = new Map<number, number | undefined>();
+  let first: number | undefined, last: number | undefined;
+  return {
+    push: index => {
+      next.set(index, undefined); previous.set(index, last);
+      if(last === undefined) first = index; else next.set(last, index);
+      last = index;
+    },
+    lines: function* () { for(let index=first; index!==undefined; index=next.get(index)) yield index; },
+    remove: index => {
+      const [before, after] = [previous.get(index), next.get(index)];
+      if(before === undefined) first = after; else next.set(before, after);
+      if(after === undefined) last = before; else previous.set(after, before);
+      next.delete(index); previous.delete(index);
+    },
+  };
+};
+
+/** a part line's bucket for `absorbPieces`: its owner, file and color at a position
+ *  in whole LDU */
+const nearKey = (line: PartLine, owner: number | undefined, position: ReadonlyArray<number>): string =>
+  `${owner ?? 'own'}|${line.ldraw.toLowerCase()}|${line.colorCode}|${position.join(',')}`;
+
+/** the buckets a line within LINE_TOLERANCE of a piece lies in: each axis rounds one
+ *  of at most two ways */
+const nearKeys = (piece: PartLine, owner: number | undefined): string[] =>
+  piece.position.reduce<number[][]>((positions, value) => {
+    const ways = [...new Set([Math.round(value - LINE_TOLERANCE), Math.round(value + LINE_TOLERANCE)])];
+    return positions.flatMap(position => ways.map(way => [...position, way]));
+  }, [[]]).map(position => nearKey(piece, owner, position));
+
+/** whether two part lines are the same file, color and transform, within LDraw's
+ *  rounding */
 const sameLine = (a: PartLine, b: PartLine): boolean =>
   (a.ldraw.toLowerCase() === b.ldraw.toLowerCase()) && (a.colorCode === b.colorCode) &&
-  a.position.every((value, index) => Math.abs(value - b.position[index]) < 1e-2) &&
-  a.matrix.every((value, index) => Math.abs(value - b.matrix[index]) < 1e-3);
+  a.position.every((value, index) => Math.abs(value - b.position[index]) < LINE_TOLERANCE) &&
+  a.matrix.every((value, index) => Math.abs(value - b.matrix[index]) < MATRIX_TOLERANCE);
 
 // ................................................................................
 /** whether a line is LDraw's `0 STEP` meta-command */
@@ -409,11 +518,11 @@ export const placementLines = (placement: Placement): string[] => {
   return placedLines(getShape(part), placement, color.code).map(line => partLine(line.colorCode, line.position, line.matrix, line.ldraw));
 };
 
-/** a copy's LDraw line: its component's file, in LDraw's inherited color so each
- *  part keeps its own */
-export const copyLine = (footprint: Footprint, copy: Copy): string => {
-  const { position, matrix } = copyTransform(footprint, copy);
-  return ['1', 16, ...position, ...matrix].map(formatNumber).join(' ') + ` ${fileName(copy.component)}`;
+/** a copy's LDraw line: its component's file as its section names it, in LDraw's
+ *  inherited color so each part keeps its own */
+export const copyLine = (component: Readonly<{ file: string; footprint: Footprint; }>, copy: Copy): string => {
+  const { position, matrix } = copyTransform(component.footprint, copy);
+  return ['1', 16, ...position, ...matrix].map(formatNumber).join(' ') + ` ${component.file}`;
 };
 
 // == Line Edits ==================================================================
@@ -435,8 +544,8 @@ export const appendLines = (layout: ModelLayout, lines: ReadonlyArray<string>, n
  *  its name and its parts' lines. A flat text becomes an MPD file first, its main
  *  model named model.ldr; a new section goes at the text's end */
 export const defineEdits = (layout: ModelLayout, name: string, lines: ReadonlyArray<string>): ContentChange[] => {
-  const section = [`0 FILE ${fileName(name)}`, `0 ${name}`, ...lines].map(line => line + layout.lineBreak).join('');
   const existing = layout.components.find(component => component.name === name);
+  const section = [`0 FILE ${existing?.file ?? newFileName(name)}`, `0 ${name}`, ...lines].map(line => line + layout.lineBreak).join('');
   if(existing) return [{ ...existing.span, insert: section }];
   const lead = ((layout.length < 1) || layout.endsWithBreak) ? '' : layout.lineBreak/*the last line is unfinished*/;
   const end: ContentChange = { from: layout.length, to: layout.length, insert: lead + section };

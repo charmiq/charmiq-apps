@@ -90,12 +90,13 @@ export class Build {
   public conflict(): string | undefined { return this.bridge.conflict(); }
   /** every build the document holds, by app-content id */
   public builds(): ReadonlyArray<Readonly<{ id: string; ldraw: string; }>> { return this.bridge.builds(); }
-  /** the build as LDraw text: a build with components as written, any other flat;
-   *  refused for a build read only in part, which would otherwise pass for the whole
-   *  build (and replace it, given back to setModel) */
+  /** the build as LDraw text: a build with components, or whose pieces are untold
+   *  (SEE: Model#untold), as written; any other flat. Refused for a build read only in
+   *  part, which would otherwise pass for the whole build (and replace it, given back
+   *  to setModel) */
   public getText(): string {
     if(this.model.truncated) throw new BuildError(`${READ_IN_PART} Its text cannot be given back whole from here; the whole text is in the document's model app-content.`);
-    return hasComponents(this.model) ? this.text : serializeModel(this.model);
+    return (hasComponents(this.model) || this.model.untold) ? this.text : serializeModel(this.model);
   }
   public check(): CheckResult { return checkModel(this.model); }
 
@@ -114,7 +115,11 @@ export class Build {
       const { model, layout } = editable(text);
       const missing = [...new Set(items.flatMap(item => ('component' in item) && !componentOf(model, item.component)?.footprint ? [item.component] : []))];
       if(missing.length > 0) throw new BuildError(`Nothing was added. No component named ${missing.join(', ')} holds parts on the grid (defineComponent defines one; listComponents names them).`);
-      const lines = items.flatMap(item => ('component' in item) ? [copyLine(componentOf(model, item.component)!.footprint!/*by contract*/, item)] : placementLines(item));
+      const lines = items.flatMap(item => {
+        if(!('component' in item)) return placementLines(item);
+        const component = componentOf(model, item.component)!/*by contract*/;
+        return [copyLine({ file: component.file, footprint: component.footprint!/*by contract*/ }, item)];
+      });
       const change = appendLines(layout, lines, newStep);
       const next = readWhole(applyChanges(text, [change]));
 
@@ -191,10 +196,10 @@ export class Build {
       // so it never collides
       const definedText = applyChanges(text, defined.changes);
       const { model, layout } = editable(definedText);
-      const footprint = componentOf(model, component)!.footprint!/*its parts are on the grid*/;
-      const copy = besideBuild(model, component, footprint);
+      const { file, footprint } = componentOf(model, component)!/*by contract*/;
+      const copy = besideBuild(model, component, footprint!/*its parts are on the grid*/);
       if(!copy) throw new BuildError(`Nothing was added. There is no room beside the build within ${MAX_COORDINATE} studs of the origin.`);
-      const change = appendLines(layout, [copyLine(footprint, copy)], true);
+      const change = appendLines(layout, [copyLine({ file, footprint: footprint! }, copy)], true);
       readWhole(applyChanges(definedText, [change]));
 
       outcome = { component: { ...defined.outcome, copies: defined.outcome.copies + 1, leftOut }, copy };
@@ -294,6 +299,7 @@ export class Build {
     await this.whenReady();
     const model = parseModel(text);
     if(model.truncated) throw new BuildError(`That LDraw is too large to take: ${READ_IN_PART} Nothing was changed.`);
+    if(model.untold) throw new BuildError(`That LDraw cannot be taken: ${model.untold}. Nothing was changed.`);
     if(partCount(model) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
     await this.bridge.replace((hasComponents(model) && model.layout) ? text : serializeModel(model));
     return model;
@@ -313,7 +319,7 @@ export class Build {
 const editable = (text: string): Readonly<{ model: Model; layout: ModelLayout; }> => {
   const model = parseModel(text);
   if(model.truncated) throw new BuildError(`This build cannot be edited here: ${READ_IN_PART} Replace it with a smaller one (setModel) to edit.`);
-  if(!model.layout) throw new BuildError('This build is a multi-file LDraw model whose submodels place other submodels, so edits cannot change it line by line. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept).');
+  if(!model.layout) throw new BuildError(`This build cannot be edited line by line: ${model.uneditable!/*by contract: no layout*/}.`);
   return { model, layout: model.layout };
 };
 
@@ -406,6 +412,7 @@ const defineChecked = (text: string, name: string, placements: ReadonlyArray<Pla
 const designParts = (ldraw: string): Readonly<{ parts: ReadonlyArray<Placement>; leftOut: number; }> => {
   const design = parseModel(ldraw);
   if(design.truncated) throw new BuildError(`That design is too large to take: ${READ_IN_PART}`);
+  if(design.untold) throw new BuildError(`That design cannot be taken: ${design.untold}.`);
   const footprint = footprintOf(design.placements);
   if(!footprint) throw new BuildError('That design holds no parts on the grid.');
   const lowest = minOf(design.placements.map(placement => placement.level));
