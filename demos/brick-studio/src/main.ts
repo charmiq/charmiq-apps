@@ -77,6 +77,8 @@ const showStatus = (model: Model) => {
     viewer.reachesPastBaseplate() ? 'reaches past the baseplate' : undefined,
     (builds > 1) ? `${builds} builds in this document · edits paused` : undefined,
     groundRefused ? 'ground not changed' : undefined,
+    model.uneditable ? 'not editable here' : undefined/*why, on hover*/,
+    ...(model.duplicated ?? []).map(name => `${name} defined twice · the first is used`),
     build.isUncertain() ? 'could not check the document · reload to try again' : undefined,
     result.truncated ? 'read in part' : undefined,
     (result.collisions.length > 0) ? plural(result.collisions.length, 'collision') : undefined,
@@ -84,8 +86,8 @@ const showStatus = (model: Model) => {
     (result.unchecked > 0) ? `${result.unchecked} off grid` : undefined,
   ].filter(Boolean);
   statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
-  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0) || !!groundRefused);
-  status.title = groundRefused ?? ''/*the refusal's reason, on hover*/;
+  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0) || !!groundRefused || !!model.uneditable || !!model.duplicated);
+  status.title = [groundRefused, model.uneditable].filter(Boolean).join('\n')/*the reasons, on hover*/;
   retryButton.hidden = retrySep.hidden = (unbuilt < 1);
   hint.hidden = (count > 0) || result.truncated;
 };
