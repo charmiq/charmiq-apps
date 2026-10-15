@@ -76,7 +76,7 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 
 **Steps.** A build can be split into building steps, LDraw's own `0 STEP` lines, so other LDraw tools show the same steps. The play, step and back buttons under the status show the build as it stands after each step, its parts dropping in; playback never changes the document, and any change to the build ends it. A Charm starts a new step by adding parts with `newStep: true`.
 
-**Designs.** The save and open buttons keep builds in your Drive. Each design is a Source document of plain LDraw text, named for the design (`Beach house.ldr`). Designs go to My Drive until you choose another folder, which the Studio then remembers. Saving a name already there (in any case) asks before replacing it. Opening a design over a build offers to add it to the build instead: the design becomes a component and one copy stands on the ground beside the build, where nothing is (adding one already in the build asks before updating its copies to the design). Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any document you can.
+**Designs.** The save and open buttons keep builds in your Drive. Each design is a Source document of plain LDraw text, named for the design (`Beach house.ldr`). Designs go to My Drive until you choose another folder, which the Studio then remembers. Saving a name already there (in any case) asks before replacing it. A design listed by `listDesigns` or the Open dialog opens by its document, whatever its name shares; a design named in a command is found among the first 50 whose names hold it, and past that the Charm is pointed to its uri, while saving refuses rather than risk a second design of the same name. A folder search shows its first 50 folders and asks you to refine it when more match. Opening a design over a build offers to add it to the build instead: the design becomes a component and one copy stands on the ground beside the build, where nothing is (adding one already in the build asks before updating its copies to the design). Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any document you can.
 
 **The commands.** A Charm drives the Studio through these:
 
@@ -88,7 +88,7 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 | `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one; a batch that would collide is refused; answers with the build's check |
 | `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy, or of any line placing a component, removes that whole line); answers with the build's check and the parts left unsupported |
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
-| `defineComponentFromDesign` | defines a component from a saved design, named after it |
+| `defineComponentFromDesign` | defines a component from a saved design (its `uri` from `listDesigns`, or its name), named after it |
 | `listComponents` | the components the build defines, their sizes and copies |
 | `clear` | removes every part, copy and component, keeping the ground |
 | `check` | lists collisions and floating parts, for a build changed some other way |
@@ -97,8 +97,8 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
 | `setFidelity` | sets how real the bricks look, from Draft to Path traced, as the Look slider does |
 | `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it (a file of components kept as written) |
-| `listDesigns` | the designs in your designs folder |
-| `loadDesign` | replaces the build with a saved design |
+| `listDesigns` | the designs in your designs folder, each by `name` and `uri` |
+| `loadDesign` | replaces the build with a saved design (its `uri` from `listDesigns`, or its name) |
 | `saveDesign` | saves the build as a design in your designs folder; a name already there needs `replace` |
 
 Every edit resolves once the parts have landed, so a screenshot taken next shows the result.

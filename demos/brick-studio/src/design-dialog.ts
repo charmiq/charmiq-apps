@@ -168,10 +168,14 @@ export class DesignDialog {
       for(const design of withDesigns ? page.designs : []) {
         list.append(element('li', {}, row('design', displayName(design), () => this.choose(design))));
       }
-      if(page.hasMore) {
-        const more = button('More', 'designs-link', 'button', () => { more.parentElement?.remove(); void this.fill(list, message, here, withDesigns, offset + ((this.search.length > 0) ? page.folders.length : page.read)); });
+      // a folder lists a page at a time; a search shows its first page, and more is
+      // a cue to refine it
+      if(page.hasMore && (this.search.length > 0)) {
+        list.append(element('li', { className: 'designs-note' }, 'More folders match · refine your search'));
+      } else if(page.hasMore) {
+        const more = button('More', 'designs-link', 'button', () => { more.parentElement?.remove(); void this.fill(list, message, here, withDesigns, offset + page.read); });
         list.append(element('li', { className: 'designs-note' }, more));
-      } /* else -- the whole folder is listed */
+      } /* else -- everything is listed */
       if((offset === 0) && (list.childElementCount < 1)) {
         list.append(element('li', { className: 'designs-note' }, (this.search.length > 0) ? 'No folder matches that name.' : withDesigns ? 'No folders or designs here.' : 'No folders here.'));
       } /* else -- something is listed */

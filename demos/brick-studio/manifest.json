@@ -238,14 +238,14 @@
       },
       {
         "name": "defineComponentFromDesign",
-        "description": "Define a component from a saved design (listDesigns names them), its footprint from x 0, z 0 and its lowest part at level 0; place copies with addParts. Its ground and steps are left out, and its parts off the grid are counted in leftOut. Named after the design unless name is given; a component of that name is redefined, every copy with it",
+        "description": "Define a component from a saved design, by its uri from listDesigns (or its name), its footprint from x 0, z 0 and its lowest part at level 0; place copies with addParts. Its ground and steps are left out, and its parts off the grid are counted in leftOut. Named after the design unless name is given; a component of that name is redefined, every copy with it",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "design": { "type": "string", "description": "The saved design's name" },
+            "uri":    { "type": "string", "description": "The design's uri, from listDesigns" },
+            "design": { "type": "string", "description": "The saved design's name, when no uri is given" },
             "name":   { "type": "string", "description": "The component's name (lower case letters, digits and dashes); the design's own name made one when omitted" }
-          },
-          "required": ["design"]
+          }
         },
         "outputSchema": {
           "type": "object",
@@ -465,26 +465,36 @@
       },
       {
         "name": "listDesigns",
-        "description": "The designs saved in the User's designs folder, by name",
+        "description": "The designs saved in the User's designs folder, each by name and uri",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
           "properties": {
             "folder": { "type": "string" },
-            "designs": { "type": "array", "items": { "type": "string" } }
+            "designs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "uri":  { "type": "string", "description": "The design's document: give it to loadDesign or defineComponentFromDesign" }
+                },
+                "required": ["name", "uri"]
+              }
+            }
           },
           "required": ["folder", "designs"]
         }
       },
       {
         "name": "loadDesign",
-        "description": "Replace the build with a saved design, by name. Returns its check",
+        "description": "Replace the build with a saved design, by its uri from listDesigns (or its name). Returns its check",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "name": { "type": "string" }
-          },
-          "required": ["name"]
+            "uri":  { "type": "string", "description": "The design's uri, from listDesigns" },
+            "name": { "type": "string", "description": "The design's name, when no uri is given" }
+          }
         },
         "outputSchema": { "type": "object" }
       },

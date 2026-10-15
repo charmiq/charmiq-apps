@@ -3,7 +3,8 @@ import type { Build } from './build';
 import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
-import { DesignExists, type Designs } from './designs';
+import { displayName, DesignExists, type Designs } from './designs';
+import type { Design } from './drive';
 import { filledCells, footprintSize, getColorByCode, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { LookAround } from './look-around';
@@ -42,7 +43,7 @@ const GRID = [
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
   'A component is a group of parts defined once (defineComponent, in its own grid: x, z and level from 0) and placed many times: an addParts item {component, x, z, level, rotation} places a copy by its footprint\'s south-west corner and its bottom level, turned as a part is. Copies are checked as parts are; removing any cell of a copy removes the whole copy, and redefining a component changes every copy. Build a repeated thing (a tower, a house, a tree with a fence) as a component.',
-  'A saved design can be a component too: defineComponentFromDesign defines one from a design in the designs folder (listDesigns names them), its footprint from x 0, z 0 and its lowest part at level 0, so a house, a car or a tree saved once is placed many times.',
+  'A saved design can be a component too: defineComponentFromDesign defines one from a design in the designs folder (listDesigns lists each with its uri), its footprint from x 0, z 0 and its lowest part at level 0, so a house, a car or a tree saved once is placed many times.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
   `The baseplate is no boundary: it grows with the build, ${BASEPLATE_MARGIN} studs beyond it on every side, never smaller than ${BASEPLATE_MIN} x ${BASEPLATE_MIN} studs (x and z from ${-BASEPLATE_MIN / 2} to ${BASEPLATE_MIN / 2} while the build is empty) and never larger than ${BASEPLATE_MAX} x ${BASEPLATE_MAX}. Parts stand anywhere with x and z within ${MAX_COORDINATE} of the origin; center a scene near x 0, z 0.`,
   'Level 0 stands on the baseplate. A view\'s azimuth 0 looks north from the south, 90 looks west from the east. lookAround shows the build from all four sides at once, so one screenshot sees every side; the next change closes it.',
@@ -57,6 +58,14 @@ export class CommandSurface {
   private report() {
     const conflict = this.build.conflict();
     return { ...reportCheck(this.build.check()), ...(conflict ? { ok: false, conflict } : {}) };
+  }
+
+  /** the design a call names: its uri (from listDesigns), which is that document, or
+   *  else its name, found by a bounded search (SEE: Designs#load) */
+  private async designGiven(uri: unknown, name: unknown): Promise<Design | string> {
+    if((typeof uri === 'string') && (uri.length > 0)) return this.designs.at(uri);
+    if((typeof name === 'string') && (name.length > 0)) return name;
+    throw new Error('Give a design\'s uri (listDesigns) or its name.');
   }
 
   /** frames a build that has just replaced the last one whole, once it is drawn */
@@ -178,15 +187,15 @@ export class CommandSurface {
 
       listDesigns: async () => {
         const designs = await this.designs.list()/*waits for the chosen folder*/;
-        return { folder: this.designs.getFolder().name, designs };
+        return { folder: this.designs.getFolder().name, designs: designs.map(design => ({ name: displayName(design), uri: design.uri })) };
       },
-      defineComponentFromDesign: async ({ design, name }: { design?: unknown; name?: unknown; }) => {
-        const { leftOut, ...component } = await this.designs.asComponent((typeof design === 'string') ? design : '', (typeof name === 'string') ? name : undefined);
+      defineComponentFromDesign: async ({ design, uri, name }: { design?: unknown; uri?: unknown; name?: unknown; }) => {
+        const { leftOut, ...component } = await this.designs.asComponent(await this.designGiven(uri, design), (typeof name === 'string') ? name : undefined);
         await this.viewer.whenSettled();
         return { component, ...((leftOut > 0) ? { leftOut } : {}), ...this.report() };
       },
-      loadDesign: async ({ name }: { name?: unknown; }) => {
-        const loaded = await this.designs.load((typeof name === 'string') ? name : '');
+      loadDesign: async ({ name, uri }: { name?: unknown; uri?: unknown; }) => {
+        const loaded = await this.designs.load(await this.designGiven(uri, name));
         await this.showWhole();
         return { loaded, ...this.report() };
       },

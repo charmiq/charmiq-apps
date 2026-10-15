@@ -1,6 +1,6 @@
 import type { AppStateAPI } from '../../../shared/charmiq';
 import { isReservedName, type Build } from './build';
-import { DESIGN_EXTENSION, type Design, type Drive, type Folder, type FolderListing } from './drive';
+import { DESIGN_EXTENSION, DRIVE_PAGE, type Design, type Drive, type Folder, type FolderListing } from './drive';
 
 // saving the build as a design in the Drive and loading one back, whole or as a
 // component of the build: what a design's name may be, which folder designs go to
@@ -98,7 +98,8 @@ export class Designs {
     await Promise.all([this.ready, this.build.whenReady()]);
     const ldraw = this.build.getText()/*refused for a build read only in part*/;
     const folder = this.folder;
-    const existing = await this.find(folder, clean);
+    const { found: existing, unseen } = await this.find(folder, clean);
+    if(!existing && unseen) throw new DesignError(`Too many designs in ${folder.name} have names like "${clean}" to tell whether one is named "${clean}". Save under a more distinctive name.`)/*a save never risks a duplicate*/;
     if(existing && !replace) throw new DesignExists(displayName(existing), folder);
 
     if(existing) await this.drive.overwrite(existing, ldraw);
@@ -106,18 +107,22 @@ export class Designs {
     return { name: existing ? displayName(existing) : clean, folder, replaced: !!existing };
   }
 
-  /** the names of the designs in the folder */
-  public async list(): Promise<ReadonlyArray<string>> {
+  /** the designs in the folder (at most MAX_LISTED), each its document */
+  public async list(): Promise<ReadonlyArray<Design>> {
     await this.ready;
-    const names: string[] = [];
-    for(let offset=0; names.length<MAX_LISTED;) {
+    const designs: Design[] = [];
+    for(let offset=0; designs.length<MAX_LISTED;) {
       const page = await this.drive.list(this.folder.id, offset);
-      names.push(...page.designs.map(design => displayName(design)));
+      designs.push(...page.designs);
       if(!page.hasMore) break;
       offset += page.read;
     }
-    return names.slice(0, MAX_LISTED);
+    return designs.slice(0, MAX_LISTED);
   }
+
+  /** the design a listing gave by its uri, wherever it is: no name is searched, so
+   *  it is that document whatever its name shares */
+  public at(uri: string): Promise<Design> { return this.drive.design(uri); }
 
   /** replaces the build with a saved design: one found in the Drive, or the one of
    *  that name in the folder */
@@ -158,16 +163,22 @@ export class Designs {
   private async named(typed: string): Promise<Design> {
     const name = designName(typed);
     await this.ready;
-    const found = await this.find(this.folder, name);
-    if(!found) throw new DesignError(`No design named "${name}" is in ${this.folder.name}.`);
-    return found;
+    const { found, unseen } = await this.find(this.folder, name);
+    if(found) return found;
+    throw new DesignError(unseen
+      ? `No design named "${name}" among the first ${DRIVE_PAGE} whose names hold it in ${this.folder.name}. Use the uri listDesigns gives for it.`
+      : `No design named "${name}" is in ${this.folder.name}.`);
   }
 
-  /** the design in the folder with this name, whatever its case: two designs whose
-   *  names differ only in case would read as one */
-  private async find(folder: Folder, name: string): Promise<Design | undefined> {
+  /** the design in the folder with this name, whatever its case (two designs whose
+   *  names differ only in case would read as one), among the first page of designs
+   *  whose names hold it; `unseen` when none there has it and more follow, so one
+   *  past the page may */
+  private async find(folder: Folder, name: string): Promise<Readonly<{ found?: Design; unseen: boolean; }>> {
     const wanted = (name + DESIGN_EXTENSION).toLocaleLowerCase();
-    return (await this.drive.search(folder.id, name)).find(design => design.fileName.toLocaleLowerCase() === wanted);
+    const { designs, hasMore } = await this.drive.search(folder.id, name);
+    const found = designs.find(design => design.fileName.toLocaleLowerCase() === wanted);
+    return found ? { found, unseen: false } : { unseen: hasMore };
   }
 }
 

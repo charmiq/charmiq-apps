@@ -48,12 +48,23 @@ export class Drive {
     return { folders: listing.entries.flatMap(asFolder), hasMore: listing.hasMore };
   }
 
-  /** the designs in the folder whose name contains the text: the candidates for a
-   *  name, which the caller matches. The search takes no type filter (with one and no
-   *  folder it would search the whole Drive) */
-  public async search(folder: string | undefined/*the top of the Drive*/, text: string): Promise<ReadonlyArray<Design>> {
+  /** the first page of designs in the folder whose name contains the text, and
+   *  whether more follow: the candidates for a name, which the caller matches. A
+   *  search is bounded to its first page; past it, the caller asks for a more
+   *  distinctive name. The search takes no type filter (with one and no folder it
+   *  would search the whole Drive) */
+  public async search(folder: string | undefined/*the top of the Drive*/, text: string): Promise<Readonly<{ designs: ReadonlyArray<Design>; hasMore: boolean; }>> {
     const listing = await this.call<Listing>('list_dir', { uri: folderUri(folder), nameSearch: text, limit: DRIVE_PAGE });
-    return listing.entries.flatMap(asDesign);
+    return { designs: listing.entries.flatMap(asDesign), hasMore: listing.hasMore };
+  }
+
+  /** the design a document is, by its uri (from a listing): refused when the
+   *  document is not a design (a Source document named `.ldr`) */
+  public async design(uri: string): Promise<Design> {
+    const { name } = await this.call<Readonly<{ name: string; }>>('describe_file', { uri });
+    const [design] = asDesign({ name, uri });
+    if(!design) throw new Error(`${uri} is not a saved design.`);
+    return design;
   }
 
   /** a design's LDraw text, exactly as saved, every page of it */
