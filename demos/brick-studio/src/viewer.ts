@@ -273,9 +273,11 @@ export class Viewer {
   /** whether the build reaches past its baseplate (SEE: BASEPLATE_MAX) */
   public reachesPastBaseplate(): boolean { return this.pastBaseplate; }
 
-  /** how many of a build's parts are not drawn because they could not be */
+  /** how many of a build's parts are not drawn because they could not be: each
+   *  placement by the lines it draws (a figure by what it wears, never by every
+   *  accessory it could) */
   public unbuiltCount(model: Model): number {
-    const placements = model.placements.filter(placement => partFiles(getPart(placement.part)!/*by contract*/).some(ldraw => this.unbuilt.has(ldraw)));
+    const placements = model.placements.filter(placement => placedLines(getShape(getPart(placement.part)!/*by contract*/), placement, getColor(placement.color)!.code/*by contract*/).some(line => this.unbuilt.has(line.ldraw)));
     return placements.length + model.others.filter(other => this.unbuilt.has(other.ldraw)).length;
   }
   /** the families being read, and those whose read failed */

@@ -17,9 +17,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { familyOf, familyResource, hasOpenUnderside, type CatalogPart, CATALOG, COLORS } from '../src/catalog.ts';
+import { familyOf, familyResource, hasOpenUnderside, type CatalogPart, ACCESSORIES, CATALOG, COLORS } from '../src/catalog.ts';
 import { maxOf, minOf } from '../src/numbers.ts';
-import { limbLines, pieceLines, LIMBS, POSE_ANGLES, type PieceLine } from '../src/pose.ts';
+import { accessoryLine, limbLines, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOT_LIMB, SLOTS_IN_ORDER, type PieceLine } from '../src/pose.ts';
 
 // == Constants ===================================================================
 const LDU_PER_STUD = 20/*LDU*/;
@@ -238,8 +238,12 @@ const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Me
   } };
 };
 
-/** the files an assembled part's pieces reference, as reference names */
-const pieceFiles = (part: CatalogPart): string[] => (part.pieces ?? []).map(line => referenceName(line.trim().split(/\s+/).slice(14).join(' ')));
+/** the files an assembled part's pieces reference, and every accessory's for a part
+ *  that wears them, as reference names */
+const pieceFiles = (part: CatalogPart): string[] => [
+  ...(part.pieces ?? []).map(line => referenceName(line.trim().split(/\s+/).slice(14).join(' '))),
+  ...(part.slots ? ACCESSORIES.map(accessory => `${accessory.ldraw}.dat`.toLowerCase()) : []),
+];
 
 // --------------------------------------------------------------------------------
 /** how far (LDU) a glass pane sits below its frame's origin. A pane drawn at the
@@ -354,7 +358,12 @@ const measurePose = (library: string, part: CatalogPart, standing: Readonly<{ or
   const fixed = pieceLines(part).filter((_, index) => !moved.has(index));
   const core = measured([`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(fixed)].join('\n'));
   const limbs = Object.fromEntries(LIMBS.map(limb => [limb, Object.fromEntries(POSE_ANGLES.map(angle => [angle, measured(lineText(limbLines(part, limb, angle)))]))]));
-  return { core, limbs };
+  // each accessory a slot takes, at every angle of the limb it turns with
+  const gear = Object.fromEntries(SLOTS_IN_ORDER.map(slot => [slot, Object.fromEntries(ACCESSORIES.filter(accessory => accessory.on === ((slot === 'hat') ? 'head' : 'hand')).map(accessory => [accessory.key, Object.fromEntries(POSE_ANGLES.map(angle => {
+    const carrier = posedPieces(part, { [SLOT_LIMB[slot]]: angle })[part.slots![slot].piece];
+    return [angle, measured(lineText([accessoryLine(part, slot, carrier, accessory, 16)]))];
+  }))]))]));
+  return { core, limbs, gear };
 };
 
 /** the side a curved slope descends to at rotation 0: the footprint edge whose top
@@ -555,9 +564,10 @@ const facts = [
   '/** each posable part\'s fill by pose, in its standing frame (the standing footprint\'s',
   ' *  minimum corner and its bottom; a raised limb reaches past them): the cells its body',
   ' *  and every piece no limb moves fill (`core`), and each limb\'s at every angle, each with',
-  ' *  how high its lowest point lies above the standing bottom (plates), keyed by LDraw file',
-  ' *  stem. A pose fills their union and stands on its lowest point (SEE: grid.ts posed) */',
-  `export const POSE_GEOMETRY: Readonly<Record<string, Readonly<{ core: PosedBody; limbs: Readonly<Record<string, Readonly<Record<string, PosedBody>>>>; }>>> = ${JSON.stringify(poses)};`,
+  ' *  how high its lowest point lies above the standing bottom (plates), and each accessory\'s',
+  ' *  by slot at every angle of the limb it turns with (`gear`), keyed by LDraw file stem. A',
+  ' *  pose fills their union and stands on its lowest point (SEE: grid.ts posed) */',
+  `export const POSE_GEOMETRY: Readonly<Record<string, Readonly<{ core: PosedBody; limbs: Readonly<Record<string, Readonly<Record<string, PosedBody>>>>; gear: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, PosedBody>>>>>>; }>>> = ${JSON.stringify(poses)};`,
   '/** a body\'s fill in its part\'s standing frame and its lowest point (SEE: POSE_GEOMETRY) */',
   'type PosedBody = Readonly<{ fill: ReadonlyArray<readonly [number, number, number, number]>; bottom: number; }>;',
   '',

@@ -1,8 +1,8 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import { COLORS, type CatalogPart } from './catalog';
+import { ACCESSORIES, COLORS, type CatalogPart } from './catalog';
 import { compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
-import { limbLines, normalizePose, pieceLines, LIMBS, POSE_ANGLES, type Pose } from './pose';
+import { accessoryLine, limbLines, normalizePose, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER, type Pose } from './pose';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
 // written, and each type-1 line is one part. A multi-part (MPD) file is flattened
@@ -445,9 +445,10 @@ const absorbPieces = (placements: Placement[], others: OtherPart[], otherSpans: 
 
 /** a posable part's pose read from its pieces (SEE: pose.ts): the hips in whichever
  *  catalog color they are (the legs color), then each limb's pivot piece at each angle a
- *  limb takes and the rest of the limb at the angle found, every look bounded as any
- *  piece's (SEE: absorbPieces). A piece not found leaves its limb at 0 and is written
- *  again whole. Returns the placement, posed, its level raised by the pose's lift (it
+ *  limb takes and the rest of the limb at the angle found, then what it wears and
+ *  holds, every look bounded as any piece's (SEE: absorbPieces). A piece not found
+ *  leaves its limb at 0 and is written again whole; an accessory not found is no
+ *  accessory. Returns the placement, posed, its level raised by the pose's lift (it
  *  was read where the part would stand), and the lines taken, in piece order */
 const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLine) => number | undefined): Readonly<{ posed: Placement; indices: number[]; }> => {
   const colorCode = getColor(placement.color)!.code/*by contract*/;
@@ -492,8 +493,26 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
 
   const normalized = normalizePose(pose);
   const legColor = ((legsCode === undefined) || (legsCode === lines[(part.legs ?? [])[0]]?.colorCode)) ? undefined : getColorByCode(legsCode)?.key;
-  const posed: Placement = { ...placement, level: placement.level + poseLift(part, normalized), ...(normalized ? { pose: normalized as Pose } : {}), ...(legColor ? { legColor } : {}) };
-  return { posed, indices: lines.flatMap((_, index) => found.has(index) ? [found.get(index)!] : []) };
+
+  // what it wears: each slot's accessories of its kind, in any catalog color, where
+  // the posed piece carrying the slot puts them
+  const carriers = posedPieces(part, normalized);
+  const gear: Partial<Record<typeof SLOTS_IN_ORDER[number], Readonly<{ part: string; color: string; }>>> = {};
+  SLOTS_IN_ORDER.forEach((slot, order) => {
+    const carrier = carriers[part.slots![slot].piece];
+    for(const accessory of ACCESSORIES.filter(each => each.on === ((slot === 'hat') ? 'head' : 'hand'))) {
+      for(const color of COLORS) {
+        const line = take(placedPiece(accessoryLine(part, slot, carrier, accessory, color.code), color.code));
+        if(line === undefined) continue;
+        found.set(lines.length + order, line);
+        gear[slot] = { part: accessory.key, color: color.key };
+        return;
+      }
+    }
+  });
+
+  const posed: Placement = { ...placement, level: placement.level + poseLift(part, { pose: normalized }), ...(normalized ? { pose: normalized as Pose } : {}), ...(legColor ? { legColor } : {}), ...gear };
+  return { posed, indices: [...found.keys()].sort((a, b) => a - b).map(index => found.get(index)!) };
 };
 
 

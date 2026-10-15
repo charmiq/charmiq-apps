@@ -48,7 +48,7 @@ Drag to orbit, right-drag to pan, scroll to zoom. Press I (or the info button) f
 - **Watch it go up.** Builds come in steps. Press play and the parts drop in one step at a time.
 - **Build it once.** A tower, a house, a tree with its fence: define it once as a component, place as many copies as you like, and change them all by changing one. Save a design to your Drive and drop it into your next build.
 - **About 170 parts.** Bricks, slopes, arches, windows, trees, fences, figures, wheels, cats, a cow, an octopus, in 16 solid colors and 7 see-through ones.
-- **Figures that pose.** Wave, point, walk, look around, or sit down in the driver's seat: every arm, leg and head turns in 15-degree steps.
+- **Figures that pose.** Wave, point, walk, look around, or sit down in the driver's seat: every arm, leg and head turns in 15-degree steps. Give them a hat or hair, and a sword, a lance, a pickaxe or a flashlight to hold.
 - **From sketch to photo.** The Look slider goes from a quick draft through glossy plastic to a path-traced render.
 - **Plain LDraw.** The build is ordinary LDraw text kept in this document. Edit it by hand, paste in a model from elsewhere, open it in other LDraw tools, or build it together with friends.
 

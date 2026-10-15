@@ -1,5 +1,5 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import type { CatalogPart } from './catalog';
+import { ACCESSORIES, type CatalogPart, type Slot } from './catalog';
 import { checkModel, describeCopy, describePlaced, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, toRotation, MAX_COORDINATE, type Copy, type Footprint, type Placement } from './grid';
@@ -376,22 +376,33 @@ const toCopy = (item: unknown): Copy | string => {
 
 /** the Placement an input describes, or why it is not one */
 const toPlacement = (item: unknown): Placement | string => {
-  const { part, color, x, z, level, rotation, pose, legColor } = (item ?? {}) as Record<string, unknown>;
+  const { part, color, x, z, level, rotation, pose, legColor, hat, rightHand, leftHand } = (item ?? {}) as Record<string, unknown>;
   const catalogPart = (typeof part === 'string') ? getPart(part) : undefined;
   if(!catalogPart) return `unknown part '${String(part)}' (listParts names the catalog)`;
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
   const where = toPosition(x, z, level, rotation);
   if(typeof where === 'string') return where;
-  const posing = toPosing(catalogPart, pose, legColor);
+  const posing = toPosing(catalogPart, pose, legColor, { hat, rightHand, leftHand });
   return (typeof posing === 'string') ? posing : { part: catalogPart.key, color, ...where, ...posing };
 };
 
-/** a posable part's pose and legs color an input describes, or why they are not: each
- *  limb's angle a whole number of POSE_STEPs (wrapped, SEE: toPoseAngle), the legs a
- *  catalog color; a limb at 0 and legs in their own color are left out */
-const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown): Pick<Placement, 'pose' | 'legColor'> | string => {
-  if((pose === undefined) && (legColor === undefined)) return {};
-  if(!part.limbs) return `${part.key} takes no pose or legColor (a figure does)`;
+/** a posable part's pose, legs color and what it wears an input describes, or why
+ *  they are not: each limb's angle a whole number of POSE_STEPs (wrapped, SEE:
+ *  toPoseAngle), the legs a catalog color, a hat headgear and a hand's item one held,
+ *  each in a catalog color; a limb at 0 and legs in their own color are left out */
+const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, worn: Readonly<Record<Slot, unknown>>): Pick<Placement, 'pose' | 'legColor' | 'hat' | 'rightHand' | 'leftHand'> | string => {
+  const wearing = (Object.keys(worn) as Slot[]).filter(slot => worn[slot] !== undefined);
+  if((pose === undefined) && (legColor === undefined) && (wearing.length < 1)) return {};
+  if(!part.limbs) return `${part.key} takes no pose, legColor, hat or hand item (a figure does)`;
+  const gear: Partial<Record<Slot, Readonly<{ part: string; color: string; }>>> = {};
+  for(const slot of wearing) {
+    const { part: key, color } = (worn[slot] ?? {}) as Record<string, unknown>;
+    const on = (slot === 'hat') ? 'head' : 'hand';
+    const accessory = ACCESSORIES.find(each => (each.key === key) && (each.on === on));
+    if(!accessory) return `${slot}.part must be one of ${ACCESSORIES.filter(each => each.on === on).map(each => each.key).join(', ')}`;
+    if((typeof color !== 'string') || !getColor(color)) return `unknown ${slot}.color '${String(color)}' (listParts names the colors)`;
+    gear[slot] = { part: accessory.key, color };
+  }
   const angles: Partial<Record<Limb, number>> = {};
   if(pose !== undefined) {
     if((typeof pose !== 'object') || (pose === null) || Array.isArray(pose)) return `pose names limbs and their angles (${LIMBS.join(', ')})`;
@@ -406,7 +417,7 @@ const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown): Pick<Pla
   if((legColor !== undefined) && !legsColor) return `unknown legColor '${String(legColor)}' (listParts names the colors)`;
   const ownLegs = pieceLines(part)[(part.legs ?? [])[0]]?.colorCode;
   const normalized = normalizePose(angles as Pose);
-  return { ...(normalized ? { pose: normalized } : {}), ...((legsColor && (legsColor.code !== ownLegs)) ? { legColor: legsColor.key } : {}) };
+  return { ...(normalized ? { pose: normalized } : {}), ...((legsColor && (legsColor.code !== ownLegs)) ? { legColor: legsColor.key } : {}), ...gear };
 };
 
 /** a position on the grid an input describes, or why it is not one */

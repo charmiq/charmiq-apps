@@ -30,7 +30,23 @@ export type CatalogPart = Readonly<{
   /** the pieces (indices into `pieces`) a posable part's legs color paints: a figure's
    *  hips and legs */
   legs?: ReadonlyArray<number>;
+  /** where a posable part wears accessories: each slot's piece (an index into
+   *  `pieces`), whose transform, turned with its limb, an accessory takes, and for a
+   *  hand where its grip sits in that piece (SEE: ACCESSORIES) */
+  slots?: Readonly<Record<Slot, Readonly<{ piece: number; grip?: GripFrame; }>>>;
 }>;
+
+/** where a held item's grip bar sits in a piece: the grip's centre and its axis (the
+ *  rotation rows taking the piece's y to it) */
+export type GripFrame = Readonly<{ position: readonly [number, number, number]; matrix: ReadonlyArray<number>; }>;
+
+/** where a figure wears an accessory: on its head, or in a hand */
+export type Slot = 'hat' | 'rightHand' | 'leftHand';
+
+/** where a held item's grip bar sits in a figure's hand (3820), in the hand's frame:
+ *  the grip's centre and its axis, the hand's y turned 14.5 degrees toward z (the
+ *  library's notes on the hand) */
+const HAND_GRIP: GripFrame = { position: [0, -0.8229, -9.8948], matrix: [1, 0, 0, 0, 0.968148, -0.25038, 0, 0.25038, 0.968148] };
 
 // ................................................................................
 /** whether a kind's underside is open (an arch's span, an inverted slope's face, a
@@ -285,11 +301,38 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
     leftArm: { pieces: [2, 4], axis: 'x' },
     rightLeg: { pieces: [6], axis: 'x' },
     leftLeg: { pieces: [7], axis: 'x' },
-  }, legs: [5, 6, 7] },
+  }, legs: [5, 6, 7], slots: { hat: { piece: 0 }, rightHand: { piece: 3, grip: HAND_GRIP }, leftHand: { piece: 4, grip: HAND_GRIP } } },
   // the stand and its black wheel, as the library's complete steering wheel (3829c01)
   { key: 'steering-wheel',  ldraw: '3829a', kind: 'vehicle', pieces: [
     '1 0 0 -26.32 -0.24 0 0 1 -0.8 0.6 0 -0.6 -0.8 0 3828.dat',
   ] },
+];
+
+// == Accessories =================================================================
+// what a figure wears on its head or holds in a hand, in a catalog color: a library
+// file fitted as the library models it. Headgear's origin is the head's (the top of
+// the head), so it takes the head's transform. A held item's grip bar sits in the
+// hand's grip (SEE: HAND_GRIP): its bar's axis (`y`, or `z` for an item modeled lying
+// along z) along the grip's axis, its point `at` on that axis at the grip's centre
+export type Accessory = Readonly<{ key: string; ldraw: string; on: 'head' | 'hand'; grip?: Readonly<{ axis: 'y' | 'z'; at: number; }>; }>;
+
+export const ACCESSORIES: ReadonlyArray<Accessory> = [
+  { key: 'hair',                ldraw: '3901',  on: 'head' },
+  { key: 'pigtails',            ldraw: '3625',  on: 'head' },
+  { key: 'cap',                 ldraw: '4485b', on: 'head' },
+  { key: 'police-hat',          ldraw: '3624',  on: 'head' },
+  { key: 'cowboy-hat',          ldraw: '3629',  on: 'head' },
+  { key: 'top-hat',             ldraw: '3878',  on: 'head' },
+  { key: 'construction-helmet', ldraw: '3833',  on: 'head' },
+  { key: 'fire-helmet',         ldraw: '3834',  on: 'head' },
+  { key: 'knight-helmet',       ldraw: '3844',  on: 'head' },
+  { key: 'sword',               ldraw: '3847',  on: 'hand', grip: { axis: 'y', at: 12 }/*its handle, below the crossguard*/ },
+  { key: 'spear',               ldraw: '4497',  on: 'hand', grip: { axis: 'y', at: 40 } },
+  { key: 'hand-axe',            ldraw: '3835',  on: 'hand', grip: { axis: 'y', at: 16 } },
+  { key: 'battleaxe',           ldraw: '3848',  on: 'hand', grip: { axis: 'y', at: 20 } },
+  { key: 'pickaxe',             ldraw: '3841',  on: 'hand', grip: { axis: 'y', at: 24 } },
+  { key: 'lance',               ldraw: '3849',  on: 'hand', grip: { axis: 'z', at: 9 }/*behind its guard*/ },
+  { key: 'flashlight',          ldraw: '3959',  on: 'hand', grip: { axis: 'y', at: 10 }/*by its handle: the lamp points down a hanging arm*/ },
 ];
 
 // == Colors ======================================================================

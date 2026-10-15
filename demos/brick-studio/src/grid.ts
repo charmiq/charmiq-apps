@@ -1,7 +1,7 @@
-import { CATALOG, COLORS, type CatalogPart } from './catalog';
+import { ACCESSORIES, CATALOG, COLORS, type CatalogPart } from './catalog';
 import { maxOf, minOf } from './numbers';
 import { COLOR_VALUES, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { pieceLines, posedPieces, LIMBS, type Pose } from './pose';
+import { pieceLines, posedPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
 // level is one plate height (a brick is three). A placement names the minimum
@@ -62,7 +62,17 @@ export type Placement = Readonly<{
   /** its hips' and legs' color (catalog color key) when not the part's own; only on a
    *  posable part */
   legColor?: string;
+  /** what it wears on its head and holds in each hand; only on a posable part */
+  hat?: Gear;
+  rightHand?: Gear;
+  leftHand?: Gear;
 }>;
+
+/** an accessory a figure wears (SEE: catalog.ts ACCESSORIES): its key and its color
+ *  (catalog color key) */
+export type Gear = Readonly<{ part: string; color: string; }>;
+/** how a posable part is posed and dressed */
+export type Posing = Pick<Placement, 'pose' | 'hat' | 'rightHand' | 'leftHand'>;
 
 // ................................................................................
 /** the measured shape of a catalog part (SEE: parts.generated.ts) */
@@ -178,19 +188,23 @@ type Fill = readonly [number, number, number, number];
 /** each cell's filled levels, as ranges from bottom up to (not including) top */
 type Levels = Map<string/*x,z*/, Array<[number, number]>>;
 
-/** a posable part's fill at its placement's pose, from its posed bottom, and how far
- *  the pose raises that bottom above where the part stands (levels) */
-const posed = (shape: PartShape, pose: Pose | undefined): Readonly<{ fill: ReadonlyArray<Fill>; lift: number; }> => {
-  if(!pose) return { fill: shape.fill, lift: 0 }/*standing*/;
+/** a posable part's fill at its placement's pose, with what it wears, from its posed
+ *  bottom, and how far the pose raises that bottom above where the part stands
+ *  (levels). What it wears fills its own cells (any below the bottom left out) and
+ *  never decides where the part stands */
+const posed = (shape: PartShape, posing: Posing): Readonly<{ fill: ReadonlyArray<Fill>; lift: number; }> => {
+  const { pose } = posing;
   const geometry = POSE_GEOMETRY[shape.part.ldraw]/*by contract*/;
-  const turned = LIMBS.filter(limb => (pose[limb] ?? 0) !== 0);
+  const gear = SLOTS_IN_ORDER.flatMap(slot => posing[slot] ? [geometry.gear[slot][posing[slot]!.part][String(pose?.[SLOT_LIMB[slot]] ?? 0)]] : []);
+  if(!pose && (gear.length < 1)) return { fill: shape.fill, lift: 0 }/*standing, wearing nothing*/;
+  const turned = LIMBS.filter(limb => (pose?.[limb] ?? 0) !== 0);
   const kept = [geometry.core, ...LIMBS.filter(limb => !turned.includes(limb)).map(limb => geometry.limbs[limb]['0'])];
-  const moved = turned.map(limb => geometry.limbs[limb][String(pose[limb])]);
+  const moved = turned.map(limb => geometry.limbs[limb][String(pose![limb])]);
 
   const standing = levelsOf(shape.fill);
   const left = subtract(standing, levelsOf(turned.flatMap(limb => geometry.limbs[limb]['0'].fill)));
   const shared = intersect(standing, levelsOf(kept.flatMap(body => body.fill)))/*what the rest fills as it stands*/;
-  const fill = cellsOf(levelsOf([...cellsOf(left), ...cellsOf(shared), ...moved.flatMap(body => body.fill)]));
+  const fill = cellsOf(levelsOf([...cellsOf(left), ...cellsOf(shared), ...[...moved, ...gear].flatMap(body => body.fill)]));
 
   const lift = Math.max(0, Math.round(minOf([...kept, ...moved].map(body => body.bottom))))/*the core is always among them*/;
   const lifted = fill
@@ -236,14 +250,14 @@ const cellsOf = (levels: Levels): Fill[] => [...levels].flatMap(([key, ranges]) 
 
 /** the cells a placement's part fills from its bottom: a posable part's at its pose */
 const fillOf = (shape: PartShape, placement: Placement): ReadonlyArray<Fill> =>
-  shape.part.limbs ? posed(shape, placement.pose).fill : shape.fill;
+  shape.part.limbs ? posed(shape, placement).fill : shape.fill;
 
 /** plates from a placement's bottom up to its part's LDraw origin: less a pose's lift */
 const baseOf = (shape: PartShape, placement: Placement): number =>
-  shape.part.limbs ? (shape.base - posed(shape, placement.pose).lift) : shape.base;
+  shape.part.limbs ? (shape.base - posed(shape, placement).lift) : shape.base;
 
 /** how far a pose raises a posable part's bottom above where it stands (levels) */
-export const poseLift = (part: CatalogPart, pose: Pose | undefined): number => part.limbs ? posed(getShape(part), pose).lift : 0;
+export const poseLift = (part: CatalogPart, posing: Posing): number => part.limbs ? posed(getShape(part), posing).lift : 0;
 
 /** every cell holding one of the placement's top studs */
 export const studCells = (shape: PartShape, placement: Placement): Cell[] =>
@@ -286,9 +300,16 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
 export const placedLines = (shape: PartShape, placement: Placement, colorCode: number): PartLine[] => {
   const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position: ldrawPosition(shape, placement), matrix: rotationMatrix(placement.rotation) };
   const legs = (placement.legColor === undefined) ? undefined : getColor(placement.legColor)?.code;
-  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs) : piecesOf(shape.part);
+  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement)) : piecesOf(shape.part);
   return [own, ...pieces.map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
 };
+
+/** what a placement wears, as its pieces are written (SEE: pose.ts Worn) */
+const wornOf = (placement: Placement): Worn => Object.fromEntries(SLOTS_IN_ORDER.flatMap(slot => {
+  const gear = placement[slot];
+  const accessory = gear && ACCESSORIES.find(each => each.key === gear.part);
+  return accessory ? [[slot, { accessory, colorCode: getColor(gear.color)!.code/*by contract*/ }]] : [];
+}));
 
 /** LDraw's inherited color: a piece written in it takes its part's color */
 export const INHERITED_COLOR = 16;
@@ -301,8 +322,9 @@ export const compose = (parent: Transform, child: Transform): Transform => {
   return { matrix, position };
 };
 
-/** the LDraw files (stems) a part is drawn from: its own and its pieces' */
-export const partFiles = (part: CatalogPart): string[] => [part.ldraw, ...piecesOf(part).map(piece => piece.ldraw)];
+/** the LDraw files (stems) a part is drawn from: its own, its pieces' and, for a part
+ *  that wears them, every accessory's */
+export const partFiles = (part: CatalogPart): string[] => [part.ldraw, ...piecesOf(part).map(piece => piece.ldraw), ...(part.slots ? ACCESSORIES.map(accessory => accessory.ldraw) : [])];
 
 // --------------------------------------------------------------------------------
 const pieces = new Map<string, ReadonlyArray<PartLine>>();

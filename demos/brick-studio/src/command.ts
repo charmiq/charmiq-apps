@@ -1,7 +1,7 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { Build } from './build';
 import type { FidelityControl } from './fidelity-control';
-import { CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
+import { ACCESSORIES, CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { displayName, DesignExists, type Designs } from './designs';
 import type { Design } from './drive';
@@ -41,6 +41,7 @@ const GRID = [
   'A wheel set is a plate between two wheels on an axle running east-west at rotation 0, so it rolls north and south; it stands on its tires. Its studs are lower than its tires: its row names the level they are at, and parts over its wheel columns must clear the tires. A mudguard placed one level above a wheel set\'s studs, on a plate across them, arches over its wheels. A steering wheel faces north at rotation 0.',
   'A figure is a person: it stands on the middle two cells of its middle row, faces south at rotation 0, and its arms, hands and head reach into the cells around its feet (its row gives its fills), so figures side by side stand 4 studs apart. Its color is its shirt; its head and hands are yellow and its legs blue unless legColor names another.',
   'A figure poses: pose names its head, leftArm, rightArm, leftLeg and rightLeg, each in degrees, a multiple of 15. An arm or leg swings forward (90 points it ahead, 180 straight up, -30 back); the head turns clockwise seen from above. A posed figure keeps its x and z; its level is its lowest point, so a seated figure (both legs at 90) sits on a seat at the seat\'s top level. A raised arm fills the cells it reaches. To change a pose, remove the figure and add it posed.',
+  `A figure wears a hat (hat: { part, color }: ${ACCESSORIES.filter(each => each.on === 'head').map(each => each.key).join(', ')}) and holds a thing in each hand (rightHand, leftHand: ${ACCESSORIES.filter(each => each.on === 'hand').map(each => each.key).join(', ')}), each in a catalog color. They turn with its head and arms; what it holds fills the cells it reaches.`,
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
   'A component is a group of parts defined once (defineComponent, in its own grid: x, z and level from 0) and placed many times: an addParts item {component, x, z, level, rotation} places a copy by its footprint\'s south-west corner and its bottom level, turned as a part is. Copies are checked as parts are; removing any cell of a copy removes the whole copy, and redefining a component changes every copy. Build a repeated thing (a tower, a house, a tree with a fence) as a component.',

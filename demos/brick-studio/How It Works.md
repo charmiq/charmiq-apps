@@ -43,6 +43,8 @@ Each part fills the cells and levels measured from its shape: a corner brick lea
 
 **Posing a figure.** A figure's head, arms and legs each turn in steps of 15 degrees (`pose`): an arm or a leg swings forward (90 points it ahead, 180 straight up), the head turns clockwise seen from above. A posed figure keeps its place: raising an arm moves only the arm's cells, which collide like any part's. It stands on its lowest point, so a seated figure (both legs at 90) sits on a seat placed at the seat's top level, held by its studs. To change a pose, remove the figure and add it posed. LDraw shows the pose as it is: each limb's line turned about its joint.
 
+**Dressing a figure.** A figure wears a hat or hair (`hat`) and holds a thing in each hand (`rightHand`, `leftHand`), each a part and a catalog color: a cap, a cowboy hat or a knight's helmet; a sword, a spear, a lance or a flashlight. `listParts` names them all. A hat turns with the head and a held thing with its arm, its handle in the hand's grip. What a figure holds collides where it reaches, but never lifts the figure: a spear held low reaches through the ground. In LDraw each is one more line after the figure's pieces.
+
 Sixteen solid colors and seven see-through ones (`trans-`), which refract light at the Plastic look and up.
 
 The building parts come with the Studio. Every other family (vehicles, figures, nature, details, and each creature) is read the first time a build shows one of its parts, and a part's shape is built the first time it is shown, so a big catalog never slows the Studio down. While a family loads the status says so (*loading vehicles…*). A family that cannot be read is named in the status with the parts it leaves unshown, and a Retry; the build itself never changes.
@@ -122,7 +124,7 @@ A Charm drives the Studio through these:
 | `listParts` | the grid conventions, every part's name by kind, and the colors |
 | `findParts` | the rows (size, fills, which way it descends) of the parts a query names: names, a size such as 2x4, or a word such as roof |
 | `listPlacedParts` | the parts and copies in the build with their positions, a page at a time (a line placing a component that is not a copy, by component, color and a cell it fills) |
-| `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one, figures posed (`pose`) and in their legs color (`legColor`); a batch that would collide is refused; answers with the build's check |
+| `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one, figures posed (`pose`), in their legs color (`legColor`), wearing a hat (`hat`) and holding things (`rightHand`, `leftHand`); a batch that would collide is refused; answers with the build's check |
 | `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy, or of any line placing a component, removes that whole line); answers with the build's check and the parts left unsupported |
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
 | `defineComponentFromDesign` | defines a component from a saved design (its `uri` from `listDesigns`, or its name), named after it |
