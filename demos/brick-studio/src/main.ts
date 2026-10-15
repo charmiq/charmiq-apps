@@ -11,7 +11,7 @@ import { FidelityControl } from './fidelity-control';
 import { getColor, getColorValue } from './grid';
 import { GroundControl } from './ground-control';
 import { LookAround } from './look-around';
-import type { Model } from './model';
+import { partCount, type Model } from './model';
 import { StepControl } from './step-control';
 import { DEFAULT_VIEW, STANDING, Viewer, type Walk } from './viewer';
 
@@ -56,7 +56,7 @@ let groundRefused: string | undefined;
 const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build, reason => { groundRefused = reason; showStatus(build.getModel()); });
 const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);
 const designDialog = new DesignDialog(element('designs'), designs, {
-  partCount: () => { const model = build.getModel(); return model.placements.length + model.others.length; },
+  partCount: () => partCount(build.getModel()),
   onLoaded: () => void viewer.frameWhole()/*a loaded design is framed whole*/,
   onAdded: () => void viewer.frameWhole()/*the build framed with the copy beside it*/,
 });
@@ -66,7 +66,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 // == Status ======================================================================
 const showStatus = (model: Model) => {
   const result = build.check();
-  const count = model.placements.length + model.others.length;
+  const count = partCount(model);
   const builds = build.builds().length;
   const unbuilt = viewer.unbuiltCount(model), undrawn = viewer.undrawnCount(model);
   const failed = viewer.familiesFailed().map(familyLabel), loading = viewer.familiesLoading().map(familyLabel);

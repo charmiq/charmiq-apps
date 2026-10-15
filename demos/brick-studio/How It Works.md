@@ -7,6 +7,8 @@ The details behind [Brick Studio](charmiq://./README.md): the grid and the check
 
 The build is LDraw text in the document's `model` app-content. Each part is one line: its color, its position and rotation, and its part file. Edit it by hand, paste in LDraw from elsewhere, or let a Charm build it.
 
+LDraw pasted into an app-content with no name, or named `Model` or ` model `, is found too: when no app-content is named `model`, the one such app-content holding parts is the build. The Studio edits it in place, its name and other lines left as they are, and it stays the build when its parts are gone. One named `model` always comes first; two such app-contents wait as two builds do (see Building Together).
+
 A build without components is a flat LDraw file, or a single main-model section (`0 FILE model.ldr` through `0 NOFILE`) once the Studio has written it whole (Clear, `setModel`). A build with components is a standard multi-file LDraw (MPD) file: the main model first, each component a `0 FILE` section after it, and a copy one line naming its component, so other LDraw tools open it as it is. A build holds at most 3,000 parts; a Charm adds at most 400 in one call.
 
 
@@ -89,7 +91,7 @@ The `model` app-content is the truth: the Studio shows what it holds, whoever ch
 - A build the Studio writes whole (its first component, Clear, `setModel`) ends its main model with LDraw's `0 NOFILE`, parts before it and components after. Once that end is in the text, adding parts and defining components at once never mix; the moment a flat build gets its first component is the exception (below). An empty build's first part is written flat, so two first parts added at once both stand.
 - A component name two people define at once is used from its first definition. The status names it, and defining it again leaves one.
 - A flat build given its first component by two people at once has its main model named twice. The Studio shows it but does not edit it until corrected LDraw replaces it (`setModel`), and a part added at that moment can join the new component.
-- Two people who each start a build in a document without one create two `model` app-contents, and both are kept. The Studio then says the document holds two builds and refuses every edit (`setModel` included) so neither is lost; `getModel` returns each build's text so they can be combined into one app-content by hand.
+- Two people who each start a build in a document without one create two `model` app-contents, and both are kept. The Studio then says the document holds two builds and refuses every edit (`setModel` included) so neither is lost; `getModel` returns each build's text so they can be combined into one app-content by hand. Two app-contents holding LDraw under a near name, none named `model`, wait the same way until one is named `model`.
 
 **Older pages.** Reload Brick Studio tabs opened before an update: an older page adds parts after the main model's end, which the Studio still shows but other LDraw tools may not. A page opened before guarded edits shows the build and asks for a reload to edit it.
 

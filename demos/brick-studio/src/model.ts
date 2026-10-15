@@ -495,8 +495,13 @@ const numberSteps = (placements: ReadonlyArray<number>, others: ReadonlyArray<nu
 };
 
 // ................................................................................
+/** how many parts a build holds: its own and its copies', on the grid or off */
+export const partCount = (model: Model): number => model.placements.length + model.others.length;
+/** whether LDraw text holds a part (a build, not comments alone or nothing) */
+export const holdsParts = (text: string): boolean => partCount(parseModel(text)) > 0;
+
 /** how many building steps a build has (none when it has no parts) */
-export const stepCount = (model: Model): number => model.steps?.count ?? (((model.placements.length + model.others.length) > 0) ? 1 : 0);
+export const stepCount = (model: Model): number => model.steps?.count ?? ((partCount(model) > 0) ? 1 : 0);
 
 /** the build as it stands after a step: its parts in that step and before */
 export const upToStep = (model: Model, step: number): Model => {

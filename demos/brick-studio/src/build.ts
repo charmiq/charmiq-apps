@@ -2,7 +2,7 @@ import type { ContentChange } from '../../../shared/charmiq';
 import { checkModel, describeCopy, describePlaced, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, toRotation, MAX_COORDINATE, type Copy, type Footprint, type Placement } from './grid';
-import { appendLines, applyChanges, clearEdits, copyLine, defineEdits, deleteLines, groundEdit, parseModel, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
+import { appendLines, applyChanges, clearEdits, copyLine, defineEdits, deleteLines, groundEdit, parseModel, partCount, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
 import { minOf } from './numbers';
 
 // owns the current build: the `model` app-content's text, as last seen. Every
@@ -457,6 +457,3 @@ const refusal = (heading: string, lines: ReadonlyArray<string>): string[] =>
   (lines.length < 1) ? [] : [heading, ...lines.slice(0, MAX_LISTED), ...((lines.length > MAX_LISTED) ? [`and ${lines.length - MAX_LISTED} more`] : [])];
 
 const isInteger = (value: unknown): value is number => (typeof value === 'number') && Number.isInteger(value);
-
-/** every part a model holds, outside the catalog included */
-const partCount = (model: Model): number => model.placements.length + model.others.length;
