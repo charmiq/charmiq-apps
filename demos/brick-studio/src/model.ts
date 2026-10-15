@@ -1,6 +1,8 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import { compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
+import { COLORS, type CatalogPart } from './catalog';
+import { compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
+import { limbLines, normalizePose, pieceLines, LIMBS, POSE_ANGLES, type Pose } from './pose';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
 // written, and each type-1 line is one part. A multi-part (MPD) file is flattened
@@ -384,10 +386,12 @@ const newFileName = (component: string): string => `${component}.ldr`;
  *  same line of the main model (`owners`, each an index into `placed`; none within
  *  one file), is the placement's, the first such line in the text. A piece a
  *  component's line places is never a part of the build's own, nor of another line's.
+ *  A posable part's pieces are read limb by limb (SEE: readPose), and the placement
+ *  takes the pose and legs color they show, its level raised by the pose's lift.
  *  Returns each placement's piece lines, in order, and whether a piece went undecided:
  *  more lines lay where it goes than MAX_NEAR_LINES, so which is its own is not told.
- *  The arrays of other parts are changed in place */
-const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[], otherSpans: Span[], otherSteps: number[], owners?: Readonly<{ placements: ReadonlyArray<number | undefined>; others: Array<number | undefined>; }>): Readonly<{ pieceSpans: Span[][]; undecided: boolean; }> => {
+ *  The arrays of placements and other parts are changed in place */
+const absorbPieces = (placements: Placement[], others: OtherPart[], otherSpans: Span[], otherSteps: number[], owners?: Readonly<{ placements: ReadonlyArray<number | undefined>; others: Array<number | undefined>; }>): Readonly<{ pieceSpans: Span[][]; undecided: boolean; }> => {
   // the other parts not yet taken, by owner, file, color and whole LDU, each bucket a
   // list in text order a taken line leaves: a piece looks only in the buckets its
   // tolerance reaches (at most two per axis), and every line it looks at counts
@@ -418,6 +422,12 @@ const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[],
   const pieceSpans = placements.map((placement, placementIndex) => {
     const part = getPart(placement.part)!/*by contract*/;
     if(!part.pieces) return [];
+    if(part.limbs) {
+      const { posed, indices } = readPose(part, placement, piece => take(piece, owners?.placements[placementIndex]));
+      placements[placementIndex] = posed;
+      indices.forEach(index => taken.add(index));
+      return indices.map(index => otherSpans[index]);
+    } /* else -- its pieces where it puts them */
     const [, ...pieces] = placedLines(getShape(part), placement, getColor(placement.color)!.code/*by contract*/);
     return pieces.flatMap(piece => {
       const index = take(piece, owners?.placements[placementIndex]);
@@ -432,6 +442,60 @@ const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[],
   if(owners) removeTaken(owners.others);
   return { pieceSpans, undecided };
 };
+
+/** a posable part's pose read from its pieces (SEE: pose.ts): the hips in whichever
+ *  catalog color they are (the legs color), then each limb's pivot piece at each angle a
+ *  limb takes and the rest of the limb at the angle found, every look bounded as any
+ *  piece's (SEE: absorbPieces). A piece not found leaves its limb at 0 and is written
+ *  again whole. Returns the placement, posed, its level raised by the pose's lift (it
+ *  was read where the part would stand), and the lines taken, in piece order */
+const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLine) => number | undefined): Readonly<{ posed: Placement; indices: number[]; }> => {
+  const colorCode = getColor(placement.color)!.code/*by contract*/;
+  const [own] = placedLines(getShape(part), placement, colorCode)/*where it stands*/;
+  const lines = pieceLines(part);
+  const found = new Map<number/*piece*/, number/*other part*/>();
+  /** the piece's line at `own`, in `code` (the placement's when the piece inherits) */
+  const placedPiece = (piece: PartLine, code: number): PartLine => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : code });
+  const limbed = new Set(LIMBS.flatMap(limb => part.limbs![limb].pieces));
+
+  // the legs color: the color the hips (a legs piece no limb moves) are found in
+  let legsCode: number | undefined;
+  for(const index of (part.legs ?? []).filter(index => !limbed.has(index))) {
+    for(const color of [lines[index].colorCode, ...COLORS.map(each => each.code).filter(code => code !== lines[index].colorCode)]) {
+      const line = take(placedPiece(lines[index], color));
+      if(line === undefined) continue;
+      found.set(index, line);
+      legsCode ??= color;
+      break;
+    }
+  }
+  const legs = new Set(part.legs ?? []);
+  const codeOf = (index: number): number => (legs.has(index) && (legsCode !== undefined)) ? legsCode : lines[index].colorCode;
+
+  // each limb: its pivot at each angle, then the rest at the angle found (at 0 when
+  // its pivot is found at none, each piece then taken alone as any part's)
+  const pose: Partial<Record<typeof LIMBS[number], number>> = {};
+  for(const limb of LIMBS) {
+    const { pieces } = part.limbs![limb];
+    const angle = [0, ...POSE_ANGLES.filter(each => each !== 0)].find(each => {
+      const pivot = take(placedPiece(limbLines(part, limb, each)[0], codeOf(pieces[0])));
+      if(pivot !== undefined) found.set(pieces[0], pivot);
+      return pivot !== undefined;
+    });
+    if(angle !== undefined) pose[limb] = angle;
+    const limbPieces = limbLines(part, limb, angle ?? 0);
+    pieces.slice(1).forEach((index, order) => {
+      const line = take(placedPiece(limbPieces[order + 1], codeOf(index)));
+      if(line !== undefined) found.set(index, line);
+    });
+  }
+
+  const normalized = normalizePose(pose);
+  const legColor = ((legsCode === undefined) || (legsCode === lines[(part.legs ?? [])[0]]?.colorCode)) ? undefined : getColorByCode(legsCode)?.key;
+  const posed: Placement = { ...placement, level: placement.level + poseLift(part, normalized), ...(normalized ? { pose: normalized as Pose } : {}), ...(legColor ? { legColor } : {}) };
+  return { posed, indices: lines.flatMap((_, index) => found.has(index) ? [found.get(index)!] : []) };
+};
+
 
 /** a bucket's lines not yet taken, in text order: a removed line is never visited
  *  again */

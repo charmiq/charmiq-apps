@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import { familyOf, familyResource, hasOpenUnderside, type CatalogPart, CATALOG, COLORS } from '../src/catalog.ts';
 import { maxOf, minOf } from '../src/numbers.ts';
+import { limbLines, pieceLines, LIMBS, POSE_ANGLES, type PieceLine } from '../src/pose.ts';
 
 // == Constants ===================================================================
 const LDU_PER_STUD = 20/*LDU*/;
@@ -307,6 +308,55 @@ const measurePart = (library: string, part: CatalogPart) => {
   return { width, depth, height, ...((top !== height) ? { top } : {}), origin: [halfStud(origin[0]), halfStud(origin[1])], base, studs, fill, ...(descends ? { descends } : {}) };
 };
 
+// --------------------------------------------------------------------------------
+/** a cell a part fills: [x, z, bottom level, top level exclusive] */
+type Fill = [number, number, number, number];
+/** where a part stands in its own frame: its footprint's minimum corner and its bottom
+ *  (LDU, -y up) */
+type StandingFrame = Readonly<{ minX: number; minZ: number; bottomY: number; }>;
+
+/** piece lines as LDraw text */
+const lineText = (lines: ReadonlyArray<PieceLine>): string =>
+  lines.map(({ ldraw, colorCode, position, matrix }) => ['1', colorCode, ...position, ...matrix, `${ldraw}.dat`].join(' ')).join('\n');
+
+/** the body of LDraw text (SEE: bodyOf) */
+const bodyOfText = (library: string, text: string): Measure => {
+  const walked: Walk = { faces: [], studs: [], discs: [] };
+  walkText(library, text, IDENTITY, walked);
+  return bodyOf(walked);
+};
+
+/** the cells a body fills in a part's standing frame, from its footprint's minimum
+ *  corner and its bottom, reaching past that footprint where the body does (a raised
+ *  arm). Levels count up from the standing bottom (SEE: measureFill) */
+const fillInFrame = (body: Measure, frame: StandingFrame, openUnderside: boolean): Fill[] => {
+  if(body.triangles.length < 1) return [];
+  const from = (value: number, origin: number) => Math.floor(((value - origin) / LDU_PER_STUD) + (EPSILON / LDU_PER_STUD));
+  const to = (value: number, origin: number) => Math.ceil(((value - origin) / LDU_PER_STUD) - (EPSILON / LDU_PER_STUD));
+  const [x0, x1, z0, z1] = [from(body.minX, frame.minX), to(body.maxX, frame.minX), from(body.minZ, frame.minZ), to(body.maxZ, frame.minZ)];
+  const height = Math.ceil(((frame.bottomY - body.minY) / LDU_PER_PLATE) - EPSILON);
+  const cells = measureFill({ ...body, minX: frame.minX + (x0 * LDU_PER_STUD), minZ: frame.minZ + (z0 * LDU_PER_STUD), maxY: frame.bottomY }, { width: x1 - x0, depth: z1 - z0, height }, openUnderside);
+  return cells.map(([x, z, bottom, top]) => [x + x0, z + z0, bottom, top]);
+};
+
+/** a posable part's fill in its standing frame (SEE: fillInFrame), and how high its
+ *  lowest point lies above the standing bottom (plates): its own body and every piece
+ *  no limb moves (`core`), and each limb's at every angle. A pose fills their union and
+ *  stands on its lowest point, so a limb's cells never depend on another's angle */
+const measurePose = (library: string, part: CatalogPart, standing: Readonly<{ origin: readonly [number, number]; base: number; }>) => {
+  const frame: StandingFrame = { minX: -standing.origin[0] * LDU_PER_STUD, minZ: -standing.origin[1] * LDU_PER_STUD, bottomY: standing.base * LDU_PER_PLATE };
+  const open = hasOpenUnderside(part.kind);
+  const measured = (text: string) => {
+    const body = bodyOfText(library, text);
+    return { fill: fillInFrame(body, frame, open), bottom: Math.round(((frame.bottomY - body.maxY) / LDU_PER_PLATE) * 1e4) / 1e4 };
+  };
+  const moved = new Set(LIMBS.flatMap(limb => part.limbs![limb].pieces));
+  const fixed = pieceLines(part).filter((_, index) => !moved.has(index));
+  const core = measured([`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(fixed)].join('\n'));
+  const limbs = Object.fromEntries(LIMBS.map(limb => [limb, Object.fromEntries(POSE_ANGLES.map(angle => [angle, measured(lineText(limbLines(part, limb, angle)))]))]));
+  return { core, limbs };
+};
+
 /** the side a curved slope descends to at rotation 0: the footprint edge whose top
  *  is lowest on average (north is the far edge in z) */
 const descentOf = (out: Measure, width: number, depth: number, ldraw: string): 'north' | 'south' | 'east' | 'west' => {
@@ -470,6 +520,8 @@ const measured = Object.fromEntries(CATALOG.filter(part => !part.frame).map(part
 // a pane takes its frame's grid shape and fills nothing: it sits in the frame's
 // opening, dropped to the frame's sill
 const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.ldraw, { ...measured[part.frame], studs: [], fill: [], drop: paneDrop(library, part.ldraw, part.frame) }]] : [])) };
+// each posable part's fill by pose, in its standing frame
+const poses = Object.fromEntries(CATALOG.filter(part => part.limbs).map(part => [part.ldraw, measurePose(library, part, measured[part.ldraw])]));
 
 // every color the packed parts are drawn in: the catalog's, and each fixed color a
 // packed file draws a face or subfile in (a face's print, a piece's rim)
@@ -499,6 +551,15 @@ const facts = [
   ' *  the part reaches above them (a wheel set\'s tires), a glass pane\'s `drop` (LDU) below its',
   ' *  frame\'s origin and the side a curve `descends` to, keyed by LDraw file stem */',
   `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; top?: number; drop?: number; descends?: 'north' | 'south' | 'east' | 'west'; }>>> = ${JSON.stringify(geometry)};`,
+  '',
+  '/** each posable part\'s fill by pose, in its standing frame (the standing footprint\'s',
+  ' *  minimum corner and its bottom; a raised limb reaches past them): the cells its body',
+  ' *  and every piece no limb moves fill (`core`), and each limb\'s at every angle, each with',
+  ' *  how high its lowest point lies above the standing bottom (plates), keyed by LDraw file',
+  ' *  stem. A pose fills their union and stands on its lowest point (SEE: grid.ts posed) */',
+  `export const POSE_GEOMETRY: Readonly<Record<string, Readonly<{ core: PosedBody; limbs: Readonly<Record<string, Readonly<Record<string, PosedBody>>>>; }>>> = ${JSON.stringify(poses)};`,
+  '/** a body\'s fill in its part\'s standing frame and its lowest point (SEE: POSE_GEOMETRY) */',
+  'type PosedBody = Readonly<{ fill: ReadonlyArray<readonly [number, number, number, number]>; bottom: number; }>;',
   '',
   '/** the declared resource (manifest.json `bundle.resources`) holding each LDraw file',
   ' *  stem not built into the Application, lower case; every other stem is in parts/built-in.ldr */',

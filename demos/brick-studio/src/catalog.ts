@@ -1,7 +1,10 @@
+import type { Limb } from './pose';
+
 // the curated parts and colors a build may use. Hand-written: a part's name, kind
 // and LDraw file. Its footprint, height, fill and studs are measured from the LDraw
 // geometry by tools/pack-parts.ts into parts.generated.ts, never typed here
-// NOTE: this module has no imports so that tools/pack-parts.ts can load it directly
+// NOTE: this module imports types alone, which loading strips, so that
+//       tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
 export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'figure';
@@ -20,6 +23,13 @@ export type CatalogPart = Readonly<{
    *  its own color, or takes the part's in LDraw's inherited color (16): a part of
    *  several colors is several lines */
   pieces?: ReadonlyArray<string>;
+  /** a posable part's limbs, by name: each turns its pieces (indices into `pieces`,
+   *  the first its pivot) about that piece's origin, on its own x axis (a swing) or y
+   *  axis (a turn) (SEE: grid.ts posedPieces) */
+  limbs?: Readonly<Record<Limb, Readonly<{ pieces: ReadonlyArray<number>; axis: 'x' | 'y'; }>>>;
+  /** the pieces (indices into `pieces`) a posable part's legs color paints: a figure's
+   *  hips and legs */
+  legs?: ReadonlyArray<number>;
 }>;
 
 // ................................................................................
@@ -256,7 +266,10 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'windscreen-2x4x2', ldraw: '3823', kind: 'vehicle' },
   // a figure is a torso in the placement's color with its arms, yellow hands and a
   // smiling yellow head, on blue hips and legs, as the library's torso assembly
-  // (973c01) and hips and legs (21019bpde7) put them together
+  // (973c01) and hips and legs (21019bpde7) put them together. It poses: each arm
+  // (with its hand) swings about its shoulder, each leg about its hip pin, and the
+  // head turns on its neck, each pivot at its piece's origin as the library models
+  // it; its hips and legs take the legs color
   { key: 'figure', ldraw: '973', kind: 'figure', pieces: [
     '1 14 0 -24 0 1 0 0 0 1 0 0 0 1 3626bp01.dat',
     '1 16 -15.552 9 0 0.985 -0.17 0 0.17 0.985 0 0 0 1 3818.dat',
@@ -266,7 +279,13 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
     '1 1 0 32 0 1 0 0 0 1 0 0 0 1 3815b.dat',
     '1 1 0 44 0 1 0 0 0 1 0 0 0 1 3816c.dat',
     '1 1 0 44 0 1 0 0 0 1 0 0 0 1 3817c.dat',
-  ] },
+  ], limbs: {
+    head: { pieces: [0], axis: 'y' },
+    rightArm: { pieces: [1, 3], axis: 'x' },
+    leftArm: { pieces: [2, 4], axis: 'x' },
+    rightLeg: { pieces: [6], axis: 'x' },
+    leftLeg: { pieces: [7], axis: 'x' },
+  }, legs: [5, 6, 7] },
   // the stand and its black wheel, as the library's complete steering wheel (3829c01)
   { key: 'steering-wheel',  ldraw: '3829a', kind: 'vehicle', pieces: [
     '1 0 0 -26.32 -0.24 0 0 1 -0.8 0.6 0 -0.6 -0.8 0 3828.dat',

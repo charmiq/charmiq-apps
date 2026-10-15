@@ -1,6 +1,7 @@
 import { CATALOG, COLORS, type CatalogPart } from './catalog';
 import { maxOf, minOf } from './numbers';
-import { COLOR_VALUES, PART_GEOMETRY } from './parts.generated';
+import { COLOR_VALUES, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
+import { pieceLines, posedPieces, LIMBS, type Pose } from './pose';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
 // level is one plate height (a brick is three). A placement names the minimum
@@ -46,7 +47,9 @@ export type Rotation = typeof ROTATIONS[number];
 export type Cell = readonly [number/*x*/, number/*z*/];
 
 // ................................................................................
-/** a catalog part on the grid */
+/** a catalog part on the grid. A posable part (a figure) may carry a pose and its
+ *  legs' color; its footprint corner stays where it stands whatever its pose, and its
+ *  level is its posed bottom (a seated figure's on its seat) */
 export type Placement = Readonly<{
   part: string/*catalog key*/;
   color: string/*catalog color key*/;
@@ -54,6 +57,11 @@ export type Placement = Readonly<{
   z: number;
   level: number;
   rotation: Rotation;
+  /** each limb's angle (SEE: pose.ts), none at 0; only on a posable part */
+  pose?: Pose;
+  /** its hips' and legs' color (catalog color key) when not the part's own; only on a
+   *  posable part */
+  legColor?: string;
 }>;
 
 // ................................................................................
@@ -152,10 +160,90 @@ const placeCell = (shape: PartShape, placement: Placement, cell: Cell): Cell => 
 
 /** every grid cell the placement fills and the levels it fills there */
 export const filledCells = (shape: PartShape, placement: Placement): FilledCell[] =>
-  shape.fill.map(([x, z, bottom, top]) => {
+  fillOf(shape, placement).map(([x, z, bottom, top]) => {
     const [gridX, gridZ] = placeCell(shape, placement, [x, z]);
     return { x: gridX, z: gridZ, bottom: placement.level + bottom, top: placement.level + top };
   });
+
+// == Pose ========================================================================
+// a standing posable part (no pose) fills its own measured fill. A pose changes only
+// the cells of the limbs it turns (measured in the part's standing frame, SEE:
+// POSE_GEOMETRY): each turned limb's standing cells leave that fill, keeping any the
+// rest of the part fills too, and its turned cells join it, so no cell of an
+// unturned limb ever moves. The part stands on its lowest point, on the nearest level
+// as an assembled part does: a pose raising that point (a seated figure's legs) lifts
+// it by whole levels, its lowest cells reaching down to its bottom level, where they
+// hold it, and no cell reaching below it
+type Fill = readonly [number, number, number, number];
+/** each cell's filled levels, as ranges from bottom up to (not including) top */
+type Levels = Map<string/*x,z*/, Array<[number, number]>>;
+
+/** a posable part's fill at its placement's pose, from its posed bottom, and how far
+ *  the pose raises that bottom above where the part stands (levels) */
+const posed = (shape: PartShape, pose: Pose | undefined): Readonly<{ fill: ReadonlyArray<Fill>; lift: number; }> => {
+  if(!pose) return { fill: shape.fill, lift: 0 }/*standing*/;
+  const geometry = POSE_GEOMETRY[shape.part.ldraw]/*by contract*/;
+  const turned = LIMBS.filter(limb => (pose[limb] ?? 0) !== 0);
+  const kept = [geometry.core, ...LIMBS.filter(limb => !turned.includes(limb)).map(limb => geometry.limbs[limb]['0'])];
+  const moved = turned.map(limb => geometry.limbs[limb][String(pose[limb])]);
+
+  const standing = levelsOf(shape.fill);
+  const left = subtract(standing, levelsOf(turned.flatMap(limb => geometry.limbs[limb]['0'].fill)));
+  const shared = intersect(standing, levelsOf(kept.flatMap(body => body.fill)))/*what the rest fills as it stands*/;
+  const fill = cellsOf(levelsOf([...cellsOf(left), ...cellsOf(shared), ...moved.flatMap(body => body.fill)]));
+
+  const lift = Math.max(0, Math.round(minOf([...kept, ...moved].map(body => body.bottom))))/*the core is always among them*/;
+  const lifted = fill
+    .map(([x, z, bottom, top]) => [x, z, Math.max(0, bottom - lift), top - lift] as const)
+    .filter(([, , bottom, top]) => top > bottom)/*clipped below its bottom*/;
+  const lowest = minOf(lifted.map(([, , bottom]) => bottom));
+  return { fill: lifted.map(([x, z, bottom, top]) => [x, z, (bottom === lowest) ? 0 : bottom, top] as const), lift };
+};
+
+/** cells' levels by cell, overlapping or touching ranges joined */
+const levelsOf = (cells: ReadonlyArray<Fill>): Levels => {
+  const levels: Levels = new Map();
+  for(const [x, z, bottom, top] of cells) {
+    const key = `${x},${z}`;
+    if(!levels.has(key)) levels.set(key, []);
+    levels.get(key)!.push([bottom, top]);
+  }
+  for(const [key, ranges] of levels) {
+    const joined: Array<[number, number]> = [];
+    for(const [bottom, top] of [...ranges].sort((a, b) => a[0] - b[0])) {
+      const last = joined[joined.length - 1];
+      if(last && (bottom <= last[1])) last[1] = Math.max(last[1], top);
+      else joined.push([bottom, top]);
+    }
+    levels.set(key, joined);
+  }
+  return levels;
+};
+
+/** each cell's levels in `a` and not in `b` */
+const subtract = (a: Levels, b: Levels): Levels => new Map([...a].map(([key, ranges]) => [key, ranges.flatMap(range =>
+  (b.get(key) ?? []).reduce<Array<[number, number]>>((pieces, [bottom, top]) => pieces.flatMap(([from, to]) =>
+    [...((from < Math.min(to, bottom)) ? [[from, Math.min(to, bottom)] as [number, number]] : []), ...((Math.max(from, top) < to) ? [[Math.max(from, top), to] as [number, number]] : [])]), [range]))]));
+
+/** each cell's levels in both `a` and `b` */
+const intersect = (a: Levels, b: Levels): Levels => new Map([...a].map(([key, ranges]) => [key, ranges.flatMap(([from, to]) =>
+  (b.get(key) ?? []).flatMap(([bottom, top]) => (Math.max(from, bottom) < Math.min(to, top)) ? [[Math.max(from, bottom), Math.min(to, top)] as [number, number]] : []))]));
+
+const cellsOf = (levels: Levels): Fill[] => [...levels].flatMap(([key, ranges]) => {
+  const [x, z] = key.split(',').map(Number);
+  return ranges.map(([bottom, top]) => [x, z, bottom, top] as const);
+});
+
+/** the cells a placement's part fills from its bottom: a posable part's at its pose */
+const fillOf = (shape: PartShape, placement: Placement): ReadonlyArray<Fill> =>
+  shape.part.limbs ? posed(shape, placement.pose).fill : shape.fill;
+
+/** plates from a placement's bottom up to its part's LDraw origin: less a pose's lift */
+const baseOf = (shape: PartShape, placement: Placement): number =>
+  shape.part.limbs ? (shape.base - posed(shape, placement.pose).lift) : shape.base;
+
+/** how far a pose raises a posable part's bottom above where it stands (levels) */
+export const poseLift = (part: CatalogPart, pose: Pose | undefined): number => part.limbs ? posed(getShape(part), pose).lift : 0;
 
 /** every cell holding one of the placement's top studs */
 export const studCells = (shape: PartShape, placement: Placement): Cell[] =>
@@ -176,12 +264,13 @@ export const ldrawPosition = (shape: PartShape, placement: Placement): readonly 
   const [cornerX, cornerZ] = cornerFromOrigin(shape, placement.rotation);
   return [
     (placement.x - cornerX) * LDU_PER_STUD,
-    (-(placement.level + shape.base) * LDU_PER_PLATE) + (shape.drop ?? 0),
+    (-(placement.level + baseOf(shape, placement)) * LDU_PER_PLATE) + (shape.drop ?? 0),
     (placement.z - cornerZ) * LDU_PER_STUD,
   ];
 };
 
-/** the grid corner and level of an LDraw position, or undefined when off the grid */
+/** the grid corner and level of an LDraw position, or undefined when off the grid. A
+ *  posable part's level is where it stands; its pose's lift is added once read */
 export const gridPosition = (shape: PartShape, rotation: Rotation, position: readonly [number, number, number]): Readonly<{ x: number; z: number; level: number; }> | undefined => {
   const [cornerX, cornerZ] = cornerFromOrigin(shape, rotation);
   const x = (position[0] / LDU_PER_STUD) + cornerX;
@@ -192,15 +281,17 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
 };
 
 /** the part lines a placement is written as: its own, then its pieces' (SEE:
- *  CatalogPart#pieces) turned and moved with it. A piece in LDraw's inherited color
- *  takes the placement's */
+ *  CatalogPart#pieces) turned and moved with it, a posable part's at its pose and its
+ *  legs in their color. A piece in LDraw's inherited color takes the placement's */
 export const placedLines = (shape: PartShape, placement: Placement, colorCode: number): PartLine[] => {
   const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position: ldrawPosition(shape, placement), matrix: rotationMatrix(placement.rotation) };
-  return [own, ...piecesOf(shape.part).map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
+  const legs = (placement.legColor === undefined) ? undefined : getColor(placement.legColor)?.code;
+  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs) : piecesOf(shape.part);
+  return [own, ...pieces.map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
 };
 
 /** LDraw's inherited color: a piece written in it takes its part's color */
-const INHERITED_COLOR = 16;
+export const INHERITED_COLOR = 16;
 
 /** composes a child transform into its parent's */
 export const compose = (parent: Transform, child: Transform): Transform => {
@@ -214,19 +305,15 @@ export const compose = (parent: Transform, child: Transform): Transform => {
 export const partFiles = (part: CatalogPart): string[] => [part.ldraw, ...piecesOf(part).map(piece => piece.ldraw)];
 
 // --------------------------------------------------------------------------------
-const pieceLines = new Map<string, ReadonlyArray<PartLine>>();
+const pieces = new Map<string, ReadonlyArray<PartLine>>();
 /** a part's pieces as part lines (the catalog writes them as LDraw text) */
 const piecesOf = (part: CatalogPart): ReadonlyArray<PartLine> => {
-  let pieces = pieceLines.get(part.key);
-  if(!pieces) {
-    pieces = (part.pieces ?? []).map(line => {
-      const fields = line.trim().split(/\s+/);
-      const values = fields.slice(1, 14).map(Number);
-      return { ldraw: fields[14].replace(/\.dat$/i, ''), colorCode: values[0], position: [values[1], values[2], values[3]], matrix: values.slice(4, 13) };
-    });
-    pieceLines.set(part.key, pieces);
+  let lines = pieces.get(part.key);
+  if(!lines) {
+    lines = pieceLines(part);
+    pieces.set(part.key, lines);
   } /* else -- read once */
-  return pieces;
+  return lines;
 };
 
 // == Components ================================================================

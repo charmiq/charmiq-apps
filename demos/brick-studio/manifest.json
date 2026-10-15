@@ -157,7 +157,9 @@
                   "x":         { "type": "integer", "description": "West edge, studs" },
                   "z":         { "type": "integer", "description": "South edge, studs" },
                   "level":     { "type": "integer", "minimum": 0, "description": "Bottom, plates" },
-                  "rotation":  { "type": "integer", "enum": [0, 90, 180, 270] }
+                  "rotation":  { "type": "integer", "enum": [0, 90, 180, 270] },
+                  "pose":      { "type": "object", "description": "A figure's pose, each limb in degrees (a multiple of 15; a limb left out is 0). An arm or leg swings forward: 90 points it ahead, 180 straight up, -30 back; the head turns clockwise seen from above. A figure's level is its lowest point: seated (legs at 90) on a seat, that is the seat's top", "properties": { "head": { "type": "integer", "multipleOf": 15 }, "leftArm": { "type": "integer", "multipleOf": 15 }, "rightArm": { "type": "integer", "multipleOf": 15 }, "leftLeg": { "type": "integer", "multipleOf": 15 }, "rightLeg": { "type": "integer", "multipleOf": 15 } } },
+                  "legColor":  { "type": "string", "description": "A figure's hips and legs color (catalog color; blue when left out)" }
                 },
                 "required": ["x", "z", "level"]
               }
@@ -202,7 +204,9 @@
                   "x":        { "type": "integer" },
                   "z":        { "type": "integer" },
                   "level":    { "type": "integer", "minimum": 0 },
-                  "rotation": { "type": "integer", "enum": [0, 90, 180, 270] }
+                  "rotation": { "type": "integer", "enum": [0, 90, 180, 270] },
+                  "pose":     { "type": "object", "description": "A figure's pose, as addParts takes it" },
+                  "legColor": { "type": "string", "description": "A figure's hips and legs color, as addParts takes it" }
                 },
                 "required": ["part", "color", "x", "z", "level"]
               }

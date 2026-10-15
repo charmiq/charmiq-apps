@@ -1,9 +1,11 @@
 import type { ContentChange } from '../../../shared/charmiq';
+import type { CatalogPart } from './catalog';
 import { checkModel, describeCopy, describePlaced, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, toRotation, MAX_COORDINATE, type Copy, type Footprint, type Placement } from './grid';
 import { appendLines, applyChanges, clearEdits, copyLine, defineEdits, deleteLines, groundEdit, parseModel, partCount, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
 import { minOf } from './numbers';
+import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
 
 // owns the current build: the `model` app-content's text, as last seen. Every
 // edit is validated against the app-content's text it is measured on, and the
@@ -374,11 +376,37 @@ const toCopy = (item: unknown): Copy | string => {
 
 /** the Placement an input describes, or why it is not one */
 const toPlacement = (item: unknown): Placement | string => {
-  const { part, color, x, z, level, rotation } = (item ?? {}) as Record<string, unknown>;
-  if((typeof part !== 'string') || !getPart(part)) return `unknown part '${String(part)}' (listParts names the catalog)`;
+  const { part, color, x, z, level, rotation, pose, legColor } = (item ?? {}) as Record<string, unknown>;
+  const catalogPart = (typeof part === 'string') ? getPart(part) : undefined;
+  if(!catalogPart) return `unknown part '${String(part)}' (listParts names the catalog)`;
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
   const where = toPosition(x, z, level, rotation);
-  return (typeof where === 'string') ? where : { part, color, ...where };
+  if(typeof where === 'string') return where;
+  const posing = toPosing(catalogPart, pose, legColor);
+  return (typeof posing === 'string') ? posing : { part: catalogPart.key, color, ...where, ...posing };
+};
+
+/** a posable part's pose and legs color an input describes, or why they are not: each
+ *  limb's angle a whole number of POSE_STEPs (wrapped, SEE: toPoseAngle), the legs a
+ *  catalog color; a limb at 0 and legs in their own color are left out */
+const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown): Pick<Placement, 'pose' | 'legColor'> | string => {
+  if((pose === undefined) && (legColor === undefined)) return {};
+  if(!part.limbs) return `${part.key} takes no pose or legColor (a figure does)`;
+  const angles: Partial<Record<Limb, number>> = {};
+  if(pose !== undefined) {
+    if((typeof pose !== 'object') || (pose === null) || Array.isArray(pose)) return `pose names limbs and their angles (${LIMBS.join(', ')})`;
+    for(const [limb, value] of Object.entries(pose)) {
+      if(!(LIMBS as readonly string[]).includes(limb)) return `pose names no limb '${limb}' (${LIMBS.join(', ')})`;
+      const angle = toPoseAngle(value);
+      if(angle === undefined) return `pose.${limb} must be a whole number of ${POSE_STEP} degrees`;
+      angles[limb as Limb] = angle;
+    }
+  }
+  const legsColor = (legColor === undefined) ? undefined : (typeof legColor === 'string') ? getColor(legColor) : undefined;
+  if((legColor !== undefined) && !legsColor) return `unknown legColor '${String(legColor)}' (listParts names the colors)`;
+  const ownLegs = pieceLines(part)[(part.legs ?? [])[0]]?.colorCode;
+  const normalized = normalizePose(angles as Pose);
+  return { ...(normalized ? { pose: normalized } : {}), ...((legsColor && (legsColor.code !== ownLegs)) ? { legColor: legsColor.key } : {}) };
 };
 
 /** a position on the grid an input describes, or why it is not one */

@@ -32,6 +32,7 @@ You build toy-brick models in the Brick Studio Application in this document, for
 - Two to four main colors per object, with one accent.
 - Detail at the scale of the build: a window, a door and a chimney make a house; a stud-sized flower makes a garden.
 - Leave room around creatures and figures; figures side by side stand 4 studs apart.
+- Bring figures to life with `pose`: wave (an arm at 165), point (an arm at 90), walk (one leg at 30, the other at -30, arms opposite), look around (the head at 45). Seat a driver or a diner with both legs at 90, placed at the seat's top level. Give them `legColor` for trousers that suit them.
 - A quick object is 20 to 80 parts. A scene ("a castle with a moat") deserves 150 to 400.
 
 ## Telling the person
