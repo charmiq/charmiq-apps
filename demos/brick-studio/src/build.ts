@@ -1,5 +1,5 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import { checkModel, describeCopy, describePlacement, MAX_LISTED, type CheckResult } from './check';
+import { checkModel, describeCopy, describePlaced, describePlacement, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, filledCells, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, toRotation, type Copy, type Footprint, type Placement } from './grid';
 import { appendLines, applyChanges, clearEdits, copyLine, defineEdits, deleteLines, groundEdit, parseModel, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
@@ -124,7 +124,7 @@ export class Build {
       // collision
       const before = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
       const introduced = checkModel(next).collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`) && (pair.a !== pair.b)/*a repeat, named below*/);
-      const existing = new Set([...model.placements.filter((_, index) => model.placementCopies?.[index] === undefined).map(describePlacement), ...(model.copies ?? []).map(describeCopy)]);
+      const existing = new Set([...model.placements.filter((_, index) => model.placementPlaced?.[index] === undefined).map(describePlacement), ...(model.copies ?? []).map(describeCopy)]);
       const listed = new Set<string>();
       const placed: string[] = [], repeated: string[] = [];
       for(const name of items.map(describeItem)) {
@@ -205,7 +205,7 @@ export class Build {
 
   // ------------------------------------------------------------------------------
   /** removes the part that fills each given cell, and the glass in a removed frame;
-   *  a cell a copy fills removes the whole copy. The cells are read on the build as
+   *  a cell a component's line fills (a copy or not) removes that whole line. The cells are read on the build as
    *  the edit applies to it: a part that took a cell's place meanwhile is the one
    *  removed. Names the parts the removal left floating (`unsupported`) */
   public async remove(cells: ReadonlyArray<unknown>): Promise<Readonly<{ removed: ReadonlyArray<string>; empty: ReadonlyArray<string>; unsupported: ReadonlyArray<string>; }>> {
@@ -245,16 +245,17 @@ export class Build {
         if((frame !== undefined) && removedFrames.has(frameKey(frame, placement))) removing.add(index);
       });
 
-      // a part of a copy takes its whole copy: the copy's line goes
-      const copies = new Set([...removing].flatMap(index => model.placementCopies?.[index] ?? []));
-      const own = [...removing].filter(index => model.placementCopies?.[index] === undefined);
-      const changes = deleteLines([...own.flatMap(index => [layout.placements[index], ...layout.pieces[index]]), ...[...copies].map(copy => layout.copies[copy])]);
+      // a part a component's line places takes the whole line, a copy or not: the
+      // component's definition is every line's, and is never edited here
+      const placed = new Set([...removing].flatMap(index => model.placementPlaced?.[index] ?? []));
+      const own = [...removing].filter(index => model.placementPlaced?.[index] === undefined);
+      const changes = deleteLines([...own.flatMap(index => [layout.placements[index], ...layout.pieces[index]]), ...[...placed].map(line => layout.placed[line])]);
 
       // what floats now that floated not before
       const floatingBefore = new Set(checkModel(model).floating);
       const after = checkModel(parseModel(applyChanges(text, changes)));
       outcome = {
-        removed: [...own.map(index => describePlacement(model.placements[index])), ...[...copies].map(copy => describeCopy(model.copies![copy]/*by contract*/))],
+        removed: [...own.map(index => describePlacement(model.placements[index])), ...[...placed].map(line => describePlaced(model, line))],
         empty, unsupported: after.floating.filter(name => !floatingBefore.has(name)),
       };
       return changes;

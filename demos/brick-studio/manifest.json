@@ -127,7 +127,7 @@
         "outputSchema": {
           "type": "object",
           "properties": {
-            "parts":     { "type": "array", "items": { "type": "object" }, "description": "Each with its step when the build has more than one" },
+            "parts":     { "type": "array", "items": { "type": "object" }, "description": "Each with its step when the build has more than one; a line placing a component that is not a copy on the grid is listed by component, color and at (a cell it fills: removeParts there removes the line)" },
             "total":     { "type": "integer", "description": "Parts in the build" },
             "next":      { "type": "integer", "description": "Set while parts remain: the next page's from" },
             "unchecked": { "type": "integer", "description": "Parts off the grid or outside the catalog" },
@@ -286,7 +286,7 @@
       },
       {
         "name": "removeParts",
-        "description": "Remove the part that fills each given cell (a cell of a copy removes the whole copy). Returns the check of the build it made (no check call is needed after) and the parts the removal left unsupported",
+        "description": "Remove the part that fills each given cell (a cell of a copy, or of any line placing a component, removes that whole line). Returns the check of the build it made (no check call is needed after) and the parts the removal left unsupported",
         "inputSchema": {
           "type": "object",
           "properties": {

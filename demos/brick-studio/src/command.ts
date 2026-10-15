@@ -4,7 +4,7 @@ import type { FidelityControl } from './fidelity-control';
 import { CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { DesignExists, type Designs } from './designs';
-import { footprintSize, getShape, BASEPLATE_MARGIN, BASEPLATE_MIN, type PartShape } from './grid';
+import { filledCells, footprintSize, getColorByCode, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MIN, type PartShape } from './grid';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { LookAround } from './look-around';
 import type { Viewer } from './viewer';
@@ -83,10 +83,26 @@ export class CommandSurface {
         const model = this.build.getModel();
         const conflict = this.build.conflict();
         const steps = model.steps;
-        // a part of its own, or a copy as one entry (its parts are its component's)
+        // a part of its own, or a component's line as one entry (its parts are its
+        // component's): a copy by where it stands, any other line by its component,
+        // color and a cell it fills (a removal there takes the line)
+        const owned = new Map<number, number[]>()/*each line's placements, in order*/;
+        model.placementPlaced?.forEach((line, index) => {
+          if(line === undefined) return/*a part of its own*/;
+          if(!owned.has(line)) owned.set(line, []);
+          owned.get(line)!.push(index);
+        });
         const entries = [
-          ...model.placements.flatMap((placement, index) => (model.placementCopies?.[index] === undefined) ? [steps ? { ...placement, step: steps.placements[index] } : placement] : []),
+          ...model.placements.flatMap((placement, index) => (model.placementPlaced?.[index] === undefined) ? [steps ? { ...placement, step: steps.placements[index] } : placement] : []),
           ...(model.copies ?? []).map((copy, index) => steps ? { ...copy, step: steps.copies[index] } : copy),
+          ...(model.placed ?? []).flatMap(({ component, colorCode, copy }, line) => {
+            if(copy !== undefined) return []/*listed as a copy*/;
+            const color = getColorByCode(colorCode)?.key;
+            const parts = owned.get(line) ?? [];
+            const cell = parts.flatMap(index => filledCells(getShape(getPart(model.placements[index].part)!/*by contract*/), model.placements[index]))[0]/*the first part that fills one: glass fills none*/;
+            const step = steps?.placements[parts[0]];
+            return [{ component, ...(color ? { color } : {}), ...(cell ? { at: { x: cell.x, z: cell.z, level: cell.bottom } } : {}), ...((step !== undefined) ? { step } : {}) }];
+          }),
         ];
         const start = pageStart(from);
         const end = Math.min(entries.length, start + PARTS_PER_PAGE);

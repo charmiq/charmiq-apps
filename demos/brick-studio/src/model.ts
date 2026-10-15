@@ -33,8 +33,8 @@ export type ModelLayout = Readonly<{
   others: ReadonlyArray<Span>;
   /** the lines of each placement's pieces, in the order of `placements` */
   pieces: ReadonlyArray<ReadonlyArray<Span>>;
-  /** the line of each copy, in the order of the model's `copies` */
-  copies: ReadonlyArray<Span>;
+  /** the line of each of the model's `placed`, in order */
+  placed: ReadonlyArray<Span>;
   /** every part and copy line of the main model, whatever it names */
   mainParts: ReadonlyArray<Span>;
   /** every `0 STEP` line (the main model's) */
@@ -62,6 +62,11 @@ export type ModelLayout = Readonly<{
  *  `others` and of `copies`, and how many steps there are */
 export type ModelSteps = Readonly<{ placements: ReadonlyArray<number>; others: ReadonlyArray<number>; copies: ReadonlyArray<number>; count: number; }>;
 
+/** a line of the main model placing a component: its component, the color its
+ *  parts of LDraw's color 16 take, and its copy (an index into `copies`) when it is
+ *  one on the grid. The line owns every part it places, a copy or not */
+export type Placed = Readonly<{ component: string; colorCode: number; copy?: number; }>;
+
 /** a component: its parts in its own grid and the cells they cover */
 export type Component = Readonly<{ name: string; placements: ReadonlyArray<Placement>; others: number/*part lines off its grid*/; footprint?: Footprint; }>;
 
@@ -82,6 +87,10 @@ export type Model = Readonly<{
   components?: ReadonlyArray<Component>;
   copies?: ReadonlyArray<Copy>;
   placementCopies?: ReadonlyArray<number | undefined>;
+  /** every line of the main model placing a component, and each placement's (an
+   *  index into `placed`), or undefined for a part of its own */
+  placed?: ReadonlyArray<Placed>;
+  placementPlaced?: ReadonlyArray<number | undefined>;
   /** the building steps, when the build has more than one */
   steps?: ModelSteps;
 }>;
@@ -137,7 +146,7 @@ export const parseModel = (text: string): Model => {
     } /* else -- in a file */
     current.push(line);
   }
-  if(main === undefined) return { ...EMPTY_MODEL, layout: { placements: [], others: [], pieces: [], copies: [], mainParts: [], steps: [], components: [], mainEnd: 0, mainEndsWithBreak: false, length: 0, lineBreak: '\n', endsWithBreak: false } }/*empty text*/;
+  if(main === undefined) return { ...EMPTY_MODEL, layout: { placements: [], others: [], pieces: [], placed: [], mainParts: [], steps: [], components: [], mainEnd: 0, mainEndsWithBreak: false, length: 0, lineBreak: '\n', endsWithBreak: false } }/*empty text*/;
 
   // each file but the main model is a component: its parts in its own grid
   const components = [...files].filter(([name]) => name !== main).map(([name, componentLines]) => readComponent(name, componentLines, files));
@@ -147,15 +156,18 @@ export const parseModel = (text: string): Model => {
   const header: string[] = [];
   const placements: Placement[] = [];
   const placementCopies: Array<number | undefined> = [];
+  const placementPlaced: Array<number | undefined> = [];
   const others: OtherPart[] = [];
   const placementSpans: Span[] = [];
   const otherSpans: Span[] = [];
   const copies: Copy[] = [];
-  const copySpans: Span[] = [];
+  const placed: Placed[] = [];
+  const placedSpans: Span[] = [];
   const mainParts: Span[] = [];
   // each part's and copy's step as counted (a `0 STEP` line counts one), numbered once read
   const placementSteps: number[] = [];
   const otherSteps: number[] = [];
+  const otherPlaced: Array<number | undefined> = [];
   const copySteps: number[] = [];
   const stepSpans: Span[] = [];
   let step = 0;
@@ -171,7 +183,7 @@ export const parseModel = (text: string): Model => {
   let truncated = false;
   const exceeded = () => truncated ||= (((placements.length + others.length) > MAX_PARTS) || (references > MAX_PARTS) || (expandedLines > MAX_EXPANDED_LINES));
 
-  const walk = (name: string, transform: Transform, inheritedColor: number, depth: number, copy: number | undefined): void => {
+  const walk = (name: string, transform: Transform, inheritedColor: number, depth: number, owner: number | undefined/*an index into placed*/): void => {
     const isMain = (depth === 0);
     for(const { text: line, from, to } of files.get(name) ?? []) {
       if(!isMain) expandedLines++;
@@ -202,17 +214,18 @@ export const parseModel = (text: string): Model => {
         // a copy: the main model's line naming a component, on the grid
         const component = isMain ? componentsByFile.get(reference) : undefined;
         const position = component?.footprint && copyPosition(component.footprint, component.name, local);
-        if(position) { copies.push(position); copySpans.push({ from, to }); copySteps.push(step); }
-        walk(reference, world, colorCode, depth + 1, position ? (copies.length - 1) : copy);
+        if(position) { copies.push(position); copySteps.push(step); }
+        if(isMain) { placed.push({ component: component?.name ?? reference, colorCode, ...(position ? { copy: copies.length - 1 } : {}) }); placedSpans.push({ from, to }); }
+        walk(reference, world, colorCode, depth + 1, isMain ? (placed.length - 1) : owner);
         continue;
       } /* else -- a part */
       const placement = toPlacement(reference, colorCode, world);
-      if(placement) { placements.push(placement); placementCopies.push(copy); placementSpans.push({ from, to }); placementSteps.push(step); }
-      else { others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode, position: world.position, matrix: world.matrix }); otherSpans.push({ from, to }); otherSteps.push(step); }
+      if(placement) { placements.push(placement); placementCopies.push((owner === undefined) ? undefined : placed[owner].copy); placementPlaced.push(owner); placementSpans.push({ from, to }); placementSteps.push(step); }
+      else { others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode, position: world.position, matrix: world.matrix }); otherSpans.push({ from, to }); otherSteps.push(step); otherPlaced.push(owner); }
     }
   };
   walk(main, IDENTITY, 16, 0, undefined);
-  const pieceSpans = absorbPieces(placements, others, otherSpans, otherSteps);
+  const pieceSpans = absorbPieces(placements, others, otherSpans, otherSteps, { placements: placementPlaced, others: otherPlaced });
 
   exceeded();
   const flat = (files.size === 1) && (main === '')/*no `0 FILE` section: each part is its own line*/;
@@ -231,8 +244,9 @@ export const parseModel = (text: string): Model => {
     ...(ground ? { ground: ground.color } : {}),
     ...((components.length > 0) ? { components: components.map(({ nested: _, ...component }) => component) } : {}),
     ...((copies.length > 0) ? { copies, placementCopies } : {}),
+    ...((placed.length > 0) ? { placed, placementPlaced } : {}),
     ...(editable ? { layout: {
-      placements: placementSpans, others: otherSpans, pieces: pieceSpans, copies: copySpans, mainParts, steps: stepSpans,
+      placements: placementSpans, others: otherSpans, pieces: pieceSpans, placed: placedSpans, mainParts, steps: stepSpans,
       ...(ground ? { ground: ground.span } : {}), ...(trailingStep ? { trailingStep } : {}),
       ...(mainFile ? { mainFile } : {}), components: sections,
       mainEnd, mainEndsWithBreak: (mainEnd < text.length) || endsWithBreak,
@@ -278,16 +292,19 @@ export const fileName = (component: string): string => `${component}.ldr`;
 
 // ................................................................................
 /** takes each placement's pieces out of the other parts, where a line lies as its
- *  piece would: the lines are the placement's. Returns each placement's piece lines,
- *  in order. The arrays of other parts are changed in place */
-const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[], otherSpans: Span[], otherSteps: number[]): Span[][] => {
+ *  piece would and the same line of the main model placed it (`owners`, each an
+ *  index into `placed`; none within one file): the lines are the placement's. A
+ *  piece a component's line places is never a part of the build's own, nor of
+ *  another line's. Returns each placement's piece lines, in order. The arrays of
+ *  other parts are changed in place */
+const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[], otherSpans: Span[], otherSteps: number[], owners?: Readonly<{ placements: ReadonlyArray<number | undefined>; others: Array<number | undefined>; }>): Span[][] => {
   const taken = new Set<number>();
-  const pieceSpans = placements.map(placement => {
+  const pieceSpans = placements.map((placement, placementIndex) => {
     const part = getPart(placement.part)!/*by contract*/;
     if(!part.pieces) return [];
     const [, ...pieces] = placedLines(getShape(part), placement, getColor(placement.color)!.code/*by contract*/);
     return pieces.flatMap(piece => {
-      const index = others.findIndex((other, at) => !taken.has(at) && sameLine(other, piece));
+      const index = others.findIndex((other, at) => !taken.has(at) && (owners?.others[at] === owners?.placements[placementIndex]) && sameLine(other, piece));
       if(index < 0) return []/*missing: written whole again*/;
       taken.add(index);
       return [otherSpans[index]];
@@ -296,6 +313,7 @@ const absorbPieces = (placements: ReadonlyArray<Placement>, others: OtherPart[],
 
   const removeTaken = <T,>(array: T[]): void => { array.splice(0, array.length, ...array.filter((_, index) => !taken.has(index))); };
   removeTaken(others); removeTaken(otherSpans); removeTaken(otherSteps);
+  if(owners) removeTaken(owners.others);
   return pieceSpans;
 };
 
@@ -336,7 +354,7 @@ export const upToStep = (model: Model, step: number): Model => {
     ...model,
     placements: model.placements.filter((_, index) => steps.placements[index] <= step),
     others: model.others.filter((_, index) => steps.others[index] <= step),
-    steps: undefined, layout: undefined, copies: undefined, placementCopies: undefined/*a view, never edited*/,
+    steps: undefined, layout: undefined, copies: undefined, placementCopies: undefined, placed: undefined, placementPlaced: undefined/*a view, never edited*/,
   };
 };
 
@@ -450,10 +468,10 @@ export const groundEdit = (layout: ModelLayout, color: string | undefined): Cont
   return [{ from: layout.mainEnd, to: layout.mainEnd, insert: lead + line + layout.lineBreak }];
 };
 
-/** the edits that delete lines, the last first: each edit is measured after the
- *  ones before it */
+/** the edits that delete lines, each once and the last first: each edit is measured
+ *  after the ones before it */
 export const deleteLines = (spans: ReadonlyArray<Span>): ContentChange[] =>
-  [...spans].sort((a, b) => b.from - a.from).map(({ from, to }) => ({ from, to }));
+  [...new Map(spans.map(span => [span.from, span])).values()].sort((a, b) => b.from - a.from).map(({ from, to }) => ({ from, to }));
 
 /** a text with edits applied as the app-content applies them: in order, each
  *  measured after the ones before it */

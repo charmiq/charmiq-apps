@@ -72,7 +72,7 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 
 **The ground.** The swatch beside the save and open buttons colors the baseplate: grass, a road, sand. The color is part of the build (a `0 !BRICKSTUDIO GROUND green` line at the top of its LDraw, which other LDraw tools pass by), so it is saved with designs and undone like any edit, and it stays that color in a dark theme. Theme returns the baseplate to the theme's color. Parts still stand on it at level 0.
 
-**Components.** A thing a build repeats (a tower, a house, a tree with its fence) is defined once as a component, in its own small grid, and placed as many copies as the build needs, each turned and moved as a part is. A copy is checked like any part, a click's worth of removal (any cell of it) removes the whole copy, and changing a component changes every copy. The build is then a standard multi-file LDraw (MPD) file: the main model first, each component a `0 FILE` section after it, and a copy one line naming its component, so other LDraw tools open it as it is. A component that places another is not edited here; `setModel` writes such a file flat.
+**Components.** A thing a build repeats (a tower, a house, a tree with its fence) is defined once as a component, in its own small grid, and placed as many copies as the build needs, each turned and moved as a part is. A copy is checked like any part, a click's worth of removal (any cell of it) removes the whole copy, and changing a component changes every copy. A line another program wrote placing a component is removed whole the same way, even when it is not a copy on the grid (a component whose parts take the copy's color), and a removal never edits a component's definition. The build is then a standard multi-file LDraw (MPD) file: the main model first, each component a `0 FILE` section after it, and a copy one line naming its component, so other LDraw tools open it as it is. A component that places another is not edited here; `setModel` writes such a file flat.
 
 **Steps.** A build can be split into building steps, LDraw's own `0 STEP` lines, so other LDraw tools show the same steps. The play, step and back buttons under the status show the build as it stands after each step, its parts dropping in; playback never changes the document, and any change to the build ends it. A Charm starts a new step by adding parts with `newStep: true`.
 
@@ -84,9 +84,9 @@ The build is a flat LDraw file in the `model` app-content. Each part is one line
 |---|---|
 | `listParts` | the grid conventions, every part's name by kind, and the colors |
 | `findParts` | the rows (size, fills, which way it descends) of the parts a query names: names, a size such as 2x4, or a word such as roof |
-| `listPlacedParts` | the parts and copies in the build with their positions, a page at a time |
+| `listPlacedParts` | the parts and copies in the build with their positions, a page at a time (a line placing a component that is not a copy, by component, color and a cell it fills) |
 | `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one; a batch that would collide is refused; answers with the build's check |
-| `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy removes the whole copy); answers with the build's check and the parts left unsupported |
+| `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy, or of any line placing a component, removes that whole line); answers with the build's check and the parts left unsupported |
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
 | `defineComponentFromDesign` | defines a component from a saved design, named after it |
 | `listComponents` | the components the build defines, their sizes and copies |

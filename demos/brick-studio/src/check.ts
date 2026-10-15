@@ -1,4 +1,4 @@
-import { cellKey, filledCells, frameKey, getPart, getShape, studCells, type Copy, type Placement } from './grid';
+import { cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, studCells, type Copy, type Placement } from './grid';
 import { READ_IN_PART, type Model } from './model';
 
 // checks a build on the grid. A part fills the cells and levels its shape measures
@@ -127,11 +127,21 @@ export const reportCheck = (result: CheckResult) => ({
 /** what a build read only in part means, model-facing */
 export const TRUNCATED = `${READ_IN_PART} This covers that part alone.`;
 
-/** a model's placement in one line, naming the copy it is in */
+/** a model's placement in one line, naming the line placing it in a component */
 export const describeIn = (model: Model, index: number): string => {
-  const copy = model.placementCopies?.[index];
+  const owner = model.placementPlaced?.[index];
   const placement = describePlacement(model.placements[index]);
-  return (copy === undefined) ? placement : `${placement} in ${describeCopy(model.copies![copy]/*by contract*/)}`;
+  return (owner === undefined) ? placement : `${placement} in ${describePlaced(model, owner)}`;
+};
+
+/** a line of the main model placing a component, in one line: a copy as a copy
+ *  (SEE: describeCopy), any other line by its component and color, e.g. `post red,
+ *  placed by a line of the main model` */
+export const describePlaced = (model: Model, index: number): string => {
+  const { component, colorCode, copy } = model.placed![index]/*by contract*/;
+  if(copy !== undefined) return describeCopy(model.copies![copy]/*by contract*/);
+  const color = getColorByCode(colorCode)?.key;
+  return `${component}${color ? ` ${color}` : ''}, placed by a line of the main model`;
 };
 
 /** a copy in one line, e.g. `tower at x 0 z 0 level 0 rotation 90` */
