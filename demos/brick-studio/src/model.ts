@@ -548,7 +548,8 @@ const toPlacement = (reference: string, colorCode: number, transform: Transform)
 const normalizeName = (name: string): string => name.trim().replace(/\\/g, '/').toLowerCase();
 
 // == Serialize ===================================================================
-/** writes a Model as a flat LDraw file, its steps apart by `0 STEP` lines */
+/** writes a Model whole as one main-model section (`0 FILE model.ldr` through its end
+ *  marker), its steps apart by `0 STEP` lines */
 export const serializeModel = (model: Model): string => {
   const steps = model.steps;
   const lines = [`0 FILE ${MAIN_FILE}`, ...model.header];
