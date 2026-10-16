@@ -5,7 +5,10 @@ import type { CameraPlace, Ease, Key, Point, Recorded, RecordedActor, RecordedCa
 // replaces or adds to its values over its span; a rider stands at its offset in the
 // frame of what it rides, turned with it; the camera stands at a point or orbits its
 // target, the orbit's angle eased so it swings round on its circle; a wheeled
-// actor's wheels roll by the distance it moves along its own north
+// actor's wheels roll by the distance it moves along its own north. A film reaches
+// the studios as a reel: each frame's world values, every view's camera, its fade
+// and its title at the opacity it is drawn at, so a studio draws a frame knowing
+// nothing of time
 // ********************************************************************************
 // == Constants ===================================================================
 const LDU_PER_STUD = 20;
@@ -17,6 +20,8 @@ const MAX_HEIGHT = 2_000;
 const DEFAULT_TARGET: Point = { x: 0, z: 0, height: 4 };
 const DEFAULT_ORBIT = { angle: 30, distance: 40, height: 30 };
 export const DEFAULT_FOV = 32/*degrees: the studio's own lens*/;
+/** how long a title takes to come in and to go */
+const TITLE_EASE = 0.25/*seconds*/;
 
 // == Types =======================================================================
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
@@ -38,6 +43,15 @@ export type FilmFrame = Readonly<{
 }>;
 
 export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>; }>;
+
+/** a frame as a studio's reel takes it (SEE: Brick Studio's loadReel) */
+export type ReelFrame = Readonly<{
+  actors: ReadonlyArray<Shot>;
+  camera: StageCamera;
+  views?: Readonly<Record<string, StageCamera>>;
+  fade?: number;
+  title?: Readonly<{ text: string; style: 'card' | 'caption'; opacity: number; }>;
+}>;
 
 /** an actor's values in one frame, before any ride */
 type Local = Readonly<{ channels: Readonly<Record<string, number>>; }>;
@@ -85,6 +99,21 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
   }
   return { scene, frames };
 };
+
+// == Reel ========================================================================
+/** a film's frame as a studio's reel takes it: what it leaves out, the studio takes
+ *  as none */
+export const reelFrameOf = (frame: FilmFrame): ReelFrame => ({
+  actors: frame.actors,
+  camera: frame.camera,
+  ...((Object.keys(frame.views).length > 0) ? { views: frame.views } : {}),
+  ...((frame.fade > 0) ? { fade: frame.fade } : {}),
+  ...(frame.title ? { title: { text: frame.title.text, style: frame.title.style, opacity: titleOpacity(frame.title, frame.time) } } : {}),
+});
+
+/** how opaque a title is at a time: in over TITLE_EASE from its start, out over
+ *  TITLE_EASE to its end */
+export const titleOpacity = (title: Title, time: number): number => Math.max(0, Math.min(1, Math.min(time - title.from, title.to - time) / TITLE_EASE));
 
 // == Actors ======================================================================
 /** the actors in an order every rider follows what it rides in */

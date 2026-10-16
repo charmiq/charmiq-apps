@@ -1,10 +1,10 @@
 import type { Film } from './film';
-import { overlay } from './player';
 import type { Studios } from './studios';
 
-// the film as a video file: every frame shot on the main studio at the scene's
-// size, its titles and fade drawn over it, encoded as H.264 in an MP4 (Mediabunny,
-// loaded the first time a film is exported) and handed to the browser to save
+// the film as a video file: every frame captured from the main studio at the
+// scene's size, its fade and title drawn by the studio, encoded as H.264 in an MP4
+// (Mediabunny, loaded the first time a film is exported) and handed to the browser
+// to save
 // ********************************************************************************
 // == Constants ===================================================================
 const BITRATE = 8_000_000/*bits per second*/;
@@ -20,7 +20,8 @@ type Mediabunny = Readonly<{
 
 // == Export ======================================================================
 /** the film as an MP4, its progress told frame by frame; undefined once `cancelled`
- *  says stop, or when a frame cannot be shot (the slate says why) */
+ *  says stop, or when a frame of this film cannot be captured: another film was
+ *  staged meanwhile, or the status says why */
 export const exportFilm = async (film: Film, studios: Studios, onProgress: (done: number, total: number) => void, cancelled: () => boolean): Promise<Blob | undefined> => {
   const { Output, Mp4OutputFormat, BufferTarget, CanvasSource } = await import('mediabunny') as unknown as Mediabunny;
   const { width, height, fps } = film.scene;
@@ -32,11 +33,10 @@ export const exportFilm = async (film: Film, studios: Studios, onProgress: (done
   await output.start();
   for(const frame of film.frames) {
     if(cancelled()) { await output.cancel(); return undefined; }
-    const image = await studios.frame(film, frame, { width, height });
+    const image = await studios.capture(film, frame.index, { width, height })/*none once another film is staged*/;
     if(!image) { await output.cancel(); return undefined; }
     context.drawImage(image, 0, 0, width, height);
     image.close();
-    overlay(context, frame, 0, 0, width, height);
     await source.add(frame.index / fps, 1 / fps);
     onProgress(frame.index + 1, film.frames.length);
   }

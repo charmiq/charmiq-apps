@@ -1,8 +1,8 @@
 // a film bench beside Brick Studio, in its family: a warm cream bench, primary
 // brick colors on small outlined tags, Inter for titles and spaced JetBrains Mono
-// capitals for everything else. The screen is the film; under it the transport,
-// the timeline (a row per track, a diamond per key, the red playhead) and the take
-// as a strip of film
+// capitals for everything else. The film plays in the studios above; this is its
+// timeline: the transport, a row per track (a diamond per key, the red playhead) and
+// the film's pictures as a strip of film, beside a sheet of what the film is
 // ********************************************************************************
 // == Variables ===================================================================
 :root {
@@ -16,7 +16,6 @@
   --tag-text:     #1D1C19;
   --film:         #151412;
   --film-cell:    #2A2724;
-  --screen:       #0E0D0C;
   --danger:       #C8361E;
   // the studio's brick palette (LDraw's)
   --brick-red:    #B40000;
@@ -76,7 +75,7 @@ body {
   height: 100%;
   min-height: 420px;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 10px;
   padding: 16px 20px 14px;
 }
@@ -130,6 +129,7 @@ body {
   &[data-state='waiting']::before { background: var(--brick-yellow); animation: pulse 1s ease-in-out infinite; }
   &[data-state='left']::before { background: var(--brick-orange); }
   &[data-state='failed']::before,
+  &[data-state='ambiguous']::before,
   &[data-state='error']::before { background: var(--danger); }
 }
 
@@ -176,80 +176,46 @@ body {
 
 #loopButton[aria-pressed='false'] { background: var(--bench); color: var(--ink-soft); }
 
+// == Status ======================================================================
+// what stops the film (no studio, the way back, a refusal), and what to do
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--outline);
+  border-left: 4px solid var(--brick-yellow);
+  border-radius: 2px;
+  background: var(--lane);
+  box-shadow: 0 1px 0 var(--outline);
+  font-size: 12px;
+  line-height: 1.4;
+
+  .tag { flex: none; margin-left: auto; }
+}
+
+.status-icon { flex: none; width: 16px; height: 16px; color: var(--ink); }
+.status-text { min-width: 0; overflow-wrap: break-word; }
+.status-text b { font-weight: 600; }
+
 // == Floor =======================================================================
-// the screen and, beside it, the sheet: what the film is
+// the deck (the transport, the timeline and the picture track) and, beside it, the
+// sheet: what the film is
 .floor {
   min-height: 0;
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
   gap: 14px;
 }
 
-// the screen takes the film's shape (16:9 until a film says otherwise) at the
-// floor's height; the sheet takes the width left
-.screen-box {
-  position: relative;
-  height: 100%;
-  max-width: calc(100vw - 40px - 220px - 14px);
-  aspect-ratio: var(--aspect, 16 / 9);
+.deck {
   min-height: 0;
-  border: 1px solid var(--edge);
-  border-radius: 3px;
-  background: var(--screen);
-  overflow: hidden;
-  box-shadow: 0 1px 0 var(--outline);
-}
-
-.screen {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-// the frame being shot: a tally light in the corner
-.shooting {
-  @extend %mono-caps;
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  color: #FFFDF2;
-  opacity: 0;
-  transition: opacity 120ms ease;
-  pointer-events: none;
-
-  i { width: 7px; height: 7px; border-radius: 50%; background: #FF3B2F; box-shadow: 0 0 6px #FF3B2F; }
-}
-.screen.is-shooting ~ .shooting { opacity: 0.9; }
-
-.slate {
-  position: absolute;
-  inset: 0;
+  min-width: 0;
   display: grid;
-  place-items: center;
-  padding: 16px;
-  background:
-    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 14px, transparent 14px 28px),
-    var(--screen);
-}
-
-.slate-card {
-  max-width: 380px;
-  display: grid;
-  justify-items: center;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
-  text-align: center;
-  color: #FFFDF2;
 }
-
-.slate-icon { width: 34px; height: 34px; color: var(--brick-yellow); }
-.slate-title { font-size: 17px; font-weight: 500; letter-spacing: -0.01em; overflow-wrap: break-word; }
-.slate-text { font-size: 13px; line-height: 1.5; color: #CFC9BA; overflow-wrap: break-word; }
 
 // .. Sheet .......................................................................
 .sheet {
@@ -532,8 +498,8 @@ body {
 }
 
 // == Strip =======================================================================
-// the take on a strip of film: sprocket holes along both edges, a frame per cell,
-// unexposed until shot
+// the picture track on a strip of film: sprocket holes along both edges, a frame
+// per cell, unexposed until its picture comes from the studio
 .strip {
   --hole: 6px;
   display: flex;
@@ -580,10 +546,9 @@ body {
 // == Narrow ======================================================================
 @media (max-width: 720px) {
   :root { --names: 104px; }
-  .motion { padding: 12px 16px; grid-template-rows: auto auto auto auto auto; overflow: auto; }
+  .motion { padding: 12px 16px; grid-template-rows: auto auto auto; overflow: auto; }
   body { overflow: auto; }
   .floor { grid-template-columns: 1fr; }
-  .screen-box { height: auto; max-width: none; width: 100%; }
   .sheet { max-height: 220px; }
   .actions { margin-left: 0; }
 }

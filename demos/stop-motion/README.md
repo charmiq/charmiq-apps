@@ -1,13 +1,13 @@
 # Stop Motion
 
-*Ask your Charm for a little film: a car flying off a ramp, a knight riding out of a castle gate. It builds the set in Brick Studio, writes the scene as code, and Stop Motion shoots it frame by frame. Scrub the timeline and the studio follows; export it as a video.*
+*Ask your Charm for a little film: a car flying off a ramp, a knight riding out of a castle gate. It builds the set in Brick Studio, writes the scene as code, and the film plays right there in the studio. Scrub the timeline and the studio follows; export it as a video.*
 
-Three Applications, one document: Brick Studio stages and shoots each frame, Stop Motion keeps time, and a code editor holds the scene.
+Three Applications, one document: Brick Studio is the screen, Stop Motion is the timeline, and a code editor holds the scene.
 
 
 ## The Studio
 
-<iframe-app height="440px" width="100%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://../brick-studio">
+<iframe-app height="560px" width="100%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://../brick-studio">
   <app-content name="model">
 0 FILE model.ldr
 0 Brick Studio model
@@ -44,7 +44,7 @@ Three Applications, one document: Brick Studio stages and shoots each frame, Sto
 
 ## The Film
 
-<iframe-app height="700px" width="100%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://.">
+<iframe-app height="420px" width="100%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://.">
 </iframe-app>
 
 
@@ -118,8 +118,9 @@ title(6.3, 7, 'THE JUMP')
 
 ## Try It
 
-- Press play, or drag along the timeline: the studio above follows every frame.
-- Press **Shoot all** to shoot the whole take, then **Export MP4** to save the film.
+- Press play, or drag along the timeline: the film plays in the studio above.
+- Press **Back to the build** in the studio to work on the set: the film waits until you press **Stage again**.
+- Press **Export MP4** to save the film.
 - Change the scene: make the car leave the ramp faster, or the camera swing the other way. The timeline changes as you type.
 
 Or open the chat on this document and ask:

@@ -1,6 +1,6 @@
 # How It Works
 
-Stop Motion makes stop-motion films of toy-brick scenes. Each Application does its own part: [Brick Studio](charmiq://../brick-studio/README.md) builds the set and shoots each frame on its stage; Stop Motion keeps time, plays the film and exports it; a code editor's `scene.js` tab holds the scene. They find each other in the document and talk through the Platform's commands.
+Stop Motion makes stop-motion films of toy-brick scenes. Each Application does one job: [Brick Studio](charmiq://../brick-studio/README.md) is the screen, where the film is seen on its set; Stop Motion is the timeline, which decides what moment is shown and when, and exports the film; a code editor's `scene.js` tab holds the scene. They find each other in the document and talk through the Platform's commands.
 
 
 ## The Scene
@@ -30,13 +30,17 @@ An actor's values are `x`, `z`, `height`, `yaw` (clockwise seen from above), `pi
 An actor with wheels rolls them on its own: they turn by the distance it moves along its own north.
 
 
-## Shooting
+## The Screen
 
-The first time a frame is shown, Stop Motion asks Brick Studio to stage the scene and shoot the frame, and keeps the shot in the take. A frame in the take plays and scrubs without the studio, and the studio follows what is on screen. The strip under the timeline is the take: a frame not yet shot shows unexposed, and develops when it is. **Shoot all** shoots the rest of the take. A change to the scene starts a new take, unless only the fade or the titles changed.
+Each time the scene runs, Stop Motion turns it into a reel, every frame of the film as data, and loads it into Brick Studio once. From then on the timeline only names a frame and the studio shows it: playing, scrubbing and seeking all happen in the studio, the fade and the titles drawn there too. The film plays in the studio while the timeline is scrolled out of view.
 
-**Export MP4** shoots every frame again at the scene's size, draws the fade and the titles over it, and encodes the film as H.264 in an MP4 for the browser to save.
+The studio holding a build is the main one: its build is the set, and its camera is the film's. A Brick Studio with no build of its own is another screen, showing the same set through the scene's next `view`. When two studios both hold a build, the film waits until one of them is emptied.
 
-While the film is shown, Brick Studio says so and offers a way back to its build. Pressing it pauses the film; **Stage again** shows the film in the studio once more. Nothing in a film is written to the build.
+The strip under the timeline is the film's picture track: a small picture of each frame, taken from the studio while the film is neither playing nor exporting, without moving the picture the studio shows.
+
+**Export MP4** shows every frame in the studio at the scene's size, captures it with its fade and titles, and encodes the film as H.264 in an MP4 for the browser to save. Changing the scene during an export stops it.
+
+While the film is shown, Brick Studio says so and offers a way back to its build. Pressing it pauses the film at once; **Stage again** shows the film in the studio once more. Nothing in a film is written to the build.
 
 
 ## The Timeline
@@ -51,7 +55,7 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 | Command | Does |
 |---|---|
 | `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views and its log, or the scene's mistake and its line |
-| `seek` | shows a moment (`time` in seconds, or `frame` from 0) in the studio and the player, so a screenshot sees it |
+| `seek` | shows a moment (`time` in seconds, or `frame` from 0) in the studios, answering once the studio has drawn it, so a screenshot sees it |
 | `play`, `pause` | the transport |
 
 A Charm can also stage a still without a film: Brick Studio's own `stage` and `frame` commands put actors anywhere.
@@ -62,14 +66,15 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | File | Purpose |
 |---|---|
 | [`manifest.json`](charmiq://./manifest.json) | scopes, the import map and the command surface |
-| [`src/main.ts`](charmiq://./src/main.ts) | entry point: the scene, the studios, the player, the timeline and the strip, wired |
+| [`src/main.ts`](charmiq://./src/main.ts) | entry point: the scene, the studios, the playhead, the timeline and the picture track, wired |
+| [`src/director.ts`](charmiq://./src/director.ts) | each scene run into a film and staged; the latest scene is the one the studios show |
 | [`src/recorder.ts`](charmiq://./src/recorder.ts) | runs a scene's code and records it as data |
 | [`src/scene-runner.ts`](charmiq://./src/scene-runner.ts) | the worker a scene runs in |
 | [`src/scene-source.ts`](charmiq://./src/scene-source.ts) | the editor's `scene.js` tab, followed |
-| [`src/film.ts`](charmiq://./src/film.ts) | a recorded scene as a frame per frame: keys, rides, orbits, rolling wheels |
-| [`src/studios.ts`](charmiq://./src/studios.ts) | the Brick Studios found, staged and shown each frame |
-| [`src/player.ts`](charmiq://./src/player.ts) | the take, the transport, the fade and the titles |
+| [`src/film.ts`](charmiq://./src/film.ts) | a recorded scene as a frame per frame (keys, rides, orbits, rolling wheels), and each frame as the studio's reel takes it |
+| [`src/studios.ts`](charmiq://./src/studios.ts) | the Brick Studios found, the main one chosen, the reel staged, each frame shown, each studio's state followed |
+| [`src/player.ts`](charmiq://./src/player.ts) | the playhead and its clock |
 | [`src/timeline.ts`](charmiq://./src/timeline.ts) | the timeline |
-| [`src/strip.ts`](charmiq://./src/strip.ts) | the take as a strip of film |
+| [`src/strip.ts`](charmiq://./src/strip.ts) | the picture track, a strip of film |
 | [`src/export.ts`](charmiq://./src/export.ts) | the film as an MP4 |
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |

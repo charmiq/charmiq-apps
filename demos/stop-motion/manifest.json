@@ -1,7 +1,7 @@
 {
   "id": "ai.charmiq.demos.stop-motion",
   "name": "Stop Motion",
-  "description": "A stop-motion film bench for toy-brick scenes: the scene is code in a code editor's scene.js tab, Brick Studio stages and shoots each frame, and the film plays, scrubs on a timeline and exports as an MP4",
+  "description": "The timeline of a stop-motion film of toy-brick scenes: the scene is code in a code editor's scene.js tab, the film plays in Brick Studio, the screen, and scrubs on the timeline and exports as an MP4",
   "requestedScopes": [
     "application.advertise",
     "application.call"
@@ -32,7 +32,7 @@
           "properties": {
             "studios":    { "type": "integer" },
             "editors":    { "type": "integer" },
-            "stage":      { "type": "string", "description": "none, staging, staged, left (the person went back to the build) or failed" },
+            "stage":      { "type": "string", "description": "none, ambiguous (more than one studio holds a build), staging, staged, left (the person went back to the build) or failed" },
             "refused":    { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
             "stageError": { "type": "string" },
             "title":      { "type": "string" },
@@ -49,7 +49,7 @@
       },
       {
         "name": "seek",
-        "description": "Show one moment of the film on the studio and in the player, by time (seconds) or frame (from 0); resolves once it is on screen, so a screenshot next sees it",
+        "description": "Show one moment of the film in the studios, by time (seconds) or frame (from 0); resolves once the studio has drawn it, so a screenshot next sees it",
         "inputSchema": {
           "type": "object",
           "properties": {
