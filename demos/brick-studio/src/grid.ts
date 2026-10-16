@@ -1,6 +1,6 @@
-import { gearKey, ACCESSORIES, CATALOG, COLORS, type Accessory, type CatalogPart, type Grip } from './catalog';
+import { gearKey, ACCESSORIES, CATALOG, COLORS, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
 import { maxOf, minOf } from './numbers';
-import { COLOR_VALUES, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
+import { COLOR_VALUES, FACE_GEOMETRY, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
 import { hingePieces, hingeTurn, pieceLines, posedPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
@@ -72,6 +72,9 @@ export type Placement = Readonly<{
   /** the copy of a component it carries, where that copy stands with the hinge at 0;
    *  only on a hinge */
   carry?: Copy;
+  /** the copies of components its side faces carry, by face (SEE: Mounts); only on a
+   *  part with faces */
+  sides?: Readonly<Partial<Record<Face, FaceCarry>>>;
 }>;
 
 /** an accessory a figure wears (SEE: catalog.ts ACCESSORIES): its key, its color
@@ -317,7 +320,7 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
   const z = (position[2] / LDU_PER_STUD) + cornerZ;
   const level = (-(position[1] - (shape.drop ?? 0)) / LDU_PER_PLATE) - shape.base;
   if(!isWhole(x) || !isWhole(z) || !isWhole(level)) return undefined;
-  return { x: Math.round(x), z: Math.round(z), level: Math.round(level) };
+  return { x: toWhole(x), z: toWhole(z), level: toWhole(level) };
 };
 
 /** the part lines a placement is written as: its own, then its pieces' (SEE:
@@ -426,16 +429,20 @@ export const copyPosition = (footprint: Footprint, component: string, transform:
   const [cornerX, cornerZ] = turnedCorner(footprint, rotation);
   const x = (transform.position[0] / LDU_PER_STUD) + cornerX;
   const z = (transform.position[2] / LDU_PER_STUD) + cornerZ;
-  const level = 0 - (transform.position[1] / LDU_PER_PLATE)/*never -0 on the ground*/;
+  const level = -(transform.position[1] / LDU_PER_PLATE);
   if(!isWhole(x) || !isWhole(z) || !isWhole(level)) return undefined;
-  return { component, x: Math.round(x), z: Math.round(z), level: Math.round(level), rotation };
+  return { component, x: toWhole(x), z: toWhole(z), level: toWhole(level), rotation };
 };
 
-// == Hinges ======================================================================
-// a hinge carries a copy of a component on its top: the copy stands where `carry`
-// says with the hinge at 0, and turns with the top about its axis. Turned off the
-// grid, the copy fills every grid cell one of its own cells overlaps with positive
-// volume, the check's rule for any part: approximate to the cell and conservative
+// == Mounts ======================================================================
+// a carrier carries copies of components, one in each of its slots: a hinge on its
+// top (`carry`, where the copy stands with the hinge at 0, turning with the top about
+// its axis), a part with side faces on each face (`sides`, where the copy stands on
+// the face's map: SEE: Side faces). Each slot has its own frame, a top for the copy to
+// stand on as copies stand on the grid, and the copy stands on at least one of the
+// slot's studs. Off the grid, a copy fills every grid cell one of its own cells
+// overlaps with positive volume, the check's rule for any part: approximate to the
+// cell and conservative
 
 /** the arithmetic's slack telling an overlap from a contact (LDU): a turned cell
  *  overlaps a grid cell when every separating axis finds more than this between them
@@ -443,55 +450,99 @@ export const copyPosition = (footprint: Footprint, component: string, transform:
  *  rounding alone, far below any part's size */
 export const OVERLAP_TOLERANCE = 1e-6/*LDU*/;
 
+/** where a carrier carries: a hinge's top, or a side face */
+export type MountSlot = 'top' | Face;
+/** the sides in the order their mounts are written */
+export const FACES: ReadonlyArray<Face> = ['north', 'east', 'south', 'west'];
+/** a copy carried on a side face: its component, and where it stands on the face's
+ *  map (SEE: Side faces) */
+export type FaceCarry = Readonly<{ component: string; x: number; z: number; rotation: Rotation; }>;
+/** a copy a carrier carries in one of its slots, standing in that slot's frame (SEE:
+ *  mountFrame): a face's copies at level 0, against the face */
+export type Mount = Readonly<{ slot: MountSlot; copy: Copy; }>;
+
+/** the slots a part carries in, in the order their mounts are written */
+export const mountSlots = (part: CatalogPart): ReadonlyArray<MountSlot> => part.hinge ? ['top'] : FACES.filter(face => part.faces?.includes(face));
+
+/** the copies a placement carries, in slot order */
+export const mountsOf = (placement: Placement): Mount[] => [
+  ...(placement.carry ? [{ slot: 'top' as const, copy: placement.carry }] : []),
+  ...FACES.flatMap(face => { const carry = placement.sides?.[face]; return carry ? [{ slot: face, copy: { ...carry, level: 0 } }] : []; }),
+];
+
 /** what turning a hinge's top to its angle does to the build's frame (LDU): its
  *  part's turn (SEE: pose.ts hingeTurn) where the placement stands */
-export const hingeMotion = (shape: PartShape, placement: Placement, angle: number = placement.angle ?? 0): Transform => {
-  const own: Transform = { matrix: rotationMatrix(placement.rotation), position: ldrawPosition(shape, placement) };
-  return compose(own, compose(hingeTurn(shape.part, angle), invert(own)));
+export const hingeMotion = (shape: PartShape, placement: Placement): Transform => {
+  const own = ownTransform(shape, placement);
+  return compose(own, compose(hingeTurn(shape.part, placement.angle ?? 0), invert(own)));
 };
 
-/** where a hinge's carry stands in the build's frame: its copy's transform (SEE:
- *  copyTransform) moved with the hinge's top */
-export const carryTransform = (shape: PartShape, placement: Placement, footprint: Footprint): Transform =>
-  compose(hingeMotion(shape, placement), copyTransform(footprint, placement.carry!/*by contract*/));
-
-/** the copy a hinge carries, from the transform its line is written at: turned back
- *  to the hinge at 0, a copy on the grid standing on the hinge's top (its bottom at
- *  the top's stud level, its footprint over one of the top's studs); undefined
- *  otherwise */
-export const carriedCopy = (shape: PartShape, placement: Placement, component: Readonly<{ name: string; footprint: Footprint; }>, transform: Transform): Copy | undefined => {
-  const back = compose(hingeMotion(shape, placement, -(placement.angle ?? 0)), transform);
-  const copy = copyPosition(component.footprint, component.name, back);
-  return (copy && restsOn(shape, placement, component.footprint, copy)) ? copy : undefined;
+/** a slot's frame in the build's (LDU): a hinge's top, the build's own frame moved
+ *  with the top; a face, its map (SEE: FACE_GEOMETRY) taken as a top, the face turned
+ *  up: the top's x along the map's x, its north the map's up, its up out of the face */
+export const mountFrame = (shape: PartShape, placement: Placement, slot: MountSlot): Transform => {
+  if(slot === 'top') return hingeMotion(shape, placement);
+  const face = FACE_GEOMETRY[shape.part.ldraw]?.[slot]!/*by contract*/;
+  return compose(ownTransform(shape, placement), { matrix: ON_FACE[slot], position: face.origin });
 };
+
+/** a mount's transform in the build's frame: its copy's (SEE: copyTransform) in its
+ *  slot's frame */
+export const mountTransform = (shape: PartShape, placement: Placement, mount: Mount, footprint: Footprint): Transform =>
+  compose(mountFrame(shape, placement, mount.slot), copyTransform(footprint, mount.copy));
+
+/** the copy a carrier carries in a slot, from the transform its line is written at:
+ *  in the slot's frame, a copy on the grid standing on the slot's studs (SEE:
+ *  restsIn); undefined otherwise */
+export const mountedCopy = (shape: PartShape, placement: Placement, slot: MountSlot, component: Readonly<{ name: string; footprint: Footprint; }>, transform: Transform): Copy | undefined => {
+  const copy = copyPosition(component.footprint, component.name, compose(invert(mountFrame(shape, placement, slot)), transform));
+  return (copy && restsIn(shape, placement, slot, component.footprint, copy)) ? copy : undefined;
+};
+
+/** the cells of a slot's studs in its frame, where a copy stands: a hinge's top's
+ *  studs with the hinge at 0 (SEE: HINGE_GEOMETRY), at the level of the top's studs;
+ *  a face's on its map, at level 0 */
+export const slotStuds = (shape: PartShape, placement: Placement, slot: MountSlot): ReadonlyArray<Readonly<{ x: number; z: number; level: number; }>> =>
+  (slot === 'top') ? topStuds(shape, placement) : FACE_GEOMETRY[shape.part.ldraw]![slot]!.studs.map(([x, z]) => ({ x, z, level: 0 }))/*by contract*/;
 
 /** where a hinge's carry may stand with the hinge at 0: each of its top's studs'
- *  cells (SEE: HINGE_GEOMETRY), at the level of the top's studs */
+ *  cells, at the level of the top's studs */
 export const topStuds = (shape: PartShape, placement: Placement): ReadonlyArray<Readonly<{ x: number; z: number; level: number; }>> =>
   HINGE_GEOMETRY[shape.part.ldraw]/*by contract*/.studs.map(cell => {
     const [x, z] = placeCell(shape, placement, cell);
     return { x, z, level: placement.level + (shape.top ?? shape.height) };
   });
 
-/** whether a copy stands on a hinge's top with the hinge at 0: its bottom at the level
- *  of the top's studs, its footprint over one of them (SEE: topStuds) */
-export const restsOn = (shape: PartShape, placement: Placement, footprint: Footprint, copy: Copy): boolean => {
+/** whether a copy stands in a slot: its bottom at the level of the slot's studs, its
+ *  footprint over one of them (SEE: slotStuds) */
+export const restsIn = (shape: PartShape, placement: Placement, slot: MountSlot, footprint: Footprint, copy: Copy): boolean => {
   const [width, depth] = footprintSize(footprint, copy.rotation);
-  return topStuds(shape, placement).some(({ x, z, level }) => (copy.level === level) && (x >= copy.x) && (x < (copy.x + width)) && (z >= copy.z) && (z < (copy.z + depth)));
+  return slotStuds(shape, placement, slot).some(({ x, z, level }) => (copy.level === level) && (x >= copy.x) && (x < (copy.x + width)) && (z >= copy.z) && (z < (copy.z + depth)));
 };
 
-/** the cells a hinge's carry fills: every grid cell one of its component's filled
- *  cells, moved to where the carry stands, overlaps (SEE: turnedCells) */
-export const carriedCells = (shape: PartShape, placement: Placement, component: Readonly<{ placements: ReadonlyArray<Placement>; footprint: Footprint; }>): FilledCell[] =>
-  turnedCells(component.placements.flatMap(part => filledCells(getShape(getPart(part.part)!/*by contract*/), part)), carryTransform(shape, placement, component.footprint));
+/** the cells a mount fills: every grid cell one of its component's filled cells,
+ *  moved to where the mount stands, overlaps (SEE: turnedCells) */
+export const carriedCells = (shape: PartShape, placement: Placement, mount: Mount, component: Readonly<{ placements: ReadonlyArray<Placement>; footprint: Footprint; }>): FilledCell[] =>
+  turnedCells(component.placements.flatMap(part => filledCells(getShape(getPart(part.part)!/*by contract*/), part)), mountTransform(shape, placement, mount, component.footprint));
 
-/** the lines a hinge's carry is drawn as: its component's parts' lines (in its own
- *  frame, SEE: placedLines) moved to where the carry stands */
-export const carriedLines = (shape: PartShape, placement: Placement, component: Readonly<{ placements: ReadonlyArray<Placement>; others: ReadonlyArray<PartLine>; footprint: Footprint; }>): PartLine[] => {
-  const carried = carryTransform(shape, placement, component.footprint);
+/** the lines a mount is drawn as: its component's parts' lines (in its own frame,
+ *  SEE: placedLines) moved to where the mount stands */
+export const carriedLines = (shape: PartShape, placement: Placement, mount: Mount, component: Readonly<{ placements: ReadonlyArray<Placement>; others: ReadonlyArray<PartLine>; footprint: Footprint; }>): PartLine[] => {
+  const carried = mountTransform(shape, placement, mount, component.footprint);
   const own = component.placements.flatMap(part => placedLines(getShape(getPart(part.part)!/*by contract*/), part, getColor(part.color)!.code/*by contract*/));
   return [...own, ...component.others].map(line => ({ ...line, ...compose(carried, line) }));
 };
+
+/** a placement's own transform in the build's frame */
+const ownTransform = (shape: PartShape, placement: Placement): Transform => ({ matrix: rotationMatrix(placement.rotation), position: ldrawPosition(shape, placement) });
+
+/** how far each side is turned from the south, clockwise seen from above */
+const FACE_TURNS: Readonly<Record<Face, Rotation>> = { south: 0, west: 90, north: 180, east: 270 };
+/** the south face's map taken as a top: the top's x east (right, seen from the
+ *  south), its north up, its up south (out of the face) */
+const ON_SOUTH_FACE = [1, 0, 0, 0, 0, -1, 0, 1, 0];
+/** each face's map taken as a top (SEE: ON_SOUTH_FACE), the south's turned to it */
+const ON_FACE = Object.fromEntries(FACES.map(face => [face, compose({ matrix: rotationMatrix(FACE_TURNS[face]), position: [0, 0, 0] }, { matrix: ON_SOUTH_FACE, position: [0, 0, 0] }).matrix])) as Readonly<Record<Face, ReadonlyArray<number>>>;
 
 /** every grid cell, one level each, that one of `cells` (in their own grid) moved by
  *  `transform` (their LDU frame to the build's) overlaps with positive volume, tested
@@ -588,4 +639,7 @@ export const baseplateArea = (bounds: Readonly<{ minX: number; maxX: number; min
 
 // == Util ========================================================================
 const isWhole = (value: number): boolean => Math.abs(value - Math.round(value)) < 1e-3;
+/** the whole number a value read as whole is (SEE: isWhole), never -0: a coordinate
+ *  computed a hair below 0 is 0 */
+const toWhole = (value: number): number => Math.round(value) + 0;
 export const cellKey = (x: number, z: number, level: number): string => `${x},${z},${level}`;

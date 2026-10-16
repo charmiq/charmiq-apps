@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { familyOf, familyResource, gearKey, hasOpenUnderside, type CatalogPart, ACCESSORIES, CATALOG, COLORS } from '../src/catalog.ts';
+import { familyOf, familyResource, gearKey, hasOpenUnderside, type CatalogPart, type Face, ACCESSORIES, CATALOG, COLORS } from '../src/catalog.ts';
 import { maxOf, minOf } from '../src/numbers.ts';
 import { accessoryLine, hingePieces, limbLines, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOT_LIMB, SLOTS_IN_ORDER, type PieceLine } from '../src/pose.ts';
 
@@ -50,9 +50,12 @@ const IDENTITY: Transform = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
 type Point = [number, number, number];
 type Triangle = readonly [Point, Point, Point];
 /** a part's geometry as walked: every face, tagged with the base of the stud
- *  primitive that draws it (if any); every stud primitive's base; and the base under
- *  every disc of stud radius (SEE: discStudBase) */
-type Walk = { faces: Array<{ triangle: Triangle; studBase?: Point; }>; studs: Point[]; discs: Point[]; };
+ *  primitive that draws it (if any); every upright stud primitive's base, and every
+ *  stud standing out of a side with the way it points; and the base under every disc
+ *  of stud radius (SEE: discStudBase) */
+type Walk = { faces: Array<{ triangle: Triangle; studBase?: Point; }>; studs: Point[]; sideStuds: Array<SideStud>; discs: Point[]; };
+/** a stud standing out of a side: its base and the unit direction it points */
+type SideStud = Readonly<{ base: Point; out: Point; }>;
 /** a part's body (everything but its top studs), with its extents (-y up) */
 type Measure = { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number; studs: Point[]; triangles: Triangle[]; };
 
@@ -136,7 +139,13 @@ const walkText = (library: string, text: string, transform: Transform, out: Walk
         const world = compose(transform, local);
         const base = (studBase === undefined) && isStud(child) ? apply(world, 0, 0, 0) : undefined;
         const disc = (studBase === undefined) ? discStudBase(child, world) : undefined;
-        if(base) out.studs.push(base);
+        if(base) {
+          const tip = apply(world, 0, -1, 0)/*a stud points along its own -y*/;
+          const direction = [tip[0] - base[0], tip[1] - base[1], tip[2] - base[2]];
+          const length = Math.hypot(direction[0], direction[1], direction[2]);
+          if(Math.abs(direction[1]) > (length / 2)) out.studs.push(base);
+          else out.sideStuds.push({ base, out: direction.map(value => value / length) as Point });
+        } /* else -- no stud, or one inside a stud */
         if(disc) out.discs.push(disc);
         walk(library, child, world, out, studBase ?? base);
         break;
@@ -159,16 +168,19 @@ const walkText = (library: string, text: string, transform: Transform, out: Walk
 const inDiscStud = (bases: ReadonlyArray<Point>, [x, y, z]: Point): boolean => bases.some(([baseX, baseY, baseZ]) =>
   (Math.hypot(x - baseX, z - baseZ) < (STUD_RADIUS + EPSILON)) && (y < (baseY + EPSILON)) && (y > (baseY - STUD_HEIGHT - EPSILON)));
 
-/** the body of a walked part: everything but the studs standing on its top face.
- *  The top face is the highest point of what no stud draws; a stud primitive below
- *  it (an underside tube named like a stud, `stud4.dat`) is body */
-const bodyOf = (walked: Walk): Measure => {
+/** the body of a walked part: everything but the studs standing on its top face, and
+ *  for a part whose side faces carry (`sides`, SEE: CatalogPart#faces) the studs
+ *  standing out of its sides, connections as a top stud is. The top face is the
+ *  highest point of what no stud draws; a stud primitive below it (an underside tube
+ *  named like a stud, `stud4.dat`) is body */
+const bodyOf = (walked: Walk, sides = false): Measure => {
   const plain = walked.faces.filter(({ triangle, studBase }) => (studBase === undefined) && !triangle.every(point => inDiscStud(walked.discs, point)));
   const topY = minOf(plain.flatMap(({ triangle }) => triangle.map(([, y]) => y)));
   const onTop = (base: Point | undefined): boolean => (base !== undefined) && (Math.abs(base[1] - topY) < EPSILON);
+  const onSide = new Set<Point>(sides ? walked.sideStuds.map(({ base }) => base) : []);
   const discStuds = walked.discs.filter(onTop);
   const triangles = walked.faces
-    .filter(({ triangle, studBase }) => !onTop(studBase) && !triangle.every(point => inDiscStud(discStuds, point)))
+    .filter(({ triangle, studBase }) => !onTop(studBase) && !((studBase !== undefined) && onSide.has(studBase)) && !triangle.every(point => inDiscStud(discStuds, point)))
     .map(({ triangle }) => triangle);
 
   const points = triangles.flat();
@@ -208,11 +220,11 @@ const gridSpan = (min: number, max: number, baseMin: number, baseMax: number): r
   ];
 };
 
-/** a part's body, walked from its own file */
-const bodyOfPart = (library: string, ldraw: string): Measure => {
-  const walked: Walk = { faces: [], studs: [], discs: [] };
+/** a part's body, walked from its own file (SEE: bodyOf for `sides`) */
+const bodyOfPart = (library: string, ldraw: string, sides = false): Measure => {
+  const walked: Walk = { faces: [], studs: [], sideStuds: [], discs: [] };
   walk(library, `${ldraw}.dat`, IDENTITY, walked);
-  return bodyOf(walked);
+  return bodyOf(walked, sides);
 };
 
 /** an assembled part's body: its own and its pieces' bodies together, and the top
@@ -220,8 +232,8 @@ const bodyOfPart = (library: string, ldraw: string): Measure => {
  *  or its pieces') whose studded top face is highest: a figure's head, not a wheel
  *  set's tires, which carry none; both halves of a hinge plate, level with each other */
 const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Measure; studTop: number; }> => {
-  const bodies = [bodyOfPart(library, part.ldraw), ...(part.pieces ?? []).map(line => {
-    const walked: Walk = { faces: [], studs: [], discs: [] };
+  const bodies = [bodyOfPart(library, part.ldraw, part.faces !== undefined), ...(part.pieces ?? []).map(line => {
+    const walked: Walk = { faces: [], studs: [], sideStuds: [], discs: [] };
     walkText(library, line, IDENTITY, walked);
     return bodyOf(walked);
   })];
@@ -326,7 +338,7 @@ const lineText = (lines: ReadonlyArray<PieceLine>): string =>
 
 /** the body of LDraw text (SEE: bodyOf) */
 const bodyOfText = (library: string, text: string): Measure => {
-  const walked: Walk = { faces: [], studs: [], discs: [] };
+  const walked: Walk = { faces: [], studs: [], sideStuds: [], discs: [] };
   walkText(library, text, IDENTITY, walked);
   return bodyOf(walked);
 };
@@ -386,6 +398,44 @@ const measureHinge = (library: string, part: CatalogPart, standing: Standing) =>
     return cell.map(Math.round).join(',');
   }))].map(key => key.split(',').map(Number) as [number, number]).sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
   return { base, top, studs };
+};
+
+/** a part's side faces (SEE: CatalogPart#faces), each as its map lies in the part's
+ *  frame at rotation 0 (SEE: grid.ts Side faces): the map's origin (LDU: the left
+ *  edge of the cell of the leftmost stud in the row nearest the top, the bottom of
+ *  that row, on the plane the studs stand on) and its studs' cells on the map. Each
+ *  face is measured turned to the south, where seen from outside its right is east */
+const measureFaces = (library: string, part: CatalogPart) => {
+  const walked: Walk = { faces: [], studs: [], sideStuds: [], discs: [] };
+  walk(library, `${part.ldraw}.dat`, IDENTITY, walked);
+  return Object.fromEntries(part.faces!.map(face => {
+    const turn = FACE_TURNS[face];
+    const studs = walked.sideStuds.map(({ base, out }) => ({ base: turnPoint(base, 360 - turn), out: turnPoint(out, 360 - turn) })).filter(({ out }) => out[2] < -0.99)/*facing south*/;
+    if(studs.length < 1) throw new Error(`${part.ldraw}: no studs on its ${face} side.`);
+    const plane = studs[0].base[2];
+    if(studs.some(({ base }) => Math.abs(base[2] - plane) > EPSILON)) throw new Error(`${part.ldraw}: the studs on its ${face} side stand on more than one plane.`);
+    const top = minOf(studs.map(({ base }) => base[1]))/*-y up*/;
+    const left = minOf(studs.filter(({ base }) => Math.abs(base[1] - top) < EPSILON).map(({ base }) => base[0]));
+    const cells = studs.map(({ base }) => [(base[0] - left) / LDU_PER_STUD, (top - base[1]) / LDU_PER_STUD]);
+    if(!cells.flat().every(isWhole)) throw new Error(`${part.ldraw}: the studs on its ${face} side are not on whole cells of its map.`);
+    return [face, {
+      origin: turnPoint([left - (LDU_PER_STUD / 2), top + (LDU_PER_STUD / 2), plane], turn).map(value => Math.round(value * 1e4) / 1e4),
+      studs: cells.map(cell => cell.map(value => Math.round(value) + 0)).sort((a, b) => (a[1] - b[1]) || (a[0] - b[0])),
+    }];
+  }));
+};
+
+/** how far a side is turned from the south, clockwise seen from above (degrees) */
+const FACE_TURNS: Readonly<Record<Face, number>> = { south: 0, west: 90, north: 180, east: 270 };
+/** a point turned clockwise seen from above by a whole number of quarter turns, as a
+ *  placement's rotation turns */
+const turnPoint = ([x, y, z]: Point, turn: number): Point => {
+  switch(((turn % 360) + 360) % 360) {
+    case 90:  return [z, y, -x];
+    case 180: return [-x, y, -z];
+    case 270: return [-z, y, x];
+    default:  return [x, y, z];
+  }
 };
 
 /** what places a part in its own frame: its origin (studs from its footprint's minimum
@@ -562,6 +612,8 @@ const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => pa
 const poses = Object.fromEntries(CATALOG.filter(part => part.limbs).map(part => [part.ldraw, measurePose(library, part, measured[part.ldraw])]));
 // each hinge's base and top, the top at every angle, in its standing frame
 const hinges = Object.fromEntries(CATALOG.filter(part => part.hinge).map(part => [part.ldraw, measureHinge(library, part, measured[part.ldraw])]));
+// each side face a part offers
+const faces = Object.fromEntries(CATALOG.filter(part => part.faces).map(part => [part.ldraw, measureFaces(library, part)]));
 
 // every color the packed parts are drawn in: the catalog's, and each fixed color a
 // packed file draws a face or subfile in (a face's print, a piece's rim)
@@ -607,6 +659,13 @@ const facts = [
   ' *  (what a carry stands on), keyed by LDraw file stem. A turned hinge fills their',
   ' *  union (SEE: grid.ts hinged) */',
   `export const HINGE_GEOMETRY: Readonly<Record<string, Readonly<{ base: ReadonlyArray<readonly [number, number, number, number]>; top: Readonly<Record<string, ReadonlyArray<readonly [number, number, number, number]>>>; studs: ReadonlyArray<readonly [number, number]>; }>>> = ${JSON.stringify(hinges)};`,
+  '',
+  '/** each part\'s side faces that carry (SEE: grid.ts Side faces), each as its map lies',
+  ' *  in the part\'s frame at rotation 0: its origin (LDU: the left edge of the cell of',
+  ' *  the leftmost stud in the row nearest the top, as seen from outside, the bottom of',
+  ' *  that row, on the plane its studs stand on) and its studs\' cells on the map (x',
+  ' *  right, z up), keyed by LDraw file stem */',
+  `export const FACE_GEOMETRY: Readonly<Record<string, Readonly<Partial<Record<'north' | 'east' | 'south' | 'west', Readonly<{ origin: readonly [number, number, number]; studs: ReadonlyArray<readonly [number, number]>; }>>>>>> = ${JSON.stringify(faces)};`,
   '',
   '/** the declared resource (manifest.json `bundle.resources`) holding each LDraw file',
   ' *  stem not built into the Application, lower case; every other stem is in parts/built-in.ldr */',

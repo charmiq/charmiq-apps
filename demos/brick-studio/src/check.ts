@@ -1,5 +1,5 @@
-import { carriedCells, cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, studCells, type Copy, type FilledCell, type Placement } from './grid';
-import { carriedComponent, READ_IN_PART, type Model } from './model';
+import { carriedCells, cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, mountsOf, studCells, type Copy, type FilledCell, type Mount, type Placement } from './grid';
+import { mountedComponent, READ_IN_PART, type Model } from './model';
 
 // checks a build on the grid. A part fills the cells and levels its shape measures
 // (SEE: parts.generated.ts `fill`). Two parts collide when they fill the same cell
@@ -7,9 +7,10 @@ import { carriedComponent, READ_IN_PART, type Model } from './model';
 // top studs lies under a cell that part fills from its bottom level; a part at
 // level 0 stands on the ground. A glass pane fills nothing and is held by the frame
 // at its own position; two panes in one frame collide. A part with no chain of
-// connections to the ground floats. A hinge's carry fills the cells its turned
-// cells overlap (SEE: grid.ts Hinges) as the hinge's: it never collides with its own
-// hinge, and only its hinge holds it
+// connections to the ground floats. A carrier's mount (a hinge's carry, a side
+// face's) fills the cells its turned cells overlap (SEE: grid.ts Mounts): it never
+// collides with its own carrier, it collides with the carrier's other mounts and with
+// everything else, and only its carrier holds it
 // ********************************************************************************
 // == Types =======================================================================
 export type CheckResult = Readonly<{
@@ -33,25 +34,33 @@ export const checkModel = (model: Model): CheckResult => {
   const name = (index: number): string => describeIn(model, index);
 
   // .. Collisions ................................................................
-  const collided = new Set<string>()/*`a|b` index pair*/;
+  // every placement's own part, then each of its mounts
+  const bodies: Body[] = placements.flatMap((placement, index) => {
+    const shape = getShape(getPart(placement.part)!/*by contract*/);
+    return [{ placement: index, cells: filledCells(shape, placement) }, ...mountsOf(placement).map(mount => ({ placement: index, mount, cells: carriedCells(shape, placement, mount, mountedComponent(model, mount)) }))];
+  });
+  const own = new Map(bodies.flatMap((body, at) => (body.mount === undefined) ? [[body.placement, at]] : []));
+  const bodyName = ({ placement, mount }: Body): string => (mount === undefined) ? name(placement) : mountName(model, placement, mount);
+  const collided = new Set<string>()/*`a|b` body index pair*/;
   const collisions: Array<{ a: string; b: string; }> = [];
-  const collide = (other: number, index: number) => {
-    const pair = `${other}|${index}`;
+  const collide = (other: number, at: number) => {
+    const pair = `${other}|${at}`;
     if(collided.has(pair)) return;
     collided.add(pair);
-    collisions.push({ a: name(other), b: name(index) });
+    collisions.push({ a: bodyName(bodies[other]), b: bodyName(bodies[at]) });
   };
-  for(const [other, index] of overlapping(placements, placement => occupiedCells(model, placement))) collide(other, index);
+  for(const [other, at] of overlapping(bodies)) collide(other, at);
   const { panes, crowded } = framed(placements);
-  for(const [first, index] of crowded) collide(first, index);
-  // a carry's own parts, against each other in its component's grid by the same rules:
-  // a definition given as text is not checked when it is written
+  for(const [first, index] of crowded) collide(own.get(first)!, own.get(index)!);
+  // a mount's own parts, against each other in its component's grid by the same
+  // rules: a definition given as text is not checked when it is written
   placements.forEach((placement, index) => {
-    if(!placement.carry) return;
-    const { name: component, placements: parts } = carriedComponent(model, placement);
-    const inCarry = (part: number) => `${describePlacement(parts[part])} in ${component} carried by ${name(index)}`;
-    const pairs = [...overlapping(parts, each => filledCells(getShape(getPart(each.part)!/*by contract*/), each)), ...framed(parts).crowded];
-    for(const [other, part] of pairs) collisions.push({ a: inCarry(other), b: inCarry(part) });
+    for(const mount of mountsOf(placement)) {
+      const { name: component, placements: parts } = mountedComponent(model, mount);
+      const inMount = (part: number) => `${describePlacement(parts[part])} in ${component} carried by ${(mount.slot === 'top') ? name(index) : `the ${mount.slot} face of ${name(index)}`}`;
+      const pairs = [...overlapping(parts.map((part, at) => ({ placement: at, cells: filledCells(getShape(getPart(part.part)!/*by contract*/), part) }))), ...framed(parts).crowded];
+      for(const [other, part] of pairs) collisions.push({ a: inMount(other), b: inMount(part) });
+    }
   });
 
   // .. Connections ...............................................................
@@ -91,32 +100,44 @@ export const checkModel = (model: Model): CheckResult => {
   }
   const floating = placements.flatMap((_, index) => grounded.has(index) ? [] : [name(index)]);
 
-  // a carry's parts count as the build's: those on its component's grid checked, the
+  // a mount's parts count as the build's: those on its component's grid checked, the
   // rest unchecked
-  const carried = placements.flatMap(placement => placement.carry ? [carriedComponent(model, placement)] : []);
+  const carried = placements.flatMap(mountsOf).map(mount => mountedComponent(model, mount));
   return {
     parts: placements.length + carried.reduce((total, component) => total + component.placements.length, 0), collisions, floating,
     unchecked: model.others.length + carried.reduce((total, component) => total + component.others.length, 0), truncated: !!model.truncated,
   };
 };
 
-/** each pair of placements that fill one cell at one level, once, in the order
- *  found: a placement's own cells (a carry's over its hinge's) never pair */
-const overlapping = (placements: ReadonlyArray<Placement>, cellsOf: (placement: Placement) => ReadonlyArray<FilledCell>): Array<readonly [number, number]> => {
-  const filled = new Map<string, number>()/*cell key -> placement index*/;
+/** what fills cells in a check: a placement's own part, or one of its mounts */
+type Body = Readonly<{ placement: number; mount?: Mount; cells: ReadonlyArray<FilledCell>; }>;
+
+/** each pair of bodies that fill one cell at one level, once, in the order found, a
+ *  body against the first at the cell it may meet: a body's own cells never pair,
+ *  nor a carrier with its own mounts (its mounts with each other do) */
+const overlapping = (bodies: ReadonlyArray<Body>): Array<readonly [number, number]> => {
+  const filled = new Map<string, number[]>()/*cell key -> body indices*/;
   const pairs = new Map<string, readonly [number, number]>();
-  placements.forEach((placement, index) => {
-    for(const { x, z, bottom, top } of cellsOf(placement)) {
+  const exempt = (a: Body, b: Body): boolean => (a === b) || ((a.placement === b.placement) && ((a.mount === undefined) || (b.mount === undefined)));
+  bodies.forEach((body, at) => {
+    for(const { x, z, bottom, top } of body.cells) {
       for(let level=bottom; level<top; level++) {
         const key = cellKey(x, z, level);
-        const other = filled.get(key);
-        if(other === undefined) filled.set(key, index);
-        else if(other !== index) pairs.set(`${other}|${index}`, [other, index]);
+        const there = filled.get(key);
+        if(!there) { filled.set(key, [at]); continue; }
+        const other = there.find(each => !exempt(bodies[each], body));
+        if(other !== undefined) pairs.set(`${other}|${at}`, [other, at]);
+        if(!there.includes(at)) there.push(at);
       }
     }
   });
   return [...pairs.values()];
 };
+
+/** a mount in one line: a hinge's carry by its hinge, a face's by its face, e.g.
+ *  `grille on the south face of brick-1x2-side-studs white at x 4 z 6 level 0` */
+const mountName = (model: Model, placement: number, mount: Mount): string =>
+  (mount.slot === 'top') ? describeIn(model, placement) : `${mount.copy.component} on the ${mount.slot} face of ${describeIn(model, placement)}`;
 
 /** each pane's frame, the frame part at the pane's own position (a pane with none
  *  floats), and each pane a frame holds after its first, with that first: two panes
@@ -140,12 +161,11 @@ const framed = (placements: ReadonlyArray<Placement>): Readonly<{ panes: Map<num
   return { panes, crowded };
 };
 
-/** the cells a placement takes in a build: its part's, and a hinge's carry's (SEE:
- *  grid.ts carriedCells), which may share cells with its hinge */
+/** the cells a placement takes in a build: its part's, then its mounts' (SEE:
+ *  grid.ts carriedCells), which may share cells with it and with each other */
 export const occupiedCells = (model: Model, placement: Placement): FilledCell[] => {
   const shape = getShape(getPart(placement.part)!/*by contract*/);
-  const own = filledCells(shape, placement);
-  return placement.carry ? [...own, ...carriedCells(shape, placement, carriedComponent(model, placement))] : own;
+  return [...filledCells(shape, placement), ...mountsOf(placement).flatMap(mount => carriedCells(shape, placement, mount, mountedComponent(model, mount)))];
 };
 
 // == Summary =====================================================================
@@ -192,4 +212,5 @@ export const describeCopy = (copy: Copy): string =>
  *  `hinge-1x2 red at x 0 z 4 level 3 angle 60 carrying lid` */
 export const describePlacement = (placement: Placement): string =>
   `${placement.part} ${placement.color} at x ${placement.x} z ${placement.z} level ${placement.level}` + ((placement.rotation !== 0) ? ` rotation ${placement.rotation}` : '') +
-  (placement.angle ? ` angle ${placement.angle}` : '') + (placement.carry ? ` carrying ${placement.carry.component}` : '');
+  (placement.angle ? ` angle ${placement.angle}` : '') +
+  ((mountsOf(placement).length > 0) ? ` carrying ${mountsOf(placement).map(({ slot, copy }) => (slot === 'top') ? copy.component : `${copy.component} on its ${slot} face`).join(' and ')}` : '');

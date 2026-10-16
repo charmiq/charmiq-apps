@@ -2,8 +2,8 @@ import type { ContentChange } from '../../../shared/charmiq';
 import { ACCESSORIES, type CatalogPart, type Slot } from './catalog';
 import { checkModel, describeCopy, describePlaced, describePlacement, occupiedCells, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
-import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, restsOn, toRotation, MAX_COORDINATE, type Copy, type Footprint, type Gear, type Placement } from './grid';
-import { appendLines, applyChanges, carryLine, clearEdits, copiesOf, copyLine, defineEdits, deleteLines, groundEdit, parseModel, partCount, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
+import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
+import { appendLines, applyChanges, clearEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, partCount, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
 import { maxOf, minOf } from './numbers';
 import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
 
@@ -114,13 +114,13 @@ export class Build {
     let outcome = { added: 0 };
     await this.bridge.edit(text => {
       const { model, layout } = editable(text);
-      const named = (item: Placement | Copy) => ('component' in item) ? item.component : item.carry?.component;
-      const missing = [...new Set(items.flatMap(item => { const name = named(item); return ((name !== undefined) && !componentOf(model, name)?.footprint) ? [name] : []; }))];
+      const named = (item: Placement | Copy) => ('component' in item) ? [item.component] : mountsOf(item).map(mount => mount.copy.component);
+      const missing = [...new Set(items.flatMap(item => named(item).filter(name => !componentOf(model, name)?.footprint)))];
       if(missing.length > 0) throw new BuildError(`Nothing was added. No component named ${missing.join(', ')} holds parts on the grid (defineComponent defines one; listComponents names them).`);
-      const unrested = items.flatMap((item, index) => (('component' in item) || !item.carry || carryRests(model, item, item.carry)) ? [] : [`parts[${index}]: ${UNRESTED}`]);
+      const unrested = items.flatMap((item, index) => ('component' in item) ? [] : mountsOf(item).filter(mount => !mountRests(model, item, mount)).map(mount => `parts[${index}]: ${whyUnrested(mount)}`));
       if(unrested.length > 0) throw new BuildError(['Nothing was added.', ...unrested].join('\n'));
       const lines = items.flatMap(item => {
-        if(!('component' in item)) return item.carry ? [...placementLines(item), carryLine(withFootprint(componentOf(model, item.carry.component)!/*by contract*/), item)] : placementLines(item);
+        if(!('component' in item)) return [...placementLines(item), ...mountsOf(item).map(mount => mountLine(withFootprint(componentOf(model, mount.copy.component)!/*by contract*/), item, mount))];
         return [copyLine(withFootprint(componentOf(model, item.component)!/*by contract*/), item)];
       });
       const change = appendLines(layout, lines, newStep);
@@ -229,7 +229,7 @@ export class Build {
     await this.bridge.edit(text => {
       const { model, layout } = editable(text);
 
-      // the placement that fills each cell, a hinge's carry's cells the hinge's
+      // the placement that fills each cell, its mounts' cells its own
       const filled = new Map<string, number>();
       model.placements.forEach((placement, index) => {
         for(const { x, z, bottom, top } of occupiedCells(model, placement)) {
@@ -343,7 +343,9 @@ const componentParts = (name: unknown, input: ReadonlyArray<unknown>): Placement
   if(input.length < 1) throw new BuildError('No parts given.');
   if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per component.`);
   const placements = validItems(input, 'parts', false) as Placement[]/*parts alone*/;
-  const carrying = placements.flatMap((placement, index) => placement.carry ? [`parts[${index}]: a component's hinge carries nothing (components hold no components): place the hinge and what it carries in the build itself`] : []);
+  const carrying = placements.flatMap((placement, index) => (mountsOf(placement).length < 1) ? [] : [placement.carry
+    ? `parts[${index}]: a component's hinge carries nothing (components hold no components): place the hinge and what it carries in the build itself`
+    : `parts[${index}]: a component's side faces carry nothing (components hold no components): place the part and what its faces carry in the build itself`]);
   if(carrying.length > 0) throw new BuildError(['Nothing was defined.', ...carrying].join('\n'));
   const names = placements.map(describePlacement);
   const repeated = names.filter((name, index) => names.indexOf(name) !== index);
@@ -379,7 +381,7 @@ const toCopy = (item: unknown): Copy | string => {
 
 /** the Placement an input describes, or why it is not one */
 const toPlacement = (item: unknown): Placement | string => {
-  const { part, color, x, z, level, rotation, pose, legColor, hat, rightHand, leftHand, angle, carry } = (item ?? {}) as Record<string, unknown>;
+  const { part, color, x, z, level, rotation, pose, legColor, hat, rightHand, leftHand, angle, carry, sides } = (item ?? {}) as Record<string, unknown>;
   const catalogPart = (typeof part === 'string') ? getPart(part) : undefined;
   if(!catalogPart) return `unknown part '${String(part)}' (listParts names the catalog)`;
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
@@ -388,7 +390,29 @@ const toPlacement = (item: unknown): Placement | string => {
   const posing = toPosing(catalogPart, pose, legColor, { hat, rightHand, leftHand });
   if(typeof posing === 'string') return posing;
   const hinging = toHinging(catalogPart, angle, carry);
-  return (typeof hinging === 'string') ? hinging : { part: catalogPart.key, color, ...where, ...posing, ...hinging };
+  if(typeof hinging === 'string') return hinging;
+  const faced = toSides(catalogPart, sides);
+  return (typeof faced === 'string') ? faced : { part: catalogPart.key, color, ...where, ...posing, ...hinging, ...faced };
+};
+
+/** the copies a part's side faces carry an input describes, or why they are not: by
+ *  face, each a component and where it stands on the face's map (SEE: grid.ts Side
+ *  faces) */
+const toSides = (part: CatalogPart, sides: unknown): Pick<Placement, 'sides'> | string => {
+  if(sides === undefined) return {};
+  if(!part.faces) return `${part.key} has no side faces that carry (listParts names the parts that do)`;
+  if((typeof sides !== 'object') || (sides === null) || Array.isArray(sides)) return `sides names faces (${part.faces.join(', ')}) and what each carries`;
+  const carried: Partial<Record<typeof FACES[number], FaceCarry>> = {};
+  for(const [face, value] of Object.entries(sides)) {
+    if(!(part.faces as readonly string[]).includes(face)) return `${part.key} has no side face '${face}' that carries (${part.faces.join(', ')})`;
+    const { component, x, z, rotation } = (value ?? {}) as Record<string, unknown>;
+    if((typeof component !== 'string') || !COMPONENT_NAME.test(component)) return `sides.${face}.component: unknown component '${String(component)}' (listComponents names them)`;
+    if(!isInteger(x) || !isInteger(z) || (Math.abs(x) > MAX_COORDINATE) || (Math.abs(z) > MAX_COORDINATE)) return `sides.${face}: x and z must be integers within ${MAX_COORDINATE} of the face's first stud`;
+    const turn = (rotation === undefined) ? 0 : toRotation(rotation);
+    if(turn === undefined) return `sides.${face}.rotation must be 0, 90, 180 or 270`;
+    carried[face as typeof FACES[number]] = { component, x, z, rotation: turn };
+  }
+  return { sides: carried };
 };
 
 /** a hinge's angle and carry an input describes, or why they are not: the angle a
@@ -460,9 +484,9 @@ const defineChecked = (text: string, name: string, placements: ReadonlyArray<Pla
   const { model, layout } = editable(text);
   const changes = defineEdits(layout, name, placements.flatMap(placementLines));
   const next = readWhole(applyChanges(text, changes));
-  const carriers = (of: Model) => of.placements.filter(placement => placement.carry?.component === name).map(describePlacement);
-  const dropped = carriers(model).filter(hinge => !carriers(next).includes(hinge));
-  if(dropped.length > 0) throw new BuildError(['Nothing was defined. It would no longer stand on the top of the hinges carrying it:', ...refusal('', dropped).slice(1)].join('\n'));
+  const carriers = (of: Model) => of.placements.filter(placement => mountsOf(placement).some(mount => mount.copy.component === name)).map(describePlacement);
+  const dropped = carriers(model).filter(carrier => !carriers(next).includes(carrier));
+  if(dropped.length > 0) throw new BuildError(['Nothing was defined. It would no longer stand on the studs of the hinges and faces carrying it:', ...refusal('', dropped).slice(1)].join('\n'));
   const before = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
   const introduced = checkModel(next).collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`));
   if(introduced.length > 0) throw new BuildError(['Nothing was defined. Its copies would collide:', ...refusal('', introduced.map(pair => `${pair.b} overlaps ${pair.a}`)).slice(1)].join('\n'));
@@ -479,7 +503,7 @@ const designParts = (ldraw: string): Readonly<{ parts: ReadonlyArray<Placement>;
   const design = parseModel(ldraw);
   if(design.truncated) throw new BuildError(`That design is too large to take: ${READ_IN_PART}`);
   if(design.untold) throw new BuildError(`That design cannot be taken: ${design.untold}.`);
-  if(design.placements.some(placement => placement.carry)) throw new BuildError('That design\'s hinges carry components, and a component holds none: open it as the build instead (loadDesign).');
+  if(design.placements.some(placement => mountsOf(placement).length > 0)) throw new BuildError('That design\'s hinges or side faces carry components, and a component holds none: open it as the build instead (loadDesign).');
   const footprint = footprintOf(design.placements);
   if(!footprint) throw new BuildError('That design holds no parts on the grid.');
   const lowest = minOf(design.placements.map(placement => placement.level));
@@ -503,13 +527,15 @@ const besideBuild = (model: Model, component: string, footprint: Footprint): Cop
   return spot && { component, x: spot[0], z: spot[1], level: 0, rotation: 0 };
 };
 
-/** whether a hinge's carry stands on its top with the hinge at 0 (SEE: grid.ts
- *  restsOn), its component one the model defines with parts on the grid */
-const carryRests = (model: Model, hinge: Placement, carry: Copy): boolean =>
-  restsOn(getShape(getPart(hinge.part)!/*by contract*/), hinge, componentOf(model, carry.component)!.footprint!/*by contract*/, carry);
+/** whether a mount stands on its slot's studs (SEE: grid.ts restsIn), its component
+ *  one the model defines with parts on the grid */
+const mountRests = (model: Model, carrier: Placement, mount: Mount): boolean =>
+  restsIn(getShape(getPart(carrier.part)!/*by contract*/), carrier, mount.slot, componentOf(model, mount.copy.component)!.footprint!/*by contract*/, mount.copy);
 
-/** why a carry was refused, model-facing */
-const UNRESTED = 'carry must stand on the hinge\'s top with the hinge at 0: its level the level of the hinge\'s studs, its footprint over at least one of them';
+/** why a mount was refused, model-facing */
+const whyUnrested = ({ slot }: Mount): string => (slot === 'top')
+  ? 'carry must stand on the hinge\'s top with the hinge at 0: its level the level of the hinge\'s studs, its footprint over at least one of them'
+  : `sides.${slot} must stand on the face's map over at least one of its studs (its first stud at x 0, z 0; listParts says how a face's map runs)`;
 
 /** a component whose parts are on the grid, as its copies' lines take it */
 const withFootprint = (component: Readonly<{ file: string; footprint?: Footprint; }>): Readonly<{ file: string; footprint: Footprint; }> =>

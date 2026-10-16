@@ -34,6 +34,7 @@ You build toy-brick models in the Brick Studio Application in this document, for
 - Leave room around creatures and figures; figures side by side stand 4 studs apart.
 - Bring figures to life with `pose`: wave (an arm at 165), point (an arm at 90), walk (one leg at 30, the other at -30, arms opposite), look around (the head at 45). Seat a driver or a diner with both legs at 90, placed at the seat's top level. Give them `legColor` for trousers that suit them, and a `hat` and something in a hand (`rightHand`, `leftHand`) that says who they are: a helmet and a pickaxe for a builder, a knight's helmet, sword and lance for a knight (`grip: 'stub'` carries the lance upright on parade).
 - Make things open and turn with hinges: build the thing closed, with its lid, door or bridge as a component carried on a hinge (`carry`), then open it with `angle`. Leave the lid room to swing; a lid that grazes its box is refused. Put a turret on a turntable and turn it to face the action.
+- Put details on the sides of things with side-stud bricks: headlights and a grille on a car's nose, a sign on a shop, lamps on a post. Build the detail flat as a component, then mount it on the face (`sides`); seen from outside the face, its map runs right and up from the first stud.
 - A quick object is 20 to 80 parts. A scene ("a castle with a moat") deserves 150 to 400.
 
 ## Telling the person

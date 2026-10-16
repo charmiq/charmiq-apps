@@ -1,6 +1,6 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { ACCESSORIES, COLORS, type CatalogPart } from './catalog';
-import { carriedCopy, carriedLines, carryTransform, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type PartLine, type Placement, type Transform } from './grid';
+import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER, type Pose } from './pose';
 
@@ -307,29 +307,39 @@ export const parseModel = (text: string): Model => {
   walk(main, IDENTITY, 16, 0, undefined);
   const { pieceSpans, undecided } = absorbPieces(placements, others, otherSpans, otherSteps, { placements: placementPlaced, others: otherPlaced });
 
-  // each hinge of the main model's own takes the component line right after its own
-  // lines, in its own line's building step, as its carry, when that line stands on its
-  // top turned back to 0 and its parts are drawn from its component as the line places
-  // them (a component placing no other file, its pieces told, the line in LDraw's
-  // inherited color): the hinge owns the line, and the parts it places leave the
-  // build's own and its copies. Any other line keeps its parts as read
+  // each carrier of the main model's own (a hinge, a part with side faces) takes as its
+  // mounts the main model's part lines right after its own lines, in its own line's
+  // building step, at most one for each of its slots: each a component line whose
+  // parts are drawn from its component as the line places them (a component placing
+  // no other file, its pieces told, the line in LDraw's inherited color) and that
+  // stands on the studs of a slot not yet taken (SEE: grid.ts mountedCopy), in any
+  // order. The first line that is none ends the look. The carrier owns the lines it
+  // takes, and the parts they place leave the build's own and its copies; any other
+  // line keeps its parts as read
   const placedAt = new Map(placedSpans.map((span, index) => [span.from, index]));
   const componentsByName = new Map(components.map(component => [component.name, component]));
   const carried = new Set<number/*an index into placed*/>();
   placements.forEach((placement, index) => {
     const part = getPart(placement.part)!/*by contract*/;
-    if(!part.hinge || (placementPlaced[index] !== undefined)) return;
-    const last = maxOf([placementSpans[index], ...pieceSpans[index]].map(span => span.to));
-    const line = placedAt.get(mainParts[firstFrom(mainParts, last)]?.from ?? -1);
-    if((line === undefined) || carried.has(line)) return;
-    if((stepSpans[firstFrom(stepSpans, placementSpans[index].from)]?.from ?? Infinity) < placedSpans[line].from) return/*a step apart*/;
-    const component = componentsByName.get(placed[line].component);
-    if(!component?.footprint || component.nested || component.undecided || (placed[line].colorCode !== INHERITED_COLOR)) return/*not drawn from its component as placed*/;
-    const carry = carriedCopy(getShape(part), placement, { name: component.name, footprint: component.footprint }, placedTransforms[line]);
-    if(!carry) return;
-    placements[index] = { ...placement, carry };
-    pieceSpans[index] = [...pieceSpans[index], placedSpans[line]];
-    carried.add(line);
+    const open = new Set(mountSlots(part));
+    if((open.size < 1) || (placementPlaced[index] !== undefined)) return;
+    const shape = getShape(part);
+    const stepEnd = stepSpans[firstFrom(stepSpans, placementSpans[index].from)]?.from ?? Infinity;
+    let carrier = placement;
+    for(let next = firstFrom(mainParts, maxOf([placementSpans[index], ...pieceSpans[index]].map(span => span.to))); open.size > 0; next++) {
+      const span = mainParts[next];
+      const line = (span === undefined) ? undefined : placedAt.get(span.from);
+      if((line === undefined) || carried.has(line) || (span.from > stepEnd)) break/*no component line, or a step apart*/;
+      const component = componentsByName.get(placed[line].component);
+      if(!component?.footprint || component.nested || component.undecided || (placed[line].colorCode !== INHERITED_COLOR)) break/*not drawn from its component as placed*/;
+      const mount = [...open].flatMap(slot => { const copy = mountedCopy(shape, placement, slot, { name: component.name, footprint: component.footprint! }, placedTransforms[line]); return copy ? [{ slot, copy }] : []; })[0];
+      if(!mount) break;
+      carrier = withMount(carrier, mount);
+      open.delete(mount.slot);
+      pieceSpans[index] = [...pieceSpans[index], placedSpans[line]];
+      carried.add(line);
+    }
+    placements[index] = carrier;
   });
   if(carried.size > 0) {
     const ownParts = placementPlaced.map(owner => (owner === undefined) || !carried.has(owner));
@@ -670,28 +680,35 @@ const numberSteps = (placements: ReadonlyArray<number>, others: ReadonlyArray<nu
 };
 
 // ................................................................................
-/** how many parts a build holds: its own, its copies' and its hinges' carries', on
+/** how many parts a build holds: its own, its copies' and its carriers' mounts', on
  *  the grid or off */
 export const partCount = (model: Model): number => model.placements.length + model.others.length +
-  model.placements.reduce((total, placement) => total + (placement.carry ? carriedPartCount(carriedComponent(model, placement)) : 0), 0);
+  model.placements.flatMap(mountsOf).reduce((total, mount) => total + carriedPartCount(mountedComponent(model, mount)), 0);
 const carriedPartCount = (component: Component): number => component.placements.length + component.others.length;
 
 /** how many copies of a component a build places: on the grid, and carried by its
- *  hinges */
+ *  carriers */
 export const copiesOf = (model: Model, name: string): number =>
-  (model.copies ?? []).filter(copy => copy.component === name).length + model.placements.filter(placement => placement.carry?.component === name).length;
+  (model.copies ?? []).filter(copy => copy.component === name).length + model.placements.flatMap(mountsOf).filter(mount => mount.copy.component === name).length;
 
-/** the component a hinge's carry places: defined, with parts on the grid (a reader
- *  takes no other line as a carry) */
-export const carriedComponent = (model: Model, placement: Placement): Component & Readonly<{ footprint: Footprint; }> =>
-  model.components!.find(component => component.name === placement.carry!.component) as Component & Readonly<{ footprint: Footprint; }>/*by contract*/;
+/** the component a mount carries: defined, with parts on the grid (a reader takes no
+ *  other line as a mount) */
+export const mountedComponent = (model: Model, mount: Mount): Component & Readonly<{ footprint: Footprint; }> =>
+  model.components!.find(component => component.name === mount.copy.component) as Component & Readonly<{ footprint: Footprint; }>/*by contract*/;
+
+/** a placement carrying one more mount: a hinge's carry, or a face's */
+const withMount = (placement: Placement, { slot, copy }: Mount): Placement => {
+  if(slot === 'top') return { ...placement, carry: copy };
+  const { component, x, z, rotation } = copy;
+  return { ...placement, sides: { ...placement.sides, [slot]: { component, x, z, rotation } } };
+};
 
 /** the lines a placement is drawn as: its own and its pieces' (SEE: grid.ts
- *  placedLines), then a hinge's carry's (SEE: grid.ts carriedLines) */
+ *  placedLines), then its mounts' (SEE: grid.ts carriedLines) */
 export const drawnLines = (model: Model, placement: Placement): PartLine[] => {
   const shape = getShape(getPart(placement.part)!/*by contract*/);
   const own = placedLines(shape, placement, getColor(placement.color)!.code/*by contract*/);
-  return placement.carry ? [...own, ...carriedLines(shape, placement, carriedComponent(model, placement))] : own;
+  return [...own, ...mountsOf(placement).flatMap(mount => carriedLines(shape, placement, mount, mountedComponent(model, mount)))];
 };
 /** whether LDraw text holds a part (a build, not comments alone or nothing) */
 export const holdsParts = (text: string): boolean => partCount(parseModel(text)) > 0;
@@ -772,11 +789,11 @@ export const placementLines = (placement: Placement): string[] => {
 export const copyLine = (component: Readonly<{ file: string; footprint: Footprint; }>, copy: Copy): string =>
   referenceLine(component.file, copyTransform(component.footprint, copy));
 
-/** a hinge's carry as its line, written right after the hinge's own lines: its
- *  component's file where the hinge's top puts the copy (SEE: grid.ts
- *  carryTransform), in LDraw's inherited color */
-export const carryLine = (component: Readonly<{ file: string; footprint: Footprint; }>, placement: Placement): string =>
-  referenceLine(component.file, carryTransform(getShape(getPart(placement.part)!/*by contract*/), placement, component.footprint));
+/** a mount as its line, written right after its carrier's own lines in slot order:
+ *  its component's file where its slot puts the copy (SEE: grid.ts mountTransform),
+ *  in LDraw's inherited color */
+export const mountLine = (component: Readonly<{ file: string; footprint: Footprint; }>, placement: Placement, mount: Mount): string =>
+  referenceLine(component.file, mountTransform(getShape(getPart(placement.part)!/*by contract*/), placement, mount, component.footprint));
 
 const referenceLine = (file: string, { position, matrix }: Transform): string =>
   ['1', 16, ...position, ...matrix].map(formatNumber).join(' ') + ` ${file}`;

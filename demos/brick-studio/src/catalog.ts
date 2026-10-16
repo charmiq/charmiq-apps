@@ -7,7 +7,7 @@ import type { Limb } from './pose';
 //       tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'figure' | 'hinge';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'figure' | 'hinge' | 'side';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -39,7 +39,13 @@ export type CatalogPart = Readonly<{
    *  south side) and `y` swiveling it (clockwise seen from above) (SEE: pose.ts
    *  hingePieces) */
   hinge?: Readonly<{ piece: number; axis: 'x' | 'y'; pivot: readonly [number, number, number]; }>;
+  /** the sides at rotation 0 whose studs carry a component each (SEE: grid.ts Side
+   *  faces), each measured by tools/pack-parts.ts */
+  faces?: ReadonlyArray<Face>;
 }>;
+
+/** a side of a part, named at rotation 0: north is +z, east +x */
+export type Face = 'north' | 'east' | 'south' | 'west';
 
 /** where a held item's grip bar sits in a piece: the grip's centre and its axis (the
  *  rotation rows taking the piece's y to it) */
@@ -206,7 +212,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'pillar-round-1x1x6', ldraw: '43888', kind: 'detail' },
   { key: 'brick-1x1x3',     ldraw: '14716', kind: 'detail' },
   { key: 'brick-1x1x5',     ldraw: '2453b', kind: 'detail' },
-  { key: 'headlight-brick-1x1', ldraw: '4070', kind: 'detail' },
+  { key: 'headlight-brick-1x1', ldraw: '4070', kind: 'detail', faces: ['south'] },
   { key: 'grille-brick-1x2', ldraw: '2877', kind: 'detail' },
   { key: 'round-tile-2x2',  ldraw: '14769', kind: 'detail' },
   { key: 'swirl-plate-1x1', ldraw: '15470', kind: 'detail' },
@@ -320,6 +326,16 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'hinge-plate-1x4', ldraw: '2429',  kind: 'hinge', pieces: ['1 16 0 0 0 1 0 0 0 1 0 0 0 1 2430.dat'], hinge: { piece: 0, axis: 'y', pivot: [0, 0, 0] } },
   { key: 'turntable-2x2',   ldraw: '3680',  kind: 'hinge', pieces: ['1 16 0 0 0 1 0 0 0 1 0 0 0 1 3679.dat'], hinge: { piece: 0, axis: 'y', pivot: [0, 0, 0] } },
   { key: 'turntable-4x4',   ldraw: '3403',  kind: 'hinge', pieces: ['1 16 0 0 0 1 0 0 0 1 0 0 0 1 3404.dat'], hinge: { piece: 0, axis: 'y', pivot: [0, 0, 0] } },
+
+  // bricks and brackets with studs on their sides, each studded side carrying a
+  // component (SEE: CatalogPart#faces)
+  { key: 'brick-1x1-side-stud',       ldraw: '87087', kind: 'side', faces: ['south'] },
+  { key: 'brick-1x1-two-side-studs',  ldraw: '47905', kind: 'side', faces: ['north', 'south'] },
+  { key: 'brick-1x1-four-side-studs', ldraw: '4733',  kind: 'side', faces: ['north', 'east', 'south', 'west'] },
+  { key: 'brick-1x2-side-studs',      ldraw: '11211', kind: 'side', faces: ['south'] },
+  { key: 'brick-1x2-both-side-studs', ldraw: '52107', kind: 'side', faces: ['north', 'south'] },
+  { key: 'brick-1x4-side-studs',      ldraw: '30414', kind: 'side', faces: ['south'] },
+  { key: 'bracket-1x2-up',            ldraw: '99780', kind: 'side', faces: ['south'] },
 ];
 
 // == Accessories =================================================================
@@ -425,6 +441,7 @@ const KIND_WORDS: Readonly<Record<PartKind, ReadonlyArray<string>>> = {
   'vehicle':     ['car', 'wheel', 'truck'],
   'figure':      ['person', 'people', 'minifigure', 'knight', 'driver', 'figure'],
   'hinge':       ['turntable', 'lid', 'door', 'drawbridge', 'tilt', 'swivel', 'turn', 'open'],
+  'side':        ['sideways', 'snot', 'bracket', 'headlight', 'grille', 'sign', 'face'],
 };
 
 /** the catalog parts a query names, best first: a part's own name, a word of its
