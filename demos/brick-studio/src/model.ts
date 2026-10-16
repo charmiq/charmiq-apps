@@ -1,6 +1,6 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { ACCESSORIES, COLORS, type CatalogPart } from './catalog';
-import { carriedCopy, carriedLines, carryTransform, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
+import { carriedCopy, carriedLines, carryTransform, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER, type Pose } from './pose';
 
@@ -542,19 +542,21 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
   const normalized = normalizePose(pose);
   const legColor = ((legsCode === undefined) || (legsCode === lines[(part.legs ?? [])[0]]?.colorCode)) ? undefined : getColorByCode(legsCode)?.key;
 
-  // what it wears: each slot's accessories of its kind, in any catalog color, where
-  // the posed piece carrying the slot puts them
+  // what it wears: each slot's accessories of its kind, by each of their grips, in
+  // any catalog color, where the posed piece carrying the slot puts them
   const carriers = posedPieces(part, normalized);
-  const gear: Partial<Record<typeof SLOTS_IN_ORDER[number], Readonly<{ part: string; color: string; }>>> = {};
+  const gear: Partial<Record<typeof SLOTS_IN_ORDER[number], Gear>> = {};
   SLOTS_IN_ORDER.forEach((slot, order) => {
     const carrier = carriers[part.slots![slot].piece];
     for(const accessory of ACCESSORIES.filter(each => each.on === ((slot === 'hat') ? 'head' : 'hand'))) {
-      for(const color of COLORS) {
-        const line = take(placedPiece(accessoryLine(part, slot, carrier, accessory, color.code), color.code));
-        if(line === undefined) continue;
-        found.set(lines.length + order, line);
-        gear[slot] = { part: accessory.key, color: color.key };
-        return;
+      for(const [index, grip] of (accessory.grips ?? [undefined]).entries()) {
+        for(const color of COLORS) {
+          const line = take(placedPiece(accessoryLine(part, slot, carrier, accessory, grip, color.code), color.code));
+          if(line === undefined) continue;
+          found.set(lines.length + order, line);
+          gear[slot] = { part: accessory.key, color: color.key, ...((grip && (index > 0)) ? { grip: grip.name } : {}) };
+          return;
+        }
       }
     }
   });

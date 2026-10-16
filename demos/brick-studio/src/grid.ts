@@ -1,4 +1,4 @@
-import { ACCESSORIES, CATALOG, COLORS, type CatalogPart } from './catalog';
+import { gearKey, ACCESSORIES, CATALOG, COLORS, type Accessory, type CatalogPart, type Grip } from './catalog';
 import { maxOf, minOf } from './numbers';
 import { COLOR_VALUES, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
 import { hingePieces, hingeTurn, pieceLines, posedPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
@@ -74,9 +74,9 @@ export type Placement = Readonly<{
   carry?: Copy;
 }>;
 
-/** an accessory a figure wears (SEE: catalog.ts ACCESSORIES): its key and its color
- *  (catalog color key) */
-export type Gear = Readonly<{ part: string; color: string; }>;
+/** an accessory a figure wears (SEE: catalog.ts ACCESSORIES): its key, its color
+ *  (catalog color key), and the grip a held item is held by when not its first */
+export type Gear = Readonly<{ part: string; color: string; grip?: string; }>;
 /** how a posable part is posed and dressed */
 export type Posing = Pick<Placement, 'pose' | 'hat' | 'rightHand' | 'leftHand'>;
 
@@ -201,7 +201,10 @@ type Levels = Map<string/*x,z*/, Array<[number, number]>>;
 const posed = (shape: PartShape, posing: Posing): Readonly<{ fill: ReadonlyArray<Fill>; lift: number; }> => {
   const { pose } = posing;
   const geometry = POSE_GEOMETRY[shape.part.ldraw]/*by contract*/;
-  const gear = SLOTS_IN_ORDER.flatMap(slot => posing[slot] ? [geometry.gear[slot][posing[slot]!.part][String(pose?.[SLOT_LIMB[slot]] ?? 0)]] : []);
+  const gear = SLOTS_IN_ORDER.flatMap(slot => {
+    const held = posing[slot] && heldOf(posing[slot]);
+    return held ? [geometry.gear[slot][gearKey(held.accessory, held.grip)][String(pose?.[SLOT_LIMB[slot]] ?? 0)]] : [];
+  });
   if(!pose && (gear.length < 1)) return { fill: shape.fill, lift: 0 }/*standing, wearing nothing*/;
   const turned = LIMBS.filter(limb => (pose?.[limb] ?? 0) !== 0);
   const kept = [geometry.core, ...LIMBS.filter(limb => !turned.includes(limb)).map(limb => geometry.limbs[limb]['0'])];
@@ -330,9 +333,17 @@ export const placedLines = (shape: PartShape, placement: Placement, colorCode: n
 /** what a placement wears, as its pieces are written (SEE: pose.ts Worn) */
 const wornOf = (placement: Placement): Worn => Object.fromEntries(SLOTS_IN_ORDER.flatMap(slot => {
   const gear = placement[slot];
-  const accessory = gear && ACCESSORIES.find(each => each.key === gear.part);
-  return accessory ? [[slot, { accessory, colorCode: getColor(gear.color)!.code/*by contract*/ }]] : [];
+  const held = gear && heldOf(gear);
+  return held ? [[slot, { ...held, colorCode: getColor(gear.color)!.code/*by contract*/ }]] : [];
 }));
+
+/** the accessory gear names and the grip it is held by (undefined for its first) */
+const heldOf = (gear: Gear): Readonly<{ accessory: Accessory; grip?: Grip; }> | undefined => {
+  const accessory = ACCESSORIES.find(each => each.key === gear.part);
+  if(!accessory) return undefined;
+  const grip = (gear.grip === undefined) ? undefined : accessory.grips?.find(each => each.name === gear.grip);
+  return { accessory, ...(grip ? { grip } : {}) };
+};
 
 /** LDraw's inherited color: a piece written in it takes its part's color */
 export const INHERITED_COLOR = 16;

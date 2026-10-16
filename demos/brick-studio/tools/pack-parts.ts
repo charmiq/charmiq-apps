@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { familyOf, familyResource, hasOpenUnderside, type CatalogPart, ACCESSORIES, CATALOG, COLORS } from '../src/catalog.ts';
+import { familyOf, familyResource, gearKey, hasOpenUnderside, type CatalogPart, ACCESSORIES, CATALOG, COLORS } from '../src/catalog.ts';
 import { maxOf, minOf } from '../src/numbers.ts';
 import { accessoryLine, hingePieces, limbLines, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOT_LIMB, SLOTS_IN_ORDER, type PieceLine } from '../src/pose.ts';
 
@@ -359,11 +359,13 @@ const measurePose = (library: string, part: CatalogPart, standing: Standing) => 
   const fixed = pieceLines(part).filter((_, index) => !moved.has(index));
   const core = measured([`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(fixed)].join('\n'));
   const limbs = Object.fromEntries(LIMBS.map(limb => [limb, Object.fromEntries(POSE_ANGLES.map(angle => [angle, measured(lineText(limbLines(part, limb, angle)))]))]));
-  // each accessory a slot takes, at every angle of the limb it turns with
-  const gear = Object.fromEntries(SLOTS_IN_ORDER.map(slot => [slot, Object.fromEntries(ACCESSORIES.filter(accessory => accessory.on === ((slot === 'hat') ? 'head' : 'hand')).map(accessory => [accessory.key, Object.fromEntries(POSE_ANGLES.map(angle => {
-    const carrier = posedPieces(part, { [SLOT_LIMB[slot]]: angle })[part.slots![slot].piece];
-    return [angle, measured(lineText([accessoryLine(part, slot, carrier, accessory, 16)]))];
-  }))]))]));
+  // each accessory a slot takes, by each of its grips, at every angle of the limb it
+  // turns with (SEE: gearKey)
+  const gear = Object.fromEntries(SLOTS_IN_ORDER.map(slot => [slot, Object.fromEntries(ACCESSORIES.filter(accessory => accessory.on === ((slot === 'hat') ? 'head' : 'hand'))
+    .flatMap(accessory => (accessory.grips ?? [undefined]).map(grip => [gearKey(accessory, grip), Object.fromEntries(POSE_ANGLES.map(angle => {
+      const carrier = posedPieces(part, { [SLOT_LIMB[slot]]: angle })[part.slots![slot].piece];
+      return [angle, measured(lineText([accessoryLine(part, slot, carrier, accessory, grip, 16)]))];
+    }))])))]));
   return { core, limbs, gear };
 };
 

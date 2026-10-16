@@ -1,4 +1,4 @@
-import type { Accessory, CatalogPart, Slot } from './catalog';
+import type { Accessory, CatalogPart, Grip, Slot } from './catalog';
 
 // a posable part's pose (a figure's): each limb at an angle in whole POSE_STEPs. A
 // swing (an arm, a leg) raises the limb forward by its angle, a turn (the head) turns
@@ -78,13 +78,14 @@ export const posedPieces = (part: CatalogPart, pose: Pose | undefined, legsColor
     part.limbs[limb].pieces.forEach((index, order) => { lines[index] = moved[order]; });
   }
   if(legsColor !== undefined) for(const index of part.legs ?? []) lines[index] = { ...lines[index], colorCode: legsColor };
-  const gear = SLOTS_IN_ORDER.flatMap(slot => worn?.[slot] ? [accessoryLine(part, slot, lines[part.slots![slot].piece], worn[slot]!.accessory, worn[slot]!.colorCode)] : []);
+  const gear = SLOTS_IN_ORDER.flatMap(slot => worn?.[slot] ? [accessoryLine(part, slot, lines[part.slots![slot].piece], worn[slot]!.accessory, worn[slot]!.grip, worn[slot]!.colorCode)] : []);
   return [...lines, ...gear];
 };
 
 // == Accessories =================================================================
-/** what a part wears, by slot: each accessory and its color code */
-export type Worn = Readonly<Partial<Record<Slot, Readonly<{ accessory: Accessory; colorCode: number; }>>>>;
+/** what a part wears, by slot: each accessory, how it is held (its first grip when
+ *  none is named) and its color code */
+export type Worn = Readonly<Partial<Record<Slot, Readonly<{ accessory: Accessory; grip?: Grip; colorCode: number; }>>>>;
 
 /** the slots in the order their accessories are written */
 export const SLOTS_IN_ORDER: ReadonlyArray<Slot> = ['hat', 'rightHand', 'leftHand'];
@@ -92,20 +93,25 @@ export const SLOTS_IN_ORDER: ReadonlyArray<Slot> = ['hat', 'rightHand', 'leftHan
 export const SLOT_LIMB: Readonly<Record<Slot, Limb>> = { hat: 'head', rightHand: 'rightArm', leftHand: 'leftArm' };
 
 /** an accessory's line where a slot's piece (`carrier`, posed) puts it: headgear at
- *  the head's transform; a held item with its grip bar in the hand's grip, its point
- *  `at` on its axis at the grip's centre (SEE: catalog.ts ACCESSORIES) */
-export const accessoryLine = (part: CatalogPart, slot: Slot, carrier: PieceLine, accessory: Accessory, colorCode: number): PieceLine => {
+ *  the head's transform; a held item with the bar of `grip` (its first when none is
+ *  given) in the hand's grip, its point `at` on its axis at the grip's centre (SEE:
+ *  catalog.ts ACCESSORIES) */
+export const accessoryLine = (part: CatalogPart, slot: Slot, carrier: PieceLine, accessory: Accessory, grip: Grip | undefined, colorCode: number): PieceLine => {
   const { grip: frame } = part.slots![slot];
-  if(!accessory.grip || !frame) return { ldraw: accessory.ldraw, colorCode, position: carrier.position, matrix: carrier.matrix };
-  const matrix = multiply(multiply(carrier.matrix, frame.matrix), (accessory.grip.axis === 'y') ? IDENTITY : Z_ALONG_Y);
+  const bar = grip ?? accessory.grips?.[0];
+  if(!bar || !frame) return { ldraw: accessory.ldraw, colorCode, position: carrier.position, matrix: carrier.matrix };
+  const matrix = multiply(multiply(multiply(carrier.matrix, frame.matrix), (bar.axis === 'y') ? IDENTITY : Z_ALONG_Y), !bar.flip ? IDENTITY : (bar.axis === 'y') ? HALF_TURN_ABOUT_Y : HALF_TURN_ABOUT_Z);
   const centre = multiplyVector(carrier.matrix, frame.position).map((value, axis) => value + carrier.position[axis]);
-  const held = multiplyVector(matrix, (accessory.grip.axis === 'y') ? [0, accessory.grip.at, 0] : [0, 0, accessory.grip.at]);
+  const held = multiplyVector(matrix, (bar.axis === 'y') ? [0, bar.at, 0] : [0, 0, bar.at]);
   return { ldraw: accessory.ldraw, colorCode, position: [centre[0] - held[0], centre[1] - held[1], centre[2] - held[2]], matrix };
 };
 
 const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 /** a quarter turn taking an item's z (the axis it lies along) to y */
 const Z_ALONG_Y = [1, 0, 0, 0, 0, 1, 0, -1, 0];
+/** a half turn of an item about its bar, along y or along z (SEE: Grip#flip) */
+const HALF_TURN_ABOUT_Y = [-1, 0, 0, 0, 1, 0, 0, 0, -1];
+const HALF_TURN_ABOUT_Z = [-1, 0, 0, 0, -1, 0, 0, 0, 1];
 
 // == Hinges ======================================================================
 /** where a hinge's top at `angle` moves a point of the part's frame: a turn about

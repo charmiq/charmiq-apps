@@ -325,10 +325,22 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
 // == Accessories =================================================================
 // what a figure wears on its head or holds in a hand, in a catalog color: a library
 // file fitted as the library models it. Headgear's origin is the head's (the top of
-// the head), so it takes the head's transform. A held item's grip bar sits in the
-// hand's grip (SEE: HAND_GRIP): its bar's axis (`y`, or `z` for an item modeled lying
-// along z) along the grip's axis, its point `at` on that axis at the grip's centre
-export type Accessory = Readonly<{ key: string; ldraw: string; on: 'head' | 'hand'; grip?: Readonly<{ axis: 'y' | 'z'; at: number; }>; }>;
+// the head), so it takes the head's transform. A held item is held by one of its
+// grips, each a bar of it sitting in the hand's grip (SEE: HAND_GRIP): the bar's axis
+// (`y`, or `z` for a bar modeled lying along z) along the hand grip's axis, its point
+// `at` on that axis at the grip's centre. Its first grip is how it is held unless its
+// gear names another (a flashlight by its body, a lance by its stub)
+export type Accessory = Readonly<{ key: string; ldraw: string; on: 'head' | 'hand'; grips?: ReadonlyArray<Grip>; }>;
+/** a way a held item is held: its name, its bar's axis and point (SEE: ACCESSORIES),
+ *  and whether the item is turned half round about that bar (`flip`: which way the
+ *  rest of it points from the hand). An item's first is how it is held unless its
+ *  gear names another */
+export type Grip = Readonly<{ name: string; axis: 'y' | 'z'; at: number; flip?: true; }>;
+
+/** the key an accessory's measured cells are kept under for a grip (SEE: POSE_GEOMETRY
+ *  `gear`): its own key for its first grip, the grip's name beside it for another */
+export const gearKey = (accessory: Accessory, grip: Grip | undefined): string =>
+  ((grip === undefined) || (grip === accessory.grips?.[0])) ? accessory.key : `${accessory.key}/${grip.name}`;
 
 export const ACCESSORIES: ReadonlyArray<Accessory> = [
   { key: 'hair',                ldraw: '3901',  on: 'head' },
@@ -340,13 +352,13 @@ export const ACCESSORIES: ReadonlyArray<Accessory> = [
   { key: 'construction-helmet', ldraw: '3833',  on: 'head' },
   { key: 'fire-helmet',         ldraw: '3834',  on: 'head' },
   { key: 'knight-helmet',       ldraw: '3844',  on: 'head' },
-  { key: 'sword',               ldraw: '3847',  on: 'hand', grip: { axis: 'y', at: 12 }/*its handle, below the crossguard*/ },
-  { key: 'spear',               ldraw: '4497',  on: 'hand', grip: { axis: 'y', at: 40 } },
-  { key: 'hand-axe',            ldraw: '3835',  on: 'hand', grip: { axis: 'y', at: 16 } },
-  { key: 'battleaxe',           ldraw: '3848',  on: 'hand', grip: { axis: 'y', at: 20 } },
-  { key: 'pickaxe',             ldraw: '3841',  on: 'hand', grip: { axis: 'y', at: 24 } },
-  { key: 'lance',               ldraw: '3849',  on: 'hand', grip: { axis: 'z', at: 9 }/*behind its guard*/ },
-  { key: 'flashlight',          ldraw: '3959',  on: 'hand', grip: { axis: 'y', at: 10 }/*by its handle: the lamp points down a hanging arm*/ },
+  { key: 'sword',               ldraw: '3847',  on: 'hand', grips: [{ name: 'handle', axis: 'y', at: 12 }/*below the crossguard*/] },
+  { key: 'spear',               ldraw: '4497',  on: 'hand', grips: [{ name: 'shaft', axis: 'y', at: 40 }] },
+  { key: 'hand-axe',            ldraw: '3835',  on: 'hand', grips: [{ name: 'handle', axis: 'y', at: 16 }] },
+  { key: 'battleaxe',           ldraw: '3848',  on: 'hand', grips: [{ name: 'shaft', axis: 'y', at: 20 }] },
+  { key: 'pickaxe',             ldraw: '3841',  on: 'hand', grips: [{ name: 'handle', axis: 'y', at: 24 }] },
+  { key: 'lance',               ldraw: '3849',  on: 'hand', grips: [{ name: 'shaft', axis: 'z', at: 9 }/*behind its guard*/, { name: 'stub', axis: 'y', at: 8, flip: true }/*carried upright from a hanging arm*/] },
+  { key: 'flashlight',          ldraw: '3959',  on: 'hand', grips: [{ name: 'handle', axis: 'y', at: 10 }/*the lamp points down a hanging arm*/, { name: 'body', axis: 'z', at: 8 }/*between its handle and its lamp, the lamp ahead*/] },
 ];
 
 // == Colors ======================================================================

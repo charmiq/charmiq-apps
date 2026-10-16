@@ -2,7 +2,7 @@ import type { ContentChange } from '../../../shared/charmiq';
 import { ACCESSORIES, type CatalogPart, type Slot } from './catalog';
 import { checkModel, describeCopy, describePlaced, describePlacement, occupiedCells, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
-import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, restsOn, toRotation, MAX_COORDINATE, type Copy, type Footprint, type Placement } from './grid';
+import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, restsOn, toRotation, MAX_COORDINATE, type Copy, type Footprint, type Gear, type Placement } from './grid';
 import { appendLines, applyChanges, carryLine, clearEdits, copiesOf, copyLine, defineEdits, deleteLines, groundEdit, parseModel, partCount, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
 import { maxOf, minOf } from './numbers';
 import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
@@ -406,20 +406,24 @@ const toHinging = (part: CatalogPart, angle: unknown, carry: unknown): Pick<Plac
 
 /** a posable part's pose, legs color and what it wears an input describes, or why
  *  they are not: each limb's angle a whole number of POSE_STEPs (wrapped, SEE:
- *  toPoseAngle), the legs a catalog color, a hat headgear and a hand's item one held,
- *  each in a catalog color; a limb at 0 and legs in their own color are left out */
+ *  toPoseAngle), the legs a catalog color, a hat headgear and a hand's item one held
+ *  (by a grip it has, when one is named), each in a catalog color; a limb at 0 and
+ *  legs in their own color are left out */
 const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, worn: Readonly<Record<Slot, unknown>>): Pick<Placement, 'pose' | 'legColor' | 'hat' | 'rightHand' | 'leftHand'> | string => {
   const wearing = (Object.keys(worn) as Slot[]).filter(slot => worn[slot] !== undefined);
   if((pose === undefined) && (legColor === undefined) && (wearing.length < 1)) return {};
   if(!part.limbs) return `${part.key} takes no pose, legColor, hat or hand item (a figure does)`;
-  const gear: Partial<Record<Slot, Readonly<{ part: string; color: string; }>>> = {};
+  const gear: Partial<Record<Slot, Gear>> = {};
   for(const slot of wearing) {
-    const { part: key, color } = (worn[slot] ?? {}) as Record<string, unknown>;
+    const { part: key, color, grip } = (worn[slot] ?? {}) as Record<string, unknown>;
     const on = (slot === 'hat') ? 'head' : 'hand';
     const accessory = ACCESSORIES.find(each => (each.key === key) && (each.on === on));
     if(!accessory) return `${slot}.part must be one of ${ACCESSORIES.filter(each => each.on === on).map(each => each.key).join(', ')}`;
     if((typeof color !== 'string') || !getColor(color)) return `unknown ${slot}.color '${String(color)}' (listParts names the colors)`;
-    gear[slot] = { part: accessory.key, color };
+    const grips = accessory.grips ?? [];
+    const held = (grip === undefined) ? undefined : grips.findIndex(each => each.name === grip);
+    if(held === -1) return (grips.length > 0) ? `${slot}.grip of a ${accessory.key} must be one of ${grips.map(each => each.name).join(', ')}` : `a ${accessory.key} takes no grip`;
+    gear[slot] = { part: accessory.key, color, ...((held !== undefined) ? { grip: grip as string } : {}) };
   }
   const angles: Partial<Record<Limb, number>> = {};
   if(pose !== undefined) {
