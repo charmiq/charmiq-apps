@@ -6,6 +6,7 @@ import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawCondit
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { CATALOG, resourceFamily } from './catalog';
+import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, LDU_PER_STUD, partFiles, type PartLine } from './grid';
 import { drawnLines, type Model } from './model';
 import { ldrawPoint, type Floor, type Point, type StageCamera } from './stage';
@@ -49,6 +50,10 @@ const DROP_MS = 340/*ms*/;
 const DROP_STAGGER_MS = 22/*ms*/;
 const DROP_STAGGER_MAX_MS = 700/*ms*/;
 const VIEW_MS = 520/*ms*/;
+/** how long a requested frame waits for the browser's animation frame before it is
+ *  drawn anyway: a frame scrolled out of view gets none, and a command waiting for
+ *  the studio to settle (a Charm's edit, a film's frame) would never answer */
+const FRAME_FALLBACK_MS = 100/*ms*/;
 
 // --------------------------------------------------------------------------------
 /** walking speed as a share of the distance to the point the camera orbits, so a
@@ -754,7 +759,7 @@ export class Viewer {
   private requestFrame(): void {
     if(this.frameRequested) return;
     this.frameRequested = true;
-    requestAnimationFrame(() => this.frame());
+    requestDraw(window, () => this.frame(), FRAME_FALLBACK_MS);
   }
 
   private frame(): void {

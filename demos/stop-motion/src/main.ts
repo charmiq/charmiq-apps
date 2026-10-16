@@ -209,6 +209,7 @@ new ResizeObserver(() => {
 
 // == Studios =====================================================================
 studios.state$.subscribe((stage: StageState) => {
+  if(stage.kind === 'left') player.pause()/*the person went back to the build*/;
   studioChip.dataset.state = stage.kind;
   studioChip.textContent = (studios.count > 1) ? `${studios.count} studios` : (studios.count === 1) ? 'Brick Studio' : 'No studio';
   showSlate();

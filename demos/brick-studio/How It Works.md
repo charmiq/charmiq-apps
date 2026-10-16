@@ -190,6 +190,7 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/designs.ts`](charmiq://./src/designs.ts) | saving and loading designs: names, the remembered folder, replacing |
 | [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog and its folder chooser |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
+| [`src/frame-request.ts`](charmiq://./src/frame-request.ts) | a frame drawn once, at the next animation frame or after a moment when the Studio is out of view |
 | [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the effects and the path tracer |
 | [`src/step-control.ts`](charmiq://./src/step-control.ts) | playing the building steps |
 | [`src/fidelity-control.ts`](charmiq://./src/fidelity-control.ts) | the Look slider |

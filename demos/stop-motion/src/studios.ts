@@ -101,8 +101,10 @@ export class Studios {
 
   // == Frames ====================================================================
   /** shows a frame on every studio, the main studio's captured at `capture` when
-   *  given; the person having gone back to the build pauses the film */
+   *  given; the person having gone back to the build pauses the film: no frame shows
+   *  or stages until the scene is staged again */
   public async frame(film: Film, frame: FilmFrame, capture?: Readonly<{ width: number; height: number; }>): Promise<ImageBitmap | undefined> {
+    if(this.state.value.kind === 'left') return undefined/*the slate says why*/;
     const state = await this.stage(film.scene);
     if(state.kind !== 'staged') return undefined/*no studio, or none staged: the state says why*/;
     const [main, ...others] = this.found.value;
