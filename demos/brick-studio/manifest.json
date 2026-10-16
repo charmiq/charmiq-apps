@@ -466,7 +466,7 @@
       },
       {
         "name": "frame",
-        "description": "Show one moment of the staged scene: each actor where its shot puts it (any others hidden), through a camera. An actor's position is the middle of the bottom of its footprint; yaw turns it clockwise seen from above, pitch raises its south side (a figure's front), roll its west side; a figure's pose takes any angle; rolled turns its wheels as having rolled that many studs north. capture answers the frame as an image, for Applications",
+        "description": "Show one moment of the staged scene: each actor where its shot puts it (any others hidden), through a camera. An actor's position is the middle of the bottom of its footprint; yaw turns it clockwise seen from above, pitch raises its south side (a figure's front), roll its west side; a figure's pose takes any angle; rolled turns its wheels as the actor having rolled that many studs along its own north. capture answers the frame as an image, for Applications",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -479,7 +479,7 @@
                   "position": { "type": "object", "description": "Where the middle of the bottom of its footprint stands", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
                   "turn":     { "type": "object", "description": "Degrees", "properties": { "yaw": { "type": "number" }, "pitch": { "type": "number" }, "roll": { "type": "number" } } },
                   "pose":     { "type": "object", "description": "A figure's limbs in degrees: head, leftArm, rightArm, leftLeg, rightLeg" },
-                  "rolled":   { "type": "number", "description": "Studs its wheels have rolled north" }
+                  "rolled":   { "type": "number", "description": "Studs the actor has rolled along its own north: each wheel set turns by its share (backward when turned round, not at all when turned across)" }
                 },
                 "required": ["name", "position"]
               }

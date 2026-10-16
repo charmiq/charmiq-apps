@@ -1,5 +1,5 @@
 import { toPosing } from './build';
-import { compose, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type PartLine, type Placement, type Transform } from './grid';
+import { compose, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseModel, type Model } from './model';
 import { bankOf, swingOf, turnOf, LIMBS, type Limb, type Pose } from './pose';
 
@@ -42,7 +42,8 @@ export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 
 /** where an actor stands in one frame: the middle of the bottom of its footprint at
  *  `position`, turned about that point; a figure's limbs at `pose`; its wheel sets'
- *  wheels turned as having rolled `rolled` studs north */
+ *  wheels turned as the actor having rolled `rolled` studs along its own north, each
+ *  wheel set by its share (backward turned round, none turned across) */
 export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Pose; rolled: number; }>;
 
 /** the camera of one frame: where it stands, the point it looks at (and focuses on)
@@ -121,7 +122,7 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
       anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
       poses: false,
       rolls: parts.some(each => !!each.wheels),
-      lines: (_, rolled) => [...found.placements.flatMap(placement => drawnLines(set, placement, rolled)), ...found.others],
+      lines: (_, rolled) => [...found.placements.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(placement.rotation))), ...found.others],
     };
   } /* else -- a part */
 
@@ -246,3 +247,8 @@ const isName = (value: unknown): value is string => (typeof value === 'string') 
 export const ldrawPoint = ({ x, z, height }: Point): [number, number, number] => [x * LDU_PER_STUD, -height * LDU_PER_PLATE, z * LDU_PER_STUD];
 
 const rotation = (matrix: readonly number[]): Transform => ({ matrix, position: [0, 0, 0] });
+
+/** how much of a step along an actor's north a part turned `turn` in it takes along
+ *  its own north: all of it unturned, backward turned round, none across (a wheel set
+ *  turned 90 skids) */
+const alongNorth = (turn: Rotation): number => [1, 0, -1, 0][turn / 90];
