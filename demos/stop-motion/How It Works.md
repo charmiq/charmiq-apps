@@ -12,7 +12,7 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | Command | Does |
 |---|---|
 | `scene({ title, fps, length, width, height, floor })` | the film's title, frames a second (24), length in seconds (the last key's when left out), its export size (1280 × 720), and the area (`{ x, z, width, depth }` in studs) the studio's baseplate covers at least, so actors have ground to move over |
-| `actor(name, source)` | an actor: a component of the studio's build (`{ component: 'car' }`) or a catalog part dressed as a placement is (`{ part: 'figure', color: 'blue', legColor, hat, rightHand, leftHand }`) |
+| `actor(name, source)` | an actor: a component of the studio's build (`{ component: 'car' }`) or a catalog part dressed as a placement is (`{ part: 'figure', color: 'blue', legColor, face, hat, rightHand, leftHand }`) |
 | `a.at(time, values, ease)` | a key: the actor's values at a time, eased into from the key before (`linear`, `ease-in`, `ease-out`, `ease-in-out`, the default, or `hold`) |
 | `a.path(from, to, (u, t) => values)` | values from a function over a span (`u` from 0 to 1 across it, `t` in seconds), in place of the keys there |
 | `a.wobble(value, amount, { rate, from, to })` | smooth noise added to one value: `amount` at most, `rate` swings a second |
@@ -25,7 +25,7 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | `arc(t, up, gravity)`, `noise(t)`, `lerp(a, b, u)` | a jump's height in plates after `t` seconds, smooth noise from -1 to 1, and a blend |
 | `console.log(...)` | a line in the film's log, beside the cast |
 
-An actor's values are `x`, `z`, `height`, `yaw` (clockwise seen from above), `pitch` (raising its south side, which is a figure's front), `roll` (raising its west side), `visible`, and a figure's `pose`: `head`, `leftArm`, `rightArm`, `leftLeg`, `rightLeg` at any angle. Its position is the middle of the bottom of its footprint, and it turns about that point. A ridden figure sits where its offset puts its feet: a seated figure (both legs at 90) sits 2 plates lower than it stands.
+An actor's values are `x`, `z`, `height`, `yaw` (clockwise seen from above), `pitch` (raising its south side, which is a figure's front), `roll` (raising its west side), `visible`, and a figure's `pose`: `head`, `leftArm`, `rightArm`, `leftLeg`, `rightLeg` at any angle. A figure's `face` is a name (`listParts` in Brick Studio names them): it changes at its key, at once, and stays until the next, the face the actor was declared with showing before the first. A face never eases from one to another; the swap is the stop-motion way, and it reads best on a motion that hides it (a head turn, a shake, arms flying up). Its position is the middle of the bottom of its footprint, and it turns about that point. A ridden figure sits where its offset puts its feet: a seated figure (both legs at 90) sits 2 plates lower than it stands.
 
 An actor with wheels rolls them on its own: they turn by the distance it moves along its own north.
 

@@ -1,4 +1,4 @@
-import { gearKey, ACCESSORIES, CATALOG, COLORS, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
+import { gearKey, getFigureFace, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
 import { maxOf, minOf } from './numbers';
 import { COLOR_VALUES, FACE_GEOMETRY, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
 import { hingePieces, hingeTurn, pieceLines, posedPieces, wheelPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
@@ -63,6 +63,8 @@ export type Placement = Readonly<{
   /** its hips' and legs' color (catalog color key) when not the part's own; only on a
    *  posable part */
   legColor?: string;
+  /** a figure's face, when it wears another than the default (SEE: catalog.ts FIGURE_FACES) */
+  face?: string;
   /** what it wears on its head and holds in each hand; only on a posable part */
   hat?: Gear;
   rightHand?: Gear;
@@ -336,7 +338,7 @@ export const placedLines = (shape: PartShape, placement: Placement, colorCode: n
 export const partLines = (shape: PartShape, placement: Placement, colorCode: number, position: readonly [number, number, number], rolled = 0): PartLine[] => {
   const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position, matrix: rotationMatrix(placement.rotation) };
   const legs = (placement.legColor === undefined) ? undefined : getColor(placement.legColor)?.code;
-  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement)) :
+  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement), getFigureFace(placement.face)) :
     shape.part.hinge ? hingePieces(shape.part, placement.angle ?? 0) :
     (shape.part.wheels && (rolled !== 0)) ? wheelPieces(shape.part, rolledAngle(shape.part, rolled)) :
     piecesOf(shape.part);
@@ -375,8 +377,12 @@ export const compose = (parent: Transform, child: Transform): Transform => {
 };
 
 /** the LDraw files (stems) a part is drawn from: its own, its pieces' and, for a part
- *  that wears them, every accessory's */
-export const partFiles = (part: CatalogPart): string[] => [part.ldraw, ...piecesOf(part).map(piece => piece.ldraw), ...(part.slots ? ACCESSORIES.map(accessory => accessory.ldraw) : [])];
+ *  that wears them, every accessory's and every face's */
+export const partFiles = (part: CatalogPart): string[] => [
+  part.ldraw, ...piecesOf(part).map(piece => piece.ldraw),
+  ...(part.slots ? ACCESSORIES.map(accessory => accessory.ldraw) : []),
+  ...((part.facePiece !== undefined) ? FIGURE_FACES.map(face => face.ldraw) : []),
+];
 
 // --------------------------------------------------------------------------------
 const pieces = new Map<string, ReadonlyArray<PartLine>>();

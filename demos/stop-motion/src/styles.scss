@@ -472,6 +472,15 @@ body {
   transition: transform 90ms ease;
 
   &:hover, &:focus-visible { transform: rotate(45deg) scale(1.35); outline: none; z-index: 1; }
+
+  // a face key: a round face in the head's yellow, worn at once
+  &--face {
+    border-radius: 50%;
+    background: var(--brick-yellow);
+    transform: none;
+
+    &:hover, &:focus-visible { transform: scale(1.35); }
+  }
 }
 
 // the playhead: a red rule down every lane, its knob on the ruler

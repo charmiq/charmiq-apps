@@ -131,6 +131,17 @@ export const PART_RESOURCES: Readonly<Record<string, string>> = {
   "3816c": "parts-figures",
   "3817c": "parts-figures",
   "4485b": "parts-figures",
+  "3626cp73": "parts-figures",
+  "3626bpc44": "parts-figures",
+  "3626cp8i": "parts-figures",
+  "3626cpce7": "parts-figures",
+  "3626bp8e": "parts-figures",
+  "3626cp0l": "parts-figures",
+  "3626bp03": "parts-figures",
+  "3626bp04": "parts-figures",
+  "3626bp07": "parts-figures",
+  "3626bp39": "parts-figures",
+  "3626bp0i": "parts-figures",
   "3829a": "parts-vehicles"
 };
 
@@ -142,6 +153,7 @@ export const COLOR_VALUES: Readonly<Record<number, string>> = {
   "2": "#00852B",
   "4": "#B40000",
   "5": "#D3359D",
+  "8": "#545955",
   "10": "#58AB41",
   "14": "#FAC80A",
   "15": "#F4F4F4",
@@ -159,5 +171,8 @@ export const COLOR_VALUES: Readonly<Record<number, string>> = {
   "71": "#969696",
   "72": "#646464",
   "73": "#7396C8",
-  "322": "#68C3E2"
+  "84": "#AA7D55",
+  "128": "#AD6140",
+  "322": "#68C3E2",
+  "484": "#91501C"
 };

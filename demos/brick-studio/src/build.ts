@@ -1,5 +1,5 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import { ACCESSORIES, type CatalogPart, type Slot } from './catalog';
+import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_FACES, type CatalogPart, type Slot } from './catalog';
 import { checkModel, describeCopy, describePlaced, describePlacement, occupiedCells, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
@@ -381,13 +381,13 @@ const toCopy = (item: unknown): Copy | string => {
 
 /** the Placement an input describes, or why it is not one */
 const toPlacement = (item: unknown): Placement | string => {
-  const { part, color, x, z, level, rotation, pose, legColor, hat, rightHand, leftHand, angle, carry, sides } = (item ?? {}) as Record<string, unknown>;
+  const { part, color, x, z, level, rotation, pose, legColor, face, hat, rightHand, leftHand, angle, carry, sides } = (item ?? {}) as Record<string, unknown>;
   const catalogPart = (typeof part === 'string') ? getPart(part) : undefined;
   if(!catalogPart) return `unknown part '${String(part)}' (listParts names the catalog)`;
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
   const where = toPosition(x, z, level, rotation);
   if(typeof where === 'string') return where;
-  const posing = toPosing(catalogPart, pose, legColor, { hat, rightHand, leftHand });
+  const posing = toPosing(catalogPart, pose, legColor, face, { hat, rightHand, leftHand });
   if(typeof posing === 'string') return posing;
   const hinging = toHinging(catalogPart, angle, carry);
   if(typeof hinging === 'string') return hinging;
@@ -428,15 +428,18 @@ const toHinging = (part: CatalogPart, angle: unknown, carry: unknown): Pick<Plac
   return { ...((turned !== 0) ? { angle: turned } : {}), ...(copy ? { carry: copy } : {}) };
 };
 
-/** a posable part's pose, legs color and what it wears an input describes, or why
- *  they are not: each limb's angle a whole number of POSE_STEPs (wrapped, SEE:
- *  toPoseAngle), the legs a catalog color, a hat headgear and a hand's item one held
- *  (by a grip it has, when one is named), each in a catalog color; a limb at 0 and
- *  legs in their own color are left out */
-export const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, worn: Readonly<Record<Slot, unknown>>): Pick<Placement, 'pose' | 'legColor' | 'hat' | 'rightHand' | 'leftHand'> | string => {
+/** a posable part's pose, legs color, face and what it wears an input describes, or
+ *  why they are not: each limb's angle a whole number of POSE_STEPs (wrapped, SEE:
+ *  toPoseAngle), the legs a catalog color, the face one of the figure faces, a hat
+ *  headgear and a hand's item one held (by a grip it has, when one is named), each in
+ *  a catalog color; a limb at 0, legs in their own color and the default face are left
+ *  out */
+export const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, face: unknown, worn: Readonly<Record<Slot, unknown>>): Pick<Placement, 'pose' | 'legColor' | 'face' | 'hat' | 'rightHand' | 'leftHand'> | string => {
   const wearing = (Object.keys(worn) as Slot[]).filter(slot => worn[slot] !== undefined);
-  if((pose === undefined) && (legColor === undefined) && (wearing.length < 1)) return {};
-  if(!part.limbs) return `${part.key} takes no pose, legColor, hat or hand item (a figure does)`;
+  if((pose === undefined) && (legColor === undefined) && (face === undefined) && (wearing.length < 1)) return {};
+  if(!part.limbs) return `${part.key} takes no pose, legColor, face, hat or hand item (a figure does)`;
+  const faced = toFace(part, face);
+  if(typeof faced === 'string') return faced;
   const gear: Partial<Record<Slot, Gear>> = {};
   for(const slot of wearing) {
     const { part: key, color, grip } = (worn[slot] ?? {}) as Record<string, unknown>;
@@ -463,7 +466,16 @@ export const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, wo
   if((legColor !== undefined) && !legsColor) return `unknown legColor '${String(legColor)}' (listParts names the colors)`;
   const ownLegs = pieceLines(part)[(part.legs ?? [])[0]]?.colorCode;
   const normalized = normalizePose(angles as Pose);
-  return { ...(normalized ? { pose: normalized } : {}), ...((legsColor && (legsColor.code !== ownLegs)) ? { legColor: legsColor.key } : {}), ...gear };
+  return { ...(normalized ? { pose: normalized } : {}), ...((legsColor && (legsColor.code !== ownLegs)) ? { legColor: legsColor.key } : {}), ...faced, ...gear };
+};
+
+/** the face an input names for a part, or why it is not one: one of the figure
+ *  faces on a part with a face piece; the default left out */
+export const toFace = (part: CatalogPart, face: unknown): Pick<Placement, 'face'> | string => {
+  if(face === undefined) return {};
+  if(part.facePiece === undefined) return `${part.key} takes no face (a figure does)`;
+  if(!getFigureFace(face)) return `unknown face '${String(face)}' (one of ${FIGURE_FACES.map(each => each.key).join(', ')})`;
+  return (face === DEFAULT_FIGURE_FACE) ? {} : { face: face as string };
 };
 
 /** a position on the grid an input describes, or why it is not one */

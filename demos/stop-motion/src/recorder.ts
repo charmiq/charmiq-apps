@@ -14,6 +14,9 @@ export type Point = Readonly<{ x: number; z: number; height: number; }>;
 /** an actor's key: its channels at a time (x, z, height, yaw, pitch, roll, visible
  *  and each limb as `pose.<limb>`), eased into from the key before */
 export type Key = Readonly<{ time: number; values: Readonly<Record<string, number>>; ease: Ease; line?: number; }>;
+/** a figure's face from `time` on, until the next: worn at once, never eased (SEE:
+ *  Brick Studio's faces) */
+export type FaceKey = Readonly<{ time: number; face: string; line?: number; }>;
 
 /** a function of time over a span, sampled at each frame from `from` up to `to`
  *  (frame numbers, inclusive): `set` replaces its channels there, `add` adds to them */
@@ -38,6 +41,8 @@ export type RecordedActor = Readonly<{
    *  ridden actor's frame) */
   ride?: Readonly<{ parent: string; offset: Point; }>;
   keys: ReadonlyArray<Key>;
+  /** its face keys, in time order, when it has any */
+  faces?: ReadonlyArray<FaceKey>;
   spans: ReadonlyArray<Span>;
   line?: number;
 }>;
@@ -128,7 +133,7 @@ export const record = (code: string): Recorded => {
   // .. Recording .................................................................
   // what the scene declares, as it declares it
   const settings = { title: 'Untitled film', fps: 24, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined };
-  const actors: Array<{ name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; spans: Array<() => Span>; line?: number; }> = [];
+  const actors: Array<{ name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; faces: FaceKey[]; spans: Array<() => Span>; line?: number; }> = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; }>();
   const fadeKeys: Key[] = [];
   const titles: Title[] = [];
@@ -158,7 +163,7 @@ export const record = (code: string): Recorded => {
   // .. Actors ....................................................................
   /** values an actor's key or path gives, as channels */
   const channelsOf = (values: unknown, what: string): Record<string, number> => {
-    if((typeof values !== 'object') || (values === null)) fail(`${what} gives values: { x, z, height, yaw, pitch, roll, visible, pose }`);
+    if((typeof values !== 'object') || (values === null)) fail(`${what} gives values: { x, z, height, yaw, pitch, roll, visible, pose, face }`);
     const channels: Record<string, number> = {};
     for(const [name, value] of Object.entries(values as Record<string, unknown>)) {
       if(name === 'pose') {
@@ -171,7 +176,7 @@ export const record = (code: string): Recorded => {
         continue;
       } /* else -- a value of its own, not a limb */
       if(name === 'visible') { channels.visible = value ? 1 : 0; continue; }
-      if(!ACTOR_CHANNELS.includes(name)) fail(`${what}: no value '${name}' (x, z, height, yaw, pitch, roll, visible, pose)`);
+      if(!ACTOR_CHANNELS.includes(name)) fail(`${what}: no value '${name}' (x, z, height, yaw, pitch, roll, visible, pose, face)`);
       if(!isFiniteNumber(value)) fail(`${what}: ${name} must be a number`);
       channels[name] = value as number;
     }
@@ -184,15 +189,24 @@ export const record = (code: string): Recorded => {
     if(actors.some(each => each.name === name)) fail(`actor '${String(name)}' is declared twice`);
     if(actors.length >= MAX_ACTORS) fail(`a scene holds at most ${MAX_ACTORS} actors`);
     if((typeof source !== 'object') || (source === null)) fail(`actor '${String(name)}' names what it is: { component } or { part, color }`);
-    const entry: (typeof actors)[number] = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], spans: [], line: callerLine() };
+    const entry: (typeof actors)[number] = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], faces: [], spans: [], line: callerLine() };
     actors.push(entry);
     const handle = {
       name,
-      /** a key: the values the actor has at `time`, eased into */
+      /** a key: the values the actor has at `time`, eased into, and its face from
+       *  then on, worn at once */
       at: (time: unknown, values: unknown, ease?: unknown) => {
         counted();
         const at = toTime(time, `${String(name)}.at`);
-        entry.keys.push({ time: at, values: channelsOf(values, `${String(name)}.at(${at})`), ease: toEase(ease), line: callerLine() });
+        const what = `${String(name)}.at(${at})`;
+        const given = ((typeof values === 'object') && (values !== null)) ? values as Record<string, unknown> : undefined;
+        const face = given?.face;
+        if(face !== undefined) {
+          if((typeof face !== 'string') || (face.trim().length < 1) || (face.length > 40)) fail(`${what}: face names a figure's face, such as grin or laugh`);
+          entry.faces.push({ time: at, face: face as string, line: callerLine() });
+        } /* else -- the face it wears goes on */
+        const channels = channelsOf(given ? Object.fromEntries(Object.entries(given).filter(([key]) => key !== 'face')) : values, what);
+        if((face === undefined) || (Object.keys(channels).length > 0)) entry.keys.push({ time: at, values: channels, ease: toEase(ease), line: callerLine() });
         return handle;
       },
       /** a function of time (u from 0 to 1 over the span, t in seconds) giving values
@@ -349,12 +363,12 @@ export const record = (code: string): Recorded => {
   // sampled and each key in time order
   for(const each of actors) if(each.ride && !actors.some(other => other.name === each.ride!.parent)) fail(`${each.name} rides '${each.ride.parent}', which is no actor`, each.line);
   for(const [name, { keys }] of cameras) for(const key of keys) if(key.target && ('actor' in key.target) && !actors.some(other => other.name === (key.target as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) looks at '${(key.target as { actor: string; }).actor}', which is no actor`, key.line);
-  const times = [...actors.flatMap(each => each.keys.map(key => key.time)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...titles.map(each => each.to)];
+  const times = [...actors.flatMap(each => [...each.keys, ...each.faces].map(key => key.time)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...titles.map(each => each.to)];
   settings.length ??= Math.max(1, ...times);
   const byTime = <T extends { time: number; }>(keys: T[]) => [...keys].sort((a, b) => a.time - b.time);
   return {
     title: settings.title, fps: settings.fps, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}),
-    actors: actors.map(({ name, source, ride, keys, spans, line }) => ({ name, source, ...(ride ? { ride } : {}), keys: byTime(keys), spans: spans.map(span => span()), ...((line !== undefined) ? { line } : {}) })),
+    actors: actors.map(({ name, source, ride, keys, faces, spans, line }) => ({ name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), spans: spans.map(span => span()), ...((line !== undefined) ? { line } : {}) })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()) })),
     fade: byTime(fadeKeys), titles, logs,

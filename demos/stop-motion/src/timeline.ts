@@ -20,7 +20,7 @@ export type TimelineHost = Readonly<{
 }>;
 
 /** a row's marks: keys at their times and bands over their spans */
-type Row = Readonly<{ name: string; note?: string; color: string; keys: ReadonlyArray<Readonly<{ time: number; label: string; }>>; bands: ReadonlyArray<Readonly<{ from: number; to: number; label: string; kind: 'path' | 'wobble' | 'fade' | 'title'; strength?: number; }>>; }>;
+type Row = Readonly<{ name: string; note?: string; color: string; keys: ReadonlyArray<Readonly<{ time: number; label: string; face?: true; }>>; bands: ReadonlyArray<Readonly<{ from: number; to: number; label: string; kind: 'path' | 'wobble' | 'fade' | 'title'; strength?: number; }>>; }>;
 
 // == Colors ======================================================================
 /** the color (a CSS custom property) of the actor at `index` in the scene */
@@ -73,7 +73,10 @@ export class Timeline {
         name: actor.name,
         note: actor.ride ? `rides ${actor.ride.parent}` : ((sourceNote(actor.source) !== actor.name) ? sourceNote(actor.source) : undefined),
         color: actorColor(index),
-        keys: actor.keys.map(key => ({ time: key.time, label: `${actor.name} at ${seconds2(key.time)} · ${describeKey(key)}` })),
+        keys: [
+          ...actor.keys.map(key => ({ time: key.time, label: `${actor.name} at ${seconds2(key.time)} · ${describeKey(key)}` })),
+          ...(actor.faces ?? []).map(key => ({ time: key.time, label: `${actor.name} at ${seconds2(key.time)} · face ${key.face}`, face: true as const })),
+        ],
         bands: actor.spans.map(span => band(span, scene.fps)),
       })),
       fadeRow(scene.fade),
@@ -111,7 +114,7 @@ export class Timeline {
       lane.append(mark);
     }
     for(const key of row.keys) {
-      const diamond = element('button', 'key');
+      const diamond = element('button', key.face ? 'key key--face' : 'key');
       diamond.type = 'button';
       diamond.style.left = at(key.time);
       diamond.title = key.label;

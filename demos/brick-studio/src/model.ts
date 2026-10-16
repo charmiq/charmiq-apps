@@ -1,5 +1,5 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import { ACCESSORIES, COLORS, type CatalogPart } from './catalog';
+import { ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_FACES, type CatalogPart, type FigureFace } from './catalog';
 import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER, type Pose } from './pose';
@@ -532,17 +532,22 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
   const codeOf = (index: number): number => (legs.has(index) && (legsCode !== undefined)) ? legsCode : lines[index].colorCode;
 
   // each limb: its pivot at each angle, then the rest at the angle found (at 0 when
-  // its pivot is found at none, each piece then taken alone as any part's)
+  // its pivot is found at none, each piece then taken alone as any part's). A pivot
+  // that is the face piece is looked for wearing each face, the default first
   const pose: Partial<Record<typeof LIMBS[number], number>> = {};
+  let face: FigureFace | undefined;
   for(const limb of LIMBS) {
     const { pieces } = part.limbs![limb];
-    const angle = [0, ...POSE_ANGLES.filter(each => each !== 0)].find(each => {
-      const pivot = take(placedPiece(limbLines(part, limb, each)[0], codeOf(pieces[0])));
-      if(pivot !== undefined) found.set(pieces[0], pivot);
-      return pivot !== undefined;
-    });
+    const faces = (pieces[0] === part.facePiece) ? FIGURE_FACES : [undefined/*no face to wear*/];
+    const angle = [0, ...POSE_ANGLES.filter(each => each !== 0)].find(each => faces.some(worn => {
+      const pivot = take(placedPiece(limbLines(part, limb, each, worn)[0], codeOf(pieces[0])));
+      if(pivot === undefined) return false;
+      found.set(pieces[0], pivot);
+      if(pieces[0] === part.facePiece) face = worn;
+      return true;
+    }));
     if(angle !== undefined) pose[limb] = angle;
-    const limbPieces = limbLines(part, limb, angle ?? 0);
+    const limbPieces = limbLines(part, limb, angle ?? 0, face);
     pieces.slice(1).forEach((index, order) => {
       const line = take(placedPiece(limbPieces[order + 1], codeOf(index)));
       if(line !== undefined) found.set(index, line);
@@ -571,7 +576,8 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
     }
   });
 
-  const posed: Placement = { ...placement, level: placement.level + poseLift(part, { pose: normalized }), ...(normalized ? { pose: normalized as Pose } : {}), ...(legColor ? { legColor } : {}), ...gear };
+  const worn = ((face !== undefined) && (face.key !== DEFAULT_FIGURE_FACE)) ? { face: face.key } : {}/*the default is the head as the part writes it*/;
+  const posed: Placement = { ...placement, level: placement.level + poseLift(part, { pose: normalized }), ...(normalized ? { pose: normalized as Pose } : {}), ...(legColor ? { legColor } : {}), ...worn, ...gear };
   return { posed, indices: [...found.keys()].sort((a, b) => a - b).map(index => found.get(index)!) };
 };
 

@@ -1,4 +1,4 @@
-import type { Accessory, CatalogPart, Grip, Slot } from './catalog';
+import type { Accessory, CatalogPart, FigureFace, Grip, Slot } from './catalog';
 
 // a posable part's pose (a figure's): each limb at an angle in whole POSE_STEPs. A
 // swing (an arm, a leg) raises the limb forward by its angle, a turn (the head) turns
@@ -45,17 +45,19 @@ export const normalizePose = (pose: Pose | undefined): Pose | undefined => {
 };
 
 // == Pieces ======================================================================
-/** a part's pieces as lines, as its catalog entry writes them */
-export const pieceLines = (part: CatalogPart): PieceLine[] => (part.pieces ?? []).map(line => {
+/** a part's pieces as lines, as its catalog entry writes them, its face piece printed
+ *  with `face` when one is given (SEE: catalog.ts FIGURE_FACES) */
+export const pieceLines = (part: CatalogPart, face?: FigureFace): PieceLine[] => (part.pieces ?? []).map((line, index) => {
   const fields = line.trim().split(/\s+/);
   const values = fields.slice(1, 14).map(Number);
-  return { ldraw: fields[14].replace(/\.dat$/i, ''), colorCode: values[0], position: [values[1], values[2], values[3]], matrix: values.slice(4, 13) };
+  const printed = (index === part.facePiece) ? face?.ldraw : undefined;
+  return { ldraw: printed ?? fields[14].replace(/\.dat$/i, ''), colorCode: values[0], position: [values[1], values[2], values[3]], matrix: values.slice(4, 13) };
 });
 
-/** the lines of `limb`'s pieces at `angle` (its pivot first) */
-export const limbLines = (part: CatalogPart, limb: Limb, angle: number): PieceLine[] => {
+/** the lines of `limb`'s pieces at `angle` (its pivot first), wearing `face` */
+export const limbLines = (part: CatalogPart, limb: Limb, angle: number, face?: FigureFace): PieceLine[] => {
   const { pieces, axis } = part.limbs![limb]/*by contract*/;
-  const lines = pieceLines(part);
+  const lines = pieceLines(part, face);
   if(angle === 0) return pieces.map(index => lines[index])/*exactly as the part writes them*/;
   const pivot = lines[pieces[0]];
   const turn = conjugate(pivot.matrix, (axis === 'x') ? swingOf(angle) : turnOf(angle));
@@ -67,14 +69,14 @@ export const limbLines = (part: CatalogPart, limb: Limb, angle: number): PieceLi
   });
 };
 
-/** every piece of a part at a pose, in its catalog order, its legs pieces in
- *  `legsColor` when given, then the accessories it wears, in slot order */
-export const posedPieces = (part: CatalogPart, pose: Pose | undefined, legsColor?: number, worn?: Worn): PieceLine[] => {
-  const lines = pieceLines(part);
+/** every piece of a part at a pose, in its catalog order, wearing `face`, its legs
+ *  pieces in `legsColor` when given, then the accessories it wears, in slot order */
+export const posedPieces = (part: CatalogPart, pose: Pose | undefined, legsColor?: number, worn?: Worn, face?: FigureFace): PieceLine[] => {
+  const lines = pieceLines(part, face);
   for(const limb of LIMBS) {
     const angle = pose?.[limb] ?? 0;
     if((angle === 0) || !part.limbs) continue;
-    const moved = limbLines(part, limb, angle);
+    const moved = limbLines(part, limb, angle, face);
     part.limbs[limb].pieces.forEach((index, order) => { lines[index] = moved[order]; });
   }
   if(legsColor !== undefined) for(const index of part.legs ?? []) lines[index] = { ...lines[index], colorCode: legsColor };

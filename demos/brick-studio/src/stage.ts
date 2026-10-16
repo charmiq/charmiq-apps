@@ -1,4 +1,5 @@
 import { toPosing } from './build';
+import { getFigureFace, FIGURE_FACES } from './catalog';
 import { compose, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseModel, type Model } from './model';
 import { bankOf, swingOf, turnOf, LIMBS, type Limb, type Pose } from './pose';
@@ -54,10 +55,11 @@ export type Point = Readonly<{ x: number; z: number; height: number; }>;
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 
 /** where an actor stands in one frame: the middle of the bottom of its footprint at
- *  `position`, turned about that point; a figure's limbs at `pose`; its wheel sets'
- *  wheels turned as the actor having rolled `rolled` studs along its own north, each
- *  wheel set by its share (backward turned round, none turned across) */
-export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Pose; rolled: number; }>;
+ *  `position`, turned about that point; a figure's limbs at `pose` and the face it
+ *  wears in this frame (its own when none is named); its wheel sets' wheels turned as
+ *  the actor having rolled `rolled` studs along its own north, each wheel set by its
+ *  share (backward turned round, none turned across) */
+export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Pose; face?: string; rolled: number; }>;
 
 /** the camera of one frame: where it stands, the point it looks at (and focuses on)
  *  and its vertical field of view (degrees) */
@@ -85,8 +87,10 @@ export type ReelFrame = Readonly<{ shots: ReadonlyArray<Shot>; camera: StageCame
 type Actor = Readonly<{
   anchor: readonly [number, number, number];
   poses: boolean;
+  /** it wears a face, which a frame may change: a figure */
+  faces: boolean;
   rolls: boolean;
-  lines: (pose: Pose | undefined, rolled: number) => PartLine[];
+  lines: (pose: Pose | undefined, rolled: number, face?: string) => PartLine[];
 }>;
 
 /** a stage's set and its actors, by name */
@@ -118,8 +122,8 @@ export const floorOf = (input: unknown): Floor | undefined => {
 // -- Cast ------------------------------------------------------------------------
 /** the actors a stage call casts from a set: each named once, a component of the set
  *  (`{ name, component }`) or a catalog part dressed as a placement is
- *  (`{ name, part, color, legColor?, hat?, rightHand?, leftHand? }`); every one
- *  refused names why */
+ *  (`{ name, part, color, legColor?, face?, hat?, rightHand?, leftHand? }`); every
+ *  one refused names why */
 export const castOf = (set: Model, input: unknown): Readonly<{ cast: Cast; refused: ReadonlyArray<Refusal>; }> => {
   if(!Array.isArray(input)) throw new Error('actors lists the actors: each { name, component } or { name, part, color }');
   if(input.length > MAX_ACTORS) throw new Error(`A stage casts at most ${MAX_ACTORS} actors.`);
@@ -138,9 +142,10 @@ export const castOf = (set: Model, input: unknown): Readonly<{ cast: Cast; refus
 
 /** the actor an input describes, or why it is not one */
 const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
-  const { component, part, color, legColor, hat, rightHand, leftHand } = item;
+  const { component, part, color, legColor, face, hat, rightHand, leftHand } = item;
   if(component !== undefined) {
     if(part !== undefined) return 'names a component or a part, not both';
+    if(face !== undefined) return 'a component wears no face: give the figures in it their faces, or cast a figure';
     const found = set.components?.find(each => each.name === component);
     if(!found?.footprint) return `unknown component '${String(component)}' (the set defines none by that name with parts)`;
     const { minX, minZ, maxX, maxZ } = found.footprint;
@@ -148,6 +153,7 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
     return {
       anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
       poses: false,
+      faces: false,
       rolls: parts.some(each => !!each.wheels),
       lines: (_, rolled) => [...found.placements.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(placement.rotation))), ...found.others],
     };
@@ -157,7 +163,7 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
   if(!catalogPart) return `unknown part '${String(part)}' (listParts names the catalog)`;
   if(catalogPart.hinge || catalogPart.faces) return `${catalogPart.key} carries components, which an actor never does: cast the component that holds it`;
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
-  const dressing = toPosing(catalogPart, undefined/*each frame poses it*/, legColor, { hat, rightHand, leftHand });
+  const dressing = toPosing(catalogPart, undefined/*each frame poses it*/, legColor, face, { hat, rightHand, leftHand });
   if(typeof dressing === 'string') return dressing;
   const standing: Placement = { part: catalogPart.key, color, x: 0, z: 0, level: 0, rotation: 0, ...dressing };
   const shape = getShape(catalogPart);
@@ -166,8 +172,9 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
   return {
     anchor: [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
     poses: !!catalogPart.limbs,
+    faces: catalogPart.facePiece !== undefined,
     rolls: !!catalogPart.wheels,
-    lines: (pose, rolled) => partLines(shape, { ...standing, ...(pose ? { pose } : {}) }, colorCode, origin, rolled),
+    lines: (pose, rolled, worn) => partLines(shape, { ...standing, ...(pose ? { pose } : {}), ...((worn !== undefined) ? { face: worn } : {}) }, colorCode, origin, rolled),
   };
 };
 
@@ -177,10 +184,10 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
 /** the shots a frame call gives, each of a cast actor; an actor given none is
  *  hidden */
 export const shotsOf = (cast: Cast, input: unknown): ReadonlyArray<Shot> => {
-  if(!Array.isArray(input)) throw new Error('actors lists the actors shown: each { name, position, turn?, pose?, rolled? }');
+  if(!Array.isArray(input)) throw new Error('actors lists the actors shown: each { name, position, turn?, pose?, face?, rolled? }');
   const named = new Set<string>();
   return input.map((item, index) => {
-    const { name, position, turn, pose, rolled } = (item ?? {}) as Record<string, unknown>;
+    const { name, position, turn, pose, face, rolled } = (item ?? {}) as Record<string, unknown>;
     const at = `actors[${index}]`;
     if((typeof name !== 'string') || !cast.actors.has(name)) throw new Error(`${at}: no actor named '${String(name)}' is cast (stage casts them)`);
     if(named.has(name)) throw new Error(`${at}: ${name} is shown twice`);
@@ -189,9 +196,11 @@ export const shotsOf = (cast: Cast, input: unknown): ReadonlyArray<Shot> => {
     const where = toPoint(position, `${at}.position`);
     const turned = toTurn(turn, `${at}.turn`);
     if((pose !== undefined) && !actor.poses) throw new Error(`${at}: ${name} takes no pose (a figure does)`);
+    if((face !== undefined) && !actor.faces) throw new Error(`${at}: ${name} wears no face (a figure does)`);
+    if((face !== undefined) && !getFigureFace(face)) throw new Error(`${at}.face: unknown face '${String(face)}' (one of ${FIGURE_FACES.map(each => each.key).join(', ')})`);
     if((rolled !== undefined) && !actor.rolls) throw new Error(`${at}: ${name} has no wheels to roll`);
     if((rolled !== undefined) && !isFiniteNumber(rolled)) throw new Error(`${at}.rolled must be a finite number of studs`);
-    return { name, position: where, turn: turned, ...((pose !== undefined) ? { pose: toFreePose(pose, `${at}.pose`) } : {}), rolled: (rolled as number | undefined) ?? 0 };
+    return { name, position: where, turn: turned, ...((pose !== undefined) ? { pose: toFreePose(pose, `${at}.pose`) } : {}), ...((face !== undefined) ? { face: face as string } : {}), rolled: (rolled as number | undefined) ?? 0 };
   });
 };
 
@@ -199,7 +208,7 @@ export const shotsOf = (cast: Cast, input: unknown): ReadonlyArray<Shot> => {
 export const shotLines = (cast: Cast, shots: ReadonlyArray<Shot>): PartLine[] => shots.flatMap(shot => {
   const actor = cast.actors.get(shot.name)!/*by contract: shotsOf*/;
   const placed = actorTransform(actor, shot);
-  return actor.lines(shot.pose, shot.rolled).map(line => ({ ...line, ...compose(placed, line) }));
+  return actor.lines(shot.pose, shot.rolled, shot.face).map(line => ({ ...line, ...compose(placed, line) }));
 });
 
 /** where a shot puts an actor's frame: its anchor at the shot's position, turned

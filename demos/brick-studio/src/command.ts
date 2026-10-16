@@ -1,7 +1,7 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { Build } from './build';
 import type { FidelityControl } from './fidelity-control';
-import { ACCESSORIES, CATALOG, COLORS, partsByKind, searchCatalog, type CatalogPart } from './catalog';
+import { ACCESSORIES, CATALOG, COLORS, FIGURE_FACES, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { displayName, DesignExists, type Designs } from './designs';
 import type { Design } from './drive';
@@ -41,7 +41,7 @@ const GRID = [
   'Trees, bushes and plants stand on their base (the cells their fill starts at 0) and spread over the cells around it from higher up, so smaller parts fit under the foliage.',
   'A glass part fills nothing: place it at its frame\'s exact x, z, level and rotation (its row names the frame). Removing the frame removes its glass; glass with no frame floats.',
   'A wheel set is a plate between two wheels on an axle running east-west at rotation 0, so it rolls north and south; it stands on its tires. Its studs are lower than its tires: its row names the level they are at, and parts over its wheel columns must clear the tires. A mudguard placed one level above a wheel set\'s studs, on a plate across them, arches over its wheels. A steering wheel faces north at rotation 0.',
-  'A figure is a person: it stands on the middle two cells of its middle row, faces south at rotation 0, and its arms, hands and head reach into the cells around its feet (its row gives its fills), so figures side by side stand 4 studs apart. Its color is its shirt; its head and hands are yellow and its legs blue unless legColor names another.',
+  'A figure is a person: it stands on the middle two cells of its middle row, faces south at rotation 0, and its arms, hands and head reach into the cells around its feet (its row gives its fills), so figures side by side stand 4 studs apart. Its color is its shirt; its head and hands are yellow and its legs blue unless legColor names another. Its face is the classic smile unless face names another (listParts names the faces: expressions such as grin, laugh and surprised, and characters such as beard and sunglasses).',
   'A figure poses: pose names its head, leftArm, rightArm, leftLeg and rightLeg, each in degrees, a multiple of 15. An arm or leg swings forward (90 points it ahead, 180 straight up, -30 back); the head turns clockwise seen from above. A posed figure keeps its x and z; its level is its lowest point, so a seated figure (both legs at 90) sits on a seat at the seat\'s top level. A raised arm fills the cells it reaches. To change a pose, remove the figure and add it posed.',
   `A figure wears a hat (hat: { part, color }: ${ACCESSORIES.filter(each => each.on === 'head').map(each => each.key).join(', ')}) and holds a thing in each hand (rightHand, leftHand: ${ACCESSORIES.filter(each => each.on === 'hand').map(each => each.key).join(', ')}), each in a catalog color. They turn with its head and arms; what it holds fills the cells it reaches. A held thing is held by its first grip unless grip names another: ${ACCESSORIES.filter(each => (each.grips?.length ?? 0) > 1).map(each => `a ${each.key} by its ${each.grips!.map(grip => grip.name).join(' or ')}`).join(', ')}.`,
   'A hinge (hinge-1x2, hinge-plate-1x4, turntable-2x2, turntable-4x4) turns its top by angle, a multiple of 15, and carries one component on it: carry is a copy of a component ({component, x, z, level, rotation}) standing on the hinge\'s top as it would with the hinge at 0 (its level the level of the hinge\'s studs, its footprint over at least one of them). Build the thing closed, then open it: hinge-1x2 tilts its top about an east-west axis at rotation 0 (90 raises its south side upright), the others swivel it clockwise seen from above. The carry turns with the top, fills the cells it turns into, never collides with its own hinge, and is held by its hinge alone: put whatever rides on it inside its component. It swings over the hinge\'s axis as it rises: a drawbridge raised to 90 stands upright one stud past its hinge, on the side away from where it lay, and a partly raised one fills a slanted band, so add the hinge and its carry before building close around them; a refused addParts names every collision at once, so a batch of small probe parts shows where a swing reaches. A component\'s own hinges carry nothing. To change an angle, remove the hinge and add it again.',
@@ -85,6 +85,7 @@ export class CommandSurface {
         grid: GRID,
         parts: partsByKind().map(({ kind, names }) => `${kind}: ${names.join(', ')}`),
         colors: COLORS.map(color => color.key),
+        faces: FIGURE_FACES.map(face => face.key),
       }),
       findParts: ({ query, limit }: { query?: unknown; limit?: unknown; }) => {
         if((typeof query !== 'string') || (query.trim().length < 1)) throw new Error('query names the parts to find: a part\'s name, a size such as 2x4, a kind or a word such as roof');

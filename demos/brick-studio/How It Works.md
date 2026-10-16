@@ -39,7 +39,7 @@ Each part fills the cells and levels measured from its shape: a corner brick lea
 - **Landscaping and detail:** trees, a bush, leafy plants, bamboo, grass, flower and leaf plates, a rock, crystals, fences, tall bricks, a round pillar, log bricks, panels, headlight and grille bricks, and round, rounded, corner and swirled tiles.
 - **Creatures,** from cats and dogs to a cow, an octopus and two snakes.
 - **Vehicles:** wheel sets, mudguards, a windscreen and a steering wheel.
-- **Figures,** in a shirt of the placement's color with a printed face and legs blue or in their own color (`legColor`).
+- **Figures,** in a shirt of the placement's color with a printed face (the classic smile, or another `face`: expressions such as grin, laugh and surprised, characters such as beard and sunglasses) and legs blue or in their own color (`legColor`).
 - **Hinges and turntables:** a hinge 1x2 that tilts, a hinge plate 1x4 that swivels, and turntables 2x2 and 4x4.
 - **Side-stud bricks:** a headlight brick, bricks with studs on one, two or four sides, bricks 1x2 and 1x4 with side studs, and a bracket.
 
@@ -142,7 +142,7 @@ A Charm drives the Studio through these:
 | `listParts` | the grid conventions, every part's name by kind, and the colors |
 | `findParts` | the rows (size, fills, which way it descends) of the parts a query names: names, a size such as 2x4, or a word such as roof |
 | `listPlacedParts` | the parts and copies in the build with their positions, a page at a time (a line placing a component that is not a copy, by component, color and a cell it fills) |
-| `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one, figures posed (`pose`), in their legs color (`legColor`), wearing a hat (`hat`) and holding things (`rightHand`, `leftHand`), hinges turned (`angle`) and carrying a component (`carry`), side faces carrying components (`sides`); a batch that would collide is refused; answers with the build's check |
+| `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one, figures posed (`pose`), in their legs color (`legColor`), with a face (`face`), wearing a hat (`hat`) and holding things (`rightHand`, `leftHand`), hinges turned (`angle`) and carrying a component (`carry`), side faces carrying components (`sides`); a batch that would collide is refused; answers with the build's check |
 | `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy, or of any line placing a component, removes that whole line); answers with the build's check and the parts left unsupported |
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
 | `defineComponentFromDesign` | defines a component from a saved design (its `uri` from `listDesigns`, or its name), named after it |

@@ -1,4 +1,4 @@
-import type { CameraPlace, Ease, Key, Point, Recorded, RecordedActor, RecordedCamera, Span, Target, Title } from './recorder';
+import type { CameraPlace, Ease, FaceKey, Key, Point, Recorded, RecordedActor, RecordedCamera, Span, Target, Title } from './recorder';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -20,13 +20,16 @@ const MAX_HEIGHT = 2_000;
 const DEFAULT_TARGET: Point = { x: 0, z: 0, height: 4 };
 const DEFAULT_ORBIT = { angle: 30, distance: 40, height: 30 };
 export const DEFAULT_FOV = 32/*degrees: the studio's own lens*/;
+/** how far a key's time may lie past a frame's and still take effect at it: a frame's
+ *  time is the quotient of its index and the fps, which rounds */
+const TIME_EPSILON = 1e-9/*seconds*/;
 /** how long a title takes to come in and to go */
 const TITLE_EASE = 0.25/*seconds*/;
 
 // == Types =======================================================================
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 /** an actor in one frame, as the stage's frame takes it */
-export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; rolled?: number; }>;
+export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; face?: string; rolled?: number; }>;
 export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; }>;
 
 export type FilmFrame = Readonly<{
@@ -87,10 +90,11 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
     }
     previous = placed;
 
-    const actors = scene.actors.flatMap(({ name }) => {
+    const actors = scene.actors.flatMap(({ name, faces }) => {
       const standing = placed.get(name)!;
       if(!standing.visible) return [];
-      return [{ name, position: standing.position, turn: turnOf(standing.matrix), ...(standing.pose ? { pose: standing.pose } : {}), ...(wheeled.has(name) ? { rolled: rolled.get(name)! } : {}) }];
+      const face = faceAt(faces, time);
+      return [{ name, position: standing.position, turn: turnOf(standing.matrix), ...(standing.pose ? { pose: standing.pose } : {}), ...(face ? { face } : {}), ...(wheeled.has(name) ? { rolled: rolled.get(name)! } : {}) }];
     });
     const fade = channelAt(scene.fade, 'fade', time) ?? 0;
     const title = scene.titles.find(each => (time >= each.from) && (time < each.to));
@@ -204,6 +208,18 @@ export const orbitPoint = (target: Point, orbit: Readonly<{ angle: number; dista
 const lifted = (point: Point, height: number): Point => ({ ...point, height: point.height + height });
 
 // == Keys ========================================================================
+/** the face an actor's face keys give at a time: the last keyed at or before it,
+ *  none before the first (its declared face, as the stage casts it). A key a frame's
+ *  time reaches by rounding alone still takes effect at that frame */
+export const faceAt = (faces: ReadonlyArray<FaceKey> | undefined, time: number): string | undefined => {
+  let face: string | undefined;
+  for(const key of faces ?? []) {
+    if(key.time > (time + TIME_EPSILON)) break;
+    face = key.face;
+  }
+  return face;
+};
+
 /** a channel's value at a time: its keys' values eased from each to the next, the
  *  first before it and the last after; undefined for a channel no key gives */
 export const channelAt = (keys: ReadonlyArray<Key>, channel: string, time: number): number | undefined =>

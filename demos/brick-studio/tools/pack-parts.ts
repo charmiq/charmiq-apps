@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { familyOf, familyResource, gearKey, hasOpenUnderside, type CatalogPart, type Face, ACCESSORIES, CATALOG, COLORS } from '../src/catalog.ts';
+import { familyOf, familyResource, gearKey, hasOpenUnderside, type CatalogPart, type Face, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES } from '../src/catalog.ts';
 import { maxOf, minOf } from '../src/numbers.ts';
 import { accessoryLine, hingePieces, limbLines, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOT_LIMB, SLOTS_IN_ORDER, type PieceLine } from '../src/pose.ts';
 
@@ -251,11 +251,12 @@ const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Me
   } };
 };
 
-/** the files an assembled part's pieces reference, and every accessory's for a part
- *  that wears them, as reference names */
+/** the files an assembled part's pieces reference, and every accessory's and every
+ *  face's for a part that wears them, as reference names */
 const pieceFiles = (part: CatalogPart): string[] => [
   ...(part.pieces ?? []).map(line => referenceName(line.trim().split(/\s+/).slice(14).join(' '))),
   ...(part.slots ? ACCESSORIES.map(accessory => `${accessory.ldraw}.dat`.toLowerCase()) : []),
+  ...((part.facePiece !== undefined) ? FIGURE_FACES.map(face => `${face.ldraw}.dat`.toLowerCase()) : []),
 ];
 
 // --------------------------------------------------------------------------------

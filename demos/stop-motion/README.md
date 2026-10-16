@@ -85,6 +85,12 @@ driver.at(0, { pose: { leftLeg: 90, rightLeg: 90, leftArm: 50, rightArm: 50, hea
       .at(4.6, { pose: { head: 24 } })
       .at(5.4, { pose: { head: -16 } }, 'ease-in-out')
 
+// the face changes on the motion that hides each cut: surprise at the takeoff's shake,
+// a grin from ear to ear as the arms go up, a laugh as the head turns
+driver.at(TAKEOFF, { face: 'surprised' })
+      .at(3.45, { face: 'grin' })
+      .at(4.6, { face: 'laugh' })
+
 // alongside from the west, low, then round to the front and in on the grin
 camera.at(0, { orbit: { angle: 285, distance: 30, height: 8 }, target: { actor: car, height: 4 }, fov: 30 })
       .at(RAMP, { orbit: { angle: 270, distance: 24, height: 6 } })

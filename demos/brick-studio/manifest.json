@@ -83,16 +83,17 @@
     "charmiq.command": [
       {
         "name": "listParts",
-        "description": "The grid conventions, every catalog part's name by kind, and the colors. Call first; findParts gives the rows of the parts you will use",
+        "description": "The grid conventions, every catalog part's name by kind, the colors and a figure's faces. Call first; findParts gives the rows of the parts you will use",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
           "properties": {
             "grid":   { "type": "string" },
             "parts":  { "type": "array", "items": { "type": "string" }, "description": "One line per kind: the kind, then its part names" },
-            "colors": { "type": "array", "items": { "type": "string" } }
+            "colors": { "type": "array", "items": { "type": "string" } },
+            "faces":  { "type": "array", "items": { "type": "string" }, "description": "The faces a figure wears" }
           },
-          "required": ["grid", "parts", "colors"]
+          "required": ["grid", "parts", "colors", "faces"]
         }
       },
       {
@@ -160,6 +161,7 @@
                   "rotation":  { "type": "integer", "enum": [0, 90, 180, 270] },
                   "pose":      { "type": "object", "description": "A figure's pose, each limb in degrees (a multiple of 15; a limb left out is 0). An arm or leg swings forward: 90 points it ahead, 180 straight up, -30 back; the head turns clockwise seen from above. A figure's level is its lowest point: seated (legs at 90) on a seat, that is the seat's top", "properties": { "head": { "type": "integer", "multipleOf": 15 }, "leftArm": { "type": "integer", "multipleOf": 15 }, "rightArm": { "type": "integer", "multipleOf": 15 }, "leftLeg": { "type": "integer", "multipleOf": 15 }, "rightLeg": { "type": "integer", "multipleOf": 15 } } },
                   "legColor":  { "type": "string", "description": "A figure's hips and legs color (catalog color; blue when left out)" },
+                  "face":      { "type": "string", "description": "A figure's face: smile (the default), grin, laugh, lopsided, surprised, scowl, frown, moustache, sunglasses, freckles, beard or glasses (listParts names them)" },
                   "hat":       { "type": "object", "description": "What a figure wears on its head (listParts names them): part and color", "properties": { "part": { "type": "string" }, "color": { "type": "string" } }, "required": ["part", "color"] },
                   "rightHand": { "type": "object", "description": "What a figure holds in its right hand (listParts names them): part, color and, to hold it another way than its first, grip", "properties": { "part": { "type": "string" }, "color": { "type": "string" }, "grip": { "type": "string" } }, "required": ["part", "color"] },
                   "leftHand":  { "type": "object", "description": "What a figure holds in its left hand (listParts names them): part, color and, to hold it another way than its first, grip", "properties": { "part": { "type": "string" }, "color": { "type": "string" }, "grip": { "type": "string" } }, "required": ["part", "color"] },
@@ -213,6 +215,7 @@
                   "rotation": { "type": "integer", "enum": [0, 90, 180, 270] },
                   "pose":     { "type": "object", "description": "A figure's pose, as addParts takes it" },
                   "legColor": { "type": "string", "description": "A figure's hips and legs color, as addParts takes it" },
+                  "face":     { "type": "string", "description": "A figure's face, as addParts takes it (the smile when left out)" },
                   "hat":       { "type": "object", "description": "What a figure wears on its head, as addParts takes it" },
                   "rightHand": { "type": "object", "description": "What a figure holds in its right hand, as addParts takes it" },
                   "leftHand":  { "type": "object", "description": "What a figure holds in its left hand, as addParts takes it" },
@@ -443,6 +446,7 @@
                   "part":      { "type": "string" },
                   "color":     { "type": "string" },
                   "legColor":  { "type": "string" },
+                  "face":      { "type": "string", "description": "A figure's face, as addParts takes it" },
                   "hat":       { "type": "object" },
                   "rightHand": { "type": "object" },
                   "leftHand":  { "type": "object" }
@@ -530,6 +534,7 @@
                   "position": { "type": "object", "description": "Where the middle of the bottom of its footprint stands", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
                   "turn":     { "type": "object", "description": "Degrees", "properties": { "yaw": { "type": "number" }, "pitch": { "type": "number" }, "roll": { "type": "number" } } },
                   "pose":     { "type": "object", "description": "A figure's limbs in degrees: head, leftArm, rightArm, leftLeg, rightLeg" },
+                  "face":     { "type": "string", "description": "A figure's face in this frame alone (its own when left out), as addParts takes it" },
                   "rolled":   { "type": "number", "description": "Studs the actor has rolled along its own north: each wheel set turns by its share (backward when turned round, not at all when turned across)" }
                 },
                 "required": ["name", "position"]
