@@ -52,55 +52,80 @@ Three Applications, one document: Brick Studio is the screen, Stop Motion is the
 
 <iframe-app data-name="scene" height="420px" width="100%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://../../apps/codemirror-editor">
   <app-content name="scene:scene.js">
-// The jump. A driver weaves in a bit wildly, hits the ramp and takes off; in the air
-// the camera swings round to the front: arms up, a grin, a turn of the head, as time
-// slows at the top. Fade to black.
-scene({ title: 'The Jump', fps: 24, length: 7, floor: { x: -30, z: -40, width: 60, depth: 100 } })
+// The Jump. A driver cruises in, grinning, working the wheel. A cat strolls into his
+// lane and stops. He sees it, yanks the wheel away from it and onto the ramp: horror in
+// the air, then joy, arms up. The cat jumps, then turns to watch him go. Fade to black.
+scene({ title: 'The Jump', fps: 24, length: 14.6, floor: { x: -30, z: -40, width: 60, depth: 130 } })
 
 const car = actor('car', { component: 'car' })
 const driver = actor('driver', { part: 'figure', color: 'blue', hat: { part: 'construction-helmet', color: 'yellow' } })
 driver.ride(car, { x: 0, z: 1.5, height: 5 })
+const cat = actor('cat', { part: 'cat', color: 'orange' })
 
-// in from the north, weaving, then up the ramp (6 studs, 6 plates) nose up
-const RAMP = 2.2, TAKEOFF = 2.55
-car.at(0, { x: 1.5, z: 46, height: 0 })
-   .at(RAMP, { x: 0, z: 6, height: 0 }, 'linear')
+// shot by shot: each cut a camera key held up to its time
+const CAT = 4.5, STOPS = 7, BEHIND = 6.5, SEES = 7.2, SIDE = 8.6, RAMP = 8.6, TAKEOFF = 8.95, FLIGHT = 9.3, JOY = 10.6, WATCH = 12.6
+
+// .. the car: down a lane beside the ramp, then away from the cat onto it ............
+car.at(0, { x: -6, z: 80, height: 0 })
+   .at(RAMP, { z: 6, height: 0 }, 'linear')
    .at(TAKEOFF, { z: 0.5, height: 6 }, 'linear')
+car.at(SEES, { x: -6, yaw: 0 })
+   .at(7.6, { x: -1.5, yaw: 30 }, 'ease-out')
+   .at(8.15, { x: 0.6, yaw: -10 }, 'ease-in-out')
+   .at(RAMP, { x: 0, yaw: 0 }, 'ease-out')
 car.at(RAMP, { pitch: 0 }).at(RAMP + 0.12, { pitch: 21.8 }, 'ease-out')
-car.wobble('yaw', 10, { rate: 1.7, to: RAMP - 0.1 })
-car.wobble('x', 0.9, { rate: 1.2, to: RAMP - 0.2 })
 
 // the flight: a jump's arc, the clock slowing toward the top
-car.path(TAKEOFF, 7, (u, t) => {
+car.path(TAKEOFF, 14.6, (u, t) => {
   const s = 0.72 * (1 - Math.pow(1 - u, 2.4))
   return { z: 0.5 - (15 * s), height: 6 + arc(s, 42, 60), pitch: 21.8 - (16 * u), roll: -7 * Math.sin(u * Math.PI) }
 })
 
-// hands on the wheel, then both arms up and a look round
-driver.at(0, { pose: { leftLeg: 90, rightLeg: 90, leftArm: 50, rightArm: 50, head: 0 } })
-      .at(1.0, { pose: { head: -12 } })
-      .at(1.6, { pose: { head: 8 } })
-      .at(3.05, { pose: { leftArm: 50, rightArm: 50, head: 0 } })
-      .at(3.45, { pose: { leftArm: 158, rightArm: 166, head: 24 } }, 'ease-out')
-      .at(4.6, { pose: { head: 24 } })
-      .at(5.4, { pose: { head: -16 } }, 'ease-in-out')
+// .. the driver: happy at the wheel, the yank, horror, then joy ......................
+driver.at(0, { face: 'grin', pose: { leftLeg: 90, rightLeg: 90, leftArm: 50, rightArm: 50, head: 0 } })
+driver.path(0, SEES, (u, t) => ({ pose: { leftArm: 50 + (7 * Math.sin(t * 3.1)), rightArm: 50 - (7 * Math.sin(t * 3.1)), head: 6 * Math.sin(t * 1.7) } }))
+driver.at(SEES, { face: 'surprised', pose: { leftArm: 50, rightArm: 50, head: 0 } })
+      .at(SEES + 0.2, { pose: { leftArm: 28, rightArm: 72, head: 20 } }, 'ease-out')
+      .at(SEES + 0.75, { pose: { leftArm: 70, rightArm: 30, head: -10 } }, 'ease-in-out')
+      .at(RAMP, { pose: { leftArm: 50, rightArm: 50, head: 0 } })
+driver.path(TAKEOFF, JOY - 0.2, (u, t) => ({ pose: { leftArm: 95 + (35 * Math.sin(t * 14)), rightArm: 90 + (35 * Math.sin((t * 13) + 1)), head: 15 * Math.sin(t * 9) } }))
+driver.at(JOY - 0.2, { pose: { leftArm: 120, rightArm: 115, head: 0 } })
+      .at(JOY + 0.3, { face: 'grin', pose: { leftArm: 158, rightArm: 166, head: 24 } }, 'ease-out')
+      .at(11.4, { face: 'laugh', pose: { head: 24 } })
+      .at(12.2, { pose: { head: -16 } }, 'ease-in-out')
 
-// the face changes on the motion that hides each cut: surprise at the takeoff's shake,
-// a grin from ear to ear as the arms go up, a laugh as the head turns
-driver.at(TAKEOFF, { face: 'surprised' })
-      .at(3.45, { face: 'grin' })
-      .at(4.6, { face: 'laugh' })
+// .. the cat: a stroll into his lane, a jump as he passes, then it watches ...........
+cat.at(0, { x: -17, z: 14, height: 0, yaw: -90 })
+   .at(CAT, { x: -17 })
+   .at(STOPS, { x: -8.5 }, 'ease-out')
+cat.path(CAT, STOPS, (u, t) => ({ height: 0.5 * Math.abs(Math.sin(t * 9)), pitch: 5 * Math.sin(t * 18) }))
+cat.at(7.55, { height: 0 }).at(7.75, { height: 1.8 }, 'ease-out').at(7.95, { height: 0 }, 'ease-in')
+cat.at(WATCH + 0.1, { yaw: -90 }).at(WATCH + 0.7, { yaw: 0 }, 'ease-out')
 
-// alongside from the west, low, then round to the front and in on the grin
-camera.at(0, { orbit: { angle: 285, distance: 30, height: 8 }, target: { actor: car, height: 4 }, fov: 30 })
-      .at(RAMP, { orbit: { angle: 270, distance: 24, height: 6 } })
-      .at(3.0, { orbit: { angle: 280, distance: 22, height: 6 }, target: { actor: driver, height: 8 } })
-      .at(4.4, { orbit: { angle: 332, distance: 15, height: -2 }, fov: 28 }, 'ease-in-out')
-      .at(6.4, { orbit: { angle: 346, distance: 11, height: -1 } }, 'linear')
+// .. the camera ......................................................................
+camera.at(0, { orbit: { angle: 250, distance: 34, height: 9 }, target: { actor: car, height: 4 }, fov: 32 })
+      .at(CAT - 2.01, { orbit: { angle: 236, distance: 30, height: 8 } }, 'linear')
+      // close on the driver, from the front
+      .at(CAT - 2, { orbit: { angle: -15, distance: 11, height: 3 }, target: { actor: driver, height: 8 }, fov: 26 }, 'hold')
+      .at(CAT - 0.01, { orbit: { angle: 15, distance: 10, height: 3 } }, 'linear')
+      // low, by the cat, the car coming up its lane
+      .at(CAT, { position: { x: -20, z: 4, height: 2.5 }, target: { actor: cat, height: 2.5 }, fov: 34 }, 'hold')
+      .at(BEHIND - 0.01, { position: { x: -18, z: 4, height: 2.5 } }, 'linear')
+      // over the driver's shoulder, the cat ahead
+      .at(BEHIND, { orbit: { angle: 180, distance: 13, height: 16 }, target: { actor: driver, height: 6 }, fov: 36 }, 'hold')
+      .at(SIDE - 0.01, { orbit: { angle: 190, distance: 12, height: 15 } }, 'linear')
+      // wide from the side for the ramp, then round to the front in the air
+      .at(SIDE, { orbit: { angle: 270, distance: 26, height: 6 }, target: { actor: car, height: 4 }, fov: 32 }, 'hold')
+      .at(FLIGHT, { orbit: { angle: 280, distance: 22, height: 6 }, target: { actor: driver, height: 8 } })
+      .at(9.8, { orbit: { angle: 330, distance: 15, height: -2 }, fov: 28 }, 'ease-in-out')
+      .at(JOY, { orbit: { angle: 334, distance: 14, height: -2 } }, 'linear')
+      .at(WATCH - 0.01, { orbit: { angle: 346, distance: 11, height: -1 } }, 'linear')
+      // the cat watches him go
+      .at(WATCH, { position: { x: -10, z: 24, height: 3 }, target: { x: -4, z: 6, height: 10 }, fov: 42 }, 'hold')
 camera.shake(TAKEOFF, TAKEOFF + 0.35, 0.25, 9)
 
-fade.out(5.7, 6.4)
-title(6.3, 7, 'THE JUMP')
+fade.out(13.6, 14.2)
+title(14.0, 14.6, 'THE JUMP')
   </app-content>
   <app-state>
 {
