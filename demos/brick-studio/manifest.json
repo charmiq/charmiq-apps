@@ -162,7 +162,9 @@
                   "legColor":  { "type": "string", "description": "A figure's hips and legs color (catalog color; blue when left out)" },
                   "hat":       { "type": "object", "description": "What a figure wears on its head (listParts names them): part and color", "properties": { "part": { "type": "string" }, "color": { "type": "string" } }, "required": ["part", "color"] },
                   "rightHand": { "type": "object", "description": "What a figure holds in its right hand (listParts names them): part and color", "properties": { "part": { "type": "string" }, "color": { "type": "string" } }, "required": ["part", "color"] },
-                  "leftHand":  { "type": "object", "description": "What a figure holds in its left hand (listParts names them): part and color", "properties": { "part": { "type": "string" }, "color": { "type": "string" } }, "required": ["part", "color"] }
+                  "leftHand":  { "type": "object", "description": "What a figure holds in its left hand (listParts names them): part and color", "properties": { "part": { "type": "string" }, "color": { "type": "string" } }, "required": ["part", "color"] },
+                  "angle":     { "type": "integer", "multipleOf": 15, "description": "A hinge's angle, degrees (0 when left out): hinge-1x2 tilts its top (90 raises its south side upright), the others swivel it clockwise seen from above" },
+                  "carry":     { "type": "object", "description": "The copy of a component a hinge carries, where it stands with the hinge at 0: on the hinge's top (its level the level of the hinge's studs, its footprint over at least one of them). It turns with the top", "properties": { "component": { "type": "string" }, "x": { "type": "integer" }, "z": { "type": "integer" }, "level": { "type": "integer" }, "rotation": { "type": "integer", "enum": [0, 90, 180, 270] } }, "required": ["component", "x", "z", "level"] }
                 },
                 "required": ["x", "z", "level"]
               }
@@ -212,7 +214,8 @@
                   "legColor": { "type": "string", "description": "A figure's hips and legs color, as addParts takes it" },
                   "hat":       { "type": "object", "description": "What a figure wears on its head, as addParts takes it" },
                   "rightHand": { "type": "object", "description": "What a figure holds in its right hand, as addParts takes it" },
-                  "leftHand":  { "type": "object", "description": "What a figure holds in its left hand, as addParts takes it" }
+                  "leftHand":  { "type": "object", "description": "What a figure holds in its left hand, as addParts takes it" },
+                  "angle":     { "type": "integer", "multipleOf": 15, "description": "A hinge's angle, as addParts takes it (a component's hinge carries nothing)" }
                 },
                 "required": ["part", "color", "x", "z", "level"]
               }

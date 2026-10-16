@@ -47,8 +47,9 @@ Drag to orbit, right-drag to pan, scroll to zoom. Press I (or the info button) f
 - **A Charm that looks at its work.** One command shows the build from all four sides at once. The Charm takes one screenshot, sees what's off, and fixes it.
 - **Watch it go up.** Builds come in steps. Press play and the parts drop in one step at a time.
 - **Build it once.** A tower, a house, a tree with its fence: define it once as a component, place as many copies as you like, and change them all by changing one. Save a design to your Drive and drop it into your next build.
-- **About 170 parts.** Bricks, slopes, arches, windows, trees, fences, figures, wheels, cats, a cow, an octopus, in 16 solid colors and 7 see-through ones.
+- **About 180 parts.** Bricks, slopes, arches, windows, trees, fences, figures, wheels, hinges, turntables, cats, a cow, an octopus, in 16 solid colors and 7 see-through ones.
 - **Figures that pose.** Wave, point, walk, look around, or sit down in the driver's seat: every arm, leg and head turns in 15-degree steps. Give them a hat or hair, and a sword, a lance, a pickaxe or a flashlight to hold.
+- **Things that open and turn.** Lids, drawbridges and turrets ride on hinges and turntables, open as far as you like in 15-degree steps, and still collide where they swing.
 - **From sketch to photo.** The Look slider goes from a quick draft through glossy plastic to a path-traced render.
 - **Plain LDraw.** The build is ordinary LDraw text kept in this document. Edit it by hand, paste in a model from elsewhere, open it in other LDraw tools, or build it together with friends.
 
@@ -61,6 +62,7 @@ Open the chat on this document and ask:
 - *Build a red and white lighthouse beside the cottage, about 20 levels tall.*
 - *Build a small yellow duck. Check it holds together, then look at it from the front.*
 - *Clear the baseplate and build a bridge between two towers.*
+- *Build a castle gate with its drawbridge half raised, and a turret on a turntable.*
 
 **For the best builds, use the Brick Builder Charm.** Its Instructions, [Brick Builder](charmiq://./Brick%20Builder.md), teach a Charm to plan a scene, build it in steps you can play back, look at it from all four sides, and fix what it sees. Make a Charm with those Instructions and pick it in the chat.
 

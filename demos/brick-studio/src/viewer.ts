@@ -6,8 +6,8 @@ import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawCondit
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { CATALOG, resourceFamily } from './catalog';
-import { baseplateArea, getColor, getColorByCode, getColorValue, getPart, getShape, isDrawable, LDU_PER_STUD, partFiles, placedLines, type PartLine } from './grid';
-import type { Model } from './model';
+import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, LDU_PER_STUD, partFiles, type PartLine } from './grid';
+import { drawnLines, type Model } from './model';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { Effects } from './render/effects';
@@ -267,7 +267,7 @@ export class Viewer {
   /** how many of a build's parts are not drawn because they lie past the draw reach
    *  or are outsized (SEE: isDrawable); their lines are kept */
   public undrawnCount(model: Model): number {
-    const placements = model.placements.filter(placement => !placedLines(getShape(getPart(placement.part)!/*by contract*/), placement, getColor(placement.color)!.code/*by contract*/).every(isDrawable));
+    const placements = model.placements.filter(placement => !drawnLines(model, placement).every(isDrawable));
     return placements.length + model.others.filter(other => !isDrawable(other)).length;
   }
   /** whether the build reaches past its baseplate (SEE: BASEPLATE_MAX) */
@@ -275,9 +275,9 @@ export class Viewer {
 
   /** how many of a build's parts are not drawn because they could not be: each
    *  placement by the lines it draws (a figure by what it wears, never by every
-   *  accessory it could) */
+   *  accessory it could; a hinge with its carry) */
   public unbuiltCount(model: Model): number {
-    const placements = model.placements.filter(placement => placedLines(getShape(getPart(placement.part)!/*by contract*/), placement, getColor(placement.color)!.code/*by contract*/).some(line => this.unbuilt.has(line.ldraw)));
+    const placements = model.placements.filter(placement => drawnLines(model, placement).some(line => this.unbuilt.has(line.ldraw)));
     return placements.length + model.others.filter(other => this.unbuilt.has(other.ldraw)).length;
   }
   /** the families being read, and those whose read failed */
@@ -772,9 +772,7 @@ export class Viewer {
 /** the lines a build is drawn as: every line that can be (SEE: isDrawable) */
 const renderItems = (model: Model): RenderItem[] => [
   ...model.placements.flatMap(placement => {
-    const part = getPart(placement.part)!/*by contract*/;
-    const color = getColor(placement.color)!/*by contract*/;
-    const lines = placedLines(getShape(part), placement, color.code);
+    const lines = drawnLines(model, placement);
     const drop = lineKey(lines[0]);
     return lines.every(isDrawable) ? lines.map(line => renderItem(line, drop)) : []/*the part whole, or none of it*/;
   }),

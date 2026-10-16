@@ -1,5 +1,5 @@
-import { cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, studCells, type Copy, type Placement } from './grid';
-import { READ_IN_PART, type Model } from './model';
+import { carriedCells, cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, studCells, type Copy, type FilledCell, type Placement } from './grid';
+import { carriedComponent, READ_IN_PART, type Model } from './model';
 
 // checks a build on the grid. A part fills the cells and levels its shape measures
 // (SEE: parts.generated.ts `fill`). Two parts collide when they fill the same cell
@@ -7,7 +7,9 @@ import { READ_IN_PART, type Model } from './model';
 // top studs lies under a cell that part fills from its bottom level; a part at
 // level 0 stands on the ground. A glass pane fills nothing and is held by the frame
 // at its own position; two panes in one frame collide. A part with no chain of
-// connections to the ground floats
+// connections to the ground floats. A hinge's carry fills the cells its turned
+// cells overlap (SEE: grid.ts Hinges) as the hinge's: it never collides with its own
+// hinge, and only its hinge holds it
 // ********************************************************************************
 // == Types =======================================================================
 export type CheckResult = Readonly<{
@@ -31,7 +33,6 @@ export const checkModel = (model: Model): CheckResult => {
   const name = (index: number): string => describeIn(model, index);
 
   // .. Collisions ................................................................
-  const filled = new Map<string, number>()/*cell key -> placement index*/;
   const collided = new Set<string>()/*`a|b` index pair*/;
   const collisions: Array<{ a: string; b: string; }> = [];
   const collide = (other: number, index: number) => {
@@ -40,32 +41,17 @@ export const checkModel = (model: Model): CheckResult => {
     collided.add(pair);
     collisions.push({ a: name(other), b: name(index) });
   };
+  for(const [other, index] of overlapping(placements, placement => occupiedCells(model, placement))) collide(other, index);
+  const { panes, crowded } = framed(placements);
+  for(const [first, index] of crowded) collide(first, index);
+  // a carry's own parts, against each other in its component's grid by the same rules:
+  // a definition given as text is not checked when it is written
   placements.forEach((placement, index) => {
-    const shape = getShape(getPart(placement.part)!/*by contract*/);
-    for(const { x, z, bottom, top } of filledCells(shape, placement)) {
-      for(let level=bottom; level<top; level++) {
-        const key = cellKey(x, z, level);
-        const other = filled.get(key);
-        if(other === undefined) filled.set(key, index);
-        else collide(other, index);
-      }
-    }
-  });
-
-  // each pane's frame: the frame part at the pane's own position
-  const frames = new Map<string, number>()/*frame key -> placement index*/;
-  placements.forEach((placement, index) => frames.set(frameKey(getPart(placement.part)!.ldraw/*by contract*/, placement), index));
-  const panes = new Map<number, number>()/*pane index -> frame index*/;
-  const filledFrames = new Map<number, number>()/*frame index -> its first pane*/;
-  placements.forEach((placement, index) => {
-    const frame = getPart(placement.part)!.frame/*by contract*/;
-    if(frame === undefined) return/*not a pane*/;
-    const holder = frames.get(frameKey(frame, placement));
-    if(holder === undefined) return/*no frame here: it floats*/;
-    panes.set(index, holder);
-    const first = filledFrames.get(holder);
-    if(first === undefined) filledFrames.set(holder, index);
-    else collide(first, index);
+    if(!placement.carry) return;
+    const { name: component, placements: parts } = carriedComponent(model, placement);
+    const inCarry = (part: number) => `${describePlacement(parts[part])} in ${component} carried by ${name(index)}`;
+    const pairs = [...overlapping(parts, each => filledCells(getShape(getPart(each.part)!/*by contract*/), each)), ...framed(parts).crowded];
+    for(const [other, part] of pairs) collisions.push({ a: inCarry(other), b: inCarry(part) });
   });
 
   // .. Connections ...............................................................
@@ -105,7 +91,61 @@ export const checkModel = (model: Model): CheckResult => {
   }
   const floating = placements.flatMap((_, index) => grounded.has(index) ? [] : [name(index)]);
 
-  return { parts: placements.length, collisions, floating, unchecked: model.others.length, truncated: !!model.truncated };
+  // a carry's parts count as the build's: those on its component's grid checked, the
+  // rest unchecked
+  const carried = placements.flatMap(placement => placement.carry ? [carriedComponent(model, placement)] : []);
+  return {
+    parts: placements.length + carried.reduce((total, component) => total + component.placements.length, 0), collisions, floating,
+    unchecked: model.others.length + carried.reduce((total, component) => total + component.others.length, 0), truncated: !!model.truncated,
+  };
+};
+
+/** each pair of placements that fill one cell at one level, once, in the order
+ *  found: a placement's own cells (a carry's over its hinge's) never pair */
+const overlapping = (placements: ReadonlyArray<Placement>, cellsOf: (placement: Placement) => ReadonlyArray<FilledCell>): Array<readonly [number, number]> => {
+  const filled = new Map<string, number>()/*cell key -> placement index*/;
+  const pairs = new Map<string, readonly [number, number]>();
+  placements.forEach((placement, index) => {
+    for(const { x, z, bottom, top } of cellsOf(placement)) {
+      for(let level=bottom; level<top; level++) {
+        const key = cellKey(x, z, level);
+        const other = filled.get(key);
+        if(other === undefined) filled.set(key, index);
+        else if(other !== index) pairs.set(`${other}|${index}`, [other, index]);
+      }
+    }
+  });
+  return [...pairs.values()];
+};
+
+/** each pane's frame, the frame part at the pane's own position (a pane with none
+ *  floats), and each pane a frame holds after its first, with that first: two panes
+ *  in one frame collide */
+const framed = (placements: ReadonlyArray<Placement>): Readonly<{ panes: Map<number/*pane*/, number/*frame*/>; crowded: Array<readonly [number, number]>; }> => {
+  const frames = new Map<string, number>()/*frame key -> placement index*/;
+  placements.forEach((placement, index) => frames.set(frameKey(getPart(placement.part)!.ldraw/*by contract*/, placement), index));
+  const panes = new Map<number, number>();
+  const firstPanes = new Map<number, number>()/*frame index -> its first pane*/;
+  const crowded: Array<readonly [number, number]> = [];
+  placements.forEach((placement, index) => {
+    const frame = getPart(placement.part)!.frame/*by contract*/;
+    if(frame === undefined) return/*not a pane*/;
+    const holder = frames.get(frameKey(frame, placement));
+    if(holder === undefined) return/*no frame here: it floats*/;
+    panes.set(index, holder);
+    const first = firstPanes.get(holder);
+    if(first === undefined) firstPanes.set(holder, index);
+    else crowded.push([first, index]);
+  });
+  return { panes, crowded };
+};
+
+/** the cells a placement takes in a build: its part's, and a hinge's carry's (SEE:
+ *  grid.ts carriedCells), which may share cells with its hinge */
+export const occupiedCells = (model: Model, placement: Placement): FilledCell[] => {
+  const shape = getShape(getPart(placement.part)!/*by contract*/);
+  const own = filledCells(shape, placement);
+  return placement.carry ? [...own, ...carriedCells(shape, placement, carriedComponent(model, placement))] : own;
 };
 
 // == Summary =====================================================================
@@ -148,6 +188,8 @@ export const describePlaced = (model: Model, index: number): string => {
 export const describeCopy = (copy: Copy): string =>
   `${copy.component} at x ${copy.x} z ${copy.z} level ${copy.level}` + ((copy.rotation !== 0) ? ` rotation ${copy.rotation}` : '');
 
-/** a placement in one line, e.g. `brick-2x4 red at x 3 z 4 level 6 rotation 90` */
+/** a placement in one line, e.g. `brick-2x4 red at x 3 z 4 level 6 rotation 90`, or
+ *  `hinge-1x2 red at x 0 z 4 level 3 angle 60 carrying lid` */
 export const describePlacement = (placement: Placement): string =>
-  `${placement.part} ${placement.color} at x ${placement.x} z ${placement.z} level ${placement.level}` + ((placement.rotation !== 0) ? ` rotation ${placement.rotation}` : '');
+  `${placement.part} ${placement.color} at x ${placement.x} z ${placement.z} level ${placement.level}` + ((placement.rotation !== 0) ? ` rotation ${placement.rotation}` : '') +
+  (placement.angle ? ` angle ${placement.angle}` : '') + (placement.carry ? ` carrying ${placement.carry.component}` : '');

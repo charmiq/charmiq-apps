@@ -1,7 +1,7 @@
 import { ACCESSORIES, CATALOG, COLORS, type CatalogPart } from './catalog';
 import { maxOf, minOf } from './numbers';
-import { COLOR_VALUES, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { pieceLines, posedPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
+import { COLOR_VALUES, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
+import { hingePieces, hingeTurn, pieceLines, posedPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
 // level is one plate height (a brick is three). A placement names the minimum
@@ -49,7 +49,8 @@ export type Cell = readonly [number/*x*/, number/*z*/];
 // ................................................................................
 /** a catalog part on the grid. A posable part (a figure) may carry a pose and its
  *  legs' color; its footprint corner stays where it stands whatever its pose, and its
- *  level is its posed bottom (a seated figure's on its seat) */
+ *  level is its posed bottom (a seated figure's on its seat). A hinge's top may turn,
+ *  carrying a component (SEE: Hinges) */
 export type Placement = Readonly<{
   part: string/*catalog key*/;
   color: string/*catalog color key*/;
@@ -66,6 +67,11 @@ export type Placement = Readonly<{
   hat?: Gear;
   rightHand?: Gear;
   leftHand?: Gear;
+  /** its top's angle (SEE: pose.ts hingeTurn), none at 0; only on a hinge */
+  angle?: number;
+  /** the copy of a component it carries, where that copy stands with the hinge at 0;
+   *  only on a hinge */
+  carry?: Copy;
 }>;
 
 /** an accessory a figure wears (SEE: catalog.ts ACCESSORIES): its key and its color
@@ -214,6 +220,21 @@ const posed = (shape: PartShape, posing: Posing): Readonly<{ fill: ReadonlyArray
   return { fill: lifted.map(([x, z, bottom, top]) => [x, z, (bottom === lowest) ? 0 : bottom, top] as const), lift };
 };
 
+/** a hinge's fill with its top at `angle`, from its bottom: standing, its own measured
+ *  fill; turned, its top's standing cells leave it (any its base fills too stay) and
+ *  its top's cells at the angle join it (SEE: HINGE_GEOMETRY), any below its bottom
+ *  left out. It never rises: its base stands where it stands */
+const hinged = (shape: PartShape, angle: number): ReadonlyArray<Fill> => {
+  if(angle === 0) return shape.fill;
+  const geometry = HINGE_GEOMETRY[shape.part.ldraw]/*by contract*/;
+  const standing = levelsOf(shape.fill);
+  const left = subtract(standing, levelsOf(geometry.top['0']));
+  const shared = intersect(standing, levelsOf(geometry.base));
+  return cellsOf(levelsOf([...cellsOf(left), ...cellsOf(shared), ...geometry.top[String(angle)]]))
+    .map(([x, z, bottom, top]) => [x, z, Math.max(0, bottom), top] as const)
+    .filter(([, , bottom, top]) => top > bottom)/*below its bottom*/;
+};
+
 /** cells' levels by cell, overlapping or touching ranges joined */
 const levelsOf = (cells: ReadonlyArray<Fill>): Levels => {
   const levels: Levels = new Map();
@@ -248,9 +269,10 @@ const cellsOf = (levels: Levels): Fill[] => [...levels].flatMap(([key, ranges]) 
   return ranges.map(([bottom, top]) => [x, z, bottom, top] as const);
 });
 
-/** the cells a placement's part fills from its bottom: a posable part's at its pose */
+/** the cells a placement's part fills from its bottom: a posable part's at its pose,
+ *  a hinge's with its top at its angle */
 const fillOf = (shape: PartShape, placement: Placement): ReadonlyArray<Fill> =>
-  shape.part.limbs ? posed(shape, placement).fill : shape.fill;
+  shape.part.limbs ? posed(shape, placement).fill : shape.part.hinge ? hinged(shape, placement.angle ?? 0) : shape.fill;
 
 /** plates from a placement's bottom up to its part's LDraw origin: less a pose's lift */
 const baseOf = (shape: PartShape, placement: Placement): number =>
@@ -259,9 +281,10 @@ const baseOf = (shape: PartShape, placement: Placement): number =>
 /** how far a pose raises a posable part's bottom above where it stands (levels) */
 export const poseLift = (part: CatalogPart, posing: Posing): number => part.limbs ? posed(getShape(part), posing).lift : 0;
 
-/** every cell holding one of the placement's top studs */
+/** every cell holding one of the placement's top studs: none on a hinge turned from 0,
+ *  which holds only what it carries */
 export const studCells = (shape: PartShape, placement: Placement): Cell[] =>
-  shape.studs.map(cell => placeCell(shape, placement, cell));
+  ((placement.angle ?? 0) !== 0) ? [] : shape.studs.map(cell => placeCell(shape, placement, cell));
 
 /** whether a placement, and every cell it fills, lies within GRID_REACH of the origin
  *  on every axis: there its arithmetic is exact (SEE: GRID_REACH). A pane fills no
@@ -300,7 +323,7 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
 export const placedLines = (shape: PartShape, placement: Placement, colorCode: number): PartLine[] => {
   const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position: ldrawPosition(shape, placement), matrix: rotationMatrix(placement.rotation) };
   const legs = (placement.legColor === undefined) ? undefined : getColor(placement.legColor)?.code;
-  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement)) : piecesOf(shape.part);
+  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement)) : shape.part.hinge ? hingePieces(shape.part, placement.angle ?? 0) : piecesOf(shape.part);
   return [own, ...pieces.map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
 };
 
@@ -396,6 +419,132 @@ export const copyPosition = (footprint: Footprint, component: string, transform:
   if(!isWhole(x) || !isWhole(z) || !isWhole(level)) return undefined;
   return { component, x: Math.round(x), z: Math.round(z), level: Math.round(level), rotation };
 };
+
+// == Hinges ======================================================================
+// a hinge carries a copy of a component on its top: the copy stands where `carry`
+// says with the hinge at 0, and turns with the top about its axis. Turned off the
+// grid, the copy fills every grid cell one of its own cells overlaps with positive
+// volume, the check's rule for any part: approximate to the cell and conservative
+
+/** the arithmetic's slack telling an overlap from a contact (LDU): a turned cell
+ *  overlaps a grid cell when every separating axis finds more than this between them
+ *  pressed together, so a face or an edge touching is no overlap. It absorbs float
+ *  rounding alone, far below any part's size */
+export const OVERLAP_TOLERANCE = 1e-6/*LDU*/;
+
+/** what turning a hinge's top to its angle does to the build's frame (LDU): its
+ *  part's turn (SEE: pose.ts hingeTurn) where the placement stands */
+export const hingeMotion = (shape: PartShape, placement: Placement, angle: number = placement.angle ?? 0): Transform => {
+  const own: Transform = { matrix: rotationMatrix(placement.rotation), position: ldrawPosition(shape, placement) };
+  return compose(own, compose(hingeTurn(shape.part, angle), invert(own)));
+};
+
+/** where a hinge's carry stands in the build's frame: its copy's transform (SEE:
+ *  copyTransform) moved with the hinge's top */
+export const carryTransform = (shape: PartShape, placement: Placement, footprint: Footprint): Transform =>
+  compose(hingeMotion(shape, placement), copyTransform(footprint, placement.carry!/*by contract*/));
+
+/** the copy a hinge carries, from the transform its line is written at: turned back
+ *  to the hinge at 0, a copy on the grid standing on the hinge's top (its bottom at
+ *  the top's stud level, its footprint over one of the top's studs); undefined
+ *  otherwise */
+export const carriedCopy = (shape: PartShape, placement: Placement, component: Readonly<{ name: string; footprint: Footprint; }>, transform: Transform): Copy | undefined => {
+  const back = compose(hingeMotion(shape, placement, -(placement.angle ?? 0)), transform);
+  const copy = copyPosition(component.footprint, component.name, back);
+  return (copy && restsOn(shape, placement, component.footprint, copy)) ? copy : undefined;
+};
+
+/** where a hinge's carry may stand with the hinge at 0: each of its top's studs'
+ *  cells (SEE: HINGE_GEOMETRY), at the level of the top's studs */
+export const topStuds = (shape: PartShape, placement: Placement): ReadonlyArray<Readonly<{ x: number; z: number; level: number; }>> =>
+  HINGE_GEOMETRY[shape.part.ldraw]/*by contract*/.studs.map(cell => {
+    const [x, z] = placeCell(shape, placement, cell);
+    return { x, z, level: placement.level + (shape.top ?? shape.height) };
+  });
+
+/** whether a copy stands on a hinge's top with the hinge at 0: its bottom at the level
+ *  of the top's studs, its footprint over one of them (SEE: topStuds) */
+export const restsOn = (shape: PartShape, placement: Placement, footprint: Footprint, copy: Copy): boolean => {
+  const [width, depth] = footprintSize(footprint, copy.rotation);
+  return topStuds(shape, placement).some(({ x, z, level }) => (copy.level === level) && (x >= copy.x) && (x < (copy.x + width)) && (z >= copy.z) && (z < (copy.z + depth)));
+};
+
+/** the cells a hinge's carry fills: every grid cell one of its component's filled
+ *  cells, moved to where the carry stands, overlaps (SEE: turnedCells) */
+export const carriedCells = (shape: PartShape, placement: Placement, component: Readonly<{ placements: ReadonlyArray<Placement>; footprint: Footprint; }>): FilledCell[] =>
+  turnedCells(component.placements.flatMap(part => filledCells(getShape(getPart(part.part)!/*by contract*/), part)), carryTransform(shape, placement, component.footprint));
+
+/** the lines a hinge's carry is drawn as: its component's parts' lines (in its own
+ *  frame, SEE: placedLines) moved to where the carry stands */
+export const carriedLines = (shape: PartShape, placement: Placement, component: Readonly<{ placements: ReadonlyArray<Placement>; others: ReadonlyArray<PartLine>; footprint: Footprint; }>): PartLine[] => {
+  const carried = carryTransform(shape, placement, component.footprint);
+  const own = component.placements.flatMap(part => placedLines(getShape(getPart(part.part)!/*by contract*/), part, getColor(part.color)!.code/*by contract*/));
+  return [...own, ...component.others].map(line => ({ ...line, ...compose(carried, line) }));
+};
+
+/** every grid cell, one level each, that one of `cells` (in their own grid) moved by
+ *  `transform` (their LDU frame to the build's) overlaps with positive volume, tested
+ *  by the separating axes of two boxes: each cell is tested against the grid cells
+ *  its moved box's bounds reach (OVERLAP_TOLERANCE past them, so a contact is always
+ *  judged by the axes), and the work grows with the cells alone. None is below the
+ *  ground */
+export const turnedCells = (cells: ReadonlyArray<FilledCell>, transform: Transform): FilledCell[] => {
+  const { matrix: m } = transform;
+  const axes = [0, 1, 2].map(col => [m[col], m[3 + col], m[6 + col]])/*each cell axis in the build's frame*/;
+  const found = new Map<string, FilledCell>();
+  for(const { x, z, bottom, top } of cells) {
+    const half = [LDU_PER_STUD / 2, ((top - bottom) * LDU_PER_PLATE) / 2, LDU_PER_STUD / 2];
+    const centre = apply(transform, [(x + 0.5) * LDU_PER_STUD, -((bottom + top) / 2) * LDU_PER_PLATE, (z + 0.5) * LDU_PER_STUD]);
+    const reach = [0, 1, 2].map(row => (Math.abs(m[row * 3]) * half[0]) + (Math.abs(m[(row * 3) + 1]) * half[1]) + (Math.abs(m[(row * 3) + 2]) * half[2]) + OVERLAP_TOLERANCE);
+    const [fromX, toX] = [Math.floor((centre[0] - reach[0]) / LDU_PER_STUD), Math.ceil((centre[0] + reach[0]) / LDU_PER_STUD)];
+    const [fromZ, toZ] = [Math.floor((centre[2] - reach[2]) / LDU_PER_STUD), Math.ceil((centre[2] + reach[2]) / LDU_PER_STUD)];
+    const [fromLevel, toLevel] = [Math.max(0, Math.floor(-(centre[1] + reach[1]) / LDU_PER_PLATE)), Math.ceil(-(centre[1] - reach[1]) / LDU_PER_PLATE)]/*-y is up*/;
+    for(let gridX=fromX; gridX<toX; gridX++) {
+      for(let gridZ=fromZ; gridZ<toZ; gridZ++) {
+        for(let level=fromLevel; level<toLevel; level++) {
+          const key = cellKey(gridX, gridZ, level);
+          if(found.has(key)) continue;
+          const cell = [(gridX + 0.5) * LDU_PER_STUD, -(level + 0.5) * LDU_PER_PLATE, (gridZ + 0.5) * LDU_PER_STUD];
+          if(boxesOverlap(centre, axes, half, cell, GRID_HALF)) found.set(key, { x: gridX, z: gridZ, bottom: level, top: level + 1 });
+        }
+      }
+    }
+  }
+  return [...found.values()];
+};
+
+/** half a grid cell (LDU) */
+const GRID_HALF = [LDU_PER_STUD / 2, LDU_PER_PLATE / 2, LDU_PER_STUD / 2];
+
+/** whether a box (centre, unit axes, half sizes) and a grid-aligned box overlap with
+ *  positive volume: no separating axis among their faces' normals and the cross
+ *  products of their edges finds them more than OVERLAP_TOLERANCE short of apart */
+const boxesOverlap = (centre: ReadonlyArray<number>, axes: ReadonlyArray<ReadonlyArray<number>>, half: ReadonlyArray<number>, gridCentre: ReadonlyArray<number>, gridHalf: ReadonlyArray<number>): boolean => {
+  const between = [0, 1, 2].map(axis => gridCentre[axis] - centre[axis]);
+  const units = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  const candidates = [...units, ...axes, ...units.flatMap(unit => axes.map(axis => cross(unit, axis)))];
+  return candidates.every(candidate => {
+    const length = Math.hypot(candidate[0], candidate[1], candidate[2]);
+    if(length < 1e-9) return true/*parallel edges: no axis*/;
+    const normal = candidate.map(value => value / length);
+    const turnedReach = axes.reduce((sum, axis, index) => sum + (Math.abs(dot(axis, normal)) * half[index]), 0);
+    const gridReach = units.reduce((sum, unit, index) => sum + (Math.abs(dot(unit, normal)) * gridHalf[index]), 0);
+    return Math.abs(dot(between, normal)) < (turnedReach + gridReach - OVERLAP_TOLERANCE);
+  });
+};
+
+/** a transform's inverse: its rotation rows transposed (every transform here is a
+ *  rotation) and its position moved back */
+const invert = ({ matrix: m, position: p }: Transform): Transform => {
+  const matrix = [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
+  return { matrix, position: [0, 1, 2].map(row => -((matrix[row * 3] * p[0]) + (matrix[(row * 3) + 1] * p[1]) + (matrix[(row * 3) + 2] * p[2]))) as [number, number, number] };
+};
+
+/** a point moved by a transform */
+const apply = ({ matrix: m, position: p }: Transform, point: ReadonlyArray<number>): number[] =>
+  [0, 1, 2].map(row => (m[row * 3] * point[0]) + (m[(row * 3) + 1] * point[1]) + (m[(row * 3) + 2] * point[2]) + p[row]);
+const dot = (a: ReadonlyArray<number>, b: ReadonlyArray<number>): number => (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
+const cross = (a: ReadonlyArray<number>, b: ReadonlyArray<number>): number[] => [(a[1] * b[2]) - (a[2] * b[1]), (a[2] * b[0]) - (a[0] * b[2]), (a[0] * b[1]) - (a[1] * b[0])];
 
 // == Frames ======================================================================
 /** a part at a placement's position: a glass pane names its frame's LDraw file

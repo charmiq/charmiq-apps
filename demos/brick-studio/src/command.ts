@@ -6,6 +6,7 @@ import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
 import { displayName, DesignExists, type Designs } from './designs';
 import type { Design } from './drive';
 import { filledCells, footprintSize, getColorByCode, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE, type PartShape } from './grid';
+import { copiesOf } from './model';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { LookAround } from './look-around';
 import type { Viewer } from './viewer';
@@ -42,6 +43,7 @@ const GRID = [
   'A figure is a person: it stands on the middle two cells of its middle row, faces south at rotation 0, and its arms, hands and head reach into the cells around its feet (its row gives its fills), so figures side by side stand 4 studs apart. Its color is its shirt; its head and hands are yellow and its legs blue unless legColor names another.',
   'A figure poses: pose names its head, leftArm, rightArm, leftLeg and rightLeg, each in degrees, a multiple of 15. An arm or leg swings forward (90 points it ahead, 180 straight up, -30 back); the head turns clockwise seen from above. A posed figure keeps its x and z; its level is its lowest point, so a seated figure (both legs at 90) sits on a seat at the seat\'s top level. A raised arm fills the cells it reaches. To change a pose, remove the figure and add it posed.',
   `A figure wears a hat (hat: { part, color }: ${ACCESSORIES.filter(each => each.on === 'head').map(each => each.key).join(', ')}) and holds a thing in each hand (rightHand, leftHand: ${ACCESSORIES.filter(each => each.on === 'hand').map(each => each.key).join(', ')}), each in a catalog color. They turn with its head and arms; what it holds fills the cells it reaches.`,
+  'A hinge (hinge-1x2, hinge-plate-1x4, turntable-2x2, turntable-4x4) turns its top by angle, a multiple of 15, and carries one component on it: carry is a copy of a component ({component, x, z, level, rotation}) standing on the hinge\'s top as it would with the hinge at 0 (its level the level of the hinge\'s studs, its footprint over at least one of them). Build the thing closed, then open it: hinge-1x2 tilts its top about an east-west axis at rotation 0 (90 raises its south side upright), the others swivel it clockwise seen from above. The carry turns with the top, fills the cells it turns into, never collides with its own hinge, and is held by its hinge alone: put whatever rides on it inside its component. A component\'s own hinges carry nothing. To change an angle, remove the hinge and add it again.',
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
   'A component is a group of parts defined once (defineComponent, in its own grid: x, z and level from 0) and placed many times: an addParts item {component, x, z, level, rotation} places a copy by its footprint\'s south-west corner and its bottom level, turned as a part is. Copies are checked as parts are; removing any cell of a copy removes the whole copy, and redefining a component changes every copy. Build a repeated thing (a tower, a house, a tree with a fence) as a component.',
@@ -106,8 +108,8 @@ export class CommandSurface {
         const entries = [
           ...model.placements.flatMap((placement, index) => (model.placementPlaced?.[index] === undefined) ? [steps ? { ...placement, step: steps.placements[index] } : placement] : []),
           ...(model.copies ?? []).map((copy, index) => steps ? { ...copy, step: steps.copies[index] } : copy),
-          ...(model.placed ?? []).flatMap(({ component, colorCode, copy }, line) => {
-            if(copy !== undefined) return []/*listed as a copy*/;
+          ...(model.placed ?? []).flatMap(({ component, colorCode, copy, carried }, line) => {
+            if((copy !== undefined) || carried) return []/*listed as a copy, or with the hinge carrying it*/;
             const color = getColorByCode(colorCode)?.key;
             const parts = owned.get(line) ?? [];
             const cell = parts.flatMap(index => filledCells(getShape(getPart(model.placements[index].part)!/*by contract*/), model.placements[index]))[0]/*the first part that fills one: glass fills none*/;
@@ -133,7 +135,7 @@ export class CommandSurface {
         const model = this.build.getModel();
         return { components: (model.components ?? []).map(component => {
           const size = component.footprint ? footprintSize(component.footprint, 0) : [0, 0];
-          return { name: component.name, size: `${size[0]}x${size[1]}x${component.footprint?.height ?? 0}`, parts: component.placements.length, copies: (model.copies ?? []).filter(copy => copy.component === component.name).length };
+          return { name: component.name, size: `${size[0]}x${size[1]}x${component.footprint?.height ?? 0}`, parts: component.placements.length, copies: copiesOf(model, component.name) };
         }) };
       },
 

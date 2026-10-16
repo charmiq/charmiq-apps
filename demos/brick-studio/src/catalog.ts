@@ -7,7 +7,7 @@ import type { Limb } from './pose';
 //       tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'figure';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'figure' | 'hinge';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -34,6 +34,11 @@ export type CatalogPart = Readonly<{
    *  `pieces`), whose transform, turned with its limb, an accessory takes, and for a
    *  hand where its grip sits in that piece (SEE: ACCESSORIES) */
   slots?: Readonly<Record<Slot, Readonly<{ piece: number; grip?: GripFrame; }>>>;
+  /** a hinge's top: its piece (an index into `pieces`) turns about the axis through
+   *  `pivot` (LDU, in the part's frame), `x` tilting it (a positive angle raising its
+   *  south side) and `y` swiveling it (clockwise seen from above) (SEE: pose.ts
+   *  hingePieces) */
+  hinge?: Readonly<{ piece: number; axis: 'x' | 'y'; pivot: readonly [number, number, number]; }>;
 }>;
 
 /** where a held item's grip bar sits in a piece: the grip's centre and its axis (the
@@ -306,6 +311,15 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'steering-wheel',  ldraw: '3829a', kind: 'vehicle', pieces: [
     '1 0 0 -26.32 -0.24 0 0 1 -0.8 0.6 0 -0.6 -0.8 0 3828.dat',
   ] },
+
+  // a hinge is its base and its top, as the library's complete hinge puts them
+  // together (3937c01, 73983, 3680c01, 3403c01), the top turning about the axis
+  // through its knuckle: the hinge 1x2's runs east-west 10 LDU below the origin, a
+  // swiveling top's is vertical through the origin
+  { key: 'hinge-1x2',       ldraw: '3937',  kind: 'hinge', pieces: ['1 16 0 0 0 1 0 0 0 1 0 0 0 1 3938.dat'], hinge: { piece: 0, axis: 'x', pivot: [0, 10, 0] } },
+  { key: 'hinge-plate-1x4', ldraw: '2429',  kind: 'hinge', pieces: ['1 16 0 0 0 1 0 0 0 1 0 0 0 1 2430.dat'], hinge: { piece: 0, axis: 'y', pivot: [0, 0, 0] } },
+  { key: 'turntable-2x2',   ldraw: '3680',  kind: 'hinge', pieces: ['1 16 0 0 0 1 0 0 0 1 0 0 0 1 3679.dat'], hinge: { piece: 0, axis: 'y', pivot: [0, 0, 0] } },
+  { key: 'turntable-4x4',   ldraw: '3403',  kind: 'hinge', pieces: ['1 16 0 0 0 1 0 0 0 1 0 0 0 1 3404.dat'], hinge: { piece: 0, axis: 'y', pivot: [0, 0, 0] } },
 ];
 
 // == Accessories =================================================================
@@ -398,6 +412,7 @@ const KIND_WORDS: Readonly<Record<PartKind, ReadonlyArray<string>>> = {
   'creature':    ['animal', 'pet', 'creature'],
   'vehicle':     ['car', 'wheel', 'truck'],
   'figure':      ['person', 'people', 'minifigure', 'knight', 'driver', 'figure'],
+  'hinge':       ['turntable', 'lid', 'door', 'drawbridge', 'tilt', 'swivel', 'turn', 'open'],
 };
 
 /** the catalog parts a query names, best first: a part's own name, a word of its

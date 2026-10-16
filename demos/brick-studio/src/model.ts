@@ -1,8 +1,8 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { ACCESSORIES, COLORS, type CatalogPart } from './catalog';
-import { compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
+import { carriedCopy, carriedLines, carryTransform, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
-import { accessoryLine, limbLines, normalizePose, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER, type Pose } from './pose';
+import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER, type Pose } from './pose';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
 // written, and each type-1 line is one part. A multi-part (MPD) file is flattened
@@ -14,7 +14,10 @@ import { accessoryLine, limbLines, normalizePose, pieceLines, posedPieces, LIMBS
 // file's parts also carry where their lines lie, so an edit changes those lines
 // alone. A part assembled from pieces (a wheel set) is its own line and its
 // pieces' lines, each where the part puts it: those lines are read as the part, and
-// the part is written whole. `0 STEP` lines in the main file split the parts into building steps, in
+// the part is written whole. A hinge's carry is the component line right after the
+// hinge's own lines in the same step, standing on its top once turned back to 0 (SEE: grid.ts
+// Hinges): the hinge owns that line, and its parts are the carry's, never the
+// build's own or a copy's. `0 STEP` lines in the main file split the parts into building steps, in
 // order; a step with no parts is no step. A `0 !BRICKSTUDIO GROUND <color>` line in
 // the main file colors the baseplate (LDraw's form for a program's own meta-command:
 // other LDraw tools pass it by)
@@ -70,12 +73,13 @@ export type ModelSteps = Readonly<{ placements: ReadonlyArray<number>; others: R
 
 /** a line of the main model placing a component: its component, the color its
  *  parts of LDraw's color 16 take, and its copy (an index into `copies`) when it is
- *  one on the grid. The line owns every part it places, a copy or not */
-export type Placed = Readonly<{ component: string; colorCode: number; copy?: number; }>;
+ *  one on the grid, or `carried` when a hinge carries it (its parts are then the
+ *  carry's). The line owns every part it places, a copy or not */
+export type Placed = Readonly<{ component: string; colorCode: number; copy?: number; carried?: true; }>;
 
 /** a component: its section's file as written (the name and `.ldr`, `.dat`, `.mpd`
  *  or nothing), its parts in its own grid and the cells they cover */
-export type Component = Readonly<{ name: string; file: string; placements: ReadonlyArray<Placement>; others: number/*part lines off its grid*/; footprint?: Footprint; }>;
+export type Component = Readonly<{ name: string; file: string; placements: ReadonlyArray<Placement>; others: ReadonlyArray<OtherPart>/*part lines off its grid*/; footprint?: Footprint; }>;
 
 // ................................................................................
 export type Model = Readonly<{
@@ -236,8 +240,9 @@ export const parseModel = (text: string): Model => {
   const placementSpans: Span[] = [];
   const otherSpans: Span[] = [];
   const copies: Copy[] = [];
-  const placed: Placed[] = [];
+  let placed: Placed[] = [];
   const placedSpans: Span[] = [];
+  const placedTransforms: Transform[] = []/*each line's, as written*/;
   const mainParts: Span[] = [];
   // each part's and copy's step as counted (a `0 STEP` line counts one), numbered once read
   const placementSteps: number[] = [];
@@ -290,7 +295,7 @@ export const parseModel = (text: string): Model => {
         const component = isMain ? componentsByFile.get(reference) : undefined;
         const position = component?.footprint && copyPosition(component.footprint, component.name, local);
         if(position) { copies.push(position); copySteps.push(step); }
-        if(isMain) { placed.push({ component: component?.name ?? reference, colorCode, ...(position ? { copy: copies.length - 1 } : {}) }); placedSpans.push({ from, to }); }
+        if(isMain) { placed.push({ component: component?.name ?? reference, colorCode, ...(position ? { copy: copies.length - 1 } : {}) }); placedSpans.push({ from, to }); placedTransforms.push(local); }
         walk(reference, world, colorCode, depth + 1, isMain ? (placed.length - 1) : owner);
         continue;
       } /* else -- a part */
@@ -301,6 +306,44 @@ export const parseModel = (text: string): Model => {
   };
   walk(main, IDENTITY, 16, 0, undefined);
   const { pieceSpans, undecided } = absorbPieces(placements, others, otherSpans, otherSteps, { placements: placementPlaced, others: otherPlaced });
+
+  // each hinge of the main model's own takes the component line right after its own
+  // lines, in its own line's building step, as its carry, when that line stands on its
+  // top turned back to 0 and its parts are drawn from its component as the line places
+  // them (a component placing no other file, its pieces told, the line in LDraw's
+  // inherited color): the hinge owns the line, and the parts it places leave the
+  // build's own and its copies. Any other line keeps its parts as read
+  const placedAt = new Map(placedSpans.map((span, index) => [span.from, index]));
+  const componentsByName = new Map(components.map(component => [component.name, component]));
+  const carried = new Set<number/*an index into placed*/>();
+  placements.forEach((placement, index) => {
+    const part = getPart(placement.part)!/*by contract*/;
+    if(!part.hinge || (placementPlaced[index] !== undefined)) return;
+    const last = maxOf([placementSpans[index], ...pieceSpans[index]].map(span => span.to));
+    const line = placedAt.get(mainParts[firstFrom(mainParts, last)]?.from ?? -1);
+    if((line === undefined) || carried.has(line)) return;
+    if((stepSpans[firstFrom(stepSpans, placementSpans[index].from)]?.from ?? Infinity) < placedSpans[line].from) return/*a step apart*/;
+    const component = componentsByName.get(placed[line].component);
+    if(!component?.footprint || component.nested || component.undecided || (placed[line].colorCode !== INHERITED_COLOR)) return/*not drawn from its component as placed*/;
+    const carry = carriedCopy(getShape(part), placement, { name: component.name, footprint: component.footprint }, placedTransforms[line]);
+    if(!carry) return;
+    placements[index] = { ...placement, carry };
+    pieceSpans[index] = [...pieceSpans[index], placedSpans[line]];
+    carried.add(line);
+  });
+  if(carried.size > 0) {
+    const ownParts = placementPlaced.map(owner => (owner === undefined) || !carried.has(owner));
+    const ownOthers = otherPlaced.map(owner => (owner === undefined) || !carried.has(owner));
+    keepWhere(ownParts, placements, placementCopies, placementPlaced, placementSpans, placementSteps, pieceSpans);
+    keepWhere(ownOthers, others, otherSpans, otherSteps, otherPlaced);
+    // a carry on the grid (a hinge at 0) is no copy: the copies renumbered without it
+    const carriedCopies = new Set(placed.flatMap((line, at) => (carried.has(at) && (line.copy !== undefined)) ? [line.copy] : []));
+    const renumbered = new Map<number, number>();
+    copies.forEach((_, index) => { if(!carriedCopies.has(index)) renumbered.set(index, renumbered.size); });
+    keepWhere(copies.map((_, index) => renumbered.has(index)), copies, copySteps);
+    placed = placed.map(({ copy, ...line }, at) => carried.has(at) ? { ...line, carried: true } : { ...line, ...((copy !== undefined) ? { copy: renumbered.get(copy)! } : {}) });
+    placementCopies.forEach((copy, index) => { placementCopies[index] = (copy === undefined) ? undefined : renumbered.get(copy); });
+  }
 
   exceeded();
   truncated ||= tooManyDefinitionLines/*the main model read, its components not*/;
@@ -362,7 +405,7 @@ const readComponent = (file: string, componentLines: ReadonlyArray<Line>, files:
   }
   const { undecided } = absorbPieces(placements, others, spans, steps);
   const footprint = footprintOf(placements);
-  return { name: file.replace(/\.ldr$/, ''), file, placements, others: others.length, ...(footprint ? { footprint } : {}), nested, undecided };
+  return { name: file.replace(/\.ldr$/, ''), file, placements, others, ...(footprint ? { footprint } : {}), nested, undecided };
 };
 
 /** each named file's sections, in one pass, in order: from a `0 FILE` line up to the
@@ -427,6 +470,12 @@ const absorbPieces = (placements: Placement[], others: OtherPart[], otherSpans: 
       placements[placementIndex] = posed;
       indices.forEach(index => taken.add(index));
       return indices.map(index => otherSpans[index]);
+    }
+    if(part.hinge) {
+      const { hinged, indices } = readHinge(part, placement, piece => take(piece, owners?.placements[placementIndex]));
+      placements[placementIndex] = hinged;
+      indices.forEach(index => taken.add(index));
+      return indices.map(index => otherSpans[index]);
     } /* else -- its pieces where it puts them */
     const [, ...pieces] = placedLines(getShape(part), placement, getColor(placement.color)!.code/*by contract*/);
     return pieces.flatMap(piece => {
@@ -455,8 +504,7 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
   const [own] = placedLines(getShape(part), placement, colorCode)/*where it stands*/;
   const lines = pieceLines(part);
   const found = new Map<number/*piece*/, number/*other part*/>();
-  /** the piece's line at `own`, in `code` (the placement's when the piece inherits) */
-  const placedPiece = (piece: PartLine, code: number): PartLine => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : code });
+  const placedPiece = (piece: PartLine, code: number): PartLine => pieceAt(own, piece, code);
   const limbed = new Set(LIMBS.flatMap(limb => part.limbs![limb].pieces));
 
   // the legs color: the color the hips (a legs piece no limb moves) are found in
@@ -515,6 +563,48 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
   return { posed, indices: [...found.keys()].sort((a, b) => a - b).map(index => found.get(index)!) };
 };
 
+/** a hinge's angle read from its pieces: its top at each angle a hinge takes, then its
+ *  other pieces where that angle puts them, every look bounded as any piece's (SEE:
+ *  absorbPieces). A top found at none leaves the hinge at 0, its top written again
+ *  whole. Returns the placement at its angle and the lines taken, in piece order */
+const readHinge = (part: CatalogPart, placement: Placement, take: (piece: PartLine) => number | undefined): Readonly<{ hinged: Placement; indices: number[]; }> => {
+  const [own] = placedLines(getShape(part), placement, getColor(placement.color)!.code/*by contract*/)/*at 0*/;
+  const { piece: top } = part.hinge!/*by contract*/;
+  const found = new Map<number/*piece*/, number/*other part*/>();
+  const angle = [0, ...POSE_ANGLES.filter(each => each !== 0)].find(each => {
+    const line = take(pieceAt(own, hingePieces(part, each)[top]));
+    if(line !== undefined) found.set(top, line);
+    return line !== undefined;
+  }) ?? 0;
+  hingePieces(part, angle).forEach((piece, index) => {
+    if(index === top) return;
+    const line = take(pieceAt(own, piece));
+    if(line !== undefined) found.set(index, line);
+  });
+  return { hinged: { ...placement, ...((angle !== 0) ? { angle } : {}) }, indices: [...found.keys()].sort((a, b) => a - b).map(index => found.get(index)!) };
+};
+
+/** a piece's line where its part's own line (`own`) puts it, in `code` (the part's
+ *  color when the piece takes LDraw's inherited color) */
+const pieceAt = (own: PartLine, piece: PartLine, code: number = piece.colorCode): PartLine =>
+  ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? own.colorCode : code });
+
+/** keeps the entries of each of `arrays` (parallel arrays, changed in place) whose
+ *  index `kept` marks */
+const keepWhere = (kept: ReadonlyArray<boolean>, ...arrays: unknown[][]): void => {
+  for(const array of arrays) array.splice(0, array.length, ...array.filter((_, index) => kept[index]));
+};
+
+/** the index of the first span starting at or after `offset` in spans in text order
+ *  (their length when none does) */
+const firstFrom = (spans: ReadonlyArray<Span>, offset: number): number => {
+  let [low, high] = [0, spans.length];
+  while(low < high) {
+    const middle = (low + high) >> 1;
+    if(spans[middle].from < offset) low = middle + 1; else high = middle;
+  }
+  return low;
+};
 
 /** a bucket's lines not yet taken, in text order: a removed line is never visited
  *  again */
@@ -578,8 +668,29 @@ const numberSteps = (placements: ReadonlyArray<number>, others: ReadonlyArray<nu
 };
 
 // ................................................................................
-/** how many parts a build holds: its own and its copies', on the grid or off */
-export const partCount = (model: Model): number => model.placements.length + model.others.length;
+/** how many parts a build holds: its own, its copies' and its hinges' carries', on
+ *  the grid or off */
+export const partCount = (model: Model): number => model.placements.length + model.others.length +
+  model.placements.reduce((total, placement) => total + (placement.carry ? carriedPartCount(carriedComponent(model, placement)) : 0), 0);
+const carriedPartCount = (component: Component): number => component.placements.length + component.others.length;
+
+/** how many copies of a component a build places: on the grid, and carried by its
+ *  hinges */
+export const copiesOf = (model: Model, name: string): number =>
+  (model.copies ?? []).filter(copy => copy.component === name).length + model.placements.filter(placement => placement.carry?.component === name).length;
+
+/** the component a hinge's carry places: defined, with parts on the grid (a reader
+ *  takes no other line as a carry) */
+export const carriedComponent = (model: Model, placement: Placement): Component & Readonly<{ footprint: Footprint; }> =>
+  model.components!.find(component => component.name === placement.carry!.component) as Component & Readonly<{ footprint: Footprint; }>/*by contract*/;
+
+/** the lines a placement is drawn as: its own and its pieces' (SEE: grid.ts
+ *  placedLines), then a hinge's carry's (SEE: grid.ts carriedLines) */
+export const drawnLines = (model: Model, placement: Placement): PartLine[] => {
+  const shape = getShape(getPart(placement.part)!/*by contract*/);
+  const own = placedLines(shape, placement, getColor(placement.color)!.code/*by contract*/);
+  return placement.carry ? [...own, ...carriedLines(shape, placement, carriedComponent(model, placement))] : own;
+};
 /** whether LDraw text holds a part (a build, not comments alone or nothing) */
 export const holdsParts = (text: string): boolean => partCount(parseModel(text)) > 0;
 
@@ -632,13 +743,14 @@ const normalizeName = (name: string): string => name.trim().replace(/\\/g, '/').
 
 // == Serialize ===================================================================
 /** writes a Model whole as one main-model section (`0 FILE model.ldr` through its end
- *  marker), its steps apart by `0 STEP` lines */
+ *  marker), its steps apart by `0 STEP` lines: every part, a hinge's carry's as the
+ *  lines it draws (flat, no longer a carry) */
 export const serializeModel = (model: Model): string => {
   const steps = model.steps;
   const lines = [`0 FILE ${MAIN_FILE}`, ...model.header];
   for(let step=1; step<=(steps?.count ?? 1); step++) {
     if(step > 1) lines.push(STEP_LINE);
-    lines.push(...model.placements.filter((_, index) => (steps?.placements[index] ?? 1) === step).flatMap(placementLines));
+    lines.push(...model.placements.filter((_, index) => (steps?.placements[index] ?? 1) === step).flatMap(placement => drawnLines(model, placement).map(line => partLine(line.colorCode, line.position, line.matrix, line.ldraw))));
     lines.push(...model.others.filter((_, index) => (steps?.others[index] ?? 1) === step).map(other => partLine(other.colorCode, other.position, other.matrix, other.ldraw)));
   }
   lines.push(END_MARKER);
@@ -655,10 +767,17 @@ export const placementLines = (placement: Placement): string[] => {
 
 /** a copy's LDraw line: its component's file as its section names it, in LDraw's
  *  inherited color so each part keeps its own */
-export const copyLine = (component: Readonly<{ file: string; footprint: Footprint; }>, copy: Copy): string => {
-  const { position, matrix } = copyTransform(component.footprint, copy);
-  return ['1', 16, ...position, ...matrix].map(formatNumber).join(' ') + ` ${component.file}`;
-};
+export const copyLine = (component: Readonly<{ file: string; footprint: Footprint; }>, copy: Copy): string =>
+  referenceLine(component.file, copyTransform(component.footprint, copy));
+
+/** a hinge's carry as its line, written right after the hinge's own lines: its
+ *  component's file where the hinge's top puts the copy (SEE: grid.ts
+ *  carryTransform), in LDraw's inherited color */
+export const carryLine = (component: Readonly<{ file: string; footprint: Footprint; }>, placement: Placement): string =>
+  referenceLine(component.file, carryTransform(getShape(getPart(placement.part)!/*by contract*/), placement, component.footprint));
+
+const referenceLine = (file: string, { position, matrix }: Transform): string =>
+  ['1', 16, ...position, ...matrix].map(formatNumber).join(' ') + ` ${file}`;
 
 // == Line Edits ==================================================================
 /** the edit that adds part and copy lines to the main model: to its last step, or

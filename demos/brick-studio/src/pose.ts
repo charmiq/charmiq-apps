@@ -4,9 +4,11 @@ import type { Accessory, CatalogPart, Slot } from './catalog';
 // swing (an arm, a leg) raises the limb forward by its angle, a turn (the head) turns
 // it clockwise seen from above, as a placement's rotation turns; at 0 the limb is
 // where the part's pieces put it. A limb turns rigidly about its pivot piece's origin
-// on that piece's own axis, its other pieces (an arm's hand) carried with it. Shared
-// by the grid (the lines a pose writes and reads back) and the part measurer (the
-// cells each limb fills at each angle), so the two never disagree
+// on that piece's own axis, its other pieces (an arm's hand) carried with it. A
+// hinge's top turns the same way, in the same steps, about its knuckle's axis.
+// Shared by the grid (the lines a pose or a hinge writes and reads back) and the part
+// measurer (the cells each limb and each hinge top fills at each angle), so the two
+// never disagree
 // ********************************************************************************
 // == Constants ===================================================================
 /** a figure's limbs, each at its own angle */
@@ -104,6 +106,30 @@ export const accessoryLine = (part: CatalogPart, slot: Slot, carrier: PieceLine,
 const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 /** a quarter turn taking an item's z (the axis it lies along) to y */
 const Z_ALONG_Y = [1, 0, 0, 0, 0, 1, 0, -1, 0];
+
+// == Hinges ======================================================================
+/** where a hinge's top at `angle` moves a point of the part's frame: a turn about
+ *  the axis through its pivot (SEE: CatalogPart#hinge), as rotation rows and the
+ *  position the origin goes to (LDU) */
+export const hingeTurn = (part: CatalogPart, angle: number): Readonly<{ matrix: number[]; position: [number, number, number]; }> => {
+  const { axis, pivot } = part.hinge!/*by contract*/;
+  const matrix = (axis === 'x') ? swingOf(angle) : turnOf(angle);
+  const turned = multiplyVector(matrix, pivot);
+  return { matrix, position: [pivot[0] - turned[0], pivot[1] - turned[1], pivot[2] - turned[2]] };
+};
+
+/** every piece of a hinge with its top at `angle`, in its catalog order (at 0
+ *  exactly as the part writes them) */
+export const hingePieces = (part: CatalogPart, angle: number): PieceLine[] => {
+  const lines = pieceLines(part);
+  if(angle === 0) return lines;
+  const { piece } = part.hinge!/*by contract*/;
+  const turn = hingeTurn(part, angle);
+  const top = lines[piece];
+  const moved = multiplyVector(turn.matrix, top.position);
+  lines[piece] = { ...top, position: [moved[0] + turn.position[0], moved[1] + turn.position[1], moved[2] + turn.position[2]], matrix: multiply(turn.matrix, top.matrix) };
+  return lines;
+};
 
 // == Matrices ====================================================================
 // row-major 3x3 rotation rows (a b c / d e f / g h i), as LDraw writes them

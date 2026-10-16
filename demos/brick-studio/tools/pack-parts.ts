@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import { familyOf, familyResource, hasOpenUnderside, type CatalogPart, ACCESSORIES, CATALOG, COLORS } from '../src/catalog.ts';
 import { maxOf, minOf } from '../src/numbers.ts';
-import { accessoryLine, limbLines, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOT_LIMB, SLOTS_IN_ORDER, type PieceLine } from '../src/pose.ts';
+import { accessoryLine, hingePieces, limbLines, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOT_LIMB, SLOTS_IN_ORDER, type PieceLine } from '../src/pose.ts';
 
 // == Constants ===================================================================
 const LDU_PER_STUD = 20/*LDU*/;
@@ -216,9 +216,9 @@ const bodyOfPart = (library: string, ldraw: string): Measure => {
 };
 
 /** an assembled part's body: its own and its pieces' bodies together, and the top
- *  face its top studs stand on (-y up). Its top studs are those of the file (its own
- *  or a piece's) whose studded top face is highest: a figure's head, not a wheel
- *  set's tires, which carry none */
+ *  face its top studs stand on (-y up). Its top studs are those of the files (its own
+ *  or its pieces') whose studded top face is highest: a figure's head, not a wheel
+ *  set's tires, which carry none; both halves of a hinge plate, level with each other */
 const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Measure; studTop: number; }> => {
   const bodies = [bodyOfPart(library, part.ldraw), ...(part.pieces ?? []).map(line => {
     const walked: Walk = { faces: [], studs: [], discs: [] };
@@ -227,6 +227,7 @@ const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Me
   })];
   const studded = bodies.filter(body => body.studs.length > 0);
   const crown = (studded.length > 0) ? studded.reduce((highest, body) => (body.minY < highest.minY) ? body : highest) : bodies[0];
+  const crowns = studded.filter(body => Math.abs(body.minY - crown.minY) < EPSILON);
 
   const triangles = bodies.flatMap(body => body.triangles);
   const points = triangles.flat();
@@ -234,7 +235,7 @@ const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Me
     minX: minOf(points.map(([x]) => x)), maxX: maxOf(points.map(([x]) => x)),
     minY: minOf(points.map(([, y]) => y)), maxY: maxOf(points.map(([, y]) => y)),
     minZ: minOf(points.map(([, , z]) => z)), maxZ: maxOf(points.map(([, , z]) => z)),
-    studs: crown.studs, triangles,
+    studs: (crowns.length > 0) ? crowns.flatMap(body => body.studs) : crown.studs, triangles,
   } };
 };
 
@@ -347,8 +348,8 @@ const fillInFrame = (body: Measure, frame: StandingFrame, openUnderside: boolean
  *  lowest point lies above the standing bottom (plates): its own body and every piece
  *  no limb moves (`core`), and each limb's at every angle. A pose fills their union and
  *  stands on its lowest point, so a limb's cells never depend on another's angle */
-const measurePose = (library: string, part: CatalogPart, standing: Readonly<{ origin: readonly [number, number]; base: number; }>) => {
-  const frame: StandingFrame = { minX: -standing.origin[0] * LDU_PER_STUD, minZ: -standing.origin[1] * LDU_PER_STUD, bottomY: standing.base * LDU_PER_PLATE };
+const measurePose = (library: string, part: CatalogPart, standing: Standing) => {
+  const frame = standingFrame(standing);
   const open = hasOpenUnderside(part.kind);
   const measured = (text: string) => {
     const body = bodyOfText(library, text);
@@ -365,6 +366,32 @@ const measurePose = (library: string, part: CatalogPart, standing: Readonly<{ or
   }))]))]));
   return { core, limbs, gear };
 };
+
+/** a hinge's fill in its standing frame (SEE: fillInFrame): its base's (its own body
+ *  and every piece but its top), and its top's at every angle, and the cells of its
+ *  top's studs at 0 (what a carry stands on). A turned hinge fills their union (SEE:
+ *  grid.ts hinged) */
+const measureHinge = (library: string, part: CatalogPart, standing: Standing) => {
+  const frame = standingFrame(standing);
+  const open = hasOpenUnderside(part.kind);
+  const fill = (text: string) => fillInFrame(bodyOfText(library, text), frame, open);
+  const { piece } = part.hinge!/*by contract*/;
+  const base = fill([`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(pieceLines(part).filter((_, index) => index !== piece))].join('\n'));
+  const top = Object.fromEntries(POSE_ANGLES.map(angle => [angle, fill(lineText([hingePieces(part, angle)[piece]]))]));
+  const studs = [...new Set(bodyOfText(library, lineText([pieceLines(part)[piece]])).studs.map(([x, , z]) => {
+    const cell = [((x - frame.minX) / LDU_PER_STUD) - 0.5, ((z - frame.minZ) / LDU_PER_STUD) - 0.5];
+    if(!cell.every(isWhole)) throw new Error(`${part.ldraw}: its top's stud at ${cell} is not on a cell.`);
+    return cell.map(Math.round).join(',');
+  }))].map(key => key.split(',').map(Number) as [number, number]).sort((a, b) => (a[1] - b[1]) || (a[0] - b[0]));
+  return { base, top, studs };
+};
+
+/** what places a part in its own frame: its origin (studs from its footprint's minimum
+ *  corner) and its base (plates from its bottom up to its origin) */
+type Standing = Readonly<{ origin: readonly [number, number]; base: number; }>;
+/** the standing frame of a part where it stands */
+const standingFrame = (standing: Standing): StandingFrame =>
+  ({ minX: -standing.origin[0] * LDU_PER_STUD, minZ: -standing.origin[1] * LDU_PER_STUD, bottomY: standing.base * LDU_PER_PLATE });
 
 /** the side a curved slope descends to at rotation 0: the footprint edge whose top
  *  is lowest on average (north is the far edge in z) */
@@ -531,6 +558,8 @@ const measured = Object.fromEntries(CATALOG.filter(part => !part.frame).map(part
 const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.ldraw, { ...measured[part.frame], studs: [], fill: [], drop: paneDrop(library, part.ldraw, part.frame) }]] : [])) };
 // each posable part's fill by pose, in its standing frame
 const poses = Object.fromEntries(CATALOG.filter(part => part.limbs).map(part => [part.ldraw, measurePose(library, part, measured[part.ldraw])]));
+// each hinge's base and top, the top at every angle, in its standing frame
+const hinges = Object.fromEntries(CATALOG.filter(part => part.hinge).map(part => [part.ldraw, measureHinge(library, part, measured[part.ldraw])]));
 
 // every color the packed parts are drawn in: the catalog's, and each fixed color a
 // packed file draws a face or subfile in (a face's print, a piece's rim)
@@ -570,6 +599,12 @@ const facts = [
   `export const POSE_GEOMETRY: Readonly<Record<string, Readonly<{ core: PosedBody; limbs: Readonly<Record<string, Readonly<Record<string, PosedBody>>>>; gear: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, PosedBody>>>>>>; }>>> = ${JSON.stringify(poses)};`,
   '/** a body\'s fill in its part\'s standing frame and its lowest point (SEE: POSE_GEOMETRY) */',
   'type PosedBody = Readonly<{ fill: ReadonlyArray<readonly [number, number, number, number]>; bottom: number; }>;',
+  '',
+  '/** each hinge\'s fill in its standing frame: its base\'s (its own body and every piece',
+  ' *  but its top) and its top\'s at every angle, and the cells of its top\'s studs at 0',
+  ' *  (what a carry stands on), keyed by LDraw file stem. A turned hinge fills their',
+  ' *  union (SEE: grid.ts hinged) */',
+  `export const HINGE_GEOMETRY: Readonly<Record<string, Readonly<{ base: ReadonlyArray<readonly [number, number, number, number]>; top: Readonly<Record<string, ReadonlyArray<readonly [number, number, number, number]>>>; studs: ReadonlyArray<readonly [number, number]>; }>>> = ${JSON.stringify(hinges)};`,
   '',
   '/** the declared resource (manifest.json `bundle.resources`) holding each LDraw file',
   ' *  stem not built into the Application, lower case; every other stem is in parts/built-in.ldr */',

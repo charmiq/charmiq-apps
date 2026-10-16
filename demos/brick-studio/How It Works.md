@@ -40,10 +40,13 @@ Each part fills the cells and levels measured from its shape: a corner brick lea
 - **Creatures,** from cats and dogs to a cow, an octopus and two snakes.
 - **Vehicles:** wheel sets, mudguards, a windscreen and a steering wheel.
 - **Figures,** in a shirt of the placement's color with a printed face and legs blue or in their own color (`legColor`).
+- **Hinges and turntables:** a hinge 1x2 that tilts, a hinge plate 1x4 that swivels, and turntables 2x2 and 4x4.
 
 **Posing a figure.** A figure's head, arms and legs each turn in steps of 15 degrees (`pose`): an arm or a leg swings forward (90 points it ahead, 180 straight up), the head turns clockwise seen from above. A posed figure keeps its place: raising an arm moves only the arm's cells, which collide like any part's. It stands on its lowest point, so a seated figure (both legs at 90) sits on a seat placed at the seat's top level, held by its studs. To change a pose, remove the figure and add it posed. LDraw shows the pose as it is: each limb's line turned about its joint.
 
 **Dressing a figure.** A figure wears a hat or hair (`hat`) and holds a thing in each hand (`rightHand`, `leftHand`), each a part and a catalog color: a cap, a cowboy hat or a knight's helmet; a sword, a spear, a lance or a flashlight. `listParts` names them all. A hat turns with the head and a held thing with its arm, its handle in the hand's grip. What a figure holds collides where it reaches, but never lifts the figure: a spear held low reaches through the ground. In LDraw each is one more line after the figure's pieces.
+
+**Hinges.** A hinge's top turns in steps of 15 degrees (`angle`) and carries one component (`carry`): a chest's lid, a drawbridge, a turret. The hinge 1x2 tilts its top about an east-west axis at rotation 0, 90 raising its south side upright; the hinge plate and the turntables swivel theirs clockwise seen from above. `carry` places a copy of a component on the hinge's top as it would stand with the hinge at 0, so a build is built closed and then opened. The carry turns with the top and fills every cell its parts reach into once turned; cells it only touches stay free, and a close fit can still be refused, so give a lid room to swing. It never collides with its own hinge, and only its hinge holds it: put whatever rides on it inside its component. A removal naming any cell of the carry removes the hinge with it. A component's own hinges carry nothing, so an opening chest is built in the build itself, and a saved design whose hinges carry components opens as a build rather than becoming a component. In LDraw the carry is the component's line right after the hinge's own lines, turned with the top.
 
 Sixteen solid colors and seven see-through ones (`trans-`), which refract light at the Plastic look and up.
 
@@ -124,7 +127,7 @@ A Charm drives the Studio through these:
 | `listParts` | the grid conventions, every part's name by kind, and the colors |
 | `findParts` | the rows (size, fills, which way it descends) of the parts a query names: names, a size such as 2x4, or a word such as roof |
 | `listPlacedParts` | the parts and copies in the build with their positions, a page at a time (a line placing a component that is not a copy, by component, color and a cell it fills) |
-| `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one, figures posed (`pose`), in their legs color (`legColor`), wearing a hat (`hat`) and holding things (`rightHand`, `leftHand`); a batch that would collide is refused; answers with the build's check |
+| `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one, figures posed (`pose`), in their legs color (`legColor`), wearing a hat (`hat`) and holding things (`rightHand`, `leftHand`), hinges turned (`angle`) and carrying a component (`carry`); a batch that would collide is refused; answers with the build's check |
 | `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy, or of any line placing a component, removes that whole line); answers with the build's check and the parts left unsupported |
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
 | `defineComponentFromDesign` | defines a component from a saved design (its `uri` from `listDesigns`, or its name), named after it |
@@ -154,7 +157,8 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/styles.scss`](charmiq://./src/styles.scss) | the Studio's styles |
 | [`src/main.ts`](charmiq://./src/main.ts) | entry point: wires the modules, loads the parts, then the build |
 | [`src/catalog.ts`](charmiq://./src/catalog.ts) | the curated parts and colors |
-| [`src/grid.ts`](charmiq://./src/grid.ts) | grid placement to and from LDraw transforms |
+| [`src/grid.ts`](charmiq://./src/grid.ts) | grid placement to and from LDraw transforms, and the cells a turned carry fills |
+| [`src/pose.ts`](charmiq://./src/pose.ts) | a figure's pose and a hinge's turn, shared by the grid and the part measurer |
 | [`src/model.ts`](charmiq://./src/model.ts) | LDraw text to and from a build: a flat file, a single main-model section, or an MPD file of components |
 | [`src/check.ts`](charmiq://./src/check.ts) | collisions and what holds |
 | [`src/build.ts`](charmiq://./src/build.ts) | the current build and its edits |
