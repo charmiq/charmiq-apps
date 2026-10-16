@@ -1,0 +1,80 @@
+{
+  "id": "ai.charmiq.demos.stop-motion",
+  "name": "Stop Motion",
+  "description": "A stop-motion film bench for toy-brick scenes: the scene is code in a code editor's scene.js tab, Brick Studio stages and shoots each frame, and the film plays, scrubs on a timeline and exports as an MP4",
+  "requestedScopes": [
+    "application.advertise",
+    "application.call"
+  ],
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
+    },
+    "format": "esm",
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.2",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.2/operators",
+        "mediabunny": "https://esm.sh/mediabunny@1.61.0"
+      }
+    }
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "describeFilm",
+        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views and what it logged), or the scene's mistake and its line",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "studios":    { "type": "integer" },
+            "editors":    { "type": "integer" },
+            "stage":      { "type": "string", "description": "none, staging, staged, left (the person went back to the build) or failed" },
+            "refused":    { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
+            "stageError": { "type": "string" },
+            "title":      { "type": "string" },
+            "seconds":    { "type": "number" },
+            "fps":        { "type": "integer" },
+            "frames":     { "type": "integer" },
+            "actors":     { "type": "array", "items": { "type": "string" } },
+            "views":      { "type": "array", "items": { "type": "string" } },
+            "logs":       { "type": "array", "items": { "type": "string" } },
+            "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] }
+          },
+          "required": ["studios", "editors", "stage"]
+        }
+      },
+      {
+        "name": "seek",
+        "description": "Show one moment of the film on the studio and in the player, by time (seconds) or frame (from 0); resolves once it is on screen, so a screenshot next sees it",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "time":  { "type": "number", "description": "Seconds from the start" },
+            "frame": { "type": "integer", "description": "The frame, from 0" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "frame": { "type": "integer" }, "time": { "type": "number" } },
+          "required": ["frame", "time"]
+        }
+      },
+      {
+        "name": "play",
+        "description": "Play the film",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "object", "properties": { "playing": { "type": "boolean" } }, "required": ["playing"] }
+      },
+      {
+        "name": "pause",
+        "description": "Pause the film",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "object", "properties": { "playing": { "type": "boolean" }, "frame": { "type": "integer" } }, "required": ["playing", "frame"] }
+      }
+    ]
+  }
+}

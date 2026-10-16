@@ -1,0 +1,589 @@
+// a film bench beside Brick Studio, in its family: a warm cream bench, primary
+// brick colors on small outlined tags, Inter for titles and spaced JetBrains Mono
+// capitals for everything else. The screen is the film; under it the transport,
+// the timeline (a row per track, a diamond per key, the red playhead) and the take
+// as a strip of film
+// ********************************************************************************
+// == Variables ===================================================================
+:root {
+  --bench:        #FFFDF2;
+  --lane:         #F6F1E2;
+  --lane-line:    #E7E0CC;
+  --ink:          #1D1C19;
+  --ink-soft:     #6F6B60;
+  --outline:      #1D1C19;
+  --edge:         #1D1C19;
+  --tag-text:     #1D1C19;
+  --film:         #151412;
+  --film-cell:    #2A2724;
+  --screen:       #0E0D0C;
+  --danger:       #C8361E;
+  // the studio's brick palette (LDraw's)
+  --brick-red:    #B40000;
+  --brick-yellow: #FAC80A;
+  --brick-azure:  #68C3E2;
+  --brick-green:  #00852B;
+  --brick-blue:   #1E5AA8;
+  --brick-orange: #D67923;
+  --brick-lime:   #A5CA18;
+  --brick-tan:    #D7BA8C;
+
+  --names: 148px;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bench:     #1B1A17;
+    --lane:      #23211D;
+    --lane-line: #33302A;
+    --ink:       #F4F0E4;
+    --ink-soft:  #A39E90;
+    --outline:   #0B0B0A;
+    --edge:      #A39E90;
+    --danger:    #FF7A5C;
+
+    color-scheme: dark;
+  }
+}
+
+// == Reset =======================================================================
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { width: 100%; height: 100%; }
+
+body {
+  font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: var(--bench);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+[hidden] { display: none !important; }
+
+%mono-caps {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+// == Bench =======================================================================
+.motion {
+  height: 100%;
+  min-height: 420px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  padding: 16px 20px 14px;
+}
+
+// == Bar =========================================================================
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.links { display: flex; gap: 8px; min-width: 0; }
+
+.chip {
+  @extend %mono-caps;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  background: var(--bench);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 0 var(--outline);
+
+  &::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ink-soft);
+  }
+  &[data-state='staged']::before,
+  &[data-state='ok']::before { background: var(--brick-green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--brick-green) 25%, transparent); }
+  &[data-state='staging']::before,
+  &[data-state='waiting']::before { background: var(--brick-yellow); animation: pulse 1s ease-in-out infinite; }
+  &[data-state='left']::before { background: var(--brick-orange); }
+  &[data-state='failed']::before,
+  &[data-state='error']::before { background: var(--danger); }
+}
+
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+// == Tags ========================================================================
+.tag {
+  @extend %mono-caps;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  color: var(--tag-text);
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 var(--outline);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter 120ms ease;
+
+  &:hover { filter: brightness(1.06); }
+  &:active { transform: translateY(1px); box-shadow: 0 0 0 var(--outline); }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  &:disabled { opacity: 0.55; cursor: progress; filter: none; }
+
+  svg { width: 13px; height: 13px; }
+
+  &--ink    { background: var(--outline); color: #FFFDF2; padding: 0; width: 24px; }
+  &--azure  { background: var(--brick-azure); }
+  &--yellow { background: var(--brick-yellow); }
+  &--red    { background: var(--brick-red); color: #FFFDF2; padding: 0; width: 34px; }
+  &.is-busy { background: repeating-linear-gradient(-45deg, var(--brick-yellow) 0 8px, color-mix(in srgb, var(--brick-yellow) 70%, white) 8px 16px); background-size: 22px 22px; animation: march 0.8s linear infinite; }
+}
+
+@keyframes march { to { background-position: 22px 0; } }
+
+.play {
+  &[aria-pressed='true'] .play-icon,
+  &[aria-pressed='false'] .pause-icon { display: none; }
+}
+
+#loopButton[aria-pressed='false'] { background: var(--bench); color: var(--ink-soft); }
+
+// == Floor =======================================================================
+// the screen and, beside it, the sheet: what the film is
+.floor {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr);
+  gap: 14px;
+}
+
+// the screen takes the film's shape (16:9 until a film says otherwise) at the
+// floor's height; the sheet takes the width left
+.screen-box {
+  position: relative;
+  height: 100%;
+  max-width: calc(100vw - 40px - 220px - 14px);
+  aspect-ratio: var(--aspect, 16 / 9);
+  min-height: 0;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--screen);
+  overflow: hidden;
+  box-shadow: 0 1px 0 var(--outline);
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+// the frame being shot: a tally light in the corner
+.shooting {
+  @extend %mono-caps;
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #FFFDF2;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+
+  i { width: 7px; height: 7px; border-radius: 50%; background: #FF3B2F; box-shadow: 0 0 6px #FF3B2F; }
+}
+.screen.is-shooting ~ .shooting { opacity: 0.9; }
+
+.slate {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 14px, transparent 14px 28px),
+    var(--screen);
+}
+
+.slate-card {
+  max-width: 380px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+  color: #FFFDF2;
+}
+
+.slate-icon { width: 34px; height: 34px; color: var(--brick-yellow); }
+.slate-title { font-size: 17px; font-weight: 500; letter-spacing: -0.01em; overflow-wrap: break-word; }
+.slate-text { font-size: 13px; line-height: 1.5; color: #CFC9BA; overflow-wrap: break-word; }
+
+// .. Sheet .......................................................................
+.sheet {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--lane);
+  overflow: auto;
+}
+
+.eyebrow { @extend %mono-caps; font-size: 9px; color: var(--ink-soft); }
+.eyebrow + .film-title { margin-top: -4px; }
+
+.film-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  overflow-wrap: break-word;
+}
+
+.facts { @extend %mono-caps; font-size: 9px; color: var(--ink); line-height: 1.6; overflow-wrap: break-word; }
+
+.problem {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+
+  b { @extend %mono-caps; font-size: 9px; color: var(--danger); }
+}
+
+.cast {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+
+  li {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr);
+    column-gap: 8px;
+    font-size: 12px;
+
+    &::before {
+      content: '';
+      grid-row: span 2;
+      align-self: start;
+      margin-top: 3px;
+      width: 10px;
+      height: 10px;
+      border: 1px solid var(--outline);
+      border-radius: 1px;
+      background: var(--row);
+      box-shadow: 0 1px 0 var(--outline);
+    }
+    b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    span { color: var(--ink-soft); overflow-wrap: break-word; }
+    &.is-refused span { color: var(--danger); }
+  }
+}
+
+.logs {
+  margin-top: auto;
+  padding: 8px;
+  max-height: 96px;
+  overflow: auto;
+  border-radius: 2px;
+  background: var(--film);
+  color: #CFC9BA;
+  font: 10px/1.5 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+// == Transport ===================================================================
+.transport {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  min-width: 0;
+}
+
+.buttons, .actions { display: flex; align-items: center; gap: 6px; }
+.actions { margin-left: auto; }
+
+.timecode {
+  font: 500 20px/1 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.frame-count {
+  @extend %mono-caps;
+  font-size: 9px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+// == Timeline ====================================================================
+// a row per track: its name, then its lane of keys and bands; the playhead runs
+// down every lane at `--at` (the share of the film before it)
+.timeline {
+  --at: 0;
+  position: relative;
+  max-height: 230px;
+  overflow: auto;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--bench);
+  outline: none;
+  user-select: none;
+  touch-action: none;
+
+  &:focus-visible { box-shadow: 0 0 0 2px var(--brick-azure); }
+  &.is-empty { min-height: 72px; background: repeating-linear-gradient(90deg, var(--lane) 0 1px, transparent 1px 48px), var(--bench); }
+  &.is-scrubbing { cursor: ew-resize; }
+}
+
+.row {
+  --row: var(--ink);
+  display: grid;
+  grid-template-columns: var(--names) minmax(0, 1fr);
+  min-height: 28px;
+  border-bottom: 1px solid var(--lane-line);
+
+  &:last-child { border-bottom: none; }
+}
+
+.row--ruler {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 24px;
+  background: var(--bench);
+  border-bottom: 1px solid var(--edge);
+}
+
+.row-name {
+  @extend %mono-caps;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  min-width: 0;
+  font-size: 9px;
+  color: var(--ink);
+  border-right: 1px solid var(--lane-line);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.row-swatch {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--outline);
+  border-radius: 1px;
+  background: var(--row);
+}
+
+.row-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.ruler, .lane { position: relative; margin: 0 14px; }
+
+.ruler {
+  cursor: ew-resize;
+  background: repeating-linear-gradient(90deg, var(--lane-line) 0 1px, transparent 1px var(--frame, 8px)) bottom / 100% 5px no-repeat;
+}
+
+.ruler-tick {
+  @extend %mono-caps;
+  text-transform: none;
+  position: absolute;
+  bottom: 0;
+  height: 100%;
+  padding: 4px 0 0 4px;
+  font-size: 8px;
+  color: var(--ink-soft);
+  border-left: 1px solid var(--ink-soft);
+}
+
+.lane {
+  cursor: ew-resize;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(100% / 12 - 1px), color-mix(in srgb, var(--lane-line) 60%, transparent) calc(100% / 12 - 1px) calc(100% / 12));
+}
+
+// a function of time over a span: a path a solid band, a wobble a zigzag, a fade
+// darkening to its strength, a title its words
+.band {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  border-radius: 2px;
+  pointer-events: auto;
+
+  &--path { background: color-mix(in srgb, var(--row) 45%, transparent); border: 1px solid var(--row); }
+  &--wobble {
+    background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--row) 55%, transparent) 0 3px, transparent 3px 7px);
+    border-top: 1px dashed var(--row);
+    border-bottom: 1px dashed var(--row);
+  }
+  &--fade { background: linear-gradient(90deg, transparent, rgba(0, 0, 0, calc(var(--strength, 1) * 0.85))); border: 1px solid var(--lane-line); }
+  &--title {
+    @extend %mono-caps;
+    top: 5px;
+    bottom: 5px;
+    padding: 0 6px;
+    display: flex;
+    align-items: center;
+    font-size: 8px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    background: var(--brick-yellow);
+    color: #1D1C19;
+    border: 1px solid var(--outline);
+  }
+}
+
+// a key: a diamond on its time
+.key {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border: 1px solid var(--outline);
+  border-radius: 1px;
+  background: var(--row);
+  transform: rotate(45deg);
+  cursor: pointer;
+  box-shadow: 1px 1px 0 var(--outline);
+  transition: transform 90ms ease;
+
+  &:hover, &:focus-visible { transform: rotate(45deg) scale(1.35); outline: none; z-index: 1; }
+}
+
+// the playhead: a red rule down every lane, its knob on the ruler
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--names) + 14px + ((100% - var(--names) - 28px) * var(--at)));
+  width: 2px;
+  margin-left: -1px;
+  background: var(--brick-red);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.playhead-knob {
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 12px;
+  height: 10px;
+  background: var(--brick-red);
+  clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+}
+
+// == Strip =======================================================================
+// the take on a strip of film: sprocket holes along both edges, a frame per cell,
+// unexposed until shot
+.strip {
+  --hole: 6px;
+  display: flex;
+  gap: 6px;
+  padding: 14px 10px;
+  min-height: 70px;
+  border-radius: 3px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, var(--bench) 0 2.4px, transparent 2.6px) 0 3px / 12px var(--hole) repeat-x,
+    radial-gradient(circle at 50% 50%, var(--bench) 0 2.4px, transparent 2.6px) 0 calc(100% - 3px) / 12px var(--hole) repeat-x,
+    var(--film);
+}
+
+.cell {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 96px;
+  aspect-ratio: 16 / 9;
+  border: 1px solid #000;
+  border-radius: 1px;
+  background: var(--film-cell) center / cover no-repeat;
+  cursor: pointer;
+  transition: filter 400ms ease;
+
+  &::after {
+    content: attr(data-number);
+    position: absolute;
+    left: 3px;
+    bottom: 2px;
+    font: 500 7px/1 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: 0.1em;
+    color: rgba(255, 253, 242, 0.45);
+  }
+  &:not(.is-exposed) { filter: none; }
+  &.is-exposed { animation: develop 600ms ease-out; }
+  &.is-current { outline: 2px solid var(--brick-yellow); outline-offset: 1px; }
+  &:focus-visible { outline: 2px solid var(--brick-azure); outline-offset: 1px; }
+}
+
+@keyframes develop { from { filter: sepia(1) brightness(0.4) contrast(1.4); } to { filter: none; } }
+
+// == Narrow ======================================================================
+@media (max-width: 720px) {
+  :root { --names: 104px; }
+  .motion { padding: 12px 16px; grid-template-rows: auto auto auto auto auto; overflow: auto; }
+  body { overflow: auto; }
+  .floor { grid-template-columns: 1fr; }
+  .screen-box { height: auto; max-width: none; width: 100%; }
+  .sheet { max-height: 220px; }
+  .actions { margin-left: 0; }
+}

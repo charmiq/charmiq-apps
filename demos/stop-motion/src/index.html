@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stop Motion</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+  <div class="motion">
+    <!-- == Bar =============================================================== -->
+    <header class="bar">
+      <h1 class="title">Stop Motion</h1>
+      <div class="links" aria-label="What the film is made with">
+        <span class="chip" id="studioChip" data-state="none" title="The studio the film is shot on">No studio</span>
+        <span class="chip" id="editorChip" data-state="none" title="The scene's code">No editor</span>
+      </div>
+    </header>
+
+    <!-- == Screen ============================================================ -->
+    <main class="floor">
+      <section class="screen-box">
+        <canvas class="screen" id="screen" aria-label="The film"></canvas>
+        <span class="shooting" aria-hidden="true"><i></i>Shooting</span>
+        <div class="slate" id="slate">
+          <div class="slate-card">
+            <svg class="slate-icon" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="m160-800 80 160h120l-80-160h80l80 160h120l-80-160h80l80 160h120l-80-160h120q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800Z"/></svg>
+            <h2 class="slate-title" id="slateTitle"></h2>
+            <p class="slate-text" id="slateText"></p>
+            <button class="tag tag--yellow" id="slateAction" type="button" hidden></button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="sheet" aria-label="The film">
+        <p class="eyebrow">Now showing</p>
+        <h2 class="film-title" id="filmTitle">No film yet</h2>
+        <p class="facts" id="filmFacts"></p>
+        <div class="problem" id="problem" role="alert" hidden></div>
+        <p class="eyebrow">Cast</p>
+        <ul class="cast" id="cast"></ul>
+        <pre class="logs" id="logs" hidden></pre>
+      </aside>
+    </main>
+
+    <!-- == Transport ========================================================= -->
+    <nav class="transport" aria-label="Transport">
+      <div class="buttons">
+        <button class="tag tag--ink" id="firstButton" type="button" title="First frame" aria-label="First frame">
+          <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M220-240v-480h80v480h-80Zm520 0L380-480l360-240v480Z"/></svg>
+        </button>
+        <button class="tag tag--ink" id="backButton" type="button" title="Back a frame (←)" aria-label="Back a frame">
+          <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/></svg>
+        </button>
+        <button class="tag tag--red play" id="playButton" type="button" title="Play (Space)" aria-label="Play (Space)" aria-pressed="false">
+          <svg class="play-icon" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M320-200v-560l440 280-440 280Z"/></svg>
+          <svg class="pause-icon" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Z"/></svg>
+        </button>
+        <button class="tag tag--ink" id="nextButton" type="button" title="On a frame (→)" aria-label="On a frame">
+          <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M504-480 320-664l56-56 240 240-240 240-56-56 184-184Z"/></svg>
+        </button>
+        <button class="tag tag--ink" id="lastButton" type="button" title="Last frame" aria-label="Last frame">
+          <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M660-240v-480h80v480h-80Zm-440 0v-480l360 240-360 240Z"/></svg>
+        </button>
+      </div>
+      <span class="timecode" id="timecode" aria-live="off">00:00:00</span>
+      <span class="frame-count" id="frameCount"></span>
+      <div class="actions">
+        <button class="tag tag--ink" id="loopButton" type="button" title="Loop" aria-label="Loop" aria-pressed="true">
+          <svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M280-80 120-240l160-160 56 58-62 62h406v-160h80v240H274l62 62-56 58Zm-80-440v-240h486l-62-62 56-58 160 160-160 160-56-58 62-62H280v160h-80Z"/></svg>
+        </button>
+        <button class="tag tag--azure" id="developButton" type="button" title="Shoot every frame of the take">Shoot all</button>
+        <button class="tag tag--yellow" id="exportButton" type="button" title="Save the film as a video">Export MP4</button>
+      </div>
+    </nav>
+
+    <!-- == Timeline ========================================================== -->
+    <section class="timeline is-empty" id="timeline" aria-label="Timeline: arrows step a frame, Space plays"></section>
+
+    <!-- == Strip ============================================================= -->
+    <section class="strip" id="strip" aria-label="The take, frame by frame"></section>
+  </div>
+</body>
+</html>
