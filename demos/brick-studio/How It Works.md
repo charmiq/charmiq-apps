@@ -153,9 +153,12 @@ A Charm drives the Studio through these:
 | `setView` | turns the camera and frames the build |
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
 | `setFidelity` | sets the look, from Draft to Path traced, as the Look slider does |
-| `describeStage` | whether a scene is staged, and whether the person went back to the build since |
+| `describeStage` | whether a scene is staged, whether the person went back to the build since, and whether the studio holds a build |
 | `stage` | shows a scene in place of the build: its set (the build, or LDraw text) and its actors, each a component of the set or a dressed part |
 | `frame` | shows one moment of the staged scene: each actor where its shot puts it, through a camera; `capture` answers it as an image, for Applications |
+| `loadReel` | loads a page of a film's frames into the stage, for Applications (`stage` with a `reel` first) |
+| `show` | shows a frame of the film: at once, the newest asked; with `capture`, that exact frame as an image, its fade and title drawn |
+| `thumbnail` | a small picture of a frame of the film, the frame shown left as it is |
 | `unstage` | shows the build again |
 | `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it (a file of components kept as written) |
 | `listDesigns` | the designs in your designs folder, each by `name` and `uri` |

@@ -8,12 +8,13 @@ import { bankOf, swingOf, turnOf, LIMBS, type Limb, type Pose } from './pose';
 // studio's own. Each actor is a component of the set or a dressed catalog part, and
 // each frame puts it anywhere: any position, any turn, a figure's limbs at any angle,
 // a wheel set's wheels rolled any distance. An actor is never a placement: never on
-// the grid, never checked, never written to the build. Model-facing refusals, as the
-// build's commands word theirs
+// the grid, never checked, never written to the build. A film's frames arrive as a
+// reel, read and checked page by page as they load, so a frame shown from it is data
+// already known good. Model-facing refusals, as the build's commands word theirs
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 1;
+export const STAGE_VERSION = 2;
 
 /** the most actors a stage casts */
 export const MAX_ACTORS = 64;
@@ -29,6 +30,18 @@ export const DEFAULT_FOV = 32/*degrees*/;
 /** the largest frame captured */
 export const MAX_CAPTURE_WIDTH = 3_840/*pixels*/;
 export const MAX_CAPTURE_HEIGHT = 2_160/*pixels*/;
+/** the largest thumbnail, either side */
+export const MAX_THUMBNAIL = 480/*pixels*/;
+
+/** a reel's most frames a second, and its most frames: a film's two minutes at 60 */
+export const MAX_REEL_FPS = 60;
+export const MAX_REEL_LENGTH = 7_200/*frames*/;
+/** the most frames one loadReel call carries */
+export const MAX_REEL_PAGE = 240/*frames*/;
+/** the most views a reel's frame names */
+export const MAX_VIEWS = 8;
+/** the longest title */
+export const MAX_TITLE = 200/*characters*/;
 
 // == Types =======================================================================
 /** a point of the scene: x east and z north in studs, height up in plates from the
@@ -52,6 +65,20 @@ export type StageCamera = Readonly<{ position: Point; target: Point; fov: number
 
 /** the area the baseplate covers at least (studs): its south-west corner and size */
 export type Floor = Readonly<{ x: number; z: number; width: number; depth: number; }>;
+
+/** words over a frame: a card filling it or a caption along its foot, drawn at
+ *  `opacity` (0 to 1) */
+export type Title = Readonly<{ text: string; style: 'card' | 'caption'; opacity: number; }>;
+/** what lies over a frame's picture: its fade to black (0 none, 1 black) and its
+ *  title, standing over the black */
+export type FilmOverlay = Readonly<{ fade: number; title?: Title; }>;
+
+/** a reel's frames a second, its length in frames and the size its frames are drawn
+ *  at (pixels): the film's shape */
+export type ReelHeader = Readonly<{ fps: number; length: number; width: number; height: number; }>;
+/** a reel's frame as one screen shows it: its shots, the camera the screen sees it
+ *  through (its view's, else the main camera) and what lies over it */
+export type ReelFrame = Readonly<{ shots: ReadonlyArray<Shot>; camera: StageCamera; overlay: FilmOverlay; }>;
 
 /** an actor: the point of its own frame (LDU) a shot's position names, whether it
  *  poses or rolls, and its lines in its own frame */
@@ -204,6 +231,88 @@ export const captureOf = (input: unknown): Readonly<{ width: number; height: num
   const { width, height } = (input ?? {}) as Record<string, unknown>;
   const fits = [width, height].every(Number.isInteger) && ((width as number) >= 1) && ((height as number) >= 1) && ((width as number) <= MAX_CAPTURE_WIDTH) && ((height as number) <= MAX_CAPTURE_HEIGHT);
   if(!fits) throw new Error(`capture is { width, height } in whole pixels, at most ${MAX_CAPTURE_WIDTH} x ${MAX_CAPTURE_HEIGHT}`);
+  return { width: width as number, height: height as number };
+};
+
+// == Reel ========================================================================
+// a film's frames: a header with the stage call, then pages of frames, each read as
+// the screen showing `view` shows it
+
+/** the reel header a stage call gives, or undefined for none */
+export const reelHeaderOf = (input: unknown): ReelHeader | undefined => {
+  if(input === undefined) return undefined/*a still, not a film*/;
+  const { fps, length, width, height } = (input ?? {}) as Record<string, unknown>;
+  if(!Number.isInteger(fps) || ((fps as number) < 1) || ((fps as number) > MAX_REEL_FPS)) throw new Error(`reel.fps must be a whole number of frames a second, 1 to ${MAX_REEL_FPS}`);
+  if(!Number.isInteger(length) || ((length as number) < 1) || ((length as number) > MAX_REEL_LENGTH)) throw new Error(`reel.length must be a whole number of frames, 1 to ${MAX_REEL_LENGTH}`);
+  let size: Readonly<{ width: number; height: number; }>;
+  try { size = captureOf({ width, height })!; }
+  catch { throw new Error(`reel.width and reel.height are the film's size in whole pixels, at most ${MAX_CAPTURE_WIDTH} x ${MAX_CAPTURE_HEIGHT}`); }
+  return { fps: fps as number, length: length as number, ...size };
+};
+
+/** the view a stage call names for this screen, or undefined for the main camera */
+export const viewOf = (input: unknown): string | undefined => {
+  if(input === undefined) return undefined/*the main camera*/;
+  if(!isName(input)) throw new Error(`view names one of the frames' views (at most ${MAX_NAME} characters)`);
+  return input;
+};
+
+/** a page of frames a loadReel call gives, the first being frame `from`; a frame
+ *  that is not one refuses the page, naming it */
+export const reelPageOf = (cast: Cast, view: string | undefined, input: unknown, from: number): ReadonlyArray<ReelFrame> => {
+  if(!Array.isArray(input) || (input.length < 1) || (input.length > MAX_REEL_PAGE)) throw new Error(`frames is a page of 1 to ${MAX_REEL_PAGE} frames, each { actors, camera, views?, fade?, title? }`);
+  return input.map((item, index) => {
+    try { return reelFrameOf(cast, view, item); }
+    catch(error) { throw new Error(`frames[${index}] (frame ${from + index}): ${(error as Error).message}`); }
+  });
+};
+
+/** one frame of a reel, as the screen showing `view` shows it */
+const reelFrameOf = (cast: Cast, view: string | undefined, input: unknown): ReelFrame => {
+  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error('a frame is { actors, camera, views?, fade?, title? }');
+  const { actors, camera, views, fade, title } = input as Record<string, unknown>;
+  const shots = shotsOf(cast, actors);
+  const main = cameraOf(camera);
+  const named = viewsOf(views);
+  if((view !== undefined) && !named.has(view)) throw new Error(`views names no '${view}', the view this studio shows`);
+  const titled = titleOf(title);
+  return { shots, camera: (view !== undefined) ? named.get(view)! : main, overlay: { fade: fadeOf(fade), ...(titled ? { title: titled } : {}) } };
+};
+
+/** the views a frame names, each a camera */
+const viewsOf = (input: unknown): ReadonlyMap<string, StageCamera> => {
+  if(input === undefined) return new Map()/*the main camera alone*/;
+  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error('views names cameras: { [name]: { position, target, fov? } }');
+  const entries = Object.entries(input);
+  if(entries.length > MAX_VIEWS) throw new Error(`views names at most ${MAX_VIEWS} cameras`);
+  return new Map(entries.map(([name, value]) => {
+    if(!isName(name)) throw new Error(`views: a view's name is at most ${MAX_NAME} characters`);
+    try { return [name, cameraOf(value)]; }
+    catch(error) { throw new Error(`views.${name}: ${(error as Error).message}`); }
+  }));
+};
+
+/** a frame's fade to black, none when left out */
+const fadeOf = (input: unknown): number => {
+  if(input === undefined) return 0/*no fade*/;
+  if(!isFiniteNumber(input) || (input < 0) || (input > 1)) throw new Error('fade is from 0 (none) to 1 (black)');
+  return input;
+};
+
+/** a frame's title, or undefined for none */
+const titleOf = (input: unknown): Title | undefined => {
+  if(input === undefined) return undefined/*no title*/;
+  const { text, style, opacity = 1 } = (input ?? {}) as Record<string, unknown>;
+  if((typeof text !== 'string') || (text.trim().length < 1) || (text.length > MAX_TITLE)) throw new Error(`title.text is the words, at most ${MAX_TITLE} characters`);
+  if((style !== 'card') && (style !== 'caption')) throw new Error('title.style is card or caption');
+  if(!isFiniteNumber(opacity) || (opacity < 0) || (opacity > 1)) throw new Error('title.opacity is from 0 to 1');
+  return { text, style, opacity };
+};
+
+/** the size a thumbnail is drawn at */
+export const thumbnailOf = (width: unknown, height: unknown): Readonly<{ width: number; height: number; }> => {
+  const fits = [width, height].every(Number.isInteger) && ((width as number) >= 1) && ((height as number) >= 1) && ((width as number) <= MAX_THUMBNAIL) && ((height as number) <= MAX_THUMBNAIL);
+  if(!fits) throw new Error(`a thumbnail is width and height in whole pixels, at most ${MAX_THUMBNAIL} each`);
   return { width: width as number, height: height as number };
 };
 

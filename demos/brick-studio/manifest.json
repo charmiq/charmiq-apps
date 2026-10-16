@@ -417,12 +417,12 @@
       },
       {
         "name": "describeStage",
-        "description": "Whether a film scene is staged in place of the build (stage), and whether the person went back to the build since",
+        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, and whether the studio holds a build of its own",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
-          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" } },
-          "required": ["stage", "staged", "left"]
+          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" } },
+          "required": ["stage", "staged", "left", "build"]
         }
       },
       {
@@ -450,7 +450,14 @@
                 "required": ["name"]
               }
             },
-            "floor": { "type": "object", "description": "The area (studs) the baseplate covers at least, so actors have ground to move over: { x, z, width, depth }, its south-west corner and size" }
+            "floor": { "type": "object", "description": "The area (studs) the baseplate covers at least, so actors have ground to move over: { x, z, width, depth }, its south-west corner and size" },
+            "reel": {
+              "type": "object",
+              "description": "A film, for Applications: its frames a second (at most 60), length in frames (at most 7200) and the size its frames are drawn at. loadReel then loads its frames",
+              "properties": { "fps": { "type": "integer" }, "length": { "type": "integer" }, "width": { "type": "integer" }, "height": { "type": "integer" } },
+              "required": ["fps", "length", "width", "height"]
+            },
+            "view": { "type": "string", "description": "The view of the reel's frames this studio shows (the main camera when left out)" }
           },
           "required": ["actors"]
         },
@@ -459,10 +466,54 @@
           "properties": {
             "actors":  { "type": "array", "items": { "type": "string" } },
             "wheeled": { "type": "array", "description": "The actors with wheels, which frame's rolled turns", "items": { "type": "string" } },
-            "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } }
+            "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
+            "reel":    { "type": "integer", "description": "The reel's number, when one is staged" }
           },
           "required": ["actors"]
         }
+      },
+      {
+        "name": "loadReel",
+        "description": "Load a page of the staged reel's frames, for Applications: at most 240 frames from the count loaded so far, each { actors, camera, views?, fade?, title? } (actors and camera as frame takes them, views by name, fade from 0 to 1, title { text, style: card or caption, opacity? }). A page with a frame that is not one is refused whole",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "reel":   { "type": "integer" },
+            "from":   { "type": "integer", "description": "The frames loaded so far" },
+            "frames": { "type": "array", "items": { "type": "object" } }
+          },
+          "required": ["reel", "from", "frames"]
+        },
+        "outputSchema": { "type": "object", "properties": { "loaded": { "type": "integer" } }, "required": ["loaded"] }
+      },
+      {
+        "name": "show",
+        "description": "Show a loaded frame of the staged reel, for Applications. Without capture it answers at once and the newest frame asked is shown next; with capture it answers that exact frame as an image, its fade and title drawn",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "reel":    { "type": "integer" },
+            "frame":   { "type": "integer", "description": "From 0" },
+            "capture": { "type": "object", "properties": { "width": { "type": "integer" }, "height": { "type": "integer" } }, "required": ["width", "height"] }
+          },
+          "required": ["reel", "frame"]
+        },
+        "outputSchema": { "type": "object", "properties": { "shown": { "type": "integer" }, "image": { "description": "The frame captured (an ImageBitmap), when capture was given" } }, "required": ["shown"] }
+      },
+      {
+        "name": "thumbnail",
+        "description": "A loaded frame of the staged reel as a small picture (at most 480 a side), for Applications; the frame shown stays as it is",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "reel":   { "type": "integer" },
+            "frame":  { "type": "integer" },
+            "width":  { "type": "integer" },
+            "height": { "type": "integer" }
+          },
+          "required": ["reel", "frame", "width", "height"]
+        },
+        "outputSchema": { "type": "object", "properties": { "image": { "description": "The picture (an ImageBitmap)" } }, "required": ["image"] }
       },
       {
         "name": "frame",

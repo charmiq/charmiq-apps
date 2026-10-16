@@ -9,11 +9,12 @@ import { CATALOG, resourceFamily } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, LDU_PER_STUD, partFiles, type PartLine } from './grid';
 import { drawnLines, type Model } from './model';
-import { ldrawPoint, type Floor, type Point, type StageCamera } from './stage';
+import { ldrawPoint, type FilmOverlay, type Floor, type Point, type StageCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { Effects } from './render/effects';
 import type { Fidelity } from './render/fidelity';
+import { drawOverlay, isBlank } from './render/overlay';
 import { PathTrace } from './render/pathTrace';
 import { applyGlass, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
 import { createStudio, type Studio } from './render/studio';
@@ -24,7 +25,9 @@ import { createStudio, type Studio } from './render/studio';
 // (preserveDrawingBuffer) so the Platform's Application screenshot captures it;
 // every view change resolves only after its final frame is drawn. How real it looks
 // is the fidelity stop (SEE: render/fidelity.ts). Staged, it shows a stage's set and
-// actors through the stage's camera in place of the build (SEE: stage.ts)
+// actors through the stage's camera in place of the build (SEE: stage.ts), a film's
+// fade and title on a canvas over it; a frame of a film moves the actors' standing
+// instances rather than rebuilding them
 // ********************************************************************************
 // == Constants ===================================================================
 const LDRAW_TO_SCENE = new THREE.Matrix4().makeRotationX(Math.PI).multiply(new THREE.Matrix4().makeScale(1 / LDU_PER_STUD, 1 / LDU_PER_STUD, 1 / LDU_PER_STUD));
@@ -36,6 +39,8 @@ const UNKNOWN_COLOR = '#A0A5A9';
  *  faces in any other code are drawn in that color */
 const OWN_COLOR = 16;
 const WHITE = new THREE.Color(1, 1, 1);
+/** a frame with nothing over its picture */
+const NO_OVERLAY: FilmOverlay = { fade: 0 };
 /** the parts the pack holds (the catalog's and their pieces'), the only ones a
  *  geometry is built for */
 const PACKED = new Set(CATALOG.flatMap(partFiles));
@@ -95,10 +100,11 @@ type Theme = Readonly<{ stage: string; baseplate: string; }>;
 /** a stage shown in place of the build: its set, the area its baseplate covers at
  *  least, its actors' lines (LDraw, the scene's frame) in the frame shown, the size
  *  frames are captured at once one is, and the camera to put back when it ends */
-type Staging = { /*NOTE: Mutable: each frame replaces its actors, a capture its size*/
+type Staging = { /*NOTE: Mutable: each frame replaces its actors and overlay, a capture its size*/
   set: Model;
   floor?: Floor;
   actors: ReadonlyArray<PartLine>;
+  overlay: FilmOverlay;
   size?: Readonly<{ width: number; height: number; }>;
   readonly before: Readonly<{ position: THREE.Vector3; target: THREE.Vector3; fov: number; }>;
 };
@@ -163,9 +169,11 @@ export class Viewer {
   private frameWaiters: Array<() => void> = [];
   private settleWaiters: Array<() => void> = [];
   private frameRequested = false;
+  /** the overlay canvas waits for the next frame to show the stage's overlay */
+  private overlayStale = false;
 
   // == Lifecycle =================================================================
-  public constructor(private readonly canvas: HTMLCanvasElement, theme: Theme, private readonly readResource: (name: string) => Promise<string>/*a declared resource's text*/) {
+  public constructor(private readonly canvas: HTMLCanvasElement, private readonly overlayCanvas: HTMLCanvasElement/*a film's fade and title, over the canvas*/, theme: Theme, private readonly readResource: (name: string) => Promise<string>/*a declared resource's text*/) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true/*the Application screenshot reads the canvas*/ });
     this.renderer.setPixelRatio(screenPixelRatio());
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -423,6 +431,16 @@ export class Viewer {
     else if(this.model) this.draw(this.model, [], animate);
   }
 
+  /** the items drawn for render items: each part's prints beside it, only those
+   *  whose geometry is built, the seams of the real look applied */
+  private itemsOf(drawn: ReadonlyArray<RenderItem>): RenderItem[] {
+    const real = (this.fidelity >= 1);
+    return drawn.filter(item => this.prints.has(item.ldraw))
+      .flatMap(item => [item, ...this.prints.get(item.ldraw)!.map(code => printItem(item, code))])
+      .filter(item => this.geometries.has(item.geometry))
+      .map(item => real ? { ...item, matrix: item.matrix.clone().multiply(this.seams.get(item.ldraw)!) } : item);
+  }
+
   /** draws a build and, over it, actors' lines (LDraw, the scene's frame) */
   private draw(model: Model, actors: ReadonlyArray<PartLine>, animate: boolean): void {
     const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
@@ -430,10 +448,7 @@ export class Viewer {
     const drawn = [...renderItems(model), ...actors.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }))];
     this.buildGeometries(drawn, model, animate);
     const real = (this.fidelity >= 1);
-    const items = drawn.filter(item => this.prints.has(item.ldraw))
-      .flatMap(item => [item, ...this.prints.get(item.ldraw)!.map(code => printItem(item, code))])
-      .filter(item => this.geometries.has(item.geometry))
-      .map(item => real ? { ...item, matrix: item.matrix.clone().multiply(this.seams.get(item.ldraw)!) } : item);
+    const items = this.itemsOf(drawn);
 
     // one instanced mesh per part
     for(const child of [...this.parts.children]) { this.parts.remove(child); (child as THREE.InstancedMesh).dispose(); }
@@ -443,17 +458,16 @@ export class Viewer {
 
     // one instanced mesh per part in opaque plastic, and per part and tint in glass;
     // an actor's apart from the set's
-    const group = (item: RenderItem): string => `${item.actor ? 'actor|' : ''}${item.glass ? `${item.geometry}|${item.color}` : item.geometry}`;
     const byPart = new Map<string, RenderItem[]>();
-    for(const item of items) byPart.set(group(item), [...(byPart.get(group(item)) ?? []), item]);
-    for(const partItems of byPart.values()) {
+    for(const item of items) byPart.set(groupOf(item), [...(byPart.get(groupOf(item)) ?? []), item]);
+    for(const [groupKey, partItems] of byPart) {
       const { geometry, glass, color: tint, actor } = partItems[0];
       const mesh = new THREE.InstancedMesh(this.geometries.get(geometry)!, glass ? this.glassFor(tint) : this.material, partItems.length);
-      if(actor) mesh.userData.actor = true;
+      if(actor) mesh.userData.actor = groupKey/*how a frame finds the mesh to move*/;
       mesh.castShadow = !glass/*light passes through; the path tracer shades it physically*/;
       mesh.receiveShadow = true;
       partItems.forEach((item, index) => {
-        mesh.setColorAt(index, glass ? WHITE/*the glass material carries the tint*/ : real ? tintedColor(item.color, item.key) : new THREE.Color(item.color));
+        mesh.setColorAt(index, instanceColor(item, real));
         if(animate && !this.shownKeys.has(item.key)) {
           if(!dropStarts.has(item.drop)) dropStarts.set(item.drop, now + Math.min(dropStarts.size * DROP_STAGGER_MS, DROP_STAGGER_MAX_MS));
           this.drops.push({ mesh, index, matrix: item.matrix, start: dropStarts.get(item.drop)! });
@@ -592,36 +606,65 @@ export class Viewer {
       this.walking = STANDING;
       this.controls.enabled = false/*the stage's camera, never the mouse's*/;
     } /* else -- staged: the camera to put back stays the build's */
-    this.staging = { set, floor, actors: [], size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
+    this.staging = { set, floor, actors: [], overlay: NO_OVERLAY, size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
+    this.overlayStale = true;
     this.draw(set, [], false);
+  }
+
+  /** draws the stage at `width` by `height` pixels from now on, the canvas showing
+   *  it whole: a film's shape, or a capture's size */
+  public drawStageAt(width: number, height: number): void {
+    if(!this.staging) return/*nothing staged*/;
+    if((this.staging.size?.width === width) && (this.staging.size?.height === height)) return/*drawn at that size*/;
+    this.staging.size = { width, height };
+    this.renderer.setPixelRatio(1)/*a frame is its pixels*/;
+    this.canvas.style.objectFit = this.overlayCanvas.style.objectFit = 'contain';
+    this.setDrawingSize(width, height);
   }
 
   /** shows a frame of the stage: its actors' lines (LDraw, the scene's frame) seen
    *  through its camera */
-  public showFrame(actors: ReadonlyArray<PartLine>, camera: StageCamera): void {
+  public showFrame(actors: ReadonlyArray<PartLine>, camera: StageCamera, overlay: FilmOverlay = NO_OVERLAY): void {
     if(!this.staging) return/*nothing staged*/;
-    this.staging.actors = actors;
-    this.camera.position.copy(scenePoint(camera.position));
-    this.controls.target.copy(scenePoint(camera.target));
-    this.camera.fov = camera.fov;
-    this.camera.updateProjectionMatrix();
-    this.camera.lookAt(this.controls.target);
-    this.cameraMoved = true;
-    this.draw(this.staging.set, actors, false);
+    this.aim(scenePoint(camera.position), scenePoint(camera.target), camera.fov);
+    this.pose(actors, overlay);
+  }
+
+  /** a frame's picture `width` by `height`, its fade and title drawn over it. Its
+   *  parts are built first, unseen, and the studio settled on the frame it shows; then
+   *  the frame is drawn, copied and the frame shown put back in one task, so the screen
+   *  never shows it: the browser paints between tasks */
+  public async thumbnail(actors: ReadonlyArray<PartLine>, camera: StageCamera, overlay: FilmOverlay, width: number, height: number): Promise<ImageBitmap> {
+    const staging = this.staging;
+    if(!staging) throw new Error('nothing is staged');
+    await this.partsBuilt(actors);
+    await this.whenSettled();
+    if(this.staging !== staging) throw new Error('the stage was replaced while the thumbnail\'s parts were built');
+    const shown = { actors: staging.actors, overlay: staging.overlay, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov };
+    const picture = Object.assign(document.createElement('canvas'), { width, height });
+
+    this.aim(scenePoint(camera.position), scenePoint(camera.target), camera.fov);
+    this.pose(actors, overlay);
+    this.renderNow();
+    this.drawPicture(picture.getContext('2d')!, overlay, width, height);
+
+    this.aim(shown.position, shown.target, shown.fov);
+    this.pose(shown.actors, shown.overlay);
+    this.renderNow();
+    return createImageBitmap(picture);
   }
 
   /** the frame shown, `width` by `height` pixels, once settled. The stage draws at
    *  that size from then on, the canvas showing it whole */
   public async capture(width: number, height: number): Promise<ImageBitmap> {
     if(!this.staging) throw new Error('nothing is staged');
-    if((this.staging.size?.width !== width) || (this.staging.size?.height !== height)) {
-      this.staging.size = { width, height };
-      this.renderer.setPixelRatio(1)/*a frame is its pixels*/;
-      this.canvas.style.objectFit = 'contain';
-      this.setDrawingSize(width, height);
-    } /* else -- drawn at that size */
+    this.drawStageAt(width, height);
     await this.whenSettled();
-    return createImageBitmap(this.canvas);
+    const overlay = this.staging.overlay;
+    if(isBlank(overlay)) return createImageBitmap(this.canvas)/*the picture alone*/;
+    const picture = Object.assign(document.createElement('canvas'), { width, height });
+    this.drawPicture(picture.getContext('2d')!, overlay, width, height);
+    return createImageBitmap(picture);
   }
 
   /** shows the build again, the camera where it stood before the stage */
@@ -636,9 +679,100 @@ export class Viewer {
     this.controls.enabled = true;
     this.controls.update();
     this.renderer.setPixelRatio(screenPixelRatio());
-    this.canvas.style.objectFit = '';
+    this.canvas.style.objectFit = this.overlayCanvas.style.objectFit = '';
+    this.overlayStale = true;
     this.resize();
     this.redraw(false);
+  }
+
+  // .. Stage frames ..............................................................
+  /** turns the camera to stand at `position`, looking at `target` through `fov` */
+  private aim(position: THREE.Vector3, target: THREE.Vector3, fov: number): void {
+    this.camera.position.copy(position);
+    this.controls.target.copy(target);
+    this.camera.fov = fov;
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(this.controls.target);
+    this.cameraMoved = true;
+  }
+
+  /** shows a frame's actors and overlay: the standing actors moved where the frame
+   *  puts them, or the stage drawn again when the frame shows other parts (an actor
+   *  appearing or leaving) */
+  private pose(actors: ReadonlyArray<PartLine>, overlay: FilmOverlay): void {
+    const staging = this.staging!/*by contract: staged*/;
+    staging.overlay = overlay;
+    this.overlayStale = true;
+    if(!this.moveActors(actors)) this.draw(staging.set, actors, false);
+    staging.actors = actors;
+    this.pathTraceStale = true;
+    this.requestFrame();
+  }
+
+  /** moves each actor's standing instance to a frame's lines; false, moving none,
+   *  when the frame's parts are not the instances standing, or are not all built yet
+   *  (drawing them builds them) */
+  private moveActors(actors: ReadonlyArray<PartLine>): boolean {
+    const drawn = actors.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));
+    if(drawn.some(item => !this.prints.has(item.ldraw) || !this.geometries.has(item.geometry))) return false;
+    const byGroup = new Map<string, RenderItem[]>();
+    for(const item of this.itemsOf(drawn)) {
+      const key = groupOf(item);
+      byGroup.set(key, [...(byGroup.get(key) ?? []), item]);
+    }
+    const meshes = new Map((this.parts.children as THREE.InstancedMesh[]).filter(mesh => mesh.userData.actor).map(mesh => [mesh.userData.actor as string, mesh]));
+    if(meshes.size !== byGroup.size) return false;
+    for(const [key, items] of byGroup) if(meshes.get(key)?.count !== items.length) return false;
+
+    const real = (this.fidelity >= 1);
+    for(const [key, items] of byGroup) {
+      const mesh = meshes.get(key)!;
+      items.forEach((item, index) => { mesh.setMatrixAt(index, item.matrix); mesh.setColorAt(index, instanceColor(item, real))/*the instance may stand for another actor now*/; });
+      mesh.instanceMatrix.needsUpdate = true;
+      if(mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.computeBoundingSphere();
+    }
+    return true;
+  }
+
+  /** resolves once every part a frame's lines show is built (or cannot be), building
+   *  those none has asked for yet without showing them: a build's end redraws the
+   *  frame shown */
+  private async partsBuilt(actors: ReadonlyArray<PartLine>): Promise<void> {
+    const drawn = actors.filter(isDrawable).map(line => renderItem(line, lineKey(line)));
+    this.buildGeometries(drawn, this.staging!.set/*by contract: staged*/, false);
+    await Promise.all([...new Set(drawn.map(item => item.ldraw))].flatMap(ldraw => this.building.get(ldraw) ?? []));
+  }
+
+  /** draws what the canvas shows into a picture `width` by `height` (fit whole, the
+   *  rest black) and an overlay over it */
+  private drawPicture(context: CanvasRenderingContext2D, overlay: FilmOverlay, width: number, height: number): void {
+    const scale = Math.min(width / this.canvas.width, height / this.canvas.height);
+    const [w, h] = [this.canvas.width * scale, this.canvas.height * scale];
+    context.fillStyle = '#000';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(this.canvas, (width - w) / 2, (height - h) / 2, w, h);
+    context.save();
+    context.translate((width - w) / 2, (height - h) / 2);
+    drawOverlay(context, overlay, w, h);
+    context.restore();
+  }
+
+  /** draws the frame now, at the look's immediate render (no refining) */
+  private renderNow(): void {
+    this.effects.focus(this.focusDistance());
+    this.effects.render();
+  }
+
+  /** the overlay canvas at the stage canvas's pixels, the frame's overlay on it */
+  private paintOverlay(): void {
+    const canvas = this.overlayCanvas;
+    if((canvas.width !== this.canvas.width) || (canvas.height !== this.canvas.height)) [canvas.width, canvas.height] = [this.canvas.width, this.canvas.height];
+    const context = canvas.getContext('2d')!;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    const overlay = this.staging?.overlay;
+    if(overlay && !isBlank(overlay)) drawOverlay(context, overlay, canvas.width, canvas.height);
+    this.overlayStale = false;
   }
 
   // == Internal ==================================================================
@@ -752,6 +886,7 @@ export class Viewer {
     this.camera.updateProjectionMatrix();
     this.effects.setSize(width, height);
     this.cameraMoved = true;
+    this.overlayStale = true/*drawn at the canvas's pixels*/;
     this.requestFrame();
   }
 
@@ -802,6 +937,7 @@ export class Viewer {
 
     this.effects.focus(this.focusDistance());
     const refining = this.render(moving);
+    if(this.overlayStale) this.paintOverlay()/*with the picture it lies over*/;
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
@@ -892,6 +1028,15 @@ const renderItem = (line: PartLine, drop: string): RenderItem => ({
   ldraw: line.ldraw, geometry: line.ldraw, ...drawnColor(line.colorCode),
   key: lineKey(line), drop, matrix: toScene(line.position, line.matrix),
 });
+
+/** the color an item's instance is drawn in: glass white (its material carries the
+ *  tint), plastic its color, varied a little per part in the real looks */
+const instanceColor = (item: RenderItem, real: boolean): THREE.Color =>
+  item.glass ? WHITE : real ? tintedColor(item.color, item.key) : new THREE.Color(item.color);
+
+/** the instanced mesh an item is drawn in: one per part in opaque plastic, per part
+ *  and tint in glass, an actor's apart from the set's */
+const groupOf = (item: RenderItem): string => `${item.actor ? 'actor|' : ''}${item.glass ? `${item.geometry}|${item.color}` : item.geometry}`;
 
 /** a part's faces printed in a fixed color, drawn with it */
 const printItem = (item: RenderItem, code: number): RenderItem =>

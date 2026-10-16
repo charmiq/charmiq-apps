@@ -90,6 +90,9 @@ body {
   &:active { cursor: grabbing; }
 }
 
+// a film's fade and title, over the stage and fit as it is
+.stage-overlay { pointer-events: none; }
+
 // == Bar =========================================================================
 .bar {
   position: absolute;

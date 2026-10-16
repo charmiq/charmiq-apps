@@ -23,6 +23,7 @@ const charmiq: CharmIQAPI = window.charmiq;
 // == Elements ====================================================================
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const canvas = element<HTMLCanvasElement>('stage');
+const overlay = element<HTMLCanvasElement>('stageOverlay');
 const status = element<HTMLParagraphElement>('status');
 const statusText = element<HTMLSpanElement>('statusText');
 const hint = element<HTMLParagraphElement>('hint');
@@ -45,7 +46,7 @@ const readTheme = () => {
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 // == Instances ===================================================================
-const viewer = new Viewer(canvas, readTheme(), name => charmiq.resources.text(name)/*a part family, read the first time a build shows it*/);
+const viewer = new Viewer(canvas, overlay, readTheme(), name => charmiq.resources.text(name)/*a part family, read the first time a build shows it*/);
 const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
