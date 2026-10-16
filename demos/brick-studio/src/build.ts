@@ -433,7 +433,7 @@ const toHinging = (part: CatalogPart, angle: unknown, carry: unknown): Pick<Plac
  *  toPoseAngle), the legs a catalog color, a hat headgear and a hand's item one held
  *  (by a grip it has, when one is named), each in a catalog color; a limb at 0 and
  *  legs in their own color are left out */
-const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, worn: Readonly<Record<Slot, unknown>>): Pick<Placement, 'pose' | 'legColor' | 'hat' | 'rightHand' | 'leftHand'> | string => {
+export const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, worn: Readonly<Record<Slot, unknown>>): Pick<Placement, 'pose' | 'legColor' | 'hat' | 'rightHand' | 'leftHand'> | string => {
   const wearing = (Object.keys(worn) as Slot[]).filter(slot => worn[slot] !== undefined);
   if((pose === undefined) && (legColor === undefined) && (wearing.length < 1)) return {};
   if(!part.limbs) return `${part.key} takes no pose, legColor, hat or hand item (a figure does)`;

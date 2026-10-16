@@ -358,6 +358,47 @@ body {
   pointer-events: none;
 }
 
+// == On stage ====================================================================
+// a film shows its scene in place of the build: the strip says so and carries the
+// way back; the build's own controls rest meanwhile
+.staged {
+  @extend %mono-caps;
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 10px;
+  color: var(--ink);
+  background: var(--stage);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--outline);
+}
+
+.staged-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.staged-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staged-back { flex: none; white-space: nowrap; }
+
+.studio.is-staged {
+  .tags, .steps, .status, .hint, .credit { display: none; }
+  .stage { cursor: default; }
+}
+
 // == Credit ======================================================================
 .credit {
   @extend %mono-caps;

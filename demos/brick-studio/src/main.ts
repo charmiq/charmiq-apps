@@ -12,6 +12,7 @@ import { getColor, getColorValue } from './grid';
 import { GroundControl } from './ground-control';
 import { LookAround } from './look-around';
 import { partCount, type Model } from './model';
+import { StageControl } from './stage-control';
 import { StepControl } from './step-control';
 import { DEFAULT_VIEW, STANDING, Viewer, type Walk } from './viewer';
 
@@ -50,7 +51,9 @@ const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
 const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
 const lookAround = new LookAround({ root: element('sheet'), sides: element('sheetSides'), back: element('sheetBack') }, document.querySelector<HTMLElement>('.bar')!/*by contract*/, viewer);
-const commands = new CommandSurface(build, designs, viewer, lookAround, look);
+const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/;
+const stage = new StageControl({ root: element('staged'), note: element('stagedNote'), back: element('stagedBack') }, studio, viewer, build);
+const commands = new CommandSurface(build, designs, viewer, lookAround, stage, look);
 /** why the last ground change was refused, until the build next changes */
 let groundRefused: string | undefined;
 const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build, reason => { groundRefused = reason; showStatus(build.getModel()); });
@@ -111,7 +114,6 @@ element('openButton').addEventListener('click', () => { standStill(); designDial
 // the whole studio goes full screen, its controls with it; Esc (the browser's own)
 // or the button leaves. The button shows only where the page may go full screen
 // (an embedding frame allows it; some phones never do)
-const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/;
 const fullscreenButton = element<HTMLButtonElement>('fullscreenButton');
 fullscreenButton.hidden = !document.fullscreenEnabled;
 fullscreenButton.addEventListener('click', () => {
@@ -192,6 +194,7 @@ const start = async () => {
   void designs.init()/*every save, list and load waits for it*/;
   build.onChange((model, source) => {
     lookAround.hide()/*a picture of the build as it stood*/;
+    stage.buildChanged();
     groundRefused = undefined/*a refusal is about the build as it stood*/;
     steps.show(model, (source !== 'load') && !reducedMotion.matches)/*the build whole: any playback ends*/;
     ground.show(model);

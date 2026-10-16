@@ -704,10 +704,11 @@ const withMount = (placement: Placement, { slot, copy }: Mount): Placement => {
 };
 
 /** the lines a placement is drawn as: its own and its pieces' (SEE: grid.ts
- *  placedLines), then its mounts' (SEE: grid.ts carriedLines) */
-export const drawnLines = (model: Model, placement: Placement): PartLine[] => {
+ *  placedLines, a wheel set's wheels turned as having rolled `rolled` studs), then its
+ *  mounts' (SEE: grid.ts carriedLines) */
+export const drawnLines = (model: Model, placement: Placement, rolled = 0): PartLine[] => {
   const shape = getShape(getPart(placement.part)!/*by contract*/);
-  const own = placedLines(shape, placement, getColor(placement.color)!.code/*by contract*/);
+  const own = placedLines(shape, placement, getColor(placement.color)!.code/*by contract*/, rolled);
   return [...own, ...mountsOf(placement).flatMap(mount => carriedLines(shape, placement, mount, mountedComponent(model, mount)))];
 };
 /** whether LDraw text holds a part (a build, not comments alone or nothing) */

@@ -51,6 +51,7 @@ Drag to orbit, right-drag to pan, scroll to zoom. Press I (or the info button) f
 - **Figures that pose.** Wave, point, walk, look around, or sit down in the driver's seat: every arm, leg and head turns in 15-degree steps. Give them a hat or hair, and a sword, a lance, a pickaxe or a flashlight to hold.
 - **Things that open and turn.** Lids, drawbridges and turrets ride on hinges and turntables, open as far as you like in 15-degree steps, and still collide where they swing.
 - **Details on every side.** Headlights, grilles, signs and lamps mount on the sides of side-stud bricks, the way real builds do it.
+- **Lights, camera, action.** Stage a scene: the car in mid-air over the ramp, the driver's arms up, the camera anywhere. [Stop Motion](charmiq://../stop-motion/README.md) films it frame by frame.
 - **From sketch to photo.** The Look slider goes from a quick draft through glossy plastic to a path-traced render.
 - **Plain LDraw.** The build is ordinary LDraw text kept in this document. Edit it by hand, paste in a model from elsewhere, open it in other LDraw tools, or build it together with friends.
 
@@ -64,6 +65,7 @@ Open the chat on this document and ask:
 - *Build a small yellow duck. Check it holds together, then look at it from the front.*
 - *Clear the baseplate and build a bridge between two towers.*
 - *Build a castle gate with its drawbridge half raised, and a turret on a turntable.*
+- *Build a ramp and a little car, then show the car flying off the ramp with its driver cheering.*
 
 **For the best builds, use the Brick Builder Charm.** Its Instructions, [Brick Builder](charmiq://./Brick%20Builder.md), teach a Charm to plan a scene, build it in steps you can play back, look at it from all four sides, and fix what it sees. Make a Charm with those Instructions and pick it in the chat.
 

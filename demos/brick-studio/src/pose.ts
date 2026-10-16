@@ -117,11 +117,9 @@ const HALF_TURN_ABOUT_Z = [-1, 0, 0, 0, -1, 0, 0, 0, 1];
 /** where a hinge's top at `angle` moves a point of the part's frame: a turn about
  *  the axis through its pivot (SEE: CatalogPart#hinge), as rotation rows and the
  *  position the origin goes to (LDU) */
-export const hingeTurn = (part: CatalogPart, angle: number): Readonly<{ matrix: number[]; position: [number, number, number]; }> => {
+export const hingeTurn = (part: CatalogPart, angle: number): Turn => {
   const { axis, pivot } = part.hinge!/*by contract*/;
-  const matrix = (axis === 'x') ? swingOf(angle) : turnOf(angle);
-  const turned = multiplyVector(matrix, pivot);
-  return { matrix, position: [pivot[0] - turned[0], pivot[1] - turned[1], pivot[2] - turned[2]] };
+  return turnAbout(axis, pivot, angle);
 };
 
 /** every piece of a hinge with its top at `angle`, in its catalog order (at 0
@@ -130,11 +128,41 @@ export const hingePieces = (part: CatalogPart, angle: number): PieceLine[] => {
   const lines = pieceLines(part);
   if(angle === 0) return lines;
   const { piece } = part.hinge!/*by contract*/;
-  const turn = hingeTurn(part, angle);
-  const top = lines[piece];
-  const moved = multiplyVector(turn.matrix, top.position);
-  lines[piece] = { ...top, position: [moved[0] + turn.position[0], moved[1] + turn.position[1], moved[2] + turn.position[2]], matrix: multiply(turn.matrix, top.matrix) };
+  lines[piece] = turned(lines[piece], hingeTurn(part, angle));
   return lines;
+};
+
+// == Wheels ======================================================================
+/** every piece of a wheel set with its wheels turned by `angle`, in its catalog
+ *  order: each wheel's pieces about the east-west axis through its hub. A positive
+ *  angle turns them as rolling north turns them (SEE: CatalogPart#wheels) */
+export const wheelPieces = (part: CatalogPart, angle: number): PieceLine[] => {
+  const lines = pieceLines(part);
+  if(angle === 0) return lines;
+  for(const wheel of part.wheels!.turning/*by contract*/) {
+    const turn = turnAbout('x', lines[wheel[0]].position, angle);
+    for(const index of wheel) lines[index] = turned(lines[index], turn);
+  }
+  return lines;
+};
+
+// == Turns =======================================================================
+/** a turn of a part's frame about an axis through a point: its rotation rows and
+ *  where it moves the origin (LDU) */
+export type Turn = Readonly<{ matrix: number[]; position: [number, number, number]; }>;
+
+/** a turn by `angle` about the axis through `pivot` (LDU, in the part's frame): `x`
+ *  raising its south side, `y` clockwise seen from above */
+const turnAbout = (axis: 'x' | 'y', pivot: readonly number[], angle: number): Turn => {
+  const matrix = (axis === 'x') ? swingOf(angle) : turnOf(angle);
+  const moved = multiplyVector(matrix, pivot);
+  return { matrix, position: [pivot[0] - moved[0], pivot[1] - moved[1], pivot[2] - moved[2]] };
+};
+
+/** a piece moved by a turn */
+const turned = (piece: PieceLine, turn: Turn): PieceLine => {
+  const moved = multiplyVector(turn.matrix, piece.position);
+  return { ...piece, position: [moved[0] + turn.position[0], moved[1] + turn.position[1], moved[2] + turn.position[2]], matrix: multiply(turn.matrix, piece.matrix) };
 };
 
 // == Matrices ====================================================================
@@ -143,15 +171,21 @@ const radians = (degrees: number): number => (degrees * Math.PI) / 180;
 
 /** a swing raising a limb forward by `angle`: its local +y (hanging) toward -z (the
  *  part's front) */
-const swingOf = (angle: number): number[] => {
+export const swingOf = (angle: number): number[] => {
   const [cos, sin] = [Math.cos(radians(angle)), Math.sin(radians(angle))];
   return [1, 0, 0, 0, cos, sin, 0, -sin, cos];
 };
 
 /** a turn clockwise seen from above by `angle`, as a placement's rotation turns */
-const turnOf = (angle: number): number[] => {
+export const turnOf = (angle: number): number[] => {
   const [cos, sin] = [Math.cos(radians(angle)), Math.sin(radians(angle))];
   return [cos, 0, sin, 0, 1, 0, -sin, 0, cos];
+};
+
+/** a bank by `angle` about the north-south axis: its west side up, its east side down */
+export const bankOf = (angle: number): number[] => {
+  const [cos, sin] = [Math.cos(radians(angle)), Math.sin(radians(angle))];
+  return [cos, -sin, 0, sin, cos, 0, 0, 0, 1];
 };
 
 const multiply = (a: readonly number[], b: readonly number[]): number[] =>

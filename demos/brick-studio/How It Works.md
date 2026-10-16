@@ -90,6 +90,18 @@ The Look slider sets how real the bricks look, in five stops: Draft, Plastic, Sh
 Drag to orbit, right-drag to pan, scroll to zoom. Or walk with the keys once the Studio has focus: W and S forward and back, A and D sideways, Q and E turn, Space and C up and down, Shift to hurry. The corner button takes the Studio full screen; Esc leaves. The info button in the bottom corner, or I, shows these again.
 
 
+## The Stage
+
+The Studio can show a scene in place of the build: a still for a Charm (the car in mid-air over the ramp), or the frames of a film another Application drives, as [Stop Motion](charmiq://../stop-motion/README.md) does.
+
+- **The set** is a build: the Studio's own, or LDraw text the stage call gives. It is drawn as it stands; nothing on a stage is written to the build.
+- **Actors** are named once when the scene is staged: each a component of the set (the car) or a catalog part dressed as a placement is (a figure in a helmet). An actor is never on the grid and never checked. The answer names the actors with wheels.
+- **A frame** puts each actor anywhere. Its position is the middle of the bottom of its footprint, in studs east and north and plates up, fractions allowed; it turns about that point, rolled then pitched then yawed (yaw as a placement turns, pitch raising its south side, roll its west side). A figure's limbs take any angle, and a wheel set's wheels turn as having rolled any distance north. An actor a frame leaves out is hidden. The frame's camera stands where it says, looks at its target, focuses there and takes any lens.
+- **A capture** answers the frame as an image, once settled, for the Application asking: the stage draws at that size from then on, and the canvas shows it whole.
+
+While the scene shows, a strip says so and carries a Back to the build button; the Studio's own controls rest. The button shows the build again, with the camera where it stood, and refuses the film's next frame until it stages the scene again, so a film pauses rather than taking the view back. Edits made meanwhile reach the build, and the strip says the build changed.
+
+
 ## Building Together
 
 The `model` app-content is the truth: the Studio shows what it holds, whoever changed it.
@@ -141,6 +153,10 @@ A Charm drives the Studio through these:
 | `setView` | turns the camera and frames the build |
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
 | `setFidelity` | sets the look, from Draft to Path traced, as the Look slider does |
+| `describeStage` | whether a scene is staged, and whether the person went back to the build since |
+| `stage` | shows a scene in place of the build: its set (the build, or LDraw text) and its actors, each a component of the set or a dressed part |
+| `frame` | shows one moment of the staged scene: each actor where its shot puts it, through a camera; `capture` answers it as an image, for Applications |
+| `unstage` | shows the build again |
 | `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it (a file of components kept as written) |
 | `listDesigns` | the designs in your designs folder, each by `name` and `uri` |
 | `loadDesign` | replaces the build with a saved design (its `uri` from `listDesigns`, or its name) |
@@ -165,6 +181,8 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/model.ts`](charmiq://./src/model.ts) | LDraw text to and from a build: a flat file, a single main-model section, or an MPD file of components |
 | [`src/check.ts`](charmiq://./src/check.ts) | collisions and what holds |
 | [`src/build.ts`](charmiq://./src/build.ts) | the current build and its edits |
+| [`src/stage.ts`](charmiq://./src/stage.ts) | a stage's set, its actors and each frame's shots, as part lines |
+| [`src/stage-control.ts`](charmiq://./src/stage-control.ts) | the Studio on stage: its strip, its way back and its frames in order |
 | [`src/numbers.ts`](charmiq://./src/numbers.ts) | the least and greatest of a build-sized list of numbers |
 | [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` app-content, edited with guarded edits |
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |

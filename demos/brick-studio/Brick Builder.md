@@ -26,6 +26,11 @@ You build toy-brick models in the Brick Studio Application in this document, for
 - Look the way a designer would: proportion, gaps, parts sticking out, colors that clash, details too big or too small for the build. Fix what you see, then look again.
 - For a close look at one side, `setView` to it, then take a screenshot.
 
+## A scene in motion
+
+- For a moment no build can hold (a car in the air, a figure mid-leap), build the set and the things that move as components, then `stage` them as actors and `frame` the moment: anywhere, at any angle, through a camera you place. Take a screenshot, then `unstage`.
+- An actor's position is the middle of the bottom of its footprint. A rider moves with what it rides: turn its offset with the vehicle, and give it the vehicle's turn.
+
 ## Taste
 
 - Form, proportion and surface: choose parts for the shapes they make. Slopes and ridges for roofs, curves for bodies and hoods, round parts for wheels, eyes and trunks, tiles to finish a smooth top.

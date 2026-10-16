@@ -416,6 +416,100 @@
         }
       },
       {
+        "name": "describeStage",
+        "description": "Whether a film scene is staged in place of the build (stage), and whether the person went back to the build since",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" } },
+          "required": ["stage", "staged", "left"]
+        }
+      },
+      {
+        "name": "stage",
+        "description": "Show a scene in place of the build: a set (LDraw text; the build when left out) and actors, each a component of the set or a dressed catalog part, that frame then puts anywhere. Nothing is written to the build; unstage shows it again. Use it for a still (the car in mid-air) or a film's frames",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "set": { "type": "string", "description": "The scene's LDraw text, its components the actors' (the build when left out)" },
+            "actors": {
+              "type": "array",
+              "description": "Each actor once, by name: { name, component } or { name, part, color, legColor?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name":      { "type": "string" },
+                  "component": { "type": "string" },
+                  "part":      { "type": "string" },
+                  "color":     { "type": "string" },
+                  "legColor":  { "type": "string" },
+                  "hat":       { "type": "object" },
+                  "rightHand": { "type": "object" },
+                  "leftHand":  { "type": "object" }
+                },
+                "required": ["name"]
+              }
+            },
+            "floor": { "type": "object", "description": "The area (studs) the baseplate covers at least, so actors have ground to move over: { x, z, width, depth }, its south-west corner and size" }
+          },
+          "required": ["actors"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "actors":  { "type": "array", "items": { "type": "string" } },
+            "wheeled": { "type": "array", "description": "The actors with wheels, which frame's rolled turns", "items": { "type": "string" } },
+            "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } }
+          },
+          "required": ["actors"]
+        }
+      },
+      {
+        "name": "frame",
+        "description": "Show one moment of the staged scene: each actor where its shot puts it (any others hidden), through a camera. An actor's position is the middle of the bottom of its footprint; yaw turns it clockwise seen from above, pitch raises its south side (a figure's front), roll its west side; a figure's pose takes any angle; rolled turns its wheels as having rolled that many studs north. capture answers the frame as an image, for Applications",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "actors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name":     { "type": "string" },
+                  "position": { "type": "object", "description": "Where the middle of the bottom of its footprint stands", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
+                  "turn":     { "type": "object", "description": "Degrees", "properties": { "yaw": { "type": "number" }, "pitch": { "type": "number" }, "roll": { "type": "number" } } },
+                  "pose":     { "type": "object", "description": "A figure's limbs in degrees: head, leftArm, rightArm, leftLeg, rightLeg" },
+                  "rolled":   { "type": "number", "description": "Studs its wheels have rolled north" }
+                },
+                "required": ["name", "position"]
+              }
+            },
+            "camera": {
+              "type": "object",
+              "properties": {
+                "position": { "type": "object", "description": "Where the camera stands", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
+                "target":   { "type": "object", "description": "The point it looks at and focuses on", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
+                "fov":      { "type": "number", "minimum": 5, "maximum": 120, "description": "Vertical field of view in degrees (32 when left out)" }
+              },
+              "required": ["position", "target"]
+            },
+            "capture": { "type": "object", "description": "For Applications: the frame's size in pixels, { width, height }; the answer carries it as an image", "properties": { "width": { "type": "integer" }, "height": { "type": "integer" } } }
+          },
+          "required": ["actors", "camera"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "shown": { "type": "integer" }, "image": { "description": "The captured frame (an ImageBitmap), when capture was given" } },
+          "required": ["shown"]
+        }
+      },
+      {
+        "name": "unstage",
+        "description": "Show the build again in place of the staged scene",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": { "type": "object", "properties": { "staged": { "type": "boolean" } }, "required": ["staged"] }
+      },
+      {
         "name": "setFidelity",
         "description": "Set how real the bricks look: 0 Draft, 1 Plastic, 2 Shaded, 3 Photo, 4 Path traced (slow; falls back to 3 where unavailable). Resolves once settled, so a screenshot next shows it",
         "inputSchema": {

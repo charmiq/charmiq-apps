@@ -9,6 +9,7 @@ import { filledCells, footprintSize, getColorByCode, getPart, getShape, BASEPLAT
 import { copiesOf } from './model';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { LookAround } from './look-around';
+import type { StageControl } from './stage-control';
 import type { Viewer } from './viewer';
 
 // the Charm command surface (SEE: manifest.json `advertise`). Results are terse
@@ -56,7 +57,7 @@ const GRID = [
 
 // == Class =======================================================================
 export class CommandSurface {
-  public constructor(private readonly build: Build, private readonly designs: Designs, private readonly viewer: Viewer, private readonly lookAround: LookAround, private readonly look: FidelityControl) {}
+  public constructor(private readonly build: Build, private readonly designs: Designs, private readonly viewer: Viewer, private readonly lookAround: LookAround, private readonly stage: StageControl, private readonly look: FidelityControl) {}
 
   /** the build's check, model-facing: never sound while the document holds more
    *  than one build, since it covers only the one shown */
@@ -228,10 +229,26 @@ export class CommandSurface {
         return this.viewer.getView();
       },
       lookAround: async () => {
+        if(this.viewer.isStaged) throw new Error('The studio is showing a film scene; unstage shows the build again.');
         await this.build.whenReady();
         await this.viewer.whenSettled()/*the build as it stands*/;
         return { sides: await this.lookAround.show() };
       },
+
+      // a stage: a film's scene shown in place of the build (SEE: stage.ts)
+      describeStage: () => this.stage.describe(),
+      stage: async ({ set, actors, floor }: { set?: unknown; actors?: unknown; floor?: unknown; }) => {
+        this.lookAround.hide();
+        const staged = await this.stage.stage(set, actors, floor);
+        await this.viewer.whenSettled()/*the set drawn*/;
+        return staged;
+      },
+      frame: async ({ actors, camera, capture }: { actors?: unknown; camera?: unknown; capture?: unknown; }) => {
+        const framed = await this.stage.frame(actors, camera, capture);
+        if(!framed.image) await this.viewer.whenSettled()/*a screenshot next shows the frame*/;
+        return framed;
+      },
+      unstage: () => this.stage.unstage(),
     });
   }
 }

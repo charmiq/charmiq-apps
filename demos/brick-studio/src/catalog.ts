@@ -39,6 +39,10 @@ export type CatalogPart = Readonly<{
    *  south side) and `y` swiveling it (clockwise seen from above) (SEE: pose.ts
    *  hingePieces) */
   hinge?: Readonly<{ piece: number; axis: 'x' | 'y'; pivot: readonly [number, number, number]; }>;
+  /** a wheel set's wheels, each its pieces (indices into `pieces`, the first its hub)
+   *  turning about the east-west axis through its hub, and their tires' radius (LDU):
+   *  rolling a stud turns them by a stud over the radius (SEE: grid.ts rolledAngle) */
+  wheels?: Readonly<{ radius: number; turning: ReadonlyArray<ReadonlyArray<number>>; }>;
   /** the sides at rotation 0 whose studs carry a component each (SEE: grid.ts Side
    *  faces), each measured by tools/pack-parts.ts */
   faces?: ReadonlyArray<Face>;
@@ -288,7 +292,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'wheels-4x2',      ldraw: '4600',  kind: 'vehicle', pieces: [
     '1 71 -30 6 0 0 0 1 0 1 0 -1 0 0 4624.dat', '1 0 -30 6 0 0 0 1 0 1 0 -1 0 0 3641.dat',
     '1 71 30 6 0 0 0 -1 0 1 0 1 0 0 4624.dat',  '1 0 30 6 0 0 0 -1 0 1 0 1 0 0 3641.dat',
-  ] },
+  ], wheels: { radius: 18/*the tire's (3641)*/, turning: [[0, 1], [2, 3]] } },
   { key: 'mudguard-2x4',    ldraw: '3788',  kind: 'vehicle' },
   { key: 'windscreen-2x4x2', ldraw: '3823', kind: 'vehicle' },
   // a figure is a torso in the placement's color with its arms, yellow hands and a

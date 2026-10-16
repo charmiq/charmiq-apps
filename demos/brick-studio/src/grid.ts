@@ -1,7 +1,7 @@
 import { gearKey, ACCESSORIES, CATALOG, COLORS, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
 import { maxOf, minOf } from './numbers';
 import { COLOR_VALUES, FACE_GEOMETRY, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { hingePieces, hingeTurn, pieceLines, posedPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
+import { hingePieces, hingeTurn, pieceLines, posedPieces, wheelPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
 // level is one plate height (a brick is three). A placement names the minimum
@@ -325,13 +325,28 @@ export const gridPosition = (shape: PartShape, rotation: Rotation, position: rea
 
 /** the part lines a placement is written as: its own, then its pieces' (SEE:
  *  CatalogPart#pieces) turned and moved with it, a posable part's at its pose and its
- *  legs in their color. A piece in LDraw's inherited color takes the placement's */
-export const placedLines = (shape: PartShape, placement: Placement, colorCode: number): PartLine[] => {
-  const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position: ldrawPosition(shape, placement), matrix: rotationMatrix(placement.rotation) };
+ *  legs in their color. A piece in LDraw's inherited color takes the placement's. A
+ *  wheel set's wheels turn as having rolled `rolled` studs north (a stage's, SEE:
+ *  stage.ts); a build's never roll */
+export const placedLines = (shape: PartShape, placement: Placement, colorCode: number, rolled = 0): PartLine[] =>
+  partLines(shape, placement, colorCode, ldrawPosition(shape, placement), rolled);
+
+/** a placement's part lines (SEE: placedLines) with its own origin at `position`
+ *  (LDU): a stage's actor stands where its shot puts it, its pose any angle */
+export const partLines = (shape: PartShape, placement: Placement, colorCode: number, position: readonly [number, number, number], rolled = 0): PartLine[] => {
+  const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position, matrix: rotationMatrix(placement.rotation) };
   const legs = (placement.legColor === undefined) ? undefined : getColor(placement.legColor)?.code;
-  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement)) : shape.part.hinge ? hingePieces(shape.part, placement.angle ?? 0) : piecesOf(shape.part);
+  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement)) :
+    shape.part.hinge ? hingePieces(shape.part, placement.angle ?? 0) :
+    (shape.part.wheels && (rolled !== 0)) ? wheelPieces(shape.part, rolledAngle(shape.part, rolled)) :
+    piecesOf(shape.part);
   return [own, ...pieces.map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
 };
+
+/** the angle (degrees) a wheel set's wheels turn rolling `rolled` studs: the arc
+ *  over their tires' radius */
+export const rolledAngle = (part: CatalogPart, rolled: number): number =>
+  ((rolled * LDU_PER_STUD) / part.wheels!.radius/*by contract*/) * (180 / Math.PI);
 
 /** what a placement wears, as its pieces are written (SEE: pose.ts Worn) */
 const wornOf = (placement: Placement): Worn => Object.fromEntries(SLOTS_IN_ORDER.flatMap(slot => {

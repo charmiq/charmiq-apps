@@ -8,6 +8,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CATALOG, resourceFamily } from './catalog';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, LDU_PER_STUD, partFiles, type PartLine } from './grid';
 import { drawnLines, type Model } from './model';
+import { ldrawPoint, type Floor, type Point, type StageCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { Effects } from './render/effects';
@@ -21,7 +22,8 @@ import { createStudio, type Studio } from './render/studio';
 // C L C^-1 with C = rotateX(pi) * scale(1/20). The canvas keeps its last frame
 // (preserveDrawingBuffer) so the Platform's Application screenshot captures it;
 // every view change resolves only after its final frame is drawn. How real it looks
-// is the fidelity stop (SEE: render/fidelity.ts)
+// is the fidelity stop (SEE: render/fidelity.ts). Staged, it shows a stage's set and
+// actors through the stage's camera in place of the build (SEE: stage.ts)
 // ********************************************************************************
 // == Constants ===================================================================
 const LDRAW_TO_SCENE = new THREE.Matrix4().makeRotationX(Math.PI).multiply(new THREE.Matrix4().makeScale(1 / LDU_PER_STUD, 1 / LDU_PER_STUD, 1 / LDU_PER_STUD));
@@ -72,8 +74,9 @@ export const DEFAULT_VIEW: View = { azimuth: 30, elevation: 28 };
 export type View = Readonly<{ azimuth: number; elevation: number; }>;
 
 /** one drawn file: `geometry` names a part's own faces (its LDraw stem) or a print's
- *  (SEE: printKey); `drop` names the part whose drop it rides */
-type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; key: string; drop: string; matrix: THREE.Matrix4; }>;
+ *  (SEE: printKey); `drop` names the part whose drop it rides; an actor's moves with
+ *  each frame of a stage and never counts toward the build's bounds */
+type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; key: string; drop: string; matrix: THREE.Matrix4; actor?: true; }>;
 type Drop = { mesh: THREE.InstancedMesh; index: number; matrix: THREE.Matrix4; start: number; };
 
 /** how the keys move the camera, each -1, 0 or 1: forward (or back), right (or
@@ -83,6 +86,17 @@ export const STANDING: Walk = { forward: 0, right: 0, up: 0, turn: 0, fast: fals
 
 /** the look the stage takes from CSS (SEE: styles.scss `--stage`, `--baseplate`) */
 type Theme = Readonly<{ stage: string; baseplate: string; }>;
+
+/** a stage shown in place of the build: its set, the area its baseplate covers at
+ *  least, its actors' lines (LDraw, the scene's frame) in the frame shown, the size
+ *  frames are captured at once one is, and the camera to put back when it ends */
+type Staging = { /*NOTE: Mutable: each frame replaces its actors, a capture its size*/
+  set: Model;
+  floor?: Floor;
+  actors: ReadonlyArray<PartLine>;
+  size?: Readonly<{ width: number; height: number; }>;
+  readonly before: Readonly<{ position: THREE.Vector3; target: THREE.Vector3; fov: number; }>;
+};
 
 // == Viewer ======================================================================
 export class Viewer {
@@ -131,6 +145,7 @@ export class Viewer {
 
   private readonly parts = new THREE.Group();
   private model: Model | undefined;
+  private staging: Staging | undefined;
   private baseplate: THREE.Group | undefined;
   /** whether the build reaches past the baseplate (SEE: baseplateArea) */
   private pastBaseplate = false;
@@ -147,7 +162,7 @@ export class Viewer {
   // == Lifecycle =================================================================
   public constructor(private readonly canvas: HTMLCanvasElement, theme: Theme, private readonly readResource: (name: string) => Promise<string>/*a declared resource's text*/) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true/*the Application screenshot reads the canvas*/ });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(screenPixelRatio());
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
@@ -199,12 +214,12 @@ export class Viewer {
     this.studGeometry = toSceneGeometries(await parse(loader, single('stud.dat'))).get(OWN_COLOR);
   }
 
-  /** builds the geometry of the catalog parts a model shows that have none yet,
-   *  reading the families they are in first, then shows the build shown by then
+  /** builds the geometry of the catalog parts drawn items show that have none yet,
+   *  reading the families they are in first, then draws what is shown by then
    *  again. A part that cannot be drawn is counted (SEE: unbuiltCount)
    *  and left out; the build itself never changes. Settling waits for it */
-  private buildGeometries(model: Model, animate: boolean): void {
-    const missing = [...new Set(renderItems(model).map(item => item.ldraw))]
+  private buildGeometries(items: ReadonlyArray<RenderItem>, model: Model, animate: boolean): void {
+    const missing = [...new Set(items.map(item => item.ldraw))]
       .filter(ldraw => !this.prints.has(ldraw)/*built*/ && !this.building.has(ldraw) && !this.unbuilt.has(ldraw) && PACKED.has(ldraw));
     if(missing.length < 1) return/*every part shown has its geometry, is being built or cannot be*/;
 
@@ -231,10 +246,11 @@ export class Viewer {
     })().finally(() => {
         for(const ldraw of missing) this.building.delete(ldraw);
         if(missing.some(ldraw => this.unbuilt.has(ldraw))) this.onPartsChanged?.();
-        // the build shown now, which may have replaced this one while its parts were
-        // read (it skipped the parts being built, so it waits for these), kept in view
-        // now that they are drawn
-        if(this.model) { this.setModel(this.model, (this.model === model) && animate); this.keepInView(); }
+        // what is shown now, which may have replaced this one while its parts were
+        // read (it skipped the parts being built, so it waits for these): a build kept
+        // in view now that they are drawn
+        this.redraw((this.model === model) && animate);
+        if(!this.staging) this.keepInView();
         this.requestFrame();
       });
     for(const ldraw of missing) this.building.set(ldraw, built);
@@ -291,7 +307,7 @@ export class Viewer {
     this.unbuilt.clear();
     this.failed.clear();
     this.onPartsChanged?.();
-    if(this.model) this.setModel(this.model, false);
+    this.redraw(false);
   }
 
   // == Theme =====================================================================
@@ -338,7 +354,7 @@ export class Viewer {
 
     this.fidelity = fidelity;
     this.applyLook(fidelity);
-    if(this.model) this.setModel(this.model, false)/*seams and tint follow the stop*/;
+    this.redraw(false)/*seams and tint follow the stop*/;
     this.requestFrame();
     return fidelity;
   }
@@ -389,14 +405,27 @@ export class Viewer {
   }
 
   // == Model =====================================================================
-  /** shows a build; parts not shown before drop into place unless `animate` is false */
+  /** shows a build; parts not shown before drop into place unless `animate` is false.
+   *  Staged, the build is kept and shown when the stage ends */
   public setModel(model: Model, animate: boolean): void {
     this.model = model;
+    if(!this.staging) this.draw(model, [], animate);
+  }
+
+  /** draws again what is shown: the stage, or the build */
+  private redraw(animate: boolean): void {
+    if(this.staging) this.draw(this.staging.set, this.staging.actors, false);
+    else if(this.model) this.draw(this.model, [], animate);
+  }
+
+  /** draws a build and, over it, actors' lines (LDraw, the scene's frame) */
+  private draw(model: Model, actors: ReadonlyArray<PartLine>, animate: boolean): void {
     const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
     this.setGround(ground);
-    this.buildGeometries(model, animate);
+    const drawn = [...renderItems(model), ...actors.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }))];
+    this.buildGeometries(drawn, model, animate);
     const real = (this.fidelity >= 1);
-    const items = renderItems(model).filter(item => this.prints.has(item.ldraw))
+    const items = drawn.filter(item => this.prints.has(item.ldraw))
       .flatMap(item => [item, ...this.prints.get(item.ldraw)!.map(code => printItem(item, code))])
       .filter(item => this.geometries.has(item.geometry))
       .map(item => real ? { ...item, matrix: item.matrix.clone().multiply(this.seams.get(item.ldraw)!) } : item);
@@ -407,13 +436,15 @@ export class Viewer {
     const now = performance.now();
     const dropStarts = new Map<string/*drop*/, number>()/*a part's pieces and prints drop with it*/;
 
-    // one instanced mesh per part in opaque plastic, and per part and tint in glass
-    const group = (item: RenderItem): string => item.glass ? `${item.geometry}|${item.color}` : item.geometry;
+    // one instanced mesh per part in opaque plastic, and per part and tint in glass;
+    // an actor's apart from the set's
+    const group = (item: RenderItem): string => `${item.actor ? 'actor|' : ''}${item.glass ? `${item.geometry}|${item.color}` : item.geometry}`;
     const byPart = new Map<string, RenderItem[]>();
     for(const item of items) byPart.set(group(item), [...(byPart.get(group(item)) ?? []), item]);
     for(const partItems of byPart.values()) {
-      const { geometry, glass, color: tint } = partItems[0];
+      const { geometry, glass, color: tint, actor } = partItems[0];
       const mesh = new THREE.InstancedMesh(this.geometries.get(geometry)!, glass ? this.glassFor(tint) : this.material, partItems.length);
+      if(actor) mesh.userData.actor = true;
       mesh.castShadow = !glass/*light passes through; the path tracer shades it physically*/;
       mesh.receiveShadow = true;
       partItems.forEach((item, index) => {
@@ -441,6 +472,7 @@ export class Viewer {
   /** turns the camera to a view, framing the build when `fit` is set; resolves once
    *  the final frame is drawn */
   public setView(view: View, fit: boolean): Promise<void> {
+    if(this.staging) return Promise.resolve()/*the stage's camera stands*/;
     const offset = new THREE.Vector3().subVectors(this.camera.position, this.controls.target);
     const from = new THREE.Spherical().setFromVector3(offset);
     const to = new THREE.Spherical(from.radius, THREE.MathUtils.degToRad(90 - clamp(view.elevation, 2, 89)), THREE.MathUtils.degToRad(normalizeDegrees(view.azimuth)));
@@ -473,6 +505,7 @@ export class Viewer {
 
   /** places the camera at once (no tween), used for the first frame */
   public jumpToView(view: View): void {
+    if(this.staging) return/*the stage's camera stands*/;
     const to = new THREE.Spherical(1, THREE.MathUtils.degToRad(90 - clamp(view.elevation, 2, 89)), THREE.MathUtils.degToRad(view.azimuth));
     const framing = this.framing(new THREE.Vector3().setFromSpherical(to));
     to.radius = framing.radius;
@@ -519,6 +552,7 @@ export class Viewer {
 
   /** reframes the build at the current view when any part lies outside the frame */
   public keepInView(): void {
+    if(this.staging) return/*the stage's camera stands*/;
     const box = this.buildBounds();
     if(box.isEmpty()) return/*nothing to frame*/;
     const corners = [0, 1, 2, 3, 4, 5, 6, 7].map(i => new THREE.Vector3(
@@ -529,6 +563,7 @@ export class Viewer {
 
   /** moves the camera as the keys say until they say stand (SEE: Walk) */
   public walk(walk: Walk): void {
+    if(this.staging) return/*the stage's camera stands*/;
     const stopping = !isStanding(this.walking) && isStanding(walk);
     this.walking = walk;
     if(stopping) this.pivotOnView();
@@ -538,13 +573,78 @@ export class Viewer {
     this.requestFrame();
   }
 
+  // == Stage =====================================================================
+  /** whether a stage is shown in place of the build */
+  public get isStaged(): boolean { return !!this.staging; }
+
+  /** shows a stage's set in place of the build, its baseplate covering at least
+   *  `floor`, no actor shown yet; the camera stands until a frame moves it. Staged
+   *  again, the new set replaces the last */
+  public showStage(set: Model, floor: Floor | undefined): void {
+    if(!this.staging) {
+      this.tween?.resolve();
+      this.tween = undefined;
+      this.walking = STANDING;
+      this.controls.enabled = false/*the stage's camera, never the mouse's*/;
+    } /* else -- staged: the camera to put back stays the build's */
+    this.staging = { set, floor, actors: [], size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
+    this.draw(set, [], false);
+  }
+
+  /** shows a frame of the stage: its actors' lines (LDraw, the scene's frame) seen
+   *  through its camera */
+  public showFrame(actors: ReadonlyArray<PartLine>, camera: StageCamera): void {
+    if(!this.staging) return/*nothing staged*/;
+    this.staging.actors = actors;
+    this.camera.position.copy(scenePoint(camera.position));
+    this.controls.target.copy(scenePoint(camera.target));
+    this.camera.fov = camera.fov;
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(this.controls.target);
+    this.cameraMoved = true;
+    this.draw(this.staging.set, actors, false);
+  }
+
+  /** the frame shown, `width` by `height` pixels, once settled. The stage draws at
+   *  that size from then on, the canvas showing it whole */
+  public async capture(width: number, height: number): Promise<ImageBitmap> {
+    if(!this.staging) throw new Error('nothing is staged');
+    if((this.staging.size?.width !== width) || (this.staging.size?.height !== height)) {
+      this.staging.size = { width, height };
+      this.renderer.setPixelRatio(1)/*a frame is its pixels*/;
+      this.canvas.style.objectFit = 'contain';
+      this.setDrawingSize(width, height);
+    } /* else -- drawn at that size */
+    await this.whenSettled();
+    return createImageBitmap(this.canvas);
+  }
+
+  /** shows the build again, the camera where it stood before the stage */
+  public unstage(): void {
+    const staging = this.staging;
+    if(!staging) return/*nothing staged*/;
+    this.staging = undefined;
+    this.camera.position.copy(staging.before.position);
+    this.controls.target.copy(staging.before.target);
+    this.camera.fov = staging.before.fov;
+    this.camera.updateProjectionMatrix();
+    this.controls.enabled = true;
+    this.controls.update();
+    this.renderer.setPixelRatio(screenPixelRatio());
+    this.canvas.style.objectFit = '';
+    this.resize();
+    this.redraw(false);
+  }
+
   // == Internal ==================================================================
-  /** the build's bounds with every part in place (a dropping part counts where it lands) */
+  /** the build's bounds with every part in place (a dropping part counts where it
+   *  lands); a stage's actors never count */
   private buildBounds(): THREE.Box3 {
     const box = new THREE.Box3();
     const landing = new Map(this.drops.map(drop => [drop.mesh.uuid + ':' + drop.index, drop.matrix]));
     const matrix = new THREE.Matrix4();
     for(const mesh of this.parts.children as THREE.InstancedMesh[]) {
+      if(mesh.userData.actor) continue/*moves with each frame*/;
       for(let index=0; index<mesh.count; index++) {
         mesh.getMatrixAt(index, matrix);
         box.union(mesh.geometry.boundingBox!.clone().applyMatrix4(landing.get(mesh.uuid + ':' + index) ?? matrix));
@@ -589,6 +689,8 @@ export class Viewer {
     if(!this.studGeometry) return/*not loaded*/;
 
     const box = this.buildBounds()/*drawn parts alone: finite and within the draw reach*/;
+    const floor = this.staging?.floor;
+    if(floor) box.union(new THREE.Box3(new THREE.Vector3(floor.x, 0, -(floor.z + floor.depth)), new THREE.Vector3(floor.x + floor.width, 0, -floor.z)));
     const size = box.isEmpty() ? new THREE.Vector3() : box.getSize(new THREE.Vector3());
     const { minX, minZ, width, depth, partial } = baseplateArea(box.isEmpty() ? undefined : { minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z });
     if(partial !== this.pastBaseplate) { this.pastBaseplate = partial; this.onPartsChanged?.(); }
@@ -633,7 +735,8 @@ export class Viewer {
 
   // ------------------------------------------------------------------------------
   private resize(): void {
-    this.setDrawingSize(this.canvas.clientWidth, this.canvas.clientHeight);
+    const size = this.staging?.size;
+    this.setDrawingSize(size?.width ?? this.canvas.clientWidth, size?.height ?? this.canvas.clientHeight);
   }
 
   /** draws at a size (CSS pixels), whatever size the canvas shows at */
@@ -677,7 +780,7 @@ export class Viewer {
       this.lastWalk = now;
       moving = true;
     } /* else -- standing */
-    if(this.controls.update()) moving = true/*damping*/;
+    if(!this.staging && this.controls.update()) moving = true/*damping; a stage's camera stands where its frame puts it*/;
 
     // dropping parts
     if(this.drops.length > 0) {
@@ -865,6 +968,10 @@ const sliceVertices = (geometry: THREE.BufferGeometry, start: number, count: num
 };
 
 // == Util ========================================================================
+/** the pixels drawn per CSS pixel on this screen, at most 2 */
+const screenPixelRatio = (): number => Math.min(window.devicePixelRatio || 1, 2);
+/** a stage's point in the scene */
+const scenePoint = (point: Point): THREE.Vector3 => new THREE.Vector3(...ldrawPoint(point)).applyMatrix4(LDRAW_TO_SCENE);
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 const isStanding = (walk: Walk): boolean => (walk.forward === 0) && (walk.right === 0) && (walk.up === 0) && (walk.turn === 0);
 const lerp = (a: number, b: number, t: number): number => a + ((b - a) * t);
