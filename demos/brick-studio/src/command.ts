@@ -168,8 +168,8 @@ export class CommandSurface {
         return { ground: ground ?? 'theme' };
       },
 
-      clear: async () => {
-        const removed = await this.build.clear();
+      clear: async ({ expect }: { expect?: unknown; }) => {
+        const removed = await this.build.clear(expectedText(expect));
         await this.viewer.setView(this.viewer.getView(), true);
         return { removed };
       },
@@ -189,8 +189,8 @@ export class CommandSurface {
         if(conflict) return { conflict, builds: this.build.builds() }/*each build's text, to recover from*/;
         return textPage(this.build.getText(), pageStart(fromLine));
       },
-      setModel: async ({ ldraw }: { ldraw?: unknown; }) => {
-        await this.build.replace((typeof ldraw === 'string') ? ldraw : '');
+      setModel: async ({ ldraw, expect }: { ldraw?: unknown; expect?: unknown; }) => {
+        await this.build.replace((typeof ldraw === 'string') ? ldraw : '', expectedText(expect));
         await this.showWhole();
         return this.report();
       },
@@ -263,6 +263,9 @@ export class CommandSurface {
 }
 
 // == Util ========================================================================
+/** the build's text a write expects, when given (SEE: Build#replace) */
+const expectedText = (value: unknown): string | undefined => (typeof value === 'string') ? value : undefined;
+
 /** where a page starts: a whole number from 0, else the start */
 const pageStart = (value: unknown): number => ((typeof value === 'number') && Number.isInteger(value) && (value > 0)) ? value : 0;
 

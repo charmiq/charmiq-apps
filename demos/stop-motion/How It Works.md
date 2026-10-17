@@ -57,7 +57,7 @@ A film is saved to your Drive as one file: the main studio's build (the set), th
 
 The scene is written into the code editor's tab named `scene.js` as it stands then (a tab renamed from it is left alone; with none, a new one). With no code editor, Open and New change nothing. If the scene cannot be written once the set has changed, Stop Motion says so and the film shows unsaved changes.
 
-The bar says the film's name and whether it has changed since it was saved or opened. New and Open read the film as it stands just before changing it and ask first rather than lose unsaved changes; a set that cannot be read counts as changed. Save, Open and New run one at a time, in the order asked; a Drive that does not answer within 30 seconds is refused, so the next one runs. Stop Motion is between the two parts: it reads and writes the studio's build and the code block's scene, and nothing else.
+The bar says the film's name and whether it has changed since it was saved or opened. New and Open read the film as it stands just before changing it and ask first rather than lose unsaved changes; a set that cannot be read counts as changed, and an edit made in the studio after that read stops the change with nothing replaced. Save, Open and New run one at a time, in the order asked; a Drive that does not answer within 30 seconds is refused, so the next one runs. Stop Motion is between the two parts: it reads and writes the studio's build and the code block's scene, and nothing else.
 
 
 ## The Timeline

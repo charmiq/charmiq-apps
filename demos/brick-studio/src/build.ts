@@ -97,7 +97,7 @@ export class Build {
    *  to setModel) */
   public getText(): string {
     if(this.model.truncated) throw new BuildError(`${READ_IN_PART} Its text cannot be given back whole from here; the whole text is in the document's model app-content.`);
-    return (hasComponents(this.model) || this.model.unwritable) ? this.text : serializeModel(this.model);
+    return givenText(this.text, this.model);
   }
   public check(): CheckResult { return checkModel(this.model); }
 
@@ -272,11 +272,13 @@ export class Build {
 
   // ------------------------------------------------------------------------------
   /** removes every part, copy and component the build holds as the edit applies to
-   *  it, its header (and ground) kept */
-  public async clear(): Promise<number> {
+   *  it, its header (and ground) kept; refused whole when `expected` is given and the
+   *  build is no longer that text */
+  public async clear(expected?: string): Promise<number> {
     await this.whenReady();
     let removed = 0;
     await this.bridge.edit(text => {
+      refuseChanged(text, expected);
       const { model, layout } = editable(text);
       removed = partCount(model);
       return clearEdits(layout);
@@ -296,15 +298,19 @@ export class Build {
 
   /** replaces the build with LDraw text: a build with components as written, any
    *  other written flat (the deliberate way to turn a multi-file model edits cannot
-   *  apply to, one whose components hold others, into one they can) */
-  public async replace(text: string): Promise<Model> {
+   *  apply to, one whose components hold others, into one they can). Given
+   *  `expected`, the build is replaced only while it is that text, as an edit of it
+   *  (one landing meanwhile refuses it too), and refused whole otherwise */
+  public async replace(text: string, expected?: string): Promise<Model> {
     await this.whenReady();
     const model = parseModel(text);
     if(model.truncated) throw new BuildError(`That LDraw is too large to take: ${READ_IN_PART} Nothing was changed.`);
     if(partCount(model) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
     const asWritten = hasComponents(model) && !!model.layout;
     if(!asWritten && model.unwritable) throw new BuildError(`That LDraw cannot be taken: ${model.unwritable}. Nothing was changed.`);
-    await this.bridge.replace(asWritten ? text : serializeModel(model));
+    const written = asWritten ? text : serializeModel(model);
+    if(expected === undefined) await this.bridge.replace(written);
+    else await this.bridge.edit(current => { refuseChanged(current, expected); return [{ from: 0, to: current.length, insert: written }]; });
     return model;
   }
 
@@ -318,6 +324,16 @@ export class Build {
 }
 
 // == Validation ==================================================================
+/** a build's text as it is given back (SEE: Build#getText): a build with components,
+ *  or one no text may be written from, as written; any other flat */
+const givenText = (text: string, model: Model): string => (hasComponents(model) || model.unwritable) ? text : serializeModel(model);
+
+/** refuses a write naming the text it expects (as the build was given back) when the
+ *  build is no longer that text */
+const refuseChanged = (text: string, expected: string | undefined): void => {
+  if((expected !== undefined) && (givenText(text, parseModel(text)) !== expected)) throw new BuildError('The build changed since it was read, so nothing was changed.');
+};
+
 /** the model an app-content's text holds, when an edit can apply to it line by line */
 const editable = (text: string): Readonly<{ model: Model; layout: ModelLayout; }> => {
   const model = parseModel(text);

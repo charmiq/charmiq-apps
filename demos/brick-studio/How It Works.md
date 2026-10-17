@@ -149,7 +149,7 @@ A Charm drives the Studio through these:
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
 | `defineComponentFromDesign` | defines a component from a saved design (its `uri` from `listDesigns`, or its name), named after it |
 | `listComponents` | the components the build defines, their sizes and copies |
-| `clear` | removes every part, copy and component, and any file the build carries, keeping the ground |
+| `clear` | removes every part, copy and component, and any file the build carries, keeping the ground; with `expect`, only while the build is still that text |
 | `check` | lists collisions and floating parts, for a build changed some other way |
 | `setGround` | colors the baseplate, as the swatch does |
 | `setView` | turns the camera and frames the build |
@@ -163,7 +163,7 @@ A Charm drives the Studio through these:
 | `thumbnail` | a small picture of a frame of the film, through one of its views when named, the frame shown left as it is |
 | `storyboard` | shows up to 12 frames of the film, each captioned, on the sheet `lookAround` uses, for a screenshot to read; the film's next frame closes it |
 | `unstage` | shows the build again |
-| `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it (a file of components kept as written) |
+| `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it (a file of components kept as written); with `expect` (the text `getModel` gave), only while the build is still that text, refused whole once it has changed |
 | `listDesigns` | the designs in your designs folder, each by `name` and `uri` |
 | `loadDesign` | replaces the build with a saved design (its `uri` from `listDesigns`, or its name) |
 | `saveDesign` | saves the build as a design in your designs folder; a name already there needs `replace` |

@@ -361,8 +361,13 @@
       },
       {
         "name": "clear",
-        "description": "Remove every part, copy and component, and any file the build carries (a film's scene), keeping the ground",
-        "inputSchema": { "type": "object", "properties": {} },
+        "description": "Remove every part, copy and component, and any file the build carries (a film's scene), keeping the ground. With expect, only while the build is still that text",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "expect": { "type": "string", "description": "The build's text as last read (getModel): refused, nothing changed, once the build is no longer that text" }
+          }
+        },
         "outputSchema": {
           "type": "object",
           "properties": { "removed": { "type": "integer" } },
@@ -640,11 +645,12 @@
       },
       {
         "name": "setModel",
-        "description": "Replace the build with LDraw text (LDR or MPD). Returns its check",
+        "description": "Replace the build with LDraw text (LDR or MPD). Returns its check. With expect, only while the build is still that text",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "ldraw": { "type": "string" }
+            "ldraw":  { "type": "string" },
+            "expect": { "type": "string", "description": "The build's text as last read (getModel): refused, nothing changed, once the build is no longer that text" }
           },
           "required": ["ldraw"]
         },

@@ -239,15 +239,17 @@ export class Studios {
   /** the main studio's build, the film's set, as LDraw text */
   public async readSet(): Promise<string> { return buildText(this.main()); }
 
-  /** puts LDraw text in the main studio's build; the film is staged anew on it */
-  public async writeSet(ldraw: string): Promise<void> {
-    await this.main().setModel({ ldraw });
+  /** puts LDraw text in the main studio's build, only while it holds `expected` when
+   *  given (the studio refuses otherwise); the film is staged anew on it */
+  public async writeSet(ldraw: string, expected?: string): Promise<void> {
+    await this.main().setModel({ ldraw, ...((expected !== undefined) ? { expect: expected } : {}) });
     this.staged = undefined/*its set is gone: the next staging stages again*/;
   }
 
-  /** empties the main studio's build; the film is staged anew on it */
-  public async clearSet(): Promise<void> {
-    await this.main().clear({});
+  /** empties the main studio's build, only while it holds `expected` when given; the
+   *  film is staged anew on it */
+  public async clearSet(expected?: string): Promise<void> {
+    await this.main().clear((expected !== undefined) ? { expect: expected } : {});
     this.staged = undefined/*its set is gone: the next staging stages again*/;
   }
 
