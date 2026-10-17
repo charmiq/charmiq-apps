@@ -87,7 +87,7 @@ Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any docum
 
 ## The Look and Moving Around
 
-The Look slider sets how real the bricks look, in five stops: Draft, Plastic, Shaded, Photo and Path traced. Each stop costs more of the graphics card than the last. The stop is each viewer's own and is kept in their browser, never in the document.
+The Look slider sets how real the bricks look, in five stops: Draft, Plastic, Shaded, Photo and Path traced. Each stop costs more of the graphics card than the last. The stop is each viewer's own and is kept in their browser, never in the document. Path traced builds its scene over every stud it is given, so a baseplate past 65,536 studs (a build spread over more than about 256 studs each way) keeps its studs within 16 studs of the parts there, the rest of the plate plain; the other stops always draw every stud.
 
 Drag to orbit, right-drag to pan, scroll to zoom. Or walk with the keys once the Studio has focus: W and S forward and back, A and D sideways, Q and E turn, Space and C up and down, Shift to hurry. The corner button takes the Studio full screen; Esc leaves. The info button in the bottom corner, or I, shows these again.
 

@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { CATALOG, resourceFamily } from './catalog';
 import { requestDraw } from './frame-request';
-import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, LDU_PER_STUD, partFiles, type PartLine } from './grid';
+import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
 import { drawnLines, type Model } from './model';
 import { isPlan, ldrawPoint, type FilmOverlay, type Floor, type Point, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
@@ -797,16 +797,39 @@ export class Viewer {
    *  lands); a stage's actors never count */
   private buildBounds(): THREE.Box3 {
     const box = new THREE.Box3();
+    for(const part of this.partBoxes()) box.union(part);
+    return box;
+  }
+
+  /** each part's box, a dropping part's where it lands; no actor's (each moves with its
+   *  frame) */
+  private partBoxes(): THREE.Box3[] {
     const landing = new Map(this.drops.map(drop => [drop.mesh.uuid + ':' + drop.index, drop.matrix]));
     const matrix = new THREE.Matrix4();
-    for(const mesh of this.parts.children as THREE.InstancedMesh[]) {
-      if(mesh.userData.actor) continue/*moves with each frame*/;
-      for(let index=0; index<mesh.count; index++) {
-        mesh.getMatrixAt(index, matrix);
-        box.union(mesh.geometry.boundingBox!.clone().applyMatrix4(landing.get(mesh.uuid + ':' + index) ?? matrix));
-      }
-    }
-    return box;
+    return (this.parts.children as THREE.InstancedMesh[]).filter(mesh => !mesh.userData.actor).flatMap(mesh => Array.from({ length: mesh.count }, (_, index) => {
+      mesh.getMatrixAt(index, matrix);
+      return mesh.geometry.boundingBox!.clone().applyMatrix4(landing.get(mesh.uuid + ':' + index) ?? matrix);
+    }));
+  }
+
+  /** the baseplate the path tracer is given: the plate as drawn, or past
+   *  TRACED_STUDS_MAX its slab and the studs near the build alone (SEE:
+   *  tracedStudCells); and what to free once the tracer holds its copy */
+  private tracedBaseplate(): Readonly<{ plate: THREE.Object3D | undefined; free: () => void; }> {
+    const plate = this.baseplate;
+    if(!plate || !this.studGeometry) return { plate, free: () => undefined };
+    const area = plate.userData as Readonly<{ minX: number; minZ: number; width: number; depth: number; }>;
+    const cells = tracedStudCells(area, this.partBoxes().map(box => ({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z })));
+    if(!cells) return { plate, free: () => undefined }/*every stud*/;
+
+    const traced = new THREE.Group();
+    traced.add(plate.children.find(child => !(child as THREE.InstancedMesh).isInstancedMesh)!.clone()/*the slab*/);
+    if(cells.length < 1) return { plate: traced, free: () => undefined }/*a plain slab*/;
+    const studs = new THREE.InstancedMesh(this.studGeometry, this.baseplateMaterial, cells.length);
+    const matrix = new THREE.Matrix4();
+    cells.forEach(([x, z], index) => studs.setMatrixAt(index, matrix.makeTranslation(x + 0.5, 0, z + 0.5)));
+    traced.add(studs);
+    return { plate: traced, free: () => studs.dispose() };
   }
 
   /** the target and distance that frame the build (or the baseplate when empty)
@@ -1013,11 +1036,13 @@ export class Viewer {
     if(!this.pathTrace || (this.drops.length > 0)) { this.effects.render(); return false; }
 
     if(this.pathTraceStale) {
+      const { plate, free } = this.tracedBaseplate();
       this.pathTrace.setScene({
-        parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: this.baseplate,
+        parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: plate,
         environment: this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.stage,
         key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity },
       }, this.focusDistance());
+      free()/*the tracer merged its own copy*/;
       this.pathTraceStale = false;
     } else if(moving || this.cameraMoved) {
       this.pathTrace.moved(this.focusDistance());

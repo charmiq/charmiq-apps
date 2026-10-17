@@ -658,6 +658,41 @@ export const baseplateArea = (bounds: Readonly<{ minX: number; maxX: number; min
   return { minX: x.from, minZ: z.from, width: x.size, depth: z.size, partial: x.partial || z.partial };
 };
 
+// ................................................................................
+/** the most studs the path tracer is given: it builds its scene over every one (a
+ *  plate of 808 studs a side, 652,864 of them, never settles), so a larger plate keeps
+ *  its studs near the build alone, a plain slab beyond */
+export const TRACED_STUDS_MAX = 65_536;
+/** how near each part a traced plate keeps its studs, nearest last: the reach shrinks
+ *  until they fit */
+const TRACED_REACHES = [16, 8, 4, 2, 1, 0]/*studs*/;
+
+/** the cells of a plate (each `[x, z]`, its corner, in the studs the plate is given
+ *  in) the path tracer studs: every one (undefined) while the plate holds at most
+ *  TRACED_STUDS_MAX, else those within the widest reach of a part's box (`parts`, in
+ *  the same studs) that fits, and none once even the parts' own cells do not */
+export const tracedStudCells = (plate: Readonly<{ minX: number; minZ: number; width: number; depth: number; }>, parts: ReadonlyArray<Readonly<{ minX: number; maxX: number; minZ: number; maxZ: number; }>>): ReadonlyArray<readonly [number, number]> | undefined => {
+  if((plate.width * plate.depth) <= TRACED_STUDS_MAX) return undefined/*every stud*/;
+  for(const reach of TRACED_REACHES) {
+    const studded = new Uint8Array(plate.width * plate.depth);
+    let count = 0;
+    for(const part of parts) {
+      const [fromX, toX] = [Math.max(0, Math.floor(part.minX - reach - plate.minX)), Math.min(plate.width, Math.ceil(part.maxX + reach - plate.minX))];
+      const [fromZ, toZ] = [Math.max(0, Math.floor(part.minZ - reach - plate.minZ)), Math.min(plate.depth, Math.ceil(part.maxZ + reach - plate.minZ))];
+      for(let z=fromZ; z<toZ; z++) for(let x=fromX; x<toX; x++) {
+        const at = (z * plate.width) + x;
+        if(!studded[at]) { studded[at] = 1; count++; }
+      }
+      if(count > TRACED_STUDS_MAX) break/*this reach does not fit*/;
+    }
+    if(count > TRACED_STUDS_MAX) continue;
+    const cells: Array<readonly [number, number]> = [];
+    for(let z=0; z<plate.depth; z++) for(let x=0; x<plate.width; x++) if(studded[(z * plate.width) + x]) cells.push([plate.minX + x, plate.minZ + z]);
+    return cells;
+  }
+  return []/*a plain slab*/;
+};
+
 // == Util ========================================================================
 const isWhole = (value: number): boolean => Math.abs(value - Math.round(value)) < 1e-3;
 /** the whole number a value read as whole is (SEE: isWhole), never -0: a coordinate
