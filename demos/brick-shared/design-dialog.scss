@@ -127,6 +127,37 @@ $designs-list-least: 112px;
   &:hover, &:focus-visible { background: var(--field); outline: none; }
 }
 
+// a design picked: its row says it is opening, a band of the family's bricks running
+// along its foot, while the rest of the list waits
+.designs-row.is-working {
+  position: relative;
+  background: var(--field);
+  cursor: progress;
+
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--brick-red) 0 33.3%, var(--brick-yellow) 33.3% 66.6%, var(--brick-azure) 66.6%) 0 0 / 60px 100% repeat-x;
+    animation: designs-working 0.9s linear infinite;
+  }
+}
+.designs-row:disabled:not(.is-working) { opacity: 0.45; cursor: default; }
+
+.designs-working {
+  @extend %mono-caps;
+  flex: none;
+  margin-left: auto;
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+@keyframes designs-working { to { background-position: 60px 0; } }
+@media (prefers-reduced-motion: reduce) { .designs-row.is-working::after { animation: none; } }
+
 .designs-name {
   min-width: 0;
   white-space: nowrap;

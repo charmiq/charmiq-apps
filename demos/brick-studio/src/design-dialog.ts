@@ -33,10 +33,10 @@ export class DesignDialog extends FamilyDialog {
   // .. Load ......................................................................
   /** a design picked: an empty build opens it; a build with parts takes it as a
    *  component beside them, or is replaced by it */
-  protected choose(design: Design): void {
+  protected choose(design: Design): Promise<void> | void {
     const name = displayName(design);
     const parts = this.host.partCount();
-    if(parts < 1) { void this.load(design, paragraph('designs-message')); return; }
+    if(parts < 1) return this.load(design, paragraph('designs-message'))/*the row says it opens until it has*/;
 
     const message = paragraph('designs-message');
     const replace = button('Replace', 'designs-secondary', 'button', () => void this.load(design, message, add, replace));

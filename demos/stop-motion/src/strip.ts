@@ -41,6 +41,13 @@ export class Strip {
   /** the frames whose cells still want a picture, in the strip's order */
   public get wanting(): ReadonlyArray<number> { return this.cells.map(cell => cell.index).filter(index => !this.pictures.has(index)); }
 
+  /** the developed picture of the frame nearest `index`, when one is */
+  public nearest(index: number): Picture | undefined {
+    let best: number | undefined;
+    for(const frame of this.pictures.keys()) if((best === undefined) || (Math.abs(frame - index) < Math.abs(best - index))) best = frame;
+    return (best === undefined) ? undefined : this.pictures.get(best);
+  }
+
   /** develops the cells a frame's picture stands for */
   public develop(film: Film, index: number, picture: Picture): void {
     if(film !== this.film) return/*a picture of another film*/;

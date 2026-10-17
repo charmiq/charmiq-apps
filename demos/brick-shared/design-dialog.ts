@@ -185,7 +185,8 @@ export abstract class DesignDialog {
         })));
       }
       for(const design of withDesigns ? page.designs : []) {
-        list.append(element('li', {}, row('design', displayName(design), () => void this.choose(design))));
+        const node = row('design', displayName(design), () => void this.picked(node, design));
+        list.append(element('li', {}, node));
       }
       // a folder lists a page at a time; a search shows its first page, and more is
       // a cue to refine it
@@ -221,6 +222,28 @@ export abstract class DesignDialog {
   /** runs an action with its controls disabled, showing a refusal in the message;
    *  `handled` takes a refusal the caller answers itself. The controls come back on
    *  a refusal only: an action that lands moves the dialog on or closes it */
+  /** a design picked in the open list: its row says it is opening, and every control
+   *  waits, until the app's choice settles (a choice that shows a form of its own
+   *  replaces them) */
+  private async picked(node: HTMLButtonElement, design: Design): Promise<void> {
+    const controls = [...this.dialog.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')].filter(control => !control.disabled);
+    const working = element('span', { className: 'designs-working' }, 'Opening…');
+    for(const control of controls) control.disabled = true;
+    node.classList.add('is-working');
+    node.setAttribute('aria-busy', 'true');
+    node.append(working);
+    try {
+      await this.choose(design);
+    } finally {
+      if(node.isConnected) {
+        for(const control of controls) control.disabled = false;
+        node.classList.remove('is-working');
+        node.removeAttribute('aria-busy');
+        working.remove();
+      } /* else -- the dialog shows something else now */
+    }
+  }
+
   protected async run(message: HTMLElement, busy: ReadonlyArray<HTMLButtonElement | HTMLInputElement>, action: () => Promise<void>, handled?: (error: unknown) => boolean): Promise<void> {
     for(const control of busy) control.disabled = true;
     message.className = 'designs-message';

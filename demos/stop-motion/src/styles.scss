@@ -89,6 +89,7 @@
 
   &:empty { display: none; }
   &[data-state='changed'] { color: var(--brick-orange); }
+  &[data-state='working'] { color: var(--ink); animation: pulse 1s ease-in-out infinite; }
   &[data-state='error'] { color: var(--danger); white-space: normal; }
 }
 
@@ -175,7 +176,28 @@
   line-height: 1.4;
 
   .tag { flex: none; margin-left: auto; }
+
+  // work underway: a band of bricks along its foot, running while its share is
+  // unknown, filled to the share done once it is
+  &.is-working {
+    position: relative;
+    overflow: hidden;
+    &::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      height: 3px;
+      width: 100%;
+      background: linear-gradient(90deg, var(--brick-red) 0 33.3%, var(--brick-yellow) 33.3% 66.6%, var(--brick-azure) 66.6%) 0 0 / 60px 100% repeat-x;
+      animation: march-bricks 0.9s linear infinite;
+    }
+    &.is-measured::after { width: calc(var(--done) * 100%); animation: none; transition: width 200ms ease; }
+  }
 }
+
+@keyframes march-bricks { to { background-position: 60px 0; } }
+@media (prefers-reduced-motion: reduce) { .status.is-working::after { animation: none; } }
 
 .status-icon { flex: none; width: 16px; height: 16px; color: var(--ink); }
 .status-text { min-width: 0; overflow-wrap: break-word; }
@@ -311,13 +333,12 @@
 }
 
 // == Timeline ====================================================================
-// a row per track: its name, then its lane of keys and bands; the playhead runs
-// down every lane at `--at` (the share of the film before it)
+// a row per track: its name, then its lane of keys and bands. The rows scroll inside
+// the timeline; the playhead and the line following the pointer stand over them on the
+// ruler's lanes (placed by the script), whatever the scroll. The lanes, edge to edge,
+// take the scrub cursor; the names keep the arrow and a key the hand
 .timeline {
-  --at: 0;
   position: relative;
-  max-height: 230px;
-  overflow: auto;
   border: 1px solid var(--edge);
   border-radius: 3px;
   background: var(--bench);
@@ -327,14 +348,29 @@
 
   &:focus-visible { box-shadow: 0 0 0 2px var(--brick-azure); }
   &.is-empty { min-height: 72px; background: repeating-linear-gradient(90deg, var(--lane) 0 1px, transparent 1px 48px), var(--bench); }
-  &.is-scrubbing { cursor: ew-resize; }
+  &.is-scrubbing, &.is-scrubbing * { cursor: ew-resize; }
+}
+
+.timeline-scroll {
+  max-height: 230px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  cursor: ew-resize;
+}
+
+.timeline-over {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .row {
   --row: var(--ink);
+  --tiers: 1;
   display: grid;
   grid-template-columns: var(--names) minmax(0, 1fr);
-  min-height: 28px;
+  min-height: calc(28px + ((var(--tiers) - 1) * 14px));
   border-bottom: 1px solid var(--lane-line);
 
   &:last-child { border-bottom: none; }
@@ -361,6 +397,7 @@
   border-right: 1px solid var(--lane-line);
   white-space: nowrap;
   overflow: hidden;
+  cursor: default;
 }
 
 .row-swatch {
@@ -381,10 +418,11 @@
   letter-spacing: 0.08em;
 }
 
+// a lane and the ruler stand 14px in from their cell's ends, a mark placed on them by
+// its share of the film
 .ruler, .lane { position: relative; margin: 0 14px; }
 
 .ruler {
-  cursor: ew-resize;
   background: repeating-linear-gradient(90deg, var(--lane-line) 0 1px, transparent 1px var(--frame, 8px)) bottom / 100% 5px no-repeat;
 }
 
@@ -401,19 +439,26 @@
 }
 
 .lane {
-  cursor: ew-resize;
   background: repeating-linear-gradient(90deg, transparent 0 calc(100% / 12 - 1px), color-mix(in srgb, var(--lane-line) 60%, transparent) calc(100% / 12 - 1px) calc(100% / 12));
+
+  // the lane's hit area reaches the cell's edges and the row's border, so the cursor
+  // never falls back to the arrow between them
+  &::before { content: ''; position: absolute; inset: 0 -14px -1px; }
 }
 
 // a function of time over a span: a path a solid band, a wobble a zigzag, a fade
-// darkening to its strength, a title its words; a camera's shots alternate shades
-// from cut to cut, each starting at its cut's rule, its name along its top
+// darkening to its strength, a title its words; a camera's shots and a scene's sets
+// alternate shades from cut to cut, each starting at its cut's rule, its name along
+// its top. Bands sharing a span stack in tiers, each a share of the lane's height
 .band {
+  --tier: 0;
   position: absolute;
-  top: 8px;
-  bottom: 8px;
+  top: calc(var(--pad, 8px) + (var(--tier) * ((100% - (2 * var(--pad, 8px))) / var(--tiers))));
+  height: calc(((100% - (2 * var(--pad, 8px))) / var(--tiers)) - ((var(--tiers) - 1) * 2px / var(--tiers)));
   border-radius: 2px;
-  pointer-events: auto;
+  transition: box-shadow 120ms ease, filter 120ms ease;
+
+  &.is-lit { box-shadow: 0 0 0 2px var(--row), 0 0 10px color-mix(in srgb, var(--row) 55%, transparent); filter: saturate(1.25); z-index: 1; }
 
   &--path { background: color-mix(in srgb, var(--row) 45%, transparent); border: 1px solid var(--row); }
   &--wobble {
@@ -424,8 +469,7 @@
   &--fade { background: linear-gradient(90deg, transparent, rgba(0, 0, 0, calc(var(--strength, 1) * 0.85))); border: 1px solid var(--lane-line); }
   &--title {
     @extend %mono-caps;
-    top: 5px;
-    bottom: 5px;
+    --pad: 5px;
     padding: 0 6px;
     display: flex;
     align-items: center;
@@ -437,10 +481,9 @@
     color: #1D1C19;
     border: 1px solid var(--outline);
   }
-  &--shot {
+  &--shot, &--set {
     @extend %mono-caps;
-    top: 2px;
-    bottom: 2px;
+    --pad: 2px;
     padding: 1px 4px 0;
     font-size: 7px;
     line-height: 1;
@@ -452,7 +495,7 @@
     border-left: 2px solid var(--row);
     border-radius: 0;
   }
-  &--shot-alternate { background: color-mix(in srgb, var(--row) 26%, transparent); }
+  &--shot-alternate, &--set-alternate { background: color-mix(in srgb, var(--row) 26%, transparent); }
 }
 
 // two actors close: a red notch on each one's row where they come closest
@@ -466,24 +509,29 @@
   background: var(--brick-red);
   box-shadow: 0 0 0 1px var(--outline);
   z-index: 1;
+
+  &.is-lit { box-shadow: 0 0 0 1px var(--outline), 0 0 0 3px color-mix(in srgb, var(--brick-red) 45%, transparent); }
 }
 
-// a key: a diamond on its time
+// a key: a diamond on its time; keys too near to tell apart one diamond, its count on
+// it; a key lit grows and glows in its row's color
 .key {
   position: absolute;
   top: 50%;
   width: 10px;
   height: 10px;
   margin: -5px 0 0 -5px;
+  padding: 0;
   border: 1px solid var(--outline);
   border-radius: 1px;
   background: var(--row);
   transform: rotate(45deg);
   cursor: pointer;
   box-shadow: 1px 1px 0 var(--outline);
-  transition: transform 90ms ease;
+  transition: transform 110ms cubic-bezier(0.3, 1.6, 0.5, 1), box-shadow 110ms ease;
+  z-index: 2;
 
-  &:hover, &:focus-visible { transform: rotate(45deg) scale(1.35); outline: none; z-index: 1; }
+  &:hover, &:focus-visible, &.is-lit { transform: rotate(45deg) scale(1.4); outline: none; z-index: 3; box-shadow: 1px 1px 0 var(--outline), 0 0 0 3px color-mix(in srgb, var(--row) 35%, transparent); }
 
   // a face key: a round face in the head's yellow, worn at once
   &--face {
@@ -491,22 +539,40 @@
     background: var(--brick-yellow);
     transform: none;
 
-    &:hover, &:focus-visible { transform: scale(1.35); }
+    &:hover, &:focus-visible, &.is-lit { transform: scale(1.4); }
   }
 }
 
-// the playhead: a red rule down every lane, its knob on the ruler
-.playhead {
+.key-count {
+  @extend %mono-caps;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg) translate(7px, -9px);
+  padding: 0 3px;
+  font-size: 7px;
+  line-height: 11px;
+  letter-spacing: 0.04em;
+  color: var(--bench);
+  background: var(--ink)/*the theme's ink: dark on cream, light on the dark bench*/;
+  border-radius: 6px;
+  pointer-events: none;
+  .key--face & { transform: translate(-50%, -50%) translate(7px, -9px); }
+}
+
+// the playhead: a red rule over every lane, its knob on the ruler; the line following
+// the pointer, dashed, its time in a bubble on the ruler
+.playhead, .hover-line {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(var(--names) + 14px + ((100% - var(--names) - 28px) * var(--at)));
+  left: 0;
   width: 2px;
   margin-left: -1px;
-  background: var(--brick-red);
-  pointer-events: none;
-  z-index: 3;
+  will-change: transform;
 }
+
+.playhead { background: var(--brick-red); z-index: 3; }
 
 .playhead-knob {
   position: absolute;
@@ -516,6 +582,201 @@
   height: 10px;
   background: var(--brick-red);
   clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+}
+
+.hover-line {
+  width: 1px;
+  margin-left: 0;
+  background: repeating-linear-gradient(180deg, var(--ink) 0 3px, transparent 3px 6px);
+  opacity: 0.55;
+  z-index: 2;
+}
+
+.hover-time {
+  @extend %mono-caps;
+  position: absolute;
+  top: 3px;
+  left: 0;
+  transform: translateX(-50%);
+  padding: 2px 5px;
+  font-size: 8px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--bench);
+  background: var(--ink);
+  border-radius: 2px;
+}
+
+// == Peek ========================================================================
+// the timeline's hover card, compact enough to fit beside a row in a short frame: the
+// frame's picture framed as a cell of film, sprocket holes along both edges
+// (developing while it is the picture track's nearest), and beside it the moment, the
+// row's track there and the marks under the pointer
+.peek {
+  --pointer: 50%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(96px, 168px) minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  width: 440px;
+  max-width: calc(100vw - 16px);
+  padding: 7px;
+  border: 1px solid var(--outline);
+  border-radius: 4px;
+  background: var(--bench);
+  color: var(--ink);
+  box-shadow: 0 2px 0 var(--outline), 0 12px 28px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  transform-origin: var(--pointer) 100%;
+
+  &[hidden] { display: none; }
+  &.is-below { transform-origin: var(--pointer) 0; }
+  &.is-in { animation: peek-in 140ms cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+
+  // the notch pointing at the moment, on the side toward the row
+  &::after {
+    content: '';
+    position: absolute;
+    left: var(--pointer);
+    bottom: -6px;
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    background: var(--bench);
+    border-right: 1px solid var(--outline);
+    border-bottom: 1px solid var(--outline);
+    transform: rotate(45deg);
+  }
+  &.is-below::after { bottom: auto; top: -6px; transform: rotate(225deg); }
+}
+
+@keyframes peek-in { from { opacity: 0; scale: 0.96; } }
+@media (prefers-reduced-motion: reduce) { .peek.is-in { animation: none; } }
+
+.peek-picture {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 2px;
+  background: var(--film-cell) center / cover no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+
+  // the sprocket holes: a strip of film along the top and the foot
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle, rgba(255, 253, 242, 0.85) 0 1.4px, transparent 1.8px) 2px 2px / 11px 8px repeat-x,
+      radial-gradient(circle, rgba(255, 253, 242, 0.85) 0 1.4px, transparent 1.8px) 2px calc(100% - 2px) / 11px 8px repeat-x,
+      linear-gradient(var(--film) 0 8px, transparent 8px calc(100% - 8px), var(--film) calc(100% - 8px));
+    opacity: 0.9;
+  }
+  // the frame number, in the film's edge print
+  &::after {
+    content: attr(data-frame);
+    @extend %mono-caps;
+    position: absolute;
+    right: 4px;
+    bottom: 10px;
+    padding: 1px 3px;
+    font-size: 7px;
+    color: #FFFDF2;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 2px;
+  }
+  &:not(.is-exposed) { background-image: repeating-linear-gradient(135deg, var(--film-cell) 0 8px, color-mix(in srgb, var(--film-cell) 80%, #FFFDF2) 8px 16px); }
+  &.is-exposed { animation: develop 260ms ease-out; }
+  &.is-developing { filter: sepia(0.6) blur(1px) brightness(0.85); }
+}
+
+.peek-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+
+.peek-when { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }
+.peek-time { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+.peek-frame { @extend %mono-caps; font-size: 8px; color: var(--ink-soft); }
+
+.peek-context { display: flex; flex-wrap: wrap; gap: 4px; }
+.peek-tag {
+  @extend %mono-caps;
+  max-width: 100%;
+  padding: 2px 5px;
+  font-size: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  &--shot { background: color-mix(in srgb, var(--brick-azure) 35%, var(--bench)); }
+  &--set { background: color-mix(in srgb, var(--brick-red) 22%, var(--bench)); }
+  &--shot::before { content: 'shot · '; color: var(--ink-soft); }
+  &--set::before { content: 'set · '; color: var(--ink-soft); }
+}
+
+.peek-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 6px;
+  padding-top: 5px;
+  border-top: 1px solid var(--lane-line);
+}
+.peek-swatch { flex: none; width: 9px; height: 9px; border: 1px solid var(--outline); border-radius: 1px; background: var(--row); }
+.peek-row-name { @extend %mono-caps; font-size: 9px; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+.peek-chips { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
+.peek-chip {
+  max-width: 100%;
+  padding: 0 4px;
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  background: var(--lane);
+  border-radius: 2px;
+}
+
+.peek-marks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 5px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--lane-line);
+}
+
+.peek-mark {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 2px;
+  font-size: 11px;
+  .peek-chips { grid-column: 2; }
+}
+.peek-mark-title { font-weight: 600; overflow-wrap: anywhere; }
+.peek-more { @extend %mono-caps; padding-left: 18px; font-size: 8px; color: var(--ink-soft); }
+
+// each mark's shape, in its row's color, as the lane draws it
+.peek-shape {
+  justify-self: center;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--outline);
+  background: var(--row);
+  &--key { transform: rotate(45deg); border-radius: 1px; }
+  &--face { border-radius: 50%; background: var(--brick-yellow); }
+  &--path { width: 12px; height: 6px; border-radius: 2px; background: color-mix(in srgb, var(--row) 45%, transparent); }
+  &--wobble { width: 12px; height: 6px; background: repeating-linear-gradient(45deg, var(--row) 0 2px, transparent 2px 4px); }
+  &--fade { width: 12px; height: 6px; background: linear-gradient(90deg, transparent, #000); }
+  &--title { width: 12px; height: 7px; background: var(--brick-yellow); }
+  &--shot, &--set { width: 4px; height: 12px; border: none; background: var(--row); }
+  &--close { width: 4px; height: 12px; border-radius: 2px; background: var(--brick-red); }
 }
 
 // == Strip =======================================================================

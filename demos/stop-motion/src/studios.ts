@@ -65,7 +65,7 @@ type Found = Readonly<{ commands: StudioCommands; build: boolean; }>;
 export type StageState = Readonly<
   | { kind: 'none'; }
   | { kind: 'ambiguous'; builds: number; }
-  | { kind: 'staging'; }
+  | { kind: 'staging'; loaded?: number; frames?: number; }/*the reel's frames loaded on every screen, once it loads*/
   | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes: Readonly<Record<string, Size>>; }
   | { kind: 'left'; }
   | { kind: 'failed'; message: string; }
@@ -185,6 +185,7 @@ export class Studios {
       const cast = new Set(answer.actors);
       const frames = film.frames.map(frame => reelFrameOf({ ...frame, actors: frame.actors.filter(shot => cast.has(shot.name)) }));
       for(let from=0; from<frames.length; from+=REEL_PAGE) {
+        if(this.screens === screens) this.state.next({ kind: 'staging', loaded: from, frames: frames.length });
         const page = frames.slice(from, from + REEL_PAGE);
         await Promise.all(screens.map((screen, index) => screen.loadReel({ reel: reels[index], from, frames: page })));
       }

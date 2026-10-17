@@ -37,9 +37,15 @@ const charmiq: CharmIQAPI | undefined = window.charmiq;
 const RECHECK_MS = 300/*ms*/;
 /** the width of a picture on the picture track (its height the film's shape) */
 const PICTURE_WIDTH = 128/*pixels*/;
-/** how the picture track keeps a picture: a small image */
+/** the width of the timeline card's picture of a frame (its height the film's shape):
+ *  the card shows it at 288 CSS pixels */
+const PEEK_WIDTH = 480/*pixels*/;
+/** how a picture is kept: a small image */
 const PICTURE_TYPE = 'image/jpeg';
 const PICTURE_QUALITY = 0.8;
+/** how long after a film opens its bar says so while nothing stages: a film opened
+ *  over the same set and scene stages nothing anew */
+const OPENING_MS = 2_000/*ms*/;
 
 // == Elements ====================================================================
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -73,7 +79,10 @@ const source = new SceneSource();
 const studios = new Studios(paint);
 const director = new Director(studios, runScene, { show: next => showFilm(next), error: next => showError(next) });
 const player = new Player(index => studios.show(index));
-const timeline = new Timeline(element('timeline'), { seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle() });
+const timeline = new Timeline(element('timeline'), {
+  seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle(),
+  picture: index => picture(index, PEEK_WIDTH), nearPicture: index => strip.nearest(index),
+});
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack());
 /** the film's files: Stop Motion reads and writes the main studio's build and the
  *  code block's scene for them, the set written staged anew */
@@ -85,7 +94,7 @@ const films = charmiq && new Films(new Drive(charmiq.mcp), charmiq.appState, {
   checkScene: () => source.check(),
   setScene: code => source.write(code),
 });
-const filmDialog = films && new FilmDialog(element('films'), films, { onOpened: (name, scene) => showFile(scene ? undefined : `"${name}" carries no scene: its set is open, the scene kept.`) });
+const filmDialog = films && new FilmDialog(element('films'), films, { onOpened: (name, scene) => opened(name, scene) });
 
 // == State =======================================================================
 /** the film the timeline shows, and the mistake of the last scene run, when it has
@@ -152,30 +161,49 @@ const showSheet = () => {
  *  it shows */
 const showStatus = () => {
   const stage = studios.stageState;
-  const say = (title: string, text: string, action?: string) => {
+  // `working`, the share done of work underway (null while its share is unknown)
+  const say = (title: string, text: string, action?: string, working?: number | null) => {
     status.hidden = false;
     statusTitle.textContent = title;
     statusText.textContent = text;
     statusAction.hidden = !action;
     statusAction.textContent = action ?? '';
+    status.classList.toggle('is-working', working !== undefined);
+    status.classList.toggle('is-measured', typeof working === 'number');
+    if(typeof working === 'number') status.style.setProperty('--done', String(working));
   };
   if(studios.count < 1) return say('No studio.', 'Stop Motion plays the film on Brick Studio: add Brick Studio to this document, above the film.');
   if(stage.kind === 'ambiguous') return say(`${stage.builds} studios hold a build.`, 'The set is the build of one studio: keep it in one, and the others empty.');
   if(editors < 1) return say('No scene.', `The scene is code in a code editor's ${SCENE_TAB} tab: add a code editor to this document.`);
   if(!hasCode) return say('No scene.', `Waiting for a ${SCENE_TAB} tab in the code editor.`);
-  if(!film) return say(error ? 'The scene has a mistake.' : 'Reading the scene…', error ? `${(error.line !== undefined) ? `Line ${error.line}: ` : ''}${error.message}` : '');
+  if(!film) return error ? say('The scene has a mistake.', `${(error.line !== undefined) ? `Line ${error.line}: ` : ''}${error.message}`) : say('Reading the scene…', '', undefined, null);
   if(stage.kind === 'left') return say('The studio went back to its build.', 'The film is paused; stage it again to go on.', 'Stage again');
   if(stage.kind === 'failed') return say('The studio refused the film.', stage.message, 'Try again');
-  if(stage.kind === 'staging') return say('Staging…', 'Setting the scene in the studio.');
+  if(stage.kind === 'staging') return say('Staging…', (stage.frames !== undefined) ? `Loading the film into the studio: ${stage.loaded ?? 0} of ${stage.frames} frames.` : 'Setting the scene in the studio.', undefined, (stage.frames !== undefined) ? ((stage.loaded ?? 0) / Math.max(1, stage.frames)) : null);
   status.hidden = true;
 };
 
 statusAction.addEventListener('click', () => void director.restage());
 
 // == Picture track ===============================================================
-/** the picture track's darkroom: a picture is drawn here to keep */
+/** the darkroom: a picture is drawn here to keep */
 const darkroom = document.createElement('canvas');
 let developing = false;
+
+/** a frame's picture `width` pixels wide (its height the film's shape) as the main
+ *  studio draws it, kept as a small image; none while the film plays or exports, or
+ *  when the studio cannot draw it (the status says why). The studio's own picture never
+ *  shifts for it */
+const picture = async (index: number, width: number): Promise<string | undefined> => {
+  const filming = film;
+  if(!filming || player.current.playing || exporting || (studios.stageState.kind !== 'staged')) return undefined;
+  const image = await studios.thumbnail(index, { width, height: Math.round(width * (filming.scene.height / filming.scene.width)) });
+  if(!image) return undefined;
+  [darkroom.width, darkroom.height] = [image.width, image.height];
+  darkroom.getContext('2d')!.drawImage(image, 0, 0);
+  image.close();
+  return darkroom.toDataURL(PICTURE_TYPE, PICTURE_QUALITY);
+};
 
 /** develops the picture track from the main studio a cell at a time, while the film
  *  neither plays nor exports: the studio's picture never shifts for it */
@@ -187,12 +215,9 @@ const developTrack = async () => {
       const filming = film;
       const index = strip.wanting[0];
       if(index === undefined) break/*every cell developed*/;
-      const image = await studios.thumbnail(index, { width: PICTURE_WIDTH, height: Math.round(PICTURE_WIDTH * (filming.scene.height / filming.scene.width)) });
-      if(!image) break/*the studio cannot: the status says why*/;
-      [darkroom.width, darkroom.height] = [image.width, image.height];
-      darkroom.getContext('2d')!.drawImage(image, 0, 0);
-      image.close();
-      strip.develop(filming, index, darkroom.toDataURL(PICTURE_TYPE, PICTURE_QUALITY));
+      const developed = await picture(index, PICTURE_WIDTH);
+      if(!developed) break/*none now: the status says why*/;
+      strip.develop(filming, index, developed);
       if((film === filming) && strip.wanting.includes(index)) break/*the track took no picture*/;
     }
   } finally {
@@ -207,8 +232,30 @@ const showFile = (note?: string) => {
   if(!films) { fileControls.hidden = true; return; }
   const { name, changed } = films.state;
   fileTitle.textContent = name ?? 'Untitled film';
-  fileState.textContent = note ?? (!changed ? ((name !== undefined) ? 'saved' : '') : (name !== undefined) ? 'unsaved changes' : 'not saved');
-  fileState.dataset.state = note ? 'note' : changed ? 'changed' : 'saved';
+  fileState.textContent = opening ? 'opening…' : (note ?? (!changed ? ((name !== undefined) ? 'saved' : '') : (name !== undefined) ? 'unsaved changes' : 'not saved'));
+  fileState.dataset.state = opening ? 'working' : note ? 'note' : changed ? 'changed' : 'saved';
+};
+
+/** a film opened: its bar says it is opening until the film staged on it is drawn
+ *  (or nothing stages anew, or the stage stops), then what the open left */
+let opening: Readonly<{ note?: string; staging: boolean; timer: number; }> | undefined;
+const opened = (name: string, scene: boolean) => {
+  if(opening) window.clearTimeout(opening.timer);
+  const note = scene ? undefined : `"${name}" carries no scene: its set is open, the scene kept.`;
+  opening = { ...(note ? { note } : {}), staging: false, timer: window.setTimeout(() => { if(opening && !opening.staging) settleOpening(); }, OPENING_MS) };
+  showFile();
+};
+const settleOpening = () => {
+  if(!opening) return;
+  const { note, timer } = opening;
+  window.clearTimeout(timer);
+  opening = undefined;
+  showFile(note);
+};
+const followOpening = (stage: StageState) => {
+  if(!opening) return;
+  if(stage.kind === 'staging') opening = { ...opening, staging: true };
+  else if((stage.kind !== 'staged') || opening.staging) settleOpening()/*staged, or stopped*/;
 };
 
 /** saves the film over its own file, or asks for a name first */
@@ -277,6 +324,7 @@ const showChip = () => {
 
 studios.state$.subscribe((stage: StageState) => {
   if((stage.kind !== 'staged') && (stage.kind !== 'staging')) player.pause()/*no film to play: the status says why*/;
+  followOpening(stage);
   showChip();
   showStatus();
   showSheet();
