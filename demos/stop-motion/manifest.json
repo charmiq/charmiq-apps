@@ -1,10 +1,13 @@
 {
   "id": "ai.charmiq.demos.stop-motion",
   "name": "Stop Motion",
-  "description": "The timeline of a stop-motion film of toy-brick scenes: the scene is code in a code editor's scene.js tab, the film plays in Brick Studio, the screen, and scrubs on the timeline and exports as an MP4",
+  "description": "The timeline of a stop-motion film of toy-brick scenes: the scene is code in a code editor's scene.js tab, the film plays in Brick Studio, the screen, and scrubs on the timeline, exports as an MP4, and saves to the Drive as one film (its set and its scene)",
   "requestedScopes": [
     "application.advertise",
-    "application.call"
+    "application.call",
+    "appState.read",
+    "appState.write",
+    "mcp.platform.vfs"
   ],
   "bundle": {
     "entry": {
@@ -13,6 +16,7 @@
       "style": "/src/styles.scss"
     },
     "format": "esm",
+    "mounts": { "/brick-shared": "../brick-shared" },
     "dependencies": {
       "importMap": {
         "rxjs": "https://esm.sh/rxjs@7.8.2",
@@ -44,7 +48,8 @@
             "shots":      { "type": "array", "description": "The camera's shots: from each cut (or the start) to the next (or the end), seconds, named by its cut", "items": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "name": { "type": "string" } }, "required": ["from", "to"] } },
             "close":      { "type": "array", "description": "Every two actors that come within 2 studs (once the studio has staged the film), each where they come closest: the gap between their boxes in studs, 0 touching", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
             "logs":       { "type": "array", "items": { "type": "string" } },
-            "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] }
+            "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] },
+            "file":       { "type": "object", "description": "The film's file in the Drive: its name once saved or opened, and whether the set or the scene changed since (a film never saved has changed)", "properties": { "name": { "type": "string" }, "changed": { "type": "boolean" } }, "required": ["changed"] }
           },
           "required": ["studios", "editors", "stage"]
         }
@@ -121,6 +126,61 @@
           },
           "required": ["actors", "frame", "time", "gap", "touching", "positions"]
         }
+      },
+      {
+        "name": "listFilms",
+        "description": "The films (and designs) in the films folder of the Drive, each by name and uri",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "folder": { "type": "string" },
+            "films":  { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "uri": { "type": "string" } }, "required": ["name", "uri"] } }
+          },
+          "required": ["folder", "films"]
+        }
+      },
+      {
+        "name": "saveFilm",
+        "description": "Save the film (the main Brick Studio's build, the set, and the scene.js tab's scene) as one film in the Drive: under name in the films folder, or over its own file (the one it was opened from or saved as, wherever it is) when it has one. Another film of that name is refused unless replace is true",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name":    { "type": "string" },
+            "replace": { "type": "boolean" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "saved": { "type": "string" }, "folder": { "type": "string", "description": "The folder saved to, when known" }, "replaced": { "type": "boolean" } },
+          "required": ["saved"]
+        }
+      },
+      {
+        "name": "openFilm",
+        "description": "Open a film from the Drive (its uri from listFilms, or its name): its set into the main Brick Studio's build and its scene into the scene.js tab. A plain design opens its set alone, the scene kept. Refused while the film has unsaved changes unless discard is true",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri":     { "type": "string" },
+            "name":    { "type": "string" },
+            "discard": { "type": "boolean", "description": "Lose the film's unsaved changes" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "opened": { "type": "string" }, "scene": { "type": "boolean", "description": "Whether the file carried a scene" } },
+          "required": ["opened", "scene"]
+        }
+      },
+      {
+        "name": "newFilm",
+        "description": "Start a new film: the main Brick Studio's build cleared (its ground kept) and a starter scene in the scene.js tab. Refused while the film has unsaved changes unless discard is true; save the film first to keep it",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "discard": { "type": "boolean", "description": "Lose the film's unsaved changes" } }
+        },
+        "outputSchema": { "type": "object", "properties": { "cleared": { "type": "boolean" } }, "required": ["cleared"] }
       },
       {
         "name": "where",

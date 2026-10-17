@@ -151,7 +151,7 @@ title(14.0, 14.6, 'THE JUMP')
 
 - Press play, or drag along the timeline: the film plays in the studio above.
 - Press **Back to the build** in the studio to work on the set: the film waits until you press **Stage again**.
-- Press **Export MP4** to save the film.
+- Press **Export MP4** to save the film as a video, and **Save** to keep the film itself (its set and its scene) in your Drive; **Open…** brings one back, **New** starts afresh.
 - Change the scene: make the car leave the ramp faster, or the camera swing the other way. The timeline changes as you type.
 - Add a second Brick Studio below this one, its build empty: it shows the scene's plan, the whole jump from above with every path and where the camera stands.
 

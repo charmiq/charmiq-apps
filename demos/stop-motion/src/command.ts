@@ -1,5 +1,9 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
+
+import { DesignExists, displayName } from '../../brick-shared/designs';
+
 import { cameraShots, type CameraShot, type Film } from './film';
+import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
 import type { Player } from './player';
 import type { Point, SceneError } from './recorder';
@@ -9,8 +13,9 @@ import type { Board, StageState } from './studios';
 // player's transport, and the film's geometry. A Charm writes the scene in the code
 // editor's scene.js tab; these say how the film stands, show any moment of it on the
 // studios so a screenshot sees it, show a storyboard of its moments on the main
-// studio's sheet for one screenshot to read, and tell where its actors and camera
-// stand and how close actors come
+// studio's sheet for one screenshot to read, tell where its actors and camera stand
+// and how close actors come, and keep the film in the Drive: its set and its scene
+// saved as one film, opened back, or cleared for a new one
 // ********************************************************************************
 // == Constants ===================================================================
 /** the most frames a storyboard shows (SEE: Brick Studio's storyboard) */
@@ -29,6 +34,8 @@ export type FilmHost = Readonly<{
   shown: (index: number) => Promise<void>;
   /** shows frames on the main studio's storyboard sheet, answering how many */
   storyboard: (frames: ReadonlyArray<Board>, view?: string) => Promise<number>;
+  /** the film's files */
+  films: Films;
 }>;
 
 // == Commands ====================================================================
@@ -50,6 +57,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
           ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
         } : {}),
         ...(error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {}),
+        file: host.films.state,
       };
     },
     seek: async ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
@@ -108,6 +116,31 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       };
     },
 
+    listFilms: async () => {
+      const designs = await host.films.store.list();
+      return { folder: host.films.store.getFolder().name, films: designs.map(design => ({ name: displayName(design), uri: design.uri })) };
+    },
+    saveFilm: async ({ name, replace }: { name?: unknown; replace?: unknown; }) => {
+      if((name !== undefined) && (typeof name !== 'string')) throw new Error('name is the film\'s name.');
+      try {
+        const saved = await host.films.save(name, replace === true);
+        return { saved: saved.name, ...(saved.folder ? { folder: saved.folder.name } : {})/*a film opened by its uri: its folder unknown*/, ...(saved.replaced ? { replaced: true } : {}) };
+      } catch(failure) {
+        if(failure instanceof DesignExists) throw new Error(`${failure.message} Pass replace: true to write over it.`);
+        throw failure;
+      }
+    },
+    openFilm: async ({ name, uri, discard }: { name?: unknown; uri?: unknown; discard?: unknown; }) => {
+      const design = (typeof uri === 'string') ? await host.films.store.at(uri) : (typeof name === 'string') ? name : undefined;
+      if(design === undefined) throw new Error('Give the film\'s uri (listFilms) or its name.');
+      const opened = await discarding(() => host.films.open(design, discard === true));
+      return { opened: opened.name, scene: opened.scene };
+    },
+    newFilm: async ({ discard }: { discard?: unknown; }) => {
+      await discarding(() => host.films.clear(discard === true));
+      return { cleared: true };
+    },
+
     where: ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
       const film = filmOf(host);
       const at = film.frames[frameAt(film, time, frame)];
@@ -121,6 +154,15 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
 };
 
 // == Util ========================================================================
+/** runs a change of film, a refusal over unsaved changes saying how to go on */
+const discarding = async <T>(change: () => Promise<T>): Promise<T> => {
+  try { return await change(); }
+  catch(failure) {
+    if(failure instanceof UnsavedChanges) throw new Error(`${failure.message} Pass discard: true to lose them.`);
+    throw failure;
+  }
+};
+
 /** the film, or why there is none */
 const filmOf = (host: FilmHost): Film => {
   const film = host.film();

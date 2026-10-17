@@ -47,6 +47,19 @@ The strip under the timeline is the film's picture track: a small picture of eac
 While the film is shown, Brick Studio says so and offers a way back to its build. Pressing it pauses the film at once; **Stage again** shows the film in the studio once more. Nothing in a film is written to the build.
 
 
+## The File
+
+A film is saved to your Drive as one file: the main studio's build (the set), then the scene, carried in the same LDraw file as a data section (`0 !DATA scene.js`). Brick Studio opens that file as an ordinary design, and keeps the scene in it when it saves, so a film saved from either is whole.
+
+- **Save** saves the set and the scene together. The first save asks for a name and a folder; after that, Save writes over the film's own file, the one it was saved as or opened from, wherever it is.
+- **Open…** opens a film: its set into the studio and its scene into the code block, and the film plays on the new set. A plain design opens its set alone and keeps the scene.
+- **New** clears the set (its ground kept) and starts a new scene.
+
+The scene is written into the code editor's tab named `scene.js` as it stands then (a tab renamed from it is left alone; with none, a new one). With no code editor, Open and New change nothing. If the scene cannot be written once the set has changed, Stop Motion says so and the film shows unsaved changes.
+
+The bar says the film's name and whether it has changed since it was saved or opened. New and Open read the film as it stands just before changing it and ask first rather than lose unsaved changes; a set that cannot be read counts as changed. Save, Open and New run one at a time, in the order asked. Stop Motion is between the two parts: it reads and writes the studio's build and the code block's scene, and nothing else.
+
+
 ## The Timeline
 
 A row per track: the camera, each view, each actor, the fade and the titles. A key is a diamond, a path a solid band, a wobble or shake a striped band, the fade a ramp to black, a title its words. A camera's shots alternate shades from cut to cut, each named. Where two actors come within 2 studs of each other, a red notch on both their rows marks the moment they come closest. Drag anywhere on the ruler or the rows to scrub; a diamond seeks to its key and says what it sets. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, and Space plays.
@@ -64,6 +77,12 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 | `storyboard` | shows up to 12 moments at once on a sheet over the main studio, each captioned with its time and shot (the middle of each shot when no `times` or `frames` are given), through a `view` when named: a screenshot of the studio reads them all. The film's next move closes it |
 | `measure` | where two actors come closest, over the film or `from` and `to`: the gap between their boxes in studs (each its footprint turned by its yaw and its height; 0 when they touch) and where each stood |
 | `where` | every actor's position and turn, and the camera, at a `time` or `frame` |
+| `listFilms` | the films (and designs) in the films folder, each by name and uri |
+| `saveFilm` | saves the set and the scene as one film: under `name` in the films folder, or over the film's own file wherever it is; another film of that name needs `replace` |
+| `openFilm` | opens a film by `uri` or `name`: its set into the studio, its scene into the code block (a plain design, its set alone) |
+| `newFilm` | clears the set and starts a new scene |
+
+`openFilm` and `newFilm` refuse while the film has unsaved changes unless given `discard: true`; save the film first to keep it.
 
 A Charm can also stage a still without a film: Brick Studio's own `stage` and `frame` commands put actors anywhere.
 
@@ -77,7 +96,7 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | [`src/director.ts`](charmiq://./src/director.ts) | each scene run into a film and staged; the latest scene is the one the studios show |
 | [`src/recorder.ts`](charmiq://./src/recorder.ts) | runs a scene's code and records it as data |
 | [`src/scene-runner.ts`](charmiq://./src/scene-runner.ts) | the worker a scene runs in |
-| [`src/scene-source.ts`](charmiq://./src/scene-source.ts) | the editor's `scene.js` tab, followed |
+| [`src/scene-source.ts`](charmiq://./src/scene-source.ts) | the editor's `scene.js` tab, followed through renames and removals, and written |
 | [`src/film.ts`](charmiq://./src/film.ts) | a recorded scene as a frame per frame (keys, rides, orbits, rolling wheels, shots, plans), each frame as the studio's reel takes it, and a plan's marks |
 | [`src/measure.ts`](charmiq://./src/measure.ts) | how far apart actors come |
 | [`src/studios.ts`](charmiq://./src/studios.ts) | the Brick Studios found, the main one chosen, the reel staged, each frame shown, each studio's state followed |
@@ -86,3 +105,7 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | [`src/strip.ts`](charmiq://./src/strip.ts) | the picture track, a strip of film |
 | [`src/export.ts`](charmiq://./src/export.ts) | the film as an MP4 |
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
+| [`src/films.ts`](charmiq://./src/films.ts) | the film's files: save, open and new, and whether the film changed since |
+| [`src/film-file.ts`](charmiq://./src/film-file.ts) | a film as one LDraw file: its set, then its scene as a data section |
+| [`src/film-dialog.ts`](charmiq://./src/film-dialog.ts) | the save and open dialog, the Brick family's own |
+| [`../brick-shared`](charmiq://../brick-shared) | what Stop Motion shares with Brick Studio: the Drive, designs and their dialog |

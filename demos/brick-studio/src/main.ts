@@ -1,4 +1,7 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
+
+import { Drive } from '../../brick-shared/drive';
+
 import { Build } from './build';
 import { familyLabel } from './catalog';
 import { isSound } from './check';
@@ -6,13 +9,12 @@ import { CommandSurface } from './command';
 import { ContentBridge } from './content-bridge';
 import { DesignDialog } from './design-dialog';
 import { Designs } from './designs';
-import { Drive } from './drive';
 import { FidelityControl } from './fidelity-control';
 import { getColor, getColorValue } from './grid';
 import { GroundControl } from './ground-control';
 import { LookAround } from './look-around';
-import { Sheet } from './sheet';
 import { partCount, type Model } from './model';
+import { Sheet } from './sheet';
 import { StageControl } from './stage-control';
 import { StepControl } from './step-control';
 import { DEFAULT_VIEW, STANDING, Viewer, type Walk } from './viewer';

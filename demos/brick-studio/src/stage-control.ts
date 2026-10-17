@@ -44,9 +44,10 @@ export type StageState =
   | Readonly<{ kind: 'none'; }>
   | Readonly<{ kind: 'staged'; reel?: number; frame?: number; }>
   | Readonly<{ kind: 'left'; }>;
-/** the screen's state as a film follows it: the stage's, and whether the studio holds
- *  a build (a film takes its set from the one that does) */
-export type ScreenState = StageState & Readonly<{ build: boolean; }>;
+/** the screen's state as a film follows it: the stage's, whether the studio holds a
+ *  build (a film takes its set from the one that does), and how many times the build
+ *  has changed since the studio opened (a film's file knows when to look again) */
+export type ScreenState = StageState & Readonly<{ build: boolean; edits: number; }>;
 
 /** a reel as loaded: its number, header and the frames loaded so far, each as this
  *  screen shows it */
@@ -73,9 +74,10 @@ export class StageControl {
   /** how many frames have been put on the canvas: a frame drawn is told only while it
    *  is still the last put there */
   private applied = 0;
-  /** whether the studio holds a build, as last told */
+  /** whether the studio holds a build, as last told, and how many times it changed */
   private holds = false;
-  private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false });
+  private edits = 0;
+  private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false, edits: 0 });
 
   public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build, private readonly sheet: Pick<Sheet, 'show' | 'hide'>) {
     elements.back.addEventListener('click', () => { this.left = true; this.end(); });
@@ -233,11 +235,13 @@ export class StageControl {
   }
 
   // == Build =====================================================================
-  /** the build changed: while staged, the strip says so; whether the studio holds a
-   *  build is told when that changes */
+  /** the build changed: while staged, the strip says so; the film is told, with
+   *  whether the studio holds a build */
   public buildChanged(): void {
     if(this.cast) this.show(`${SHOWING} · the build changed`);
-    this.tellBuild();
+    this.edits++;
+    this.holds = holdsBuild(this.build.getModel());
+    this.state.next({ ...this.state.value, build: this.holds, edits: this.edits });
   }
 
   // == Internal ==================================================================
@@ -310,7 +314,7 @@ export class StageControl {
   }
 
   /** tells the film the screen's state */
-  private publish(state: StageState): void { this.state.next({ ...state, build: this.holds }); }
+  private publish(state: StageState): void { this.state.next({ ...state, build: this.holds, edits: this.edits }); }
 
   /** shows the strip saying `note`, or hides it */
   private show(note: string | undefined): void {

@@ -55,8 +55,15 @@ export type ModelLayout = Readonly<{
   /** the `0 NOFILE` line ending the main model, when it has one: parts go before it,
    *  components after it */
   endMarker?: Span;
-  /** each component's section, and the later sections of the same name (`repeats`) */
+  /** each component's section (its lines up to any data section in it), and the rest
+   *  of its lines and the later sections of the same name (`repeats`) */
   components: ReadonlyArray<Readonly<{ name: string; file: string; span: Span; repeats: ReadonlyArray<Span>; }>>;
+  /** each data section (SEE: Model#data), from its `0 !DATA` line to its last `0 !:`
+   *  line, kept where it stands */
+  data: ReadonlyArray<Span>;
+  /** where the text's files end: before the data sections that close it (nothing but
+   *  blank lines after them), else the text's end. New sections go there */
+  filesEnd: number;
   /** where the main model's lines end (the text's end for a flat file), and whether
    *  its last line ends in a line break there */
   mainEnd: number;
@@ -115,6 +122,11 @@ export type Model = Readonly<{
   placementPlaced?: ReadonlyArray<number | undefined>;
   /** the building steps, when the build has more than one */
   steps?: ModelSteps;
+  /** the lines of the files the text carries that are no part of the build (LDraw's
+   *  `0 !DATA` sections, their content in `0 !:` lines: a film's scene, say), as
+   *  written and in order, when it has any: kept through every edit and written last
+   *  when the build is written whole */
+  data?: ReadonlyArray<string>;
 }>;
 
 // == Constants ===================================================================
@@ -154,6 +166,9 @@ const MAIN_FILE = 'model.ldr';
 const END_MARKER = '0 NOFILE';
 /** LDraw's meta-command that ends a building step */
 const STEP_LINE = '0 STEP';
+/** LDraw's meta-commands that start a data section and carry its content */
+const DATA_START = '0 !DATA ';
+const DATA_LINE = '0 !:';
 /** Brick Studio's meta-command naming the baseplate's color */
 const GROUND_META = ['0', '!BRICKSTUDIO', 'GROUND'] as const;
 
@@ -189,8 +204,24 @@ export const parseModel = (text: string): Model => {
   let mainTwice = false;
   let endMarker: Span | undefined;
   let definitionLines = 0;
+  // a data section is in no file: its `0 !:` lines are its content, and the first
+  // other line ends it, read in the file it interrupted
+  const data: string[] = [], dataSpans: Span[] = [];
+  let reading: { from: number; to: number; resume: Line[]; } | undefined;
   for(const line of lines) {
     const trimmed = line.text.trim();
+    if(reading) {
+      if(trimmed.startsWith(DATA_LINE)) { data.push(line.text.trimEnd()); reading.to = line.to; continue; }
+      dataSpans.push({ from: reading.from, to: reading.to });
+      current = reading.resume;
+      reading = undefined;
+    } /* else -- in a file */
+    if(trimmed.startsWith(DATA_START)) {
+      data.push(line.text.trimEnd());
+      reading = { from: line.from, to: line.to, resume: current };
+      current = []/*in no file*/;
+      continue;
+    } /* else -- no data section starts */
     if(trimmed.startsWith('0 FILE ')) {
       const name = normalizeName(trimmed.slice(7));
       current = [];
@@ -215,7 +246,10 @@ export const parseModel = (text: string): Model => {
     } /* else -- a line of the file */
     current.push(line);
   }
-  if(main === undefined) return { ...EMPTY_MODEL, layout: { placements: [], others: [], pieces: [], placed: [], mainParts: [], steps: [], components: [], mainEnd: 0, mainEndsWithBreak: false, length: 0, lineBreak: '\n', endsWithBreak: false } }/*empty text*/;
+  if(reading) dataSpans.push({ from: reading.from, to: reading.to })/*the text's last section*/;
+  const withData = (data.length > 0) ? { data } : {};
+  const filesEnd = closingData(text, dataSpans);
+  if(main === undefined) return { ...EMPTY_MODEL, ...withData, layout: { placements: [], others: [], pieces: [], placed: [], mainParts: [], steps: [], components: [], data: dataSpans, filesEnd, mainEnd: 0, mainEndsWithBreak: true/*nothing before the data*/, length: text.length, lineBreak: lines.find(line => line.lineBreak)?.lineBreak ?? '\n', endsWithBreak: /[\r\n]$/.test(text) } }/*no file: empty text, or data alone*/;
 
   // each file but the main model is a component: its parts in its own grid. Past
   // the submodel budget none is read: the model is then read only in part
@@ -365,9 +399,9 @@ export const parseModel = (text: string): Model => {
     : untold ? UNEDITABLE.undecided : undefined;
   const lineBreak = lines.find(line => line.lineBreak)?.lineBreak ?? '\n';
   const endsWithBreak = /[\r\n]$/.test(text);
-  const spans = sectionSpans(sectionStarts, text.length);
+  const spans = sectionSpans(sectionStarts, dataSpans, filesEnd, text.length);
   const sections = components.map(({ name, file }) => { const [span, ...repeats] = spans.get(file)!/*each component is a file's*/; return { name, file, span, repeats }; });
-  const mainEnd = minOf([...sections.flatMap(({ span, repeats }) => [span, ...repeats]).map(span => span.from), ...(endMarker ? [endMarker.from] : [])], text.length);
+  const mainEnd = minOf([...sections.flatMap(({ span, repeats }) => [span, ...repeats]).map(span => span.from), ...(endMarker ? [endMarker.from] : [])], filesEnd);
   const lastPart = maxOf(mainParts.map(span => span.to), 0);
   const trailingStep = (mainParts.length > 0) ? stepSpans.find(span => span.from >= lastPart) : undefined;
   const mainFile: Span | undefined = (main !== '') ? { from: sectionStarts[0].from, to: sectionStarts[0].to }/*the first section is the main model's*/ : undefined;
@@ -382,10 +416,11 @@ export const parseModel = (text: string): Model => {
     ...(untold ? { untold: UNEDITABLE.undecided } : {}),
     ...((untold || overflows || mainTwice) ? { unwritable: mainTwice ? UNWRITABLE.mainTwice : untold ? UNEDITABLE.undecided : UNWRITABLE.overflows } : {}),
     ...((duplicated.length > 0) ? { duplicated } : {}),
+    ...withData,
     ...(uneditable ? { uneditable } : { layout: {
       placements: placementSpans, others: otherSpans, pieces: pieceSpans, placed: placedSpans, mainParts, steps: stepSpans,
       ...(ground ? { ground: ground.span } : {}), ...(trailingStep ? { trailingStep } : {}),
-      ...(mainFile ? { mainFile } : {}), ...(endMarker ? { endMarker } : {}), components: sections,
+      ...(mainFile ? { mainFile } : {}), ...(endMarker ? { endMarker } : {}), components: sections, data: dataSpans, filesEnd,
       mainEnd, mainEndsWithBreak: (mainEnd < text.length) || endsWithBreak,
       length: text.length, lineBreak, endsWithBreak,
     } }),
@@ -418,15 +453,33 @@ const readComponent = (file: string, componentLines: ReadonlyArray<Line>, files:
   return { name: file.replace(/\.ldr$/, ''), file, placements, others, ...(footprint ? { footprint } : {}), nested, undecided };
 };
 
-/** each named file's sections, in one pass, in order: from a `0 FILE` line up to the
- *  next `0 FILE` line, or the text's end */
-const sectionSpans = (starts: ReadonlyArray<Readonly<{ name: string; from: number; }>>, length: number): Map<string, Span[]> => {
+/** each named file's lines, in one pass, in order: from a `0 FILE` line up to the
+ *  next `0 FILE` line or the text's files' end (SEE: closingData), in pieces apart by
+ *  the data sections within */
+const sectionSpans = (starts: ReadonlyArray<Readonly<{ name: string; from: number; }>>, data: ReadonlyArray<Span>, filesEnd: number, length: number): Map<string, Span[]> => {
   const spans = new Map<string, Span[]>();
+  let next = 0/*the first data section not before the file*/;
   starts.forEach(({ name, from }, index) => {
-    if(!spans.has(name)) spans.set(name, []);
-    spans.get(name)!.push({ from, to: starts[index + 1]?.from ?? length });
+    const to = Math.min(starts[index + 1]?.from ?? length, filesEnd)/*a file starts before the data closing the text*/;
+    while((next < data.length) && (data[next].from < from)) next++;
+    const pieces = spans.get(name) ?? [];
+    spans.set(name, pieces);
+    let at = from/*a file line: the first piece is never empty*/;
+    for(; (next < data.length) && (data[next].from < to); next++) {
+      if(data[next].from > at) pieces.push({ from: at, to: data[next].from });
+      at = data[next].to;
+    }
+    if(to > at) pieces.push({ from: at, to });
   });
   return spans;
+};
+
+/** where the text's files end: the start of the data sections that close it, only
+ *  blank lines after them, else the text's end */
+const closingData = (text: string, data: ReadonlyArray<Span>): number => {
+  let end = text.length;
+  for(let index=data.length - 1; (index >= 0) && (text.slice(data[index].to, end).trim().length < 1); index--) end = data[index].from;
+  return end;
 };
 
 /** the file a component Brick Studio adds is written to; a section already in the
@@ -770,7 +823,7 @@ const normalizeName = (name: string): string => name.trim().replace(/\\/g, '/').
 // == Serialize ===================================================================
 /** writes a Model whole as one main-model section (`0 FILE model.ldr` through its end
  *  marker), its steps apart by `0 STEP` lines: every part, a hinge's carry's as the
- *  lines it draws (flat, no longer a carry) */
+ *  lines it draws (flat, no longer a carry); the data it carries after it */
 export const serializeModel = (model: Model): string => {
   const steps = model.steps;
   const lines = [`0 FILE ${MAIN_FILE}`, ...model.header];
@@ -779,7 +832,7 @@ export const serializeModel = (model: Model): string => {
     lines.push(...model.placements.filter((_, index) => (steps?.placements[index] ?? 1) === step).flatMap(placement => drawnLines(model, placement).map(line => partLine(line.colorCode, line.position, line.matrix, line.ldraw))));
     lines.push(...model.others.filter((_, index) => (steps?.others[index] ?? 1) === step).map(other => partLine(other.colorCode, other.position, other.matrix, other.ldraw)));
   }
-  lines.push(END_MARKER);
+  lines.push(END_MARKER, ...(model.data ?? []));
   return lines.join('\n') + '\n';
 };
 
@@ -830,21 +883,22 @@ export const defineEdits = (layout: ModelLayout, name: string, lines: ReadonlyAr
   const existing = layout.components.find(component => component.name === name);
   const section = [`0 FILE ${existing?.file ?? newFileName(name)}`, `0 ${name}`, ...lines].map(line => line + layout.lineBreak).join('');
   if(existing) return [...deleteLines(existing.repeats)/*after the first: removed first*/, { ...existing.span, insert: section }];
-  const lead = ((layout.length < 1) || layout.endsWithBreak) ? '' : layout.lineBreak/*the last line is unfinished*/;
+  const at = layout.filesEnd/*before the data that closes the text*/;
+  const lead = ((layout.length < 1) || (at < layout.length) || layout.endsWithBreak) ? '' : layout.lineBreak/*the last line is unfinished*/;
   const marker = layout.endMarker ? '' : END_MARKER + layout.lineBreak;
-  const end: ContentChange = { from: layout.length, to: layout.length, insert: lead + ((layout.mainFile && !layout.endMarker) ? ''/*an MPD file of the previous release: its sections already part the two*/ : marker) + section };
+  const end: ContentChange = { from: at, to: at, insert: lead + ((layout.mainFile && !layout.endMarker) ? ''/*an MPD file of the previous release: its sections already part the two*/ : marker) + section };
   if(layout.mainFile) return [end];
   const opening = [`0 FILE ${MAIN_FILE}`, ...((layout.length < 1) ? DEFAULT_HEADER : [])].map(line => line + layout.lineBreak).join('');
   return [end, { from: 0, to: 0, insert: opening }]/*the end first: each edit is measured after the ones before it*/;
 };
 
-/** the edits that remove every part, copy and component, keeping the main model's
- *  other lines (its header, the ground): the build is left as Brick Studio writes one
- *  whole, its main model's file line first and its end marker last. An empty text
- *  stays empty */
+/** the edits that remove every part, copy, component and data section, keeping the
+ *  main model's other lines (its header, the ground): the build is left as Brick
+ *  Studio writes one whole, its main model's file line first and its end marker last.
+ *  An empty text stays empty */
 export const clearEdits = (layout: ModelLayout): ContentChange[] => {
   if(layout.length < 1) return [];
-  const removed = [...layout.mainParts, ...layout.steps, ...layout.components.flatMap(({ span, repeats }) => [span, ...repeats])];
+  const removed = [...layout.mainParts, ...layout.steps, ...layout.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...layout.data];
   // the main model's end, after the lines before it are removed
   const end = layout.mainEnd - removed.filter(span => span.to <= layout.mainEnd).reduce((total, span) => total + (span.to - span.from), 0);
   const lead = layout.mainEndsWithBreak ? '' : layout.lineBreak/*the last line is unfinished*/;

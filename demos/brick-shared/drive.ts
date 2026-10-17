@@ -1,6 +1,6 @@
-import type { CharmIQMcpAPI } from '../../../shared/charmiq';
+import type { CharmIQMcpAPI } from '../../shared/charmiq';
 
-// the Drive as Brick Studio reaches it through the VFS server: its folders, and the
+// the Drive as the Brick family reaches it through the VFS server: its folders, and the
 // designs saved in them as Source documents of LDraw text, each named for its file
 // (`Beach house.ldr`). The top of the Drive is named (`root`), never implied: an
 // omitted folder is the User's default folder, which is not always the top

@@ -19,6 +19,7 @@
       "style": "/src/styles.scss"
     },
     "format": "esm",
+    "mounts": { "/brick-shared": "../brick-shared" },
     "resources": {
       "parts-creature-bunny": "/src/parts/creature-bunny.ldr",
       "parts-creature-cat": "/src/parts/creature-cat.ldr",
@@ -360,7 +361,7 @@
       },
       {
         "name": "clear",
-        "description": "Remove every part, copy and component, keeping the ground",
+        "description": "Remove every part, copy and component, and any file the build carries (a film's scene), keeping the ground",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",

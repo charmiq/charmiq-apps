@@ -1,10 +1,16 @@
+import { merge } from 'rxjs';
 import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
+
+import { Drive } from '../../brick-shared/drive';
+
 import { exportFilmCommands } from './command';
 import { Director } from './director';
 import { exportFilm, fileName, save } from './export';
 import type { Film, Paint } from './film';
+import { FilmDialog } from './film-dialog';
+import { Films } from './films';
 import { closePairs } from './measure';
 import { Player, type PlayerState } from './player';
 import type { SceneError } from './recorder';
@@ -18,7 +24,8 @@ import { actorColor, Timeline } from './timeline';
 // runs it into a film, stages it on the studios (the film's screens) and wires the
 // playhead, the timeline, the picture track and the transport. Stop Motion draws no
 // film: the studios show it. A scene with a mistake keeps the last film that ran and
-// says where the mistake is
+// says where the mistake is. The film's file (New, Open, Save) is its set and its scene
+// in one design in the Drive, written and read by Stop Motion between the two
 //
 //   SceneSource (the editor's scene.js) -> Director: runScene (a Worker), filmOf
 //     -> Studios.stage (the wheels found, the reel loaded) -> Player, Timeline, Strip
@@ -26,6 +33,8 @@ import { actorColor, Timeline } from './timeline';
 const charmiq: CharmIQAPI | undefined = window.charmiq;
 
 // == Constants ===================================================================
+/** how long the film rests before its file looks again whether it changed */
+const RECHECK_MS = 300/*ms*/;
 /** the width of a picture on the picture track (its height the film's shape) */
 const PICTURE_WIDTH = 128/*pixels*/;
 /** how the picture track keeps a picture: a small image */
@@ -50,6 +59,9 @@ const frameCount = element<HTMLSpanElement>('frameCount');
 const playButton = element<HTMLButtonElement>('playButton');
 const loopButton = element<HTMLButtonElement>('loopButton');
 const exportButton = element<HTMLButtonElement>('exportButton');
+const fileControls = element<HTMLDivElement>('file');
+const fileTitle = element<HTMLSpanElement>('fileTitle');
+const fileState = element<HTMLSpanElement>('fileState');
 
 // == Instances ===================================================================
 /** a color the page's style names (a custom property), as a plan's marks take it */
@@ -63,6 +75,17 @@ const director = new Director(studios, runScene, { show: next => showFilm(next),
 const player = new Player(index => studios.show(index));
 const timeline = new Timeline(element('timeline'), { seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle() });
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack());
+/** the film's files: Stop Motion reads and writes the main studio's build and the
+ *  code block's scene for them, the set written staged anew */
+const films = charmiq && new Films(new Drive(charmiq.mcp), charmiq.appState, {
+  set: () => studios.readSet(),
+  setSet: async ldraw => { await studios.writeSet(ldraw); void director.restage(); },
+  clearSet: async () => { await studios.clearSet(); void director.restage(); },
+  scene: () => source.code,
+  checkScene: () => source.check(),
+  setScene: code => source.write(code),
+});
+const filmDialog = films && new FilmDialog(element('films'), films, { onOpened: (name, scene) => showFile(scene ? undefined : `"${name}" carries no scene: its set is open, the scene kept.`) });
 
 // == State =======================================================================
 /** the film the timeline shows, and the mistake of the last scene run, when it has
@@ -176,6 +199,30 @@ const developTrack = async () => {
   }
 };
 
+// == File ========================================================================
+/** the film's file: its name, and whether it is saved; `note`, a word about the last
+ *  thing done to it, until it next changes */
+const showFile = (note?: string) => {
+  if(!films) { fileControls.hidden = true; return; }
+  const { name, changed } = films.state;
+  fileTitle.textContent = name ?? 'Untitled film';
+  fileState.textContent = note ?? (!changed ? ((name !== undefined) ? 'saved' : '') : (name !== undefined) ? 'unsaved changes' : 'not saved');
+  fileState.dataset.state = note ? 'note' : changed ? 'changed' : 'saved';
+};
+
+/** saves the film over its own file, or asks for a name first */
+const saveFilm = async () => {
+  if(!films || !filmDialog) return;
+  if(films.state.name === undefined) { filmDialog.saveAs(film?.scene.title ?? 'Untitled film'); return; }
+  fileState.textContent = 'saving…';
+  try { await films.save(); showFile(); }
+  catch(failure) { fileState.textContent = (failure as Error).message; fileState.dataset.state = 'error'; }
+};
+
+element('newButton').addEventListener('click', () => void filmDialog?.openNew());
+element('openButton').addEventListener('click', () => filmDialog?.openOpen());
+element('saveButton').addEventListener('click', () => void saveFilm());
+
 // == Transport ===================================================================
 const showPlayer = (state: PlayerState) => {
   timeline.setFrame(state.index);
@@ -251,8 +298,14 @@ source.text$.pipe(map(({ code }) => code), distinctUntilChanged(), debounceTime(
 
 source.init(charmiq);
 studios.init(charmiq);
+if(films) {
+  void films.store.init()/*the folder the app state names*/;
+  films.state$.subscribe(() => showFile());
+  merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
+} /* else -- standalone: no Drive */
 if(charmiq) {
-  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view) });
+  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films! });
 } /* else -- standalone: no Charm reaches the film */
 showSheet();
 showStatus();
+showFile();

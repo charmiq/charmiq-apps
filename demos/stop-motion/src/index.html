@@ -14,6 +14,13 @@
     <!-- == Bar =============================================================== -->
     <header class="bar">
       <h1 class="title">Stop Motion</h1>
+      <div class="file" id="file" aria-label="The film's file">
+        <span class="file-title" id="fileTitle">Untitled film</span>
+        <span class="file-state" id="fileState" role="status"></span>
+        <button class="tag tag--plain" id="newButton" type="button" title="Clear the set and the scene">New</button>
+        <button class="tag tag--plain" id="openButton" type="button" title="Open a film from your Drive">Open…</button>
+        <button class="tag tag--yellow" id="saveButton" type="button" title="Save the set and the scene as one film in your Drive">Save</button>
+      </div>
       <div class="links" aria-label="What the film is made with">
         <span class="chip" id="studioChip" data-state="none" title="The studio the film is shot on">No studio</span>
         <span class="chip" id="editorChip" data-state="none" title="The scene's code">No editor</span>
@@ -78,5 +85,8 @@
       </aside>
     </main>
   </div>
+
+  <!-- == Films ============================================================== -->
+  <dialog class="designs" id="films" aria-label="Films"></dialog>
 </body>
 </html>

@@ -80,6 +80,8 @@ The save and open buttons keep builds in your Drive. Each design is a Source doc
 - **Finding a design.** A design listed by `listDesigns` or the Open dialog opens by its document, whatever its name shares. A design named in a command is found among the first 50 whose names hold it; past that the Charm is pointed to its `uri`, and saving refuses rather than risk a second design of the same name. A folder search shows its first 50 folders and asks you to refine it when more match.
 - **Adding a design to a build.** Opening a design over a build offers to add it instead: the design becomes a component and one copy stands on the ground beside the build, where nothing is. Adding one already in the build asks before updating its copies to the design.
 
+- **Files a design carries.** A design may carry other files beside the build, as LDraw data sections (`0 !DATA name`, their text in `0 !:` lines): a [Stop Motion](charmiq://../stop-motion/README.md) film carries its scene. The Studio keeps them as written and where they stand through every edit and save, never as parts (a component's lines after one are still the component's, replaced or removed with it); Clear removes them with everything else.
+
 Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any document you can.
 
 
@@ -147,7 +149,7 @@ A Charm drives the Studio through these:
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
 | `defineComponentFromDesign` | defines a component from a saved design (its `uri` from `listDesigns`, or its name), named after it |
 | `listComponents` | the components the build defines, their sizes and copies |
-| `clear` | removes every part, copy and component, keeping the ground |
+| `clear` | removes every part, copy and component, and any file the build carries, keeping the ground |
 | `check` | lists collisions and floating parts, for a build changed some other way |
 | `setGround` | colors the baseplate, as the swatch does |
 | `setView` | turns the camera and frames the build |
@@ -201,6 +203,7 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/ground-control.ts`](charmiq://./src/ground-control.ts) | the ground swatch and its colors |
 | [`src/sheet.ts`](charmiq://./src/sheet.ts) | the sheet over the stage: pictures in a grid, each captioned, for one screenshot |
 | [`src/look-around.ts`](charmiq://./src/look-around.ts) | the build from four sides at once, on the sheet |
+| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog |
 | [`src/parts/`](charmiq://./src/parts) | the packed parts (generated): `built-in.ldr` comes with the Studio, each other family is a resource read when first shown |
 | [`src/parts.generated.ts`](charmiq://./src/parts.generated.ts) | each part's footprint, height, studs and fill, measured, and the family each is read from (generated) |
 | [`tools/pack-parts.ts`](charmiq://./tools/pack-parts.ts) | regenerates the parts, the measurements and the manifest's resources |

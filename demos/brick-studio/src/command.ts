@@ -1,14 +1,17 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
+
+import { DesignExists, displayName } from '../../brick-shared/designs';
+import type { Design } from '../../brick-shared/drive';
+
 import type { Build } from './build';
-import type { FidelityControl } from './fidelity-control';
+import type { Designs } from './designs';
 import { ACCESSORIES, CATALOG, COLORS, FIGURE_FACES, partsByKind, searchCatalog, type CatalogPart } from './catalog';
 import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
-import { displayName, DesignExists, type Designs } from './designs';
-import type { Design } from './drive';
+import type { FidelityControl } from './fidelity-control';
 import { filledCells, footprintSize, getColorByCode, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE, type PartShape } from './grid';
+import type { LookAround } from './look-around';
 import { copiesOf } from './model';
 import { fidelityLabel, toFidelity } from './render/fidelity';
-import type { LookAround } from './look-around';
 import type { StageControl } from './stage-control';
 import type { Viewer } from './viewer';
 

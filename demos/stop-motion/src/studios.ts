@@ -15,8 +15,11 @@ import type { Recorded } from './recorder';
 // marks when the scene has a plan view), then the film made with the wheels the stage
 // found, loaded on every screen a page at a time; the stage's sizes of the actors are
 // kept for measuring. A frame is then a number sent to each screen, and each studio's
-// state streams back: the person going back to a build pauses the film at once, and a
-// build appearing in a studio or emptied out chooses the screens again
+// state streams back: the person going back to a build pauses the film at once, a
+// build appearing in a studio or emptied out chooses the screens again, and each
+// change to the main studio's build is told on (the film's file looks again). The
+// main studio's build is the film's set, read and written whole for its files, and a
+// set written is staged anew
 // ********************************************************************************
 // == Constants ===================================================================
 const COMMANDS = 'charmiq.command';
@@ -32,8 +35,9 @@ const REEL_PAGE = 240/*frames*/;
 const SHOWN_MILLIS = 10_000/*ms*/;
 
 // == Types =======================================================================
-/** a studio's state as its stream tells it: its stage's, and whether it holds a build */
-type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; frame?: number; build?: boolean; }>;
+/** a studio's state as its stream tells it: its stage's, whether it holds a build, and
+ *  how many times its build has changed */
+type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; frame?: number; build?: boolean; edits?: number; }>;
 
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
@@ -45,6 +49,8 @@ export interface StudioCommands {
   thumbnail(args: object): Promise<Readonly<{ image: ImageBitmap; }>>;
   storyboard(args: object): Promise<Readonly<{ shown: number; }>>;
   getModel(args: object): Promise<Readonly<{ ldraw?: string; nextLine?: number; conflict?: string; }>>;
+  setModel(args: object): Promise<unknown>;
+  clear(args: object): Promise<unknown>;
 }
 
 /** a studio found: its commands, and whether it holds a build */
@@ -84,6 +90,10 @@ export class Studios {
   private watching: Subscription[] = [];
   /** each frame the main screen reports drawn */
   private readonly drawn = new Subject<number>();
+  /** each change to the main studio's build, by its count */
+  private readonly setChanges = new Subject<number>();
+  /** the main screen's build changes last told: each frame drawn repeats them */
+  private mainEdits: number | undefined;
 
   public get studios$(): Observable<ReadonlyArray<unknown>> { return this.found.asObservable(); }
   public get count(): number { return this.found.value.length; }
@@ -91,6 +101,8 @@ export class Studios {
   public get stageState(): StageState { return this.state.value; }
   /** the film staged, made with the wheels the stage found */
   public get film(): Film | undefined { return this.staged?.film; }
+  /** each change to the main studio's build (the film's set) */
+  public get setChanges$(): Observable<number> { return this.setChanges.asObservable(); }
 
   /** `paint` colors a plan's marks */
   public constructor(private readonly paint: Paint) {}
@@ -223,7 +235,30 @@ export class Studios {
     });
   }
 
+  // == Set =======================================================================
+  /** the main studio's build, the film's set, as LDraw text */
+  public async readSet(): Promise<string> { return buildText(this.main()); }
+
+  /** puts LDraw text in the main studio's build; the film is staged anew on it */
+  public async writeSet(ldraw: string): Promise<void> {
+    await this.main().setModel({ ldraw });
+    this.staged = undefined/*its set is gone: the next staging stages again*/;
+  }
+
+  /** empties the main studio's build; the film is staged anew on it */
+  public async clearSet(): Promise<void> {
+    await this.main().clear({});
+    this.staged = undefined/*its set is gone: the next staging stages again*/;
+  }
+
   // == Internal ==================================================================
+  /** the main studio, or why there is none */
+  private main(): StudioCommands {
+    const state = this.state.value;
+    if(this.screens.length > 0) return this.screens[0];
+    throw new Error((state.kind === 'ambiguous') ? `${state.builds} studios hold a build: keep the set in one, and the others empty.` : 'No studio: add Brick Studio to this document.');
+  }
+
   /** the screens for the studios found: the one holding a build first, then the
    *  rest in the order found; none while more than one holds a build. Every studio's
    *  state is followed, and the film stages again */
@@ -232,6 +267,7 @@ export class Studios {
     const main = (builds.length === 1) ? builds[0] : (builds.length < 1) ? found[0] : undefined;
     this.screens = main ? [main.commands, ...found.filter(each => each !== main).map(each => each.commands)] : [];
     this.staged = undefined/*the studios changed: stage again*/;
+    this.mainEdits = undefined/*the main screen's build told afresh*/;
 
     for(const subscription of this.watching) subscription.unsubscribe();
     this.watching = found.map(studio => studio.commands.stage$().subscribe({
@@ -244,6 +280,7 @@ export class Studios {
   /** a studio's state: a build appearing in it or emptied out chooses the screens
    *  again (once its stream has answered); otherwise what it says as a screen */
   private studioState(found: ReadonlyArray<Found>, studio: Found, state: ScreenState): void {
+    if((this.screens[0] === studio.commands) && (state.edits !== undefined) && (state.edits !== this.mainEdits)) { this.mainEdits = state.edits; this.setChanges.next(state.edits)/*the film's set*/; }
     if((state.build !== undefined) && (state.build !== studio.build)) {
       const changed = found.map(each => (each === studio) ? { ...each, build: state.build! } : each);
       queueMicrotask(() => { if(this.found.value === found) { this.arrange(changed); this.found.next(changed); } })/*outside the stream's own call*/;
