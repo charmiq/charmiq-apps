@@ -29,28 +29,10 @@ export type OtherPart = PartLine;
 
 /** a line in the text, its line break included (UTF-16 offsets) */
 export type Span = Readonly<{ from: number; to: number; }>;
-/** where an editable file's parts lie in its text: a flat file, or an MPD file whose
- *  components hold no other component */
-export type ModelLayout = Readonly<{
-  /** the line of each of `placements` and of `others`, in order (a part in a copy
-   *  lies in its component's section) */
-  placements: ReadonlyArray<Span>;
-  others: ReadonlyArray<Span>;
-  /** the lines of each placement's pieces, in the order of `placements` */
-  pieces: ReadonlyArray<ReadonlyArray<Span>>;
-  /** the line of each of the model's `placed`, in order */
-  placed: ReadonlyArray<Span>;
-  /** every part and copy line of the main model, whatever it names */
-  mainParts: ReadonlyArray<Span>;
-  /** every `0 STEP` line (the main model's) */
-  steps: ReadonlyArray<Span>;
-  /** the ground line, when the text has one */
-  ground?: Span;
-  /** the first `0 STEP` line after the main model's last part, when it ends in
-   *  steps: parts added to the last step go before it */
-  trailingStep?: Span;
-  /** the main model's `0 FILE` line, and each component's section from its `0 FILE`
-   *  line to the next, for an MPD file */
+/** where an editable text's files lie: what an edit of the file as a whole (a
+ *  component defined, the build cleared) is measured on */
+export type FileLayout = Readonly<{
+  /** the main model's `0 FILE` line, for an MPD file */
   mainFile?: Span;
   /** the `0 NOFILE` line ending the main model, when it has one: parts go before it,
    *  components after it */
@@ -64,14 +46,38 @@ export type ModelLayout = Readonly<{
   /** where the text's files end: before the data sections that close it (nothing but
    *  blank lines after them), else the text's end. New sections go there */
   filesEnd: number;
-  /** where the main model's lines end (the text's end for a flat file), and whether
-   *  its last line ends in a line break there */
-  mainEnd: number;
-  mainEndsWithBreak: boolean;
   /** the text's length, its line break, and whether it ends with one */
   length: number;
   lineBreak: string;
   endsWithBreak: boolean;
+}>;
+
+/** where an editable model's parts lie in its text: a flat file, or an MPD file whose
+ *  components hold no other component */
+export type ModelLayout = Readonly<{
+  /** the line of each of `placements` and of `others`, in order (a part in a copy
+   *  lies in its component's section) */
+  placements: ReadonlyArray<Span>;
+  others: ReadonlyArray<Span>;
+  /** the lines of each placement's pieces, in the order of `placements` */
+  pieces: ReadonlyArray<ReadonlyArray<Span>>;
+  /** the line of each of the model's `placed`, in order */
+  placed: ReadonlyArray<Span>;
+  /** every part and copy line of the model's own file, whatever it names */
+  parts: ReadonlyArray<Span>;
+  /** every `0 STEP` line of its own file */
+  steps: ReadonlyArray<Span>;
+  /** the ground line, when the model has one */
+  ground?: Span;
+  /** the first `0 STEP` line after the model's last part, when it ends in steps:
+   *  parts added to the last step go before it */
+  trailingStep?: Span;
+  /** where the model's own lines end (the text's end for a flat file), and whether its
+   *  last line ends in a line break there */
+  end: number;
+  endsLine: boolean;
+  /** where the text's files lie */
+  file: FileLayout;
 }>;
 
 /** each part's and copy's building step, from 1, in the order of `placements`, of
@@ -192,18 +198,41 @@ const IDENTITY: Transform = { matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], position: [0,
 // --------------------------------------------------------------------------------
 /** parses LDraw text (LDR or MPD) into a Model. Submodels are flattened; LDraw's
  *  inherited colors (16, 24) take the parent's color */
-export const parseModel = (text: string): Model => {
-  const lines = splitLines(text);
+export const parseModel = (text: string): Model => readSet(readFiles(text));
 
-  // split into files: a plain LDR is one unnamed file. Blank lines before the first
-  // file belong to none. A name used twice is read from its first section; the
-  // file can then not be edited line by line. The lines of the files after the
-  // main model (the component definitions) are counted toward the submodel budget
+// ................................................................................
+/** a text's files, read once: each file's lines, its components and where its
+ *  sections lie (SEE: readFiles) */
+type Files = Readonly<{
+  /** each file's lines by name; the main model's is the first, `''` for a flat file,
+   *  undefined when the text holds no file */
+  lines: ReadonlyMap<string, ReadonlyArray<Line>>;
+  main: string | undefined;
+  /** the components, read; none past the submodel budget (`tooManyDefinitionLines`) */
+  components: ReadonlyArray<Component & Readonly<{ nested: boolean; undecided: boolean; }>>;
+  tooManyDefinitionLines: boolean;
+  /** why the text's files keep it from being edited line by line, when they do */
+  mainTwice: boolean;
+  unsectioned: boolean;
+  nested: boolean;
+  repeated: boolean;
+  /** the components more than one section defines */
+  duplicated: ReadonlyArray<string>;
+  /** the data sections' lines, as written (SEE: Model#data) */
+  data: ReadonlyArray<string>;
+  layout: FileLayout;
+}>;
+
+/** splits a text into its files: a plain LDR is one unnamed file. Blank lines before
+ *  the first file belong to none. A name used twice is read from its first section;
+ *  the file can then not be edited line by line. The lines of the files after the
+ *  main model (the component definitions) are counted toward the submodel budget */
+const readFiles = (text: string): Files => {
+  const lines = splitLines(text);
   const files = new Map<string, Line[]>();
   const sectionStarts: Array<Readonly<{ name: string; from: number; to: number; }>> = []/*every `0 FILE` line, in order*/;
   let current: Line[] = [];
   let main: string | undefined;
-  let repeated = false;
   let mainTwice = false;
   let endMarker: Span | undefined;
   let definitionLines = 0;
@@ -250,25 +279,44 @@ export const parseModel = (text: string): Model => {
     current.push(line);
   }
   if(reading) dataSpans.push({ from: reading.from, to: reading.to })/*the text's last section*/;
-  const withData = (data.length > 0) ? { data } : {};
   const filesEnd = closingData(text, dataSpans);
-  if(main === undefined) return { ...EMPTY_MODEL, ...withData, layout: { placements: [], others: [], pieces: [], placed: [], mainParts: [], steps: [], components: [], data: dataSpans, filesEnd, mainEnd: 0, mainEndsWithBreak: true/*nothing before the data*/, length: text.length, lineBreak: lines.find(line => line.lineBreak)?.lineBreak ?? '\n', endsWithBreak: /[\r\n]$/.test(text) } }/*no file: empty text, or data alone*/;
 
   // each file but the main model is a component: its parts in its own grid. Past
   // the submodel budget none is read: the model is then read only in part
   const tooManyDefinitionLines = definitionLines > MAX_EXPANDED_LINES;
   const components = tooManyDefinitionLines ? [] : [...files].filter(([name]) => name !== main).map(([name, componentLines]) => readComponent(name, componentLines, files));
-  const componentsByFile = new Map(components.map(component => [component.file, component]));
-  let nested = components.some(component => component.nested);
   // a name two files share (`bare` and `bare.ldr`) names neither for an edit; a file
   // defined twice (one name defined by two people at once) is read from its first
   // definition and named
-  const names = new Set(components.map(component => component.name));
-  if(names.size < components.length) repeated = true;
+  const repeated = new Set(components.map(component => component.name)).size < components.length;
   const sectionsOf = new Map<string, number>();
   for(const { name } of sectionStarts) sectionsOf.set(name, (sectionsOf.get(name) ?? 0) + 1);
   const duplicated = components.filter(component => (sectionsOf.get(component.file) ?? 0) > 1).map(component => component.name);
+  const spans = sectionSpans(sectionStarts, dataSpans, filesEnd, text.length);
+  const sections = components.map(({ name, file }) => { const [span, ...repeats] = spans.get(file)!/*each component is a file's*/; return { name, file, span, repeats }; });
+  const flat = (files.size === 1) && (main === '')/*no `0 FILE` section: each part is its own line*/;
+  return {
+    lines: files, main, components, tooManyDefinitionLines,
+    mainTwice, unsectioned: (main === '') && !flat, nested: components.some(component => component.nested), repeated, duplicated, data,
+    layout: {
+      ...(((main !== undefined) && (main !== '')) ? { mainFile: { from: sectionStarts[0].from, to: sectionStarts[0].to }/*the first section is the main model's*/ } : {}),
+      ...(endMarker ? { endMarker } : {}),
+      components: sections, data: dataSpans, filesEnd,
+      length: text.length, lineBreak: lines.find(line => line.lineBreak)?.lineBreak ?? '\n', endsWithBreak: /[\r\n]$/.test(text),
+    },
+  };
+};
 
+// ................................................................................
+/** the main model of a text's files: its parts walked through the components it
+ *  places, and where its lines lie when edits can change them line by line */
+const readSet = (read: Files): Model => {
+  const { lines: files, main, components, layout: file } = read;
+  const withData = (read.data.length > 0) ? { data: read.data } : {};
+  if(main === undefined) return { ...EMPTY_MODEL, ...withData, layout: { placements: [], others: [], pieces: [], placed: [], parts: [], steps: [], end: 0, endsLine: true/*nothing before the data*/, file } }/*no file: empty text, or data alone*/;
+
+  const componentsByFile = new Map(components.map(component => [component.file, component]));
+  let nested = read.nested;
   const header: string[] = [];
   const placements: Placement[] = [];
   const placementCopies: Array<number | undefined> = [];
@@ -280,7 +328,7 @@ export const parseModel = (text: string): Model => {
   let placed: Placed[] = [];
   const placedSpans: Span[] = [];
   const placedTransforms: Transform[] = []/*each line's, as written*/;
-  const mainParts: Span[] = [];
+  const parts: Span[] = [];
   // each part's and copy's step as counted (a `0 STEP` line counts one), numbered once read
   const placementSteps: number[] = [];
   const otherSteps: number[] = [];
@@ -319,7 +367,7 @@ export const parseModel = (text: string): Model => {
 
       const values = fields.slice(1, 14).map(Number);
       if(values.some(value => !Number.isFinite(value))) continue/*malformed*/;
-      if(isMain) mainParts.push({ from, to });
+      if(isMain) parts.push({ from, to });
       const colorCode = ((values[0] === 16) || (values[0] === 24)) ? inheritedColor : values[0];
       const reference = normalizeName(fields.slice(14).join(' '));
       const local: Transform = { position: [values[1], values[2], values[3]], matrix: values.slice(4, 13) };
@@ -363,8 +411,8 @@ export const parseModel = (text: string): Model => {
     const shape = getShape(part);
     const stepEnd = stepSpans[firstFrom(stepSpans, placementSpans[index].from)]?.from ?? Infinity;
     let carrier = placement;
-    for(let next = firstFrom(mainParts, maxOf([placementSpans[index], ...pieceSpans[index]].map(span => span.to))); open.size > 0; next++) {
-      const span = mainParts[next];
+    for(let next = firstFrom(parts, maxOf([placementSpans[index], ...pieceSpans[index]].map(span => span.to))); open.size > 0; next++) {
+      const span = parts[next];
       const line = (span === undefined) ? undefined : placedAt.get(span.from);
       if((line === undefined) || carried.has(line) || (span.from > stepEnd)) break/*no component line, or a step apart*/;
       const component = componentsByName.get(placed[line].component);
@@ -393,21 +441,16 @@ export const parseModel = (text: string): Model => {
   }
 
   exceeded();
-  truncated ||= tooManyDefinitionLines/*the main model read, its components not*/;
-  const flat = (files.size === 1) && (main === '')/*no `0 FILE` section: each part is its own line*/;
+  truncated ||= read.tooManyDefinitionLines/*the main model read, its components not*/;
   // why line edits cannot apply, when they cannot: the first reason found
   const untold = undecided || components.some(component => component.undecided);
   const overflows = others.some(other => ![...other.position, ...other.matrix].every(Number.isFinite))/*placed through submodels whose transforms overflow*/;
-  const uneditable = mainTwice ? UNEDITABLE.mainTwice : ((main === '') && !flat) ? UNEDITABLE.unsectioned : nested ? UNEDITABLE.nested : repeated ? UNEDITABLE.repeated
+  const { mainTwice } = read;
+  const uneditable = mainTwice ? UNEDITABLE.mainTwice : read.unsectioned ? UNEDITABLE.unsectioned : nested ? UNEDITABLE.nested : read.repeated ? UNEDITABLE.repeated
     : untold ? UNEDITABLE.undecided : undefined;
-  const lineBreak = lines.find(line => line.lineBreak)?.lineBreak ?? '\n';
-  const endsWithBreak = /[\r\n]$/.test(text);
-  const spans = sectionSpans(sectionStarts, dataSpans, filesEnd, text.length);
-  const sections = components.map(({ name, file }) => { const [span, ...repeats] = spans.get(file)!/*each component is a file's*/; return { name, file, span, repeats }; });
-  const mainEnd = minOf([...sections.flatMap(({ span, repeats }) => [span, ...repeats]).map(span => span.from), ...(endMarker ? [endMarker.from] : [])], filesEnd);
-  const lastPart = maxOf(mainParts.map(span => span.to), 0);
-  const trailingStep = (mainParts.length > 0) ? stepSpans.find(span => span.from >= lastPart) : undefined;
-  const mainFile: Span | undefined = (main !== '') ? { from: sectionStarts[0].from, to: sectionStarts[0].to }/*the first section is the main model's*/ : undefined;
+  const end = minOf([...file.components.flatMap(({ span, repeats }) => [span, ...repeats]).map(span => span.from), ...(file.endMarker ? [file.endMarker.from] : [])], file.filesEnd);
+  const lastPart = maxOf(parts.map(span => span.to), 0);
+  const trailingStep = (parts.length > 0) ? stepSpans.find(span => span.from >= lastPart) : undefined;
   const steps = numberSteps(placementSteps, otherSteps, copySteps);
   return {
     header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others,
@@ -418,14 +461,12 @@ export const parseModel = (text: string): Model => {
     ...((placed.length > 0) ? { placed, placementPlaced, otherPlaced } : {}),
     ...(untold ? { untold: UNEDITABLE.undecided } : {}),
     ...((untold || overflows || mainTwice) ? { unwritable: mainTwice ? UNWRITABLE.mainTwice : untold ? UNEDITABLE.undecided : UNWRITABLE.overflows } : {}),
-    ...((duplicated.length > 0) ? { duplicated } : {}),
+    ...((read.duplicated.length > 0) ? { duplicated: read.duplicated } : {}),
     ...withData,
     ...(uneditable ? { uneditable } : { layout: {
-      placements: placementSpans, others: otherSpans, pieces: pieceSpans, placed: placedSpans, mainParts, steps: stepSpans,
+      placements: placementSpans, others: otherSpans, pieces: pieceSpans, placed: placedSpans, parts, steps: stepSpans,
       ...(ground ? { ground: ground.span } : {}), ...(trailingStep ? { trailingStep } : {}),
-      ...(mainFile ? { mainFile } : {}), ...(endMarker ? { endMarker } : {}), components: sections, data: dataSpans, filesEnd,
-      mainEnd, mainEndsWithBreak: (mainEnd < text.length) || endsWithBreak,
-      length: text.length, lineBreak, endsWithBreak,
+      end, endsLine: (end < file.length) || file.endsWithBreak, file,
     } }),
     ...((steps.count > 1) ? { steps } : {}),
   };
@@ -871,71 +912,83 @@ const referenceLine = (file: string, { position, matrix }: Transform): string =>
   ['1', 16, ...position, ...matrix].map(formatNumber).join(' ') + ` ${file}`;
 
 // == Line Edits ==================================================================
-/** the edit that adds part and copy lines to the main model: to its last step, or
- *  as a new step after it (`newStep`, for a build that has parts), before its end
- *  marker. An empty text gains the header first, flat: two first parts added at once
- *  then both stand, each with the header (a comment written twice), where a main
- *  model's file line written twice would leave neither editable */
+/** the edit that adds part and copy lines to a model: to its last step, or as a new
+ *  step after it (`newStep`, for a build that has parts), before its end marker. An
+ *  empty text gains the header first, flat: two first parts added at once then both
+ *  stand, each with the header (a comment written twice), where a main model's file
+ *  line written twice would leave neither editable */
 export const appendLines = (layout: ModelLayout, lines: ReadonlyArray<string>, newStep: boolean): ContentChange => {
-  const hasParts = layout.mainParts.length > 0;
+  const { lineBreak, length } = layout.file;
+  const hasParts = layout.parts.length > 0;
   if(!newStep && layout.trailingStep) {
-    const at = layout.trailingStep.from/*before the steps the main model ends in*/;
-    return { from: at, to: at, insert: lines.map(line => line + layout.lineBreak).join('') };
-  } /* else -- the lines go at the main model's end */
-  const opening = (layout.length < 1) ? DEFAULT_HEADER : (newStep && hasParts && !layout.trailingStep) ? [STEP_LINE] : [];
-  const lead = ((layout.length < 1) || layout.mainEndsWithBreak) ? '' : layout.lineBreak/*the last line is unfinished*/;
-  return { from: layout.mainEnd, to: layout.mainEnd, insert: lead + [...opening, ...lines].map(line => line + layout.lineBreak).join('') };
+    const at = layout.trailingStep.from/*before the steps the model ends in*/;
+    return { from: at, to: at, insert: lines.map(line => line + lineBreak).join('') };
+  } /* else -- the lines go at the model's end */
+  const opening = (length < 1) ? DEFAULT_HEADER : (newStep && hasParts && !layout.trailingStep) ? [STEP_LINE] : [];
+  const lead = ((length < 1) || layout.endsLine) ? '' : lineBreak/*the last line is unfinished*/;
+  return { from: layout.end, to: layout.end, insert: lead + [...opening, ...lines].map(line => line + lineBreak).join('') };
 };
 
 /** the edits that define a component, or replace its definition (every section of
  *  its name, the first rewritten and the rest removed): its section holds its name and
- *  its parts' lines. A flat text becomes an MPD file first, its main model named
- *  model.ldr and ended by the end marker; a new section goes at the text's end */
-export const defineEdits = (layout: ModelLayout, name: string, lines: ReadonlyArray<string>): ContentChange[] => {
-  const existing = layout.components.find(component => component.name === name);
-  const section = [`0 FILE ${existing?.file ?? newFileName(name)}`, `0 ${name}`, ...lines].map(line => line + layout.lineBreak).join('');
+ *  its parts' lines */
+export const defineEdits = (file: FileLayout, name: string, lines: ReadonlyArray<string>): ContentChange[] => {
+  const existing = file.components.find(component => component.name === name);
+  const section = sectionText(file, [`0 FILE ${existing?.file ?? newFileName(name)}`, `0 ${name}`, ...lines]);
   if(existing) return [...deleteLines(existing.repeats)/*after the first: removed first*/, { ...existing.span, insert: section }];
-  const at = layout.filesEnd/*before the data that closes the text*/;
-  const lead = ((layout.length < 1) || (at < layout.length) || layout.endsWithBreak) ? '' : layout.lineBreak/*the last line is unfinished*/;
-  const marker = layout.endMarker ? '' : END_MARKER + layout.lineBreak;
-  const end: ContentChange = { from: at, to: at, insert: lead + ((layout.mainFile && !layout.endMarker) ? ''/*an MPD file of the previous release: its sections already part the two*/ : marker) + section };
-  if(layout.mainFile) return [end];
-  const opening = [`0 FILE ${MAIN_FILE}`, ...((layout.length < 1) ? DEFAULT_HEADER : [])].map(line => line + layout.lineBreak).join('');
+  return newSectionEdits(file, section);
+};
+
+/** the edits that add a section to the text: at its files' end, before the data that
+ *  closes it. A flat text becomes an MPD file first, its main model named model.ldr
+ *  and ended by the end marker */
+const newSectionEdits = (file: FileLayout, section: string): ContentChange[] => {
+  const at = file.filesEnd;
+  const lead = ((file.length < 1) || (at < file.length) || file.endsWithBreak) ? '' : file.lineBreak/*the last line is unfinished*/;
+  const marker = file.endMarker ? '' : END_MARKER + file.lineBreak;
+  const end: ContentChange = { from: at, to: at, insert: lead + ((file.mainFile && !file.endMarker) ? ''/*an MPD file of the previous release: its sections already part the two*/ : marker) + section };
+  if(file.mainFile) return [end];
+  const opening = sectionText(file, [`0 FILE ${MAIN_FILE}`, ...((file.length < 1) ? DEFAULT_HEADER : [])]);
   return [end, { from: 0, to: 0, insert: opening }]/*the end first: each edit is measured after the ones before it*/;
 };
+
+/** lines as a text writes them, each ended by its line break */
+const sectionText = (file: FileLayout, lines: ReadonlyArray<string>): string => lines.map(line => line + file.lineBreak).join('');
 
 /** the edits that remove every part, copy, component and data section, keeping the
  *  main model's other lines (its header, the ground): the build is left as Brick
  *  Studio writes one whole, its main model's file line first and its end marker last.
  *  An empty text stays empty */
 export const clearEdits = (layout: ModelLayout): ContentChange[] => {
-  if(layout.length < 1) return [];
-  const removed = [...layout.mainParts, ...layout.steps, ...layout.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...layout.data];
+  const { file } = layout;
+  if(file.length < 1) return [];
+  const removed = [...layout.parts, ...layout.steps, ...file.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...file.data];
   // the main model's end, after the lines before it are removed
-  const end = layout.mainEnd - removed.filter(span => span.to <= layout.mainEnd).reduce((total, span) => total + (span.to - span.from), 0);
-  const lead = layout.mainEndsWithBreak ? '' : layout.lineBreak/*the last line is unfinished*/;
+  const end = layout.end - removed.filter(span => span.to <= layout.end).reduce((total, span) => total + (span.to - span.from), 0);
+  const lead = layout.endsLine ? '' : file.lineBreak/*the last line is unfinished*/;
   return [
     ...deleteLines(removed),
-    ...(layout.endMarker ? [] : [{ from: end, to: end, insert: lead + END_MARKER + layout.lineBreak }]),
-    ...(layout.mainFile ? [] : [{ from: 0, to: 0, insert: `0 FILE ${MAIN_FILE}` + layout.lineBreak }]),
+    ...(file.endMarker ? [] : [{ from: end, to: end, insert: lead + END_MARKER + file.lineBreak }]),
+    ...(file.mainFile ? [] : [{ from: 0, to: 0, insert: `0 FILE ${MAIN_FILE}` + file.lineBreak }]),
   ];
 };
 
-/** the edit that sets a flat model's ground color, or returns it to the theme's
+/** the edit that sets a model's ground color, or returns it to the theme's
  *  (`undefined`): the ground line is replaced or removed, or a new one goes before the
  *  first part. An empty text gains the header first */
 export const groundEdit = (layout: ModelLayout, color: string | undefined): ContentChange[] => {
+  const { file } = layout;
   const line = (color === undefined) ? undefined : [...GROUND_META, color].join(' ');
   if(layout.ground) {
-    const ending = ((layout.ground.to < layout.length) || layout.endsWithBreak) ? layout.lineBreak : ''/*the last line, unfinished*/;
+    const ending = ((layout.ground.to < file.length) || file.endsWithBreak) ? file.lineBreak : ''/*the last line, unfinished*/;
     return [{ ...layout.ground, insert: (line === undefined) ? '' : line + ending }];
   } /* else -- no ground line yet */
   if(line === undefined) return []/*already the theme's*/;
-  if(layout.length < 1) return [{ from: 0, to: 0, insert: [...DEFAULT_HEADER, line].map(text => text + layout.lineBreak).join('') }]/*flat, as an empty build's first part (SEE: appendLines)*/;
-  const first = minOf([...layout.mainParts, ...layout.steps].map(span => span.from));
-  if(Number.isFinite(first)) return [{ from: first, to: first, insert: line + layout.lineBreak }];
-  const lead = layout.mainEndsWithBreak ? '' : layout.lineBreak/*the last line is unfinished*/;
-  return [{ from: layout.mainEnd, to: layout.mainEnd, insert: lead + line + layout.lineBreak }];
+  if(file.length < 1) return [{ from: 0, to: 0, insert: sectionText(file, [...DEFAULT_HEADER, line]) }]/*flat, as an empty build's first part (SEE: appendLines)*/;
+  const first = minOf([...layout.parts, ...layout.steps].map(span => span.from));
+  if(Number.isFinite(first)) return [{ from: first, to: first, insert: line + file.lineBreak }];
+  const lead = layout.endsLine ? '' : file.lineBreak/*the last line is unfinished*/;
+  return [{ from: layout.end, to: layout.end, insert: lead + line + file.lineBreak }];
 };
 
 /** the edits that delete lines, each once and the last first: each edit is measured

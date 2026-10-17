@@ -510,7 +510,7 @@ const toPosition = (x: unknown, z: unknown, level: unknown, rotation: unknown): 
  *  would carry it no longer (its copy no longer on the hinge's top) */
 const defineChecked = (text: string, name: string, placements: ReadonlyArray<Placement>): Readonly<{ changes: ReadonlyArray<ContentChange>; outcome: Defined; }> => {
   const { model, layout } = editable(text);
-  const changes = defineEdits(layout, name, placements.flatMap(placementLines));
+  const changes = defineEdits(layout.file, name, placements.flatMap(placementLines));
   const next = readWhole(applyChanges(text, changes));
   const carriers = (of: Model) => of.placements.filter(placement => mountsOf(placement).some(mount => mount.copy.component === name)).map(describePlacement);
   const dropped = carriers(model).filter(carrier => !carriers(next).includes(carrier));
