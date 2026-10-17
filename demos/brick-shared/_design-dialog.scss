@@ -1,0 +1,196 @@
+@use 'family';
+
+// the Brick family's save and open dialog (SEE: design-dialog.ts), on the family's
+// surfaces (SEE: _family.scss). An Application `@use`s it from its stylesheet beside
+// the family's look
+// ********************************************************************************
+// == Dialog ======================================================================
+// a panel over the dimmed page, no taller than the window. The list gives way first;
+// below its least height the panel scrolls
+.designs {
+  width: min(440px, calc(100% - 32px));
+  max-height: min(600px, calc(100vh - 32px));
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  box-shadow: 0 2px 0 var(--edge);
+  color: var(--ink);
+  background: var(--surface);
+
+  &[open] { display: flex; flex-direction: column; }
+  &::backdrop { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+}
+
+.designs-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto/*only once the list is at its least height*/;
+
+  > * { flex-shrink: 0; }
+  > .designs-list { flex-shrink: 1; }
+}
+
+.designs-title {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.designs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.designs-label {
+  @extend %mono-caps;
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.designs-input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--field);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  &:disabled { color: var(--ink-soft); opacity: 0.6; }
+}
+
+.designs-where, .designs-confirm {
+  font-size: 13px;
+  overflow-wrap: break-word;
+}
+
+.designs-path {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.designs-here {
+  @extend %mono-caps;
+  min-width: 0;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/** about three rows: the least the list gives way to before the panel scrolls */
+$designs-list-least: 112px;
+
+.designs-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: $designs-list-least;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+}
+
+.designs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--field);
+  cursor: pointer;
+
+  svg { flex: none; width: 16px; height: 16px; color: var(--ink-soft); }
+  &:hover, &:focus-visible { background: var(--field); outline: none; }
+}
+
+.designs-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.designs-note {
+  @extend %mono-caps;
+  padding: 10px;
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.designs-new {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+
+  .designs-field { flex: 1; }
+}
+
+.designs-message {
+  font-size: 12px;
+  overflow-wrap: break-word;
+  &:empty { display: none; }
+  &.is-error { color: var(--danger); }
+}
+
+.designs-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.designs-primary, .designs-secondary {
+  @extend %mono-caps;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--edge);
+  cursor: pointer;
+
+  &:active { transform: translateY(1px); box-shadow: none; }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  &:disabled { color: var(--ink-soft); background: var(--field); box-shadow: none; cursor: default; }
+}
+
+.designs-primary { color: var(--tag-text); background: var(--brick-yellow); }
+.designs-secondary { color: var(--ink); background: var(--surface); }
+
+.designs-link {
+  @extend %mono-caps;
+  padding: 0;
+  font-size: 9px;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { color: var(--ink); }
+  &:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+  &:disabled { opacity: 0.5; text-decoration: none; cursor: default; }
+}

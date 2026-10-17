@@ -94,7 +94,7 @@ export class Films {
     const scene = this.parts.scene();
     if(scene === null) throw new DesignError('The code block holds no scene to save: add a code editor with a scene.js tab.');
     let set = '';
-    const saved = await write(async () => { set = await this.parts.set(); return writeFilmFile(set, scene); });
+    const saved = await write(async () => { set = await this.parts.set().catch(refused); return writeFilmFile(set, scene); });
     this.keep({ design: saved.design, ...(saved.folder ? { folder: saved.folder } : {}) }, { set, scene });
     await this.recheck()/*the film as it stands now*/;
     return saved;
@@ -109,7 +109,7 @@ export class Films {
   private async openNow(design: Design | string, discard: boolean): Promise<Readonly<{ name: string; scene: boolean; }>> {
     const { design: found, text, folder } = await this.store.read(design);
     const film = readFilmFile(text);
-    if(film.scene !== undefined) await this.parts.checkScene();
+    if(film.scene !== undefined) await this.parts.checkScene().catch(refused);
     await this.refuseUnsaved(discard)/*last: the film changes next*/;
     const name = displayName(found);
     const scene = film.scene;
@@ -123,7 +123,7 @@ export class Films {
    *  as a film is opened (SEE: open) */
   public clear(discard = false): Promise<void> { return this.exclusive(() => this.clearNow(discard)); }
   private async clearNow(discard: boolean): Promise<void> {
-    await this.parts.checkScene();
+    await this.parts.checkScene().catch(refused);
     await this.refuseUnsaved(discard)/*last: the film changes next*/;
     const failure = await this.change(() => this.parts.clearSet(), () => this.parts.setScene(STARTER_SCENE), undefined, { set: '', scene: STARTER_SCENE });
     if(failure) throw new DesignError(`The set is cleared, but the new scene could not be written: ${failure.message}`);
@@ -157,7 +157,7 @@ export class Films {
    *  of the scene's write, the film then changed */
   private async change(setSet: () => Promise<void>, setScene: (() => Promise<void>) | undefined, own: Own | undefined, kept: Kept): Promise<Error | undefined> {
     this.looks++/*the film is changing: a look meanwhile tells nothing*/;
-    await setSet();
+    await setSet().catch(refused);
     const failure = await setScene?.().then(() => undefined, (error: unknown) => (error instanceof Error) ? error : new Error(String(error)));
     this.keep(own, { set: await this.parts.set().catch(() => kept.set), scene: kept.scene });
     if(failure) await this.recheck();
@@ -190,3 +190,10 @@ export class Films {
     throw new UnsavedChanges(`${(name !== undefined) ? `"${name}"` : 'The film'} has unsaved changes: save it first, or discard them.`);
   }
 }
+
+// == Util ========================================================================
+/** a part's refusal (the studio's, the code editor's) as the film's own: its message
+ *  as it is, never read as the Drive's */
+const refused = (error: unknown): never => {
+  throw (error instanceof DesignError) ? error : new DesignError((error instanceof Error) ? error.message : String(error));
+};

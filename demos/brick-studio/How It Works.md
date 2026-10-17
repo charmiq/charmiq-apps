@@ -192,9 +192,9 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/numbers.ts`](charmiq://./src/numbers.ts) | the least and greatest of a build-sized list of numbers |
 | [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` app-content, edited with guarded edits |
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
-| [`src/drive.ts`](charmiq://./src/drive.ts) | the Drive's folders and designs, through the VFS server |
-| [`src/designs.ts`](charmiq://./src/designs.ts) | saving and loading designs: names, the remembered folder, replacing |
-| [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog and its folder chooser |
+| [`src/designs.ts`](charmiq://./src/designs.ts) | the build saved as a design, and a design loaded whole or as a component |
+| [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog's Brick Studio choices: add a design to the build, or replace it |
+| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog, and the family's look (`_family.scss`, `_design-dialog.scss`) |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
 | [`src/frame-request.ts`](charmiq://./src/frame-request.ts) | a frame drawn once, at the next animation frame or after a moment when the Studio is out of view |
 | [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the effects and the path tracer; a film's fade, titles and plans drawn over the stage |
@@ -203,7 +203,6 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/ground-control.ts`](charmiq://./src/ground-control.ts) | the ground swatch and its colors |
 | [`src/sheet.ts`](charmiq://./src/sheet.ts) | the sheet over the stage: pictures in a grid, each captioned, for one screenshot |
 | [`src/look-around.ts`](charmiq://./src/look-around.ts) | the build from four sides at once, on the sheet |
-| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog |
 | [`src/parts/`](charmiq://./src/parts) | the packed parts (generated): `built-in.ldr` comes with the Studio, each other family is a resource read when first shown |
 | [`src/parts.generated.ts`](charmiq://./src/parts.generated.ts) | each part's footprint, height, studs and fill, measured, and the family each is read from (generated) |
 | [`tools/pack-parts.ts`](charmiq://./tools/pack-parts.ts) | regenerates the parts, the measurements and the manifest's resources |
