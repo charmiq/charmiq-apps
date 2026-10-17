@@ -16,6 +16,9 @@ const SOURCE_URI = 'charmiq://source/';
 export const DESIGN_EXTENSION = '.ldr';
 /** how many entries a listing reads at a time: the Platform's largest page */
 export const DRIVE_PAGE = 50;
+/** how long a VFS call may take: each is one small read or write, and the bridge
+ *  itself never gives up on a call */
+const CALL_DEADLINE_MS = 30_000/*ms*/;
 
 // == Types =======================================================================
 /** a folder in the Drive; the top of the Drive has no id */
@@ -97,9 +100,13 @@ export class Drive {
   }
 
   // == Internal ==================================================================
-  /** calls a VFS tool and returns its structured result; a refused call throws its text */
+  /** calls a VFS tool and returns its structured result; a refused call throws its
+   *  text, and one unanswered by CALL_DEADLINE_MS throws that it did not answer (a
+   *  write past its deadline may still land: nothing takes it as done) */
   private async call<T>(tool: string, args: Readonly<Record<string, unknown>>): Promise<T> {
-    const result = await this.mcp.callTool(VFS, tool, { ...args });
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => { deadline = setTimeout(() => reject(new Error(`it did not answer within ${CALL_DEADLINE_MS / 1000} seconds. Try again.`)), CALL_DEADLINE_MS); });
+    const result = await Promise.race([this.mcp.callTool(VFS, tool, { ...args }), late]).finally(() => clearTimeout(deadline));
     const text = result.content.filter(part => part.type === 'text').map(part => part.text).join('\n');
     if(result.isError) throw new Error(text || `The Drive refused ${tool}.`);
     if((result.structuredContent === undefined) || (result.structuredContent === null)) throw new Error(`The Drive answered ${tool} without its result.`);
