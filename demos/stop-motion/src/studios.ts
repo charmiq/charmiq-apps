@@ -1,7 +1,7 @@
 import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rxjs';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
-import { planMarksOf, reelFrameOf, type Film, type Paint, type Rest } from './film';
+import { planMarksOf, reelFrameOf, stagedSets, type Film, type Paint, type Rest } from './film';
 import type { Size } from './measure';
 import type { Recorded } from './recorder';
 
@@ -28,7 +28,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 3;
+const STAGE_VERSION = 4;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -38,13 +38,13 @@ const SHOWN_MILLIS = 10_000/*ms*/;
 /** makes a scene's film once staged: with the wheels the stage found and the rests of
  *  the actors cast from the set (SEE: film.ts filmOf) */
 export type FilmFor = (wheeled: ReadonlySet<string>, rests: ReadonlyMap<string, Rest>) => Film;
-/** a studio's state as its stream tells it: its stage's, whether it holds a build, and
- *  how many times its build has changed */
-type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; frame?: number; build?: boolean; edits?: number; }>;
+/** a studio's state as its stream tells it: its stage's, whether it holds a build, its
+ *  build's sets, and how many times its build has changed */
+type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; frame?: number; build?: boolean; sets?: ReadonlyArray<string>; edits?: number; }>;
 
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
-  describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; }>>;
+  describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
   stage$(): Observable<ScreenState>;
   stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
@@ -160,17 +160,21 @@ export class Studios {
       const [main, ...others] = screens;
       const actors = scene.actors.map(({ name, source }) => ({ name, ...source }));
       const floor = scene.floor ? { floor: scene.floor } : {};
+      // the sets the scene cuts between, the build's first ahead of them while a frame
+      // stands before the first key
+      const sets = scene.sets ? stagedSets(scene, (await main.describeStage({})).sets[0]) : undefined;
+      const standing = sets ? { sets } : {};
       const reel = { fps: scene.fps, length: scene.frames, width: scene.width, height: scene.height };
       // a plan's marks are where its actors go: an actor cast from the set starts where
       // its piece stands, which a still staged first tells
       const plan = scene.views.some(view => view.plan);
-      const rested = (plan && actors.some(actor => 'placed' in actor)) ? restsOf(await main.stage({ actors, ...floor })) : new Map<string, Rest>();
+      const rested = (plan && actors.some(actor => 'placed' in actor)) ? restsOf(await main.stage({ ...standing, actors, ...floor })) : new Map<string, Rest>();
       const marks = plan ? { marks: planMarksOf(filmFor(new Set()/*its wheels move nothing*/, rested), this.paint) } : {};
-      const answer = await main.stage({ actors, ...floor, reel, ...marks });
-      const set = (others.length > 0) ? await buildText(main) : undefined;
+      const answer = await main.stage({ ...standing, actors, ...floor, reel, ...marks });
+      const ldraw = (others.length > 0) ? await buildText(main) : undefined;
       const answers = await Promise.all(others.map((studio, index) => {
         const view = scene.views[index]?.name;
-        return studio.stage({ actors, ...floor, ...(set ? { set } : {}), reel, ...(view ? { view } : {}), ...marks });
+        return studio.stage({ ...(ldraw ? { ldraw } : {}), ...standing, actors, ...floor, reel, ...(view ? { view } : {}), ...marks });
       }));
       const reels = [answer, ...answers].map(each => each.reel);
       if(reels.some(each => each === undefined)) throw new Error('A studio took the scene but no reel: it may need updating.');

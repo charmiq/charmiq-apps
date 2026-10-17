@@ -1,15 +1,16 @@
 import { toPosing } from './build';
 import { getFigureFace, FIGURE_FACES, type CatalogPart } from './catalog';
 import { compose, footprint, footprintOf, footprintSize, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type PartLine, type Placement, type Rotation, type Transform } from './grid';
-import { drawnLines, parseModel, withoutParts, type Component, type Model } from './model';
-import { bankOf, swingOf, turnOf, LIMBS, type Limb, type Pose } from './pose';
+import { drawnLines, parseSets, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
+import { bankOf, swingOf, turnOf, type Limb, type Pose, LIMBS } from './pose';
 
 // a stage: a scene the studio shows in place of its build while another Application
-// (a film) drives it. The set is a build, shown as it is: LDraw text, or the
-// studio's own. Each actor is a component of the set, a dressed catalog part, or a
-// piece standing in the set (a part or a copy, named by where it stands), which the set
-// is shown without while it is cast and which a shot at its rest draws where it
-// stood. Each frame puts an actor anywhere: any position, any turn, a figure's limbs at any angle,
+// (a film) drives it. Its sets are a build's, each shown as it is: LDraw text's, or
+// the studio's own. One stands at a time, the first until a frame names another, and
+// every one stands built for the stage's life. Each actor is a component, a dressed
+// catalog part, or a piece standing in a set (a part or a copy, named by where it
+// stands), which its set is shown without while it is cast and which a shot at its
+// rest draws where it stood; an actor is drawn in whichever set stands. Each frame puts an actor anywhere: any position, any turn, a figure's limbs at any angle,
 // a wheel set's wheels rolled any distance. An actor is never a placement: never on
 // the grid, never checked, never written to the build. A film's frames arrive as a
 // reel, read and checked page by page as they load, so a frame shown from it is data
@@ -21,7 +22,10 @@ import { bankOf, swingOf, turnOf, LIMBS, type Limb, type Pose } from './pose';
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 3;
+export const STAGE_VERSION = 4;
+
+/** the most sets a stage stands */
+export const MAX_STAGED_SETS = 8;
 
 /** the most actors a stage casts */
 export const MAX_ACTORS = 64;
@@ -116,7 +120,7 @@ export type ReelHeader = Readonly<{ fps: number; length: number; width: number; 
 /** a reel's frame as one screen shows it: its shots, the camera the screen sees it
  *  through (its view's, else the main camera), the film's main camera and every view,
  *  and what lies over it */
-export type ReelFrame = Readonly<{ shots: ReadonlyArray<Shot>; camera: ViewCamera; main: StageCamera; views: ReadonlyMap<string, ViewCamera>; overlay: FilmOverlay; }>;
+export type ReelFrame = Readonly<{ set: number/*an index into the cast's sets*/; shots: ReadonlyArray<Shot>; camera: ViewCamera; main: StageCamera; views: ReadonlyMap<string, ViewCamera>; overlay: FilmOverlay; }>;
 
 /** a frame on a storyboard, and what its caption says */
 export type Board = Readonly<{ frame: number; caption: string; }>;
@@ -137,9 +141,12 @@ type Actor = Readonly<{
  *  as the set does */
 export type Rest = Readonly<{ position: Point; turn: Turn; }>;
 
-/** a stage's set and its actors, by name: each cast from a piece of the set at its
- *  rest, and the set as it is shown, those pieces gone */
-export type Cast = Readonly<{ set: Model; actors: ReadonlyMap<string, Actor>; placed: ReadonlyMap<string, Rest>; shown: Model; }>;
+/** a set a stage stands: its name, the set, and the set as it is shown, the pieces
+ *  cast from it gone */
+export type StagedSet = Readonly<{ name: string; set: Model; shown: Model; }>;
+/** a stage's sets and its actors, by name, each cast from a piece of a set at its
+ *  rest */
+export type Cast = Readonly<{ sets: ReadonlyArray<StagedSet>; actors: ReadonlyMap<string, Actor>; placed: ReadonlyMap<string, Rest>; }>;
 
 /** an actor a stage refused, and why */
 export type Refusal = Readonly<{ name: string; reason: string; }>;
@@ -147,11 +154,42 @@ export type Refusal = Readonly<{ name: string; reason: string; }>;
 // == Stage =======================================================================
 // the stage call: its set, the area its baseplate covers and its cast
 
-/** the set a stage call names: its LDraw text, else the build's */
-export const setOf = (text: unknown, build: Model): Model => {
-  if(text === undefined) return build;
-  if(typeof text !== 'string') throw new Error('set is the scene\'s LDraw text (leave it out to stage the build)');
-  return parseModel(text);
+/** the sets a stage call stands: of LDraw text standing for the build (`ldraw`),
+ *  else of the build's own (`build`), by the names `names` gives, the first set alone
+ *  when it gives none */
+export const setsOf = (ldraw: unknown, names: unknown, build: () => ReadonlyArray<Model>): ReadonlyArray<Model> => {
+  if((ldraw !== undefined) && (typeof ldraw !== 'string')) throw new Error('ldraw is LDraw text standing for the build (leave it out to stage the build)');
+  const all = (ldraw === undefined) ? build() : parseSets(ldraw);
+  if(names === undefined) return [all[0]];
+  const named = all.map(model => model.set ?? MAIN_SET);
+  if(!Array.isArray(names) || (names.length < 1) || (names.length > MAX_STAGED_SETS) || !names.every(isName)) throw new Error(`sets names 1 to ${MAX_STAGED_SETS} of the build's sets (its sets are ${named.join(', ')})`);
+  return names.map((name: string, index) => {
+    if(names.slice(0, index).some(other => sameSetName(other, name))) throw new Error(`sets names ${name} twice`);
+    const found = all.find(model => sameSetName(model.set ?? MAIN_SET, name));
+    if(!found) throw new Error(`The build has no set named '${name}': its sets are ${named.join(', ')}.`);
+    return found;
+  });
+};
+
+/** the area a stage's baseplate covers at least: the floor given, and, for a stage
+ *  of more than one set, every set's parts, so the baseplate stands still as a frame
+ *  shows another set */
+export const stageFloor = (floor: Floor | undefined, sets: ReadonlyArray<Model>): Floor | undefined => {
+  if(sets.length < 2) return floor;
+  const areas = [...(floor ? [floor] : []), ...sets.flatMap(set => { const cells = footprintOf(set.placements); return cells ? [{ x: cells.minX, z: cells.minZ, width: cells.maxX - cells.minX, depth: cells.maxZ - cells.minZ }] : []; })];
+  if(areas.length < 1) return undefined;
+  const [minX, minZ] = [Math.min(...areas.map(area => area.x)), Math.min(...areas.map(area => area.z))];
+  const [maxX, maxZ] = [Math.max(...areas.map(area => area.x + area.width)), Math.max(...areas.map(area => area.z + area.depth))];
+  return { x: minX, z: minZ, width: maxX - minX, depth: maxZ - minZ };
+};
+
+/** the staged set a call names (an index into the cast's sets): the first staged
+ *  when it names none */
+export const stagedSetOf = (cast: Cast, input: unknown): number => {
+  if(input === undefined) return 0/*the first staged*/;
+  const index = isName(input) ? cast.sets.findIndex(staged => sameSetName(staged.name, input)) : -1;
+  if(index < 0) throw new Error(`set names one of the sets staged (${cast.sets.map(staged => staged.name).join(', ')})`);
+  return index;
 };
 
 /** the floor a stage call names, or undefined for none */
@@ -171,13 +209,13 @@ export const floorOf = (input: unknown): Floor | undefined => {
  *  set by where it stands (`{ name, placed: { x, z, level } }`, as listPlacedParts says:
  *  a part of its own as it is dressed there, a copy as its component); every one
  *  refused names why */
-export const castOf = (set: Model, input: unknown): Readonly<{ cast: Cast; refused: ReadonlyArray<Refusal>; }> => {
+export const castOf = (sets: ReadonlyArray<Model>, input: unknown): Readonly<{ cast: Cast; refused: ReadonlyArray<Refusal>; }> => {
   if(!Array.isArray(input)) throw new Error('actors lists the actors: each { name, component }, { name, part, color } or { name, placed }');
   if(input.length > MAX_ACTORS) throw new Error(`A stage casts at most ${MAX_ACTORS} actors.`);
   const actors = new Map<string, Actor>();
   const placed = new Map<string, Rest>();
   const pieces = new Map<string, string>()/*each piece cast, by the actor cast from it*/;
-  const hidden = { placements: new Set<number>(), others: new Set<number>() };
+  const hidden = sets.map(() => ({ placements: new Set<number>(), others: new Set<number>() }))/*each set's pieces cast*/;
   const refused: Refusal[] = [];
   for(const item of input) {
     const { name } = (item ?? {}) as Record<string, unknown>;
@@ -185,24 +223,39 @@ export const castOf = (set: Model, input: unknown): Readonly<{ cast: Cast; refus
     if(actors.has(name) || refused.some(refusal => refusal.name === name)) { refused.push({ name, reason: 'named twice' }); continue; }
     const fields = item as Record<string, unknown>;
     if(fields.placed === undefined) {
-      const actor = actorOf(set, fields);
+      const actor = actorOf(sets[0]/*every set's components are the build's*/, fields);
       if(typeof actor === 'string') refused.push({ name, reason: actor });
       else actors.set(name, actor);
       continue;
     } /* else -- a piece of the set */
 
-    const piece = pieceOf(set, fields);
+    const at = placedSet(sets, fields.placed);
+    if(typeof at === 'string') { refused.push({ name, reason: at }); continue; }
+    const piece = pieceOf(sets[at], fields);
     if(typeof piece === 'string') { refused.push({ name, reason: piece }); continue; }
-    const caster = pieces.get(piece.key);
+    const key = `${at} ${piece.key}`;
+    const caster = pieces.get(key);
     if(caster !== undefined) { refused.push({ name, reason: `the piece at ${piece.at} is cast already, as ${caster}` }); continue; }
-    pieces.set(piece.key, name);
+    pieces.set(key, name);
     actors.set(name, piece.actor);
     placed.set(name, piece.rest);
-    for(const index of piece.placements) hidden.placements.add(index);
-    for(const index of piece.others) hidden.others.add(index);
+    for(const index of piece.placements) hidden[at].placements.add(index);
+    for(const index of piece.others) hidden[at].others.add(index);
   }
-  const shown = (pieces.size > 0) ? withoutParts(set, hidden.placements, hidden.others) : set;
-  return { cast: { set, actors, placed, shown }, refused };
+  const staged = sets.map((set, index) => ({
+    name: set.set ?? MAIN_SET, set,
+    shown: ((hidden[index].placements.size + hidden[index].others.size) > 0) ? withoutParts(set, hidden[index].placements, hidden[index].others) : set,
+  }));
+  return { cast: { sets: staged, actors, placed }, refused };
+};
+
+/** the staged set a placed actor names (an index into `sets`): the first staged when
+ *  it names none, or why it is none staged */
+const placedSet = (sets: ReadonlyArray<Model>, placed: unknown): number | string => {
+  const { set } = (placed ?? {}) as Record<string, unknown>;
+  if(set === undefined) return 0/*the first staged*/;
+  const index = isName(set) ? sets.findIndex(each => sameSetName(each.set ?? MAIN_SET, set)) : -1;
+  return (index >= 0) ? index : `placed.set names no set staged (${sets.map(each => each.set ?? MAIN_SET).join(', ')})`;
 };
 
 /** the actor an input describes, or why it is not one */
@@ -444,7 +497,7 @@ export const viewOf = (input: unknown): string | undefined => {
 /** a page of frames a loadReel call gives, the first being frame `from`; a frame
  *  that is not one refuses the page, naming it */
 export const reelPageOf = (cast: Cast, view: string | undefined, input: unknown, from: number): ReadonlyArray<ReelFrame> => {
-  if(!Array.isArray(input) || (input.length < 1) || (input.length > MAX_REEL_PAGE)) throw new Error(`frames is a page of 1 to ${MAX_REEL_PAGE} frames, each { actors, camera, views?, fade?, title? }`);
+  if(!Array.isArray(input) || (input.length < 1) || (input.length > MAX_REEL_PAGE)) throw new Error(`frames is a page of 1 to ${MAX_REEL_PAGE} frames, each { set?, actors, camera, views?, fade?, title? }`);
   return input.map((item, index) => {
     try { return reelFrameOf(cast, view, item); }
     catch(error) { throw new Error(`frames[${index}] (frame ${from + index}): ${(error as Error).message}`); }
@@ -453,14 +506,15 @@ export const reelPageOf = (cast: Cast, view: string | undefined, input: unknown,
 
 /** one frame of a reel, as the screen showing `view` shows it */
 const reelFrameOf = (cast: Cast, view: string | undefined, input: unknown): ReelFrame => {
-  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error('a frame is { actors, camera, views?, fade?, title? }');
-  const { actors, camera, views, fade, title } = input as Record<string, unknown>;
+  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error('a frame is { set?, actors, camera, views?, fade?, title? }');
+  const { set, actors, camera, views, fade, title } = input as Record<string, unknown>;
+  const standing = stagedSetOf(cast, set);
   const shots = shotsOf(cast, actors);
   const main = cameraOf(camera);
   const named = viewsOf(views);
   if((view !== undefined) && !named.has(view)) throw new Error(`views names no '${view}', the view this studio shows`);
   const titled = titleOf(title);
-  return { shots, camera: (view !== undefined) ? named.get(view)! : main, main, views: named, overlay: { fade: fadeOf(fade), ...(titled ? { title: titled } : {}) } };
+  return { set: standing, shots, camera: (view !== undefined) ? named.get(view)! : main, main, views: named, overlay: { fade: fadeOf(fade), ...(titled ? { title: titled } : {}) } };
 };
 
 /** the views a frame names, each a camera or a plan */

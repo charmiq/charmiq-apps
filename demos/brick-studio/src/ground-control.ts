@@ -66,7 +66,7 @@ export class GroundControl {
     item.addEventListener('click', () => {
       this.close();
       const choice = ++this.choices;
-      this.build.setGround(key).catch(error => {
+      this.build.setGround(key, this.build.shownSet()).catch(error => {
         console.warn('brick-studio: the ground could not be changed:', error);
         if(choice === this.choices) this.onRefused((error instanceof Error) ? error.message : String(error))/*a later choice owns the status otherwise*/;
       });

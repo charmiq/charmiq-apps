@@ -29,7 +29,7 @@
     "charmiq.command": [
       {
         "name": "describeFilm",
-        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut, every two actors that come within 2 studs and where, and what it logged), or the scene's mistake and its line",
+        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, every two actors that come within 2 studs and where, and what it logged), or the scene's mistake and its line",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
@@ -45,7 +45,8 @@
             "frames":     { "type": "integer" },
             "actors":     { "type": "array", "items": { "type": "string" } },
             "views":      { "type": "array", "items": { "type": "string" } },
-            "shots":      { "type": "array", "description": "The camera's shots: from each cut (or the start) to the next (or the end), seconds, named by its cut", "items": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "name": { "type": "string" } }, "required": ["from", "to"] } },
+            "shots":      { "type": "array", "description": "The camera's shots: from each cut (or the start) to the next (or the end), seconds, named by its cut", "items": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "name": { "type": "string" }, "set": { "type": "string", "description": "The build's set standing as it starts, when the scene keys one by then (the build's first set otherwise)" } }, "required": ["from", "to"] } },
+            "sets":       { "type": "array", "description": "Each set.at key: from when (seconds) the build's set it names stands, until the next", "items": { "type": "object", "properties": { "time": { "type": "number" }, "set": { "type": "string" } }, "required": ["time", "set"] } },
             "close":      { "type": "array", "description": "Every two actors that come within 2 studs (once the studio has staged the film), each where they come closest: the gap between their boxes in studs, 0 touching", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
             "logs":       { "type": "array", "items": { "type": "string" } },
             "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] },
@@ -197,6 +198,7 @@
           "properties": {
             "frame":  { "type": "integer" },
             "time":   { "type": "number" },
+            "set":    { "type": "string", "description": "The build's set standing, when the scene keys one by then (the build's first set otherwise)" },
             "actors": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "position": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "turn": { "type": "object", "properties": { "yaw": { "type": "number" }, "pitch": { "type": "number" }, "roll": { "type": "number" } }, "required": ["yaw", "pitch", "roll"] } }, "required": ["name", "position", "turn"] } },
             "camera": { "type": "object", "properties": { "position": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "target": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "fov": { "type": "number" } }, "required": ["position", "target", "fov"] }
           },

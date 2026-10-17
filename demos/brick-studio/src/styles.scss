@@ -148,6 +148,58 @@
   background: var(--baseplate);
 }
 
+// == Sets ========================================================================
+// the set shown, by name, opening a menu of the build's sets; a long name truncates
+.set-pick { position: relative; display: flex; min-width: 0; }
+.set-pick[hidden] { display: none; }
+
+.tag--set {
+  @extend %mono-caps;
+  max-width: 14ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--stage);
+  color: var(--ink);
+}
+
+.set-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0/*the tag stands left of the bar's middle at any width: the menu opens into the bar*/;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 120px;
+  max-width: 220px;
+  padding: 5px;
+  background: var(--stage);
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--outline);
+}
+
+.set-choice {
+  @extend %mono-caps;
+  padding: 4px 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+  font-size: 9px;
+  color: var(--ink);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+
+  &:hover { background: var(--baseplate); }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  &[aria-checked='true'] { border-color: var(--outline); background: var(--baseplate); }
+}
+
 // == Status ======================================================================
 .status {
   @extend %mono-caps;

@@ -1,6 +1,6 @@
 import { cameraShots, type Film } from './film';
 import type { ClosePair } from './measure';
-import { castAs, type CameraKey, type Key, type RecordedCamera, type Span, type Title } from './recorder';
+import { castAs, type CameraKey, type Key, type RecordedCamera, type SetKey, type Span, type Title } from './recorder';
 
 // the timeline: one row per track (the camera, each view, each actor, the fade and
 // the titles), each key a diamond at its time and each function of time a band over
@@ -90,6 +90,7 @@ export class Timeline {
         bands: actor.spans.map(span => band(span, scene.fps)),
         notches: close.filter(pair => pair.actors.includes(actor.name)).map(pair => ({ time: pair.time, label: closeness(pair) })),
       })),
+      ...(scene.sets ? [setRow(scene.sets, length)] : []),
       fadeRow(scene.fade),
       ...((scene.titles.length > 0) ? [titleRow(scene.titles)] : []),
     ];
@@ -190,6 +191,14 @@ const cameraRow = (name: string, kind: 'camera' | 'view' | 'plan', camera: Recor
     ...((camera.keys.length > 0) ? cameraShots(camera, length).map((shot, index) => ({ from: shot.from, to: shot.to, label: shot.name ?? '', kind: 'shot' as const, ...((index % 2) ? { alternate: true as const } : {}) })) : []),
     ...camera.spans.map(span => band(span, fps)),
   ],
+});
+
+/** the sets a scene cuts between: each key's set as a band to the next key (or the
+ *  end), named by its set, alternating as shots do */
+const setRow = (keys: ReadonlyArray<SetKey>, length: number): Row => ({
+  name: 'Set', color: '--brick-red',
+  keys: keys.map(key => ({ time: key.time, label: `set at ${seconds2(key.time)} · ${key.set}` })),
+  bands: keys.map((key, index) => ({ from: key.time, to: keys[index + 1]?.time ?? length, label: key.set, kind: 'shot' as const, ...((index % 2) ? { alternate: true as const } : {}) })),
 });
 
 const fadeRow = (keys: ReadonlyArray<Key>): Row => ({

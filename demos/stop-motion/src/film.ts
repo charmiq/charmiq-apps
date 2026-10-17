@@ -1,4 +1,4 @@
-import type { Area, CameraPlace, Ease, FaceKey, Key, Point, Recorded, RecordedActor, RecordedCamera, Span, Target, Title } from './recorder';
+import type { Area, CameraPlace, Ease, FaceKey, Key, Point, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title } from './recorder';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -7,8 +7,9 @@ import type { Area, CameraPlace, Ease, FaceKey, Key, Point, Recorded, RecordedAc
 // target, the orbit's angle eased so it swings round on its circle; a wheeled
 // actor's wheels roll by the distance it moves along its own north. A plan view
 // looks down over everything the film shows; its marks are each actor's path and the
-// camera's, broken at each cut. A film reaches the studios as a reel: each frame's
-// world values, every view's camera, its fade and its title at the opacity it is
+// camera's, broken at each cut. A frame stands on the set its keys name, held from
+// each key to the next as a cut. A film reaches the studios as a reel: each frame's
+// set, world values, every view's camera, its fade and its title at the opacity it is
 // drawn at, so a studio draws a frame knowing nothing of time
 // ********************************************************************************
 // == Constants ===================================================================
@@ -45,6 +46,9 @@ export type FilmFrame = Readonly<{
   index: number;
   /** seconds */
   time: number;
+  /** the build's set it stands on, when a key names one by then (its first set
+   *  otherwise) */
+  set?: string;
   actors: ReadonlyArray<Shot>;
   camera: StageCamera;
   /** each named view's camera */
@@ -58,6 +62,7 @@ export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>;
 
 /** a frame as a studio's reel takes it (SEE: Brick Studio's loadReel) */
 export type ReelFrame = Readonly<{
+  set?: string;
   actors: ReadonlyArray<Shot>;
   camera: StageCamera;
   views?: Readonly<Record<string, ViewCamera>>;
@@ -123,7 +128,8 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
     const fade = channelAt(scene.fade, 'fade', time) ?? 0;
     const title = scene.titles.find(each => (time >= each.from) && (time < each.to));
     const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, cameraAt(view, index, time, placed)]));
-    frames.push({ index, time, actors, camera: cameraAt(scene.camera, index, time, placed), views, fade, ...(title ? { title } : {}) });
+    const set = setAt(scene.sets, time);
+    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: cameraAt(scene.camera, index, time, placed), views, fade, ...(title ? { title } : {}) });
   }
   if(!scene.views.some(view => view.plan)) return { scene, frames };
 
@@ -206,6 +212,7 @@ const hundredths = (value: number): number => (Math.round(value * 100) / 100) ||
 /** a film's frame as a studio's reel takes it: what it leaves out, the studio takes
  *  as none */
 export const reelFrameOf = (frame: FilmFrame): ReelFrame => ({
+  ...((frame.set !== undefined) ? { set: frame.set } : {}),
   actors: frame.actors,
   camera: frame.camera,
   ...((Object.keys(frame.views).length > 0) ? { views: frame.views } : {}),
@@ -310,14 +317,31 @@ const lifted = (point: Point, height: number): Point => ({ ...point, height: poi
 /** the face an actor's face keys give at a time: the last keyed at or before it,
  *  none before the first (its declared face, as the stage casts it). A key a frame's
  *  time reaches by rounding alone still takes effect at that frame */
-export const faceAt = (faces: ReadonlyArray<FaceKey> | undefined, time: number): string | undefined => {
-  let face: string | undefined;
-  for(const key of faces ?? []) {
-    if(key.time > (time + TIME_EPSILON)) break;
-    face = key.face;
-  }
-  return face;
+export const faceAt = (faces: ReadonlyArray<FaceKey> | undefined, time: number): string | undefined => heldAt(faces, time)?.face;
+
+/** the sets a stage of a scene stands, by name: none when the scene keys none; else
+ *  each set its keys name, in the order first keyed, the build's first set (`first`)
+ *  ahead of them when a frame stands before the first key */
+export const stagedSets = (scene: Recorded, first: string): ReadonlyArray<string> | undefined => {
+  const keys = scene.sets;
+  if(!keys || (keys.length < 1)) return undefined;
+  const names = [...((keys[0].time > TIME_EPSILON) ? [first] : []), ...keys.map(key => key.set)];
+  return names.filter((name, index) => names.findIndex(other => other.toLowerCase() === name.toLowerCase()) === index);
 };
+
+/** the key in force at a time: the last at or before it, held to the next (none
+ *  before the first) */
+const heldAt = <K extends Readonly<{ time: number; }>>(keys: ReadonlyArray<K> | undefined, time: number): K | undefined => {
+  let held: K | undefined;
+  for(const key of keys ?? []) {
+    if(key.time > (time + TIME_EPSILON)) break;
+    held = key;
+  }
+  return held;
+};
+
+/** the set standing at a time, by name, when a key names one by then */
+export const setAt = (keys: ReadonlyArray<SetKey> | undefined, time: number): string | undefined => heldAt(keys, time)?.set;
 
 /** a channel's value at a time: its keys' values eased from each to the next, the
  *  first before it and the last after; undefined for a channel no key gives */

@@ -105,11 +105,13 @@ export const STANDING: Walk = { forward: 0, right: 0, up: 0, turn: 0, fast: fals
 /** the look the stage takes from CSS (SEE: styles.scss `--stage`, `--baseplate`) */
 type Theme = Readonly<{ stage: string; baseplate: string; }>;
 
-/** a stage shown in place of the build: its set, the area its baseplate covers at
- *  least, its actors' lines (LDraw, the scene's frame) in the frame shown, the size
- *  frames are captured at once one is, and the camera to put back when it ends */
-type Staging = { /*NOTE: Mutable: each frame replaces its actors and overlay, a capture its size*/
-  set: Model;
+/** a stage shown in place of the build: its sets and the one standing (an index into
+ *  them), the area its baseplate covers at least, its actors' lines (LDraw, the
+ *  scene's frame) in the frame shown, the size frames are captured at once one is, and
+ *  the camera to put back when it ends */
+type Staging = { /*NOTE: Mutable: each frame replaces its set, actors and overlay, a capture its size*/
+  readonly sets: ReadonlyArray<Model>;
+  standing: number;
   floor?: Floor;
   actors: ReadonlyArray<PartLine>;
   overlay: FilmOverlay;
@@ -165,6 +167,12 @@ export class Viewer {
   private readonly parts = new THREE.Group();
   private model: Model | undefined;
   private staging: Staging | undefined;
+  /** each staged set's own meshes, built once and kept while the stage stands, so a
+   *  frame standing another set swaps meshes, never rebuilding them; dropped when what
+   *  they draw changes (a part built, the look: SEE redraw), and kept meshes are freed
+   *  only once dropped */
+  private readonly setMeshes = new Map<Model, ReadonlyArray<THREE.InstancedMesh>>();
+  private readonly kept = new Set<THREE.Object3D>();
   private baseplate: THREE.Group | undefined;
   /** whether the build reaches past the baseplate (SEE: baseplateArea) */
   private pastBaseplate = false;
@@ -433,9 +441,10 @@ export class Viewer {
     if(!this.staging) this.draw(model, [], animate);
   }
 
-  /** draws again what is shown: the stage, or the build */
+  /** draws again what is shown: the stage, or the build, every set's meshes built anew */
   private redraw(animate: boolean): void {
-    if(this.staging) this.draw(this.staging.set, this.staging.actors, false);
+    this.forgetSetMeshes();
+    if(this.staging) this.draw(this.staging.sets[this.staging.standing], this.staging.actors, false);
     else if(this.model) this.draw(this.model, [], animate);
   }
 
@@ -449,23 +458,68 @@ export class Viewer {
       .map(item => real ? { ...item, matrix: item.matrix.clone().multiply(this.seams.get(item.ldraw)!) } : item);
   }
 
-  /** draws a build and, over it, actors' lines (LDraw, the scene's frame) */
+  /** draws a build and, over it, actors' lines (LDraw, the scene's frame). Staged, a
+   *  set's meshes drawn before stand again (SEE: setMeshes) */
   private draw(model: Model, actors: ReadonlyArray<PartLine>, animate: boolean): void {
     const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
     this.setGround(ground);
-    const drawn = [...renderItems(model), ...actors.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }))];
-    this.buildGeometries(drawn, model, animate);
-    const real = (this.fidelity >= 1);
-    const items = this.itemsOf(drawn);
+    const kept = this.staging ? this.setMeshes.get(model) : undefined;
+    const setItems = kept ? [] : renderItems(model)/*a set kept is built*/;
+    const actorItems = actors.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));
+    this.buildGeometries([...setItems, ...actorItems], model, animate);
 
-    // one instanced mesh per part
-    for(const child of [...this.parts.children]) { this.parts.remove(child); (child as THREE.InstancedMesh).dispose(); }
+    for(const child of [...this.parts.children]) { this.parts.remove(child); if(!this.kept.has(child)) (child as THREE.InstancedMesh).dispose(); }
     this.drops = [];
-    const now = performance.now();
-    const dropStarts = new Map<string/*drop*/, number>()/*a part's pieces and prints drop with it*/;
+    const drops = { now: performance.now(), starts: new Map<string/*drop*/, number>()/*a part's pieces and prints drop with it*/ };
+    const setDrawn = this.itemsOf(setItems);
+    const own = kept ?? this.meshesOf(setDrawn, animate, drops);
+    if(this.staging && !kept) { this.setMeshes.set(model, own); own.forEach(mesh => this.kept.add(mesh)); }
+    const actorDrawn = this.itemsOf(actorItems);
+    for(const mesh of [...own, ...this.meshesOf(actorDrawn, animate, drops)]) this.parts.add(mesh);
+    if(!kept) this.shownKeys = new Set([...setDrawn, ...actorDrawn].map(item => item.key));
+    this.prepareSets(model);
 
-    // one instanced mesh per part in opaque plastic, and per part and tint in glass;
-    // an actor's apart from the set's
+    this.updateBaseplate();
+    this.pathTraceStale = true;
+    this.requestFrame();
+  }
+
+  /** builds the meshes of every staged set but the one standing that has none yet, and
+   *  draws each once unseen, so its WebGL buffers stand before the first frame standing
+   *  it: drawn and the parts shown put back within one task, as a thumbnail is (the
+   *  browser paints between tasks) */
+  private prepareSets(standing: Model): void {
+    const fresh = (this.staging?.sets ?? []).filter(other => (other !== standing) && !this.setMeshes.has(other));
+    if(fresh.length < 1) return;
+    const shown = [...this.parts.children];
+    for(const other of fresh) {
+      const meshes = this.meshesOf(this.itemsOf(renderItems(other)), false, { now: 0, starts: new Map() });
+      this.setMeshes.set(other, meshes);
+      meshes.forEach(mesh => this.kept.add(mesh));
+      this.parts.clear();
+      for(const mesh of meshes) this.parts.add(mesh);
+      this.renderNow();
+    }
+    this.parts.clear();
+    for(const child of shown) this.parts.add(child);
+    this.renderNow();
+  }
+
+  /** frees every staged set's meshes not drawn now, and keeps none from now on: those
+   *  drawn now are freed once the next draw removes them */
+  private forgetSetMeshes(): void {
+    for(const meshes of this.setMeshes.values()) for(const mesh of meshes) if(mesh.parent !== this.parts) mesh.dispose();
+    this.setMeshes.clear();
+    this.kept.clear();
+  }
+
+  /** one instanced mesh per part in opaque plastic, and per part and tint in glass, an
+   *  actor's apart from the set's; parts not shown before drop into place when
+   *  `animate` */
+  private meshesOf(items: ReadonlyArray<RenderItem>, animate: boolean, drops: Readonly<{ now: number; starts: Map<string, number>; }>): THREE.InstancedMesh[] {
+    const real = (this.fidelity >= 1);
+    const { now, starts: dropStarts } = drops;
+    const meshes: THREE.InstancedMesh[] = [];
     const byPart = new Map<string, RenderItem[]>();
     for(const item of items) byPart.set(groupOf(item), [...(byPart.get(groupOf(item)) ?? []), item]);
     for(const [groupKey, partItems] of byPart) {
@@ -486,13 +540,9 @@ export class Viewer {
       });
       mesh.computeBoundingSphere();
       mesh.frustumCulled = false/*instances move during a drop*/;
-      this.parts.add(mesh);
+      meshes.push(mesh);
     }
-    this.shownKeys = new Set(items.map(item => item.key));
-
-    this.updateBaseplate();
-    this.pathTraceStale = true;
-    this.requestFrame();
+    return meshes;
   }
 
   // == View ======================================================================
@@ -604,19 +654,22 @@ export class Viewer {
   /** whether a stage is shown in place of the build */
   public get isStaged(): boolean { return !!this.staging; }
 
-  /** shows a stage's set in place of the build, its baseplate covering at least
-   *  `floor`, no actor shown yet; the camera stands until a frame moves it. Staged
-   *  again, the new set replaces the last */
-  public showStage(set: Model, floor: Floor | undefined): void {
+  /** shows a stage's first set in place of the build, its baseplate covering at least
+   *  `floor`, no actor shown yet, the parts of its other sets built unseen so a frame
+   *  standing another draws it at once; the camera stands until a frame moves it.
+   *  Staged again, the new sets replace the last */
+  public showStage(sets: ReadonlyArray<Model>, floor: Floor | undefined): void {
     if(!this.staging) {
       this.tween?.resolve();
       this.tween = undefined;
       this.walking = STANDING;
       this.controls.enabled = false/*the stage's camera, never the mouse's*/;
     } /* else -- staged: the camera to put back stays the build's */
-    this.staging = { set, floor, actors: [], overlay: NO_OVERLAY, size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
+    this.forgetSetMeshes()/*the last stage's*/;
+    this.staging = { sets, standing: 0, floor, actors: [], overlay: NO_OVERLAY, size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
     this.overlayStale = true;
-    this.draw(set, [], false);
+    for(const other of sets.slice(1)) this.buildGeometries(renderItems(other), other, false);
+    this.draw(sets[0], [], false);
   }
 
   /** draws the stage at `width` by `height` pixels from now on, the canvas showing
@@ -630,34 +683,34 @@ export class Viewer {
     this.setDrawingSize(width, height);
   }
 
-  /** shows a frame of the stage: its actors' lines (LDraw, the scene's frame) seen
-   *  through its camera, or its plan */
-  public showFrame(actors: ReadonlyArray<PartLine>, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY): void {
+  /** shows a frame of the stage on one of its sets (`set`, an index into them): its
+   *  actors' lines (LDraw, the scene's frame) seen through its camera, or its plan */
+  public showFrame(actors: ReadonlyArray<PartLine>, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY, set = 0): void {
     if(!this.staging) return/*nothing staged*/;
     this.look(camera);
-    this.pose(actors, overlay);
+    this.pose(actors, overlay, set);
   }
 
   /** a frame's picture `width` by `height`, its fade and title drawn over it. Its
    *  parts are built first, unseen, and the studio settled on the frame it shows; then
    *  the frame is drawn, copied and the frame shown put back in one task, so the screen
    *  never shows it: the browser paints between tasks */
-  public async thumbnail(actors: ReadonlyArray<PartLine>, camera: ViewCamera, overlay: FilmOverlay, width: number, height: number): Promise<ImageBitmap> {
+  public async thumbnail(actors: ReadonlyArray<PartLine>, camera: ViewCamera, overlay: FilmOverlay, width: number, height: number, set = 0): Promise<ImageBitmap> {
     const staging = this.staging;
     if(!staging) throw new Error('nothing is staged');
-    await this.partsBuilt(actors);
+    await this.partsBuilt(actors, set);
     await this.whenSettled();
     if(this.staging !== staging) throw new Error('the stage was replaced while the thumbnail\'s parts were built');
-    const shown = { actors: staging.actors, overlay: staging.overlay, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, plan: this.camera.up.equals(NORTH) };
+    const shown = { set: staging.standing, actors: staging.actors, overlay: staging.overlay, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, plan: this.camera.up.equals(NORTH) };
     const picture = Object.assign(document.createElement('canvas'), { width, height });
 
     this.look(camera);
-    this.pose(actors, overlay);
+    this.pose(actors, overlay, set);
     this.renderNow();
     this.drawPicture(picture.getContext('2d')!, overlay, width, height);
 
     this.aim(shown.position, shown.target, shown.fov, shown.plan);
-    this.pose(shown.actors, shown.overlay);
+    this.pose(shown.actors, shown.overlay, shown.set);
     this.renderNow();
     return createImageBitmap(picture);
   }
@@ -713,14 +766,16 @@ export class Viewer {
     this.cameraMoved = true;
   }
 
-  /** shows a frame's actors and overlay: the standing actors moved where the frame
-   *  puts them, or the stage drawn again when the frame shows other parts (an actor
-   *  appearing or leaving) */
-  private pose(actors: ReadonlyArray<PartLine>, overlay: FilmOverlay): void {
+  /** shows a frame's set, actors and overlay: the standing actors moved where the
+   *  frame puts them, or the stage drawn again when the frame stands another set or
+   *  shows other parts (an actor appearing or leaving) */
+  private pose(actors: ReadonlyArray<PartLine>, overlay: FilmOverlay, set: number): void {
     const staging = this.staging!/*by contract: staged*/;
     staging.overlay = overlay;
     this.overlayStale = true;
-    if(!this.moveActors(actors)) this.draw(staging.set, actors, false);
+    const cut = (set !== staging.standing);
+    staging.standing = set;
+    if(cut || !this.moveActors(actors)) this.draw(staging.sets[set], actors, false);
     staging.actors = actors;
     this.pathTraceStale = true;
     this.requestFrame();
@@ -755,9 +810,10 @@ export class Viewer {
   /** resolves once every part a frame's lines show is built (or cannot be), building
    *  those none has asked for yet without showing them: a build's end redraws the
    *  frame shown */
-  private async partsBuilt(actors: ReadonlyArray<PartLine>): Promise<void> {
+  private async partsBuilt(actors: ReadonlyArray<PartLine>, set: number): Promise<void> {
     const drawn = actors.filter(isDrawable).map(line => renderItem(line, lineKey(line)));
-    this.buildGeometries(drawn, this.staging!.set/*by contract: staged*/, false);
+    const model = this.staging!.sets[set]/*by contract: staged*/;
+    this.buildGeometries([...drawn, ...renderItems(model)], model, false);
     await Promise.all([...new Set(drawn.map(item => item.ldraw))].flatMap(ldraw => this.building.get(ldraw) ?? []));
   }
 

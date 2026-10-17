@@ -1,8 +1,8 @@
 import type { ContentChange } from '../../../shared/charmiq';
-import { ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_FACES, type CatalogPart, type FigureFace } from './catalog';
+import { type CatalogPart, type FigureFace, ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_FACES } from './catalog';
 import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
-import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER, type Pose } from './pose';
+import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, type Pose, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER } from './pose';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
 // written, and each type-1 line is one part. A multi-part (MPD) file is flattened
@@ -20,7 +20,10 @@ import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posed
 // build's own or a copy's. `0 STEP` lines in the main file split the parts into building steps, in
 // order; a step with no parts is no step. A `0 !BRICKSTUDIO GROUND <color>` line in
 // the main file colors the baseplate (LDraw's form for a program's own meta-command:
-// other LDraw tools pass it by)
+// other LDraw tools pass it by). A build holds one set or more, each an arrangement on
+// its own baseplate sharing the build's components: the main model is the first, and
+// a section holding a `0 !BRICKSTUDIO SET <name>` line is another, read as a main
+// model is (its own steps and ground) and never a component. A Model is one set
 // ********************************************************************************
 // == Types =======================================================================
 /** a part line that is not a Placement (a part outside the catalog, an unknown
@@ -29,9 +32,18 @@ export type OtherPart = PartLine;
 
 /** a line in the text, its line break included (UTF-16 offsets) */
 export type Span = Readonly<{ from: number; to: number; }>;
+/** a set's section: its name (MAIN_SET for a main model that names none, `named`
+ *  false), its file (`''` for a flat file), its `0 FILE` line (none for a flat file),
+ *  its name line, every piece of its sections (from its `0 FILE` line to the next,
+ *  apart by the data sections within, a repeated section's too) and where its own
+ *  lines end */
+export type SetSection = Readonly<{ name: string; named: boolean; file: string; start?: Span; nameLine?: Span; pieces: ReadonlyArray<Span>; end: number; }>;
+
 /** where an editable text's files lie: what an edit of the file as a whole (a
- *  component defined, the build cleared) is measured on */
+ *  component defined, a set added, the build cleared) is measured on */
 export type FileLayout = Readonly<{
+  /** the build's sets, the main model first */
+  sets: ReadonlyArray<SetSection>;
   /** the main model's `0 FILE` line, for an MPD file */
   mainFile?: Span;
   /** the `0 NOFILE` line ending the main model, when it has one: parts go before it,
@@ -90,12 +102,23 @@ export type ModelSteps = Readonly<{ placements: ReadonlyArray<number>; others: R
  *  carry's). The line owns every part it places, a copy or not */
 export type Placed = Readonly<{ component: string; colorCode: number; copy?: number; carried?: true; }>;
 
+/** a set as a model names it: its name and its file */
+export type SetEntry = Readonly<{ name: string; file: string; }>;
+/** which set of a text to read: by name (ignoring case) or by file. A set the text
+ *  does not hold reads its main set */
+export type SetAt = Readonly<{ name: string; }> | Readonly<{ file: string; }>;
+
 /** a component: its section's file as written (the name and `.ldr`, `.dat`, `.mpd`
  *  or nothing), its parts in its own grid and the cells they cover */
 export type Component = Readonly<{ name: string; file: string; placements: ReadonlyArray<Placement>; others: ReadonlyArray<OtherPart>/*part lines off its grid*/; footprint?: Footprint; }>;
 
 // ................................................................................
 export type Model = Readonly<{
+  /** the set this model is, by name, when the build holds more than one set or this
+   *  set names itself; and every set, the main model first, when it holds more than
+   *  one */
+  set?: string;
+  sets?: ReadonlyArray<SetEntry>;
   /** comment and meta lines, as written */
   header: ReadonlyArray<string>;
   placements: ReadonlyArray<Placement>;
@@ -153,6 +176,9 @@ const UNEDITABLE = {
   nested: 'its submodels place other submodels. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
   repeated: 'two of its sections share a name. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
   undecided: 'more lines lie where an assembled part\'s pieces go than are compared, so which lines are its pieces is not told. Remove the extra lines from the text getModel returns and give it to setModel to edit it',
+  setPlaced: 'one of its sets is placed in another file as a submodel, so it is no longer an arrangement of its own. Replace it with a flat model to edit it: call setModel with the text getModel returns',
+  setNamedTwice: 'two of its sets share a name, so which a name means is not told. Rename one in its `0 !BRICKSTUDIO SET` line and give the text to setModel',
+  tooManySets: 'it holds more sets than a build holds (32), and only the first are read. Remove sets from the text getModel returns and give it to setModel',
 } as const;
 
 /** why no text is written from a model besides an untold piece, model-facing */
@@ -180,6 +206,17 @@ const DATA_START = '0 !DATA ';
 const DATA_LINE = '0 !:';
 /** Brick Studio's meta-command naming the baseplate's color */
 const GROUND_META = ['0', '!BRICKSTUDIO', 'GROUND'] as const;
+/** Brick Studio's meta-command naming a set: the rest of its line is the name */
+const SET_META = /^0\s+!BRICKSTUDIO\s+SET\s+(\S.*)$/i;
+const SET_LINE = '0 !BRICKSTUDIO SET';
+/** the name of a main model that names none (every build written before sets) */
+export const MAIN_SET = 'Main';
+/** the most sets a build holds, and a set's longest name */
+export const MAX_SETS = 32;
+export const MAX_SET_NAME = 40;
+/** the end of the file a set Brick Studio adds is written to: a component's name
+ *  holds no dot, so a set's file is never a component's */
+const SET_FILE = '.set.ldr';
 
 export const EMPTY_MODEL: Model = { header: DEFAULT_HEADER, placements: [], others: [] };
 
@@ -196,9 +233,24 @@ const MAX_NEAR_LINES = 16;
 const IDENTITY: Transform = { matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], position: [0, 0, 0] };
 
 // --------------------------------------------------------------------------------
-/** parses LDraw text (LDR or MPD) into a Model. Submodels are flattened; LDraw's
- *  inherited colors (16, 24) take the parent's color */
-export const parseModel = (text: string): Model => readSet(readFiles(text));
+/** parses LDraw text (LDR or MPD) into a Model of one of its sets, its main set
+ *  unless `at` names another. Submodels are flattened; LDraw's inherited colors (16,
+ *  24) take the parent's color */
+export const parseModel = (text: string, at?: SetAt): Model => {
+  const read = readFiles(text);
+  const sets = read.layout.sets;
+  const found = !at ? undefined : ('name' in at) ? sets.find(set => sameSetName(set.name, at.name)) : sets.find(set => set.file === at.file);
+  return readSet(read, found ?? sets[0]);
+};
+
+/** every set of a text as a Model, the main set first, its files read once */
+export const parseSets = (text: string): ReadonlyArray<Model> => {
+  const read = readFiles(text);
+  return (read.layout.sets.length < 1) ? [readSet(read, undefined)] : read.layout.sets.map(set => readSet(read, set));
+};
+
+/** whether two set names name one set: alike ignoring case and outer spaces */
+export const sameSetName = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 // ................................................................................
 /** a text's files, read once: each file's lines, its components and where its
@@ -211,8 +263,14 @@ type Files = Readonly<{
   /** the components, read; none past the submodel budget (`tooManyDefinitionLines`) */
   components: ReadonlyArray<Component & Readonly<{ nested: boolean; undecided: boolean; }>>;
   tooManyDefinitionLines: boolean;
+  /** the files that are sets, the main model's first (at most MAX_SETS: a set past
+   *  them is never read) */
+  setFiles: ReadonlySet<string>;
   /** why the text's files keep it from being edited line by line, when they do */
   mainTwice: boolean;
+  setPlaced: boolean;
+  tooManySets: boolean;
+  setNamedTwice: boolean;
   unsectioned: boolean;
   nested: boolean;
   repeated: boolean;
@@ -226,79 +284,119 @@ type Files = Readonly<{
 /** splits a text into its files: a plain LDR is one unnamed file. Blank lines before
  *  the first file belong to none. A name used twice is read from its first section;
  *  the file can then not be edited line by line. The lines of the files after the
- *  main model (the component definitions) are counted toward the submodel budget */
+ *  main model that are no set (the component definitions) are counted toward the
+ *  submodel budget */
 const readFiles = (text: string): Files => {
   const lines = splitLines(text);
   const files = new Map<string, Line[]>();
   const sectionStarts: Array<Readonly<{ name: string; from: number; to: number; }>> = []/*every `0 FILE` line, in order*/;
   let current: Line[] = [];
+  let currentFile: string | undefined/*the file `current` is, when it is one*/;
   let main: string | undefined;
   let mainTwice = false;
   let endMarker: Span | undefined;
-  let definitionLines = 0;
+  /** each further file's own end marker, and each file's first set name line */
+  const markers = new Map<string, Span>();
+  const nameLines = new Map<string, Readonly<{ name: string; span: Span; }>>();
+  /** the lines counted in each run of lines (a file's, or lines in none) */
+  const counted = new Map<Line[], number>();
   // a data section is in no file: its `0 !:` lines are its content, and the first
   // other line ends it, read in the file it interrupted
   const data: string[] = [], dataSpans: Span[] = [];
-  let reading: { from: number; to: number; resume: Line[]; } | undefined;
+  let reading: { from: number; to: number; resume: Line[]; resumeFile: string | undefined; } | undefined;
   for(const line of lines) {
     const trimmed = line.text.trim();
     if(reading) {
       if(trimmed.startsWith(DATA_LINE)) { data.push(line.text.trimEnd()); reading.to = line.to; continue; }
       dataSpans.push({ from: reading.from, to: reading.to });
       current = reading.resume;
+      currentFile = reading.resumeFile;
       reading = undefined;
     } /* else -- in a file */
     if(trimmed.startsWith(DATA_START)) {
       data.push(line.text.trimEnd());
-      reading = { from: line.from, to: line.to, resume: current };
+      reading = { from: line.from, to: line.to, resume: current, resumeFile: currentFile };
       current = []/*in no file*/;
+      currentFile = undefined;
       continue;
     } /* else -- no data section starts */
     if(trimmed.startsWith('0 FILE ')) {
       const name = normalizeName(trimmed.slice(7));
       current = [];
-      if(files.has(name)) mainTwice ||= (name === main)/*its lines are read from its first section*/;
-      else files.set(name, current);
+      if(files.has(name)) { mainTwice ||= (name === main)/*its lines are read from its first section*/; currentFile = undefined; }
+      else { files.set(name, current); currentFile = name; }
       sectionStarts.push({ name, from: line.from, to: line.to });
       main ??= name;
       continue;
     } /* else -- a line of the current file */
-    if((main !== undefined) && (current !== files.get(main))) definitionLines++;
+    if(main !== undefined) counted.set(current, (counted.get(current) ?? 0) + 1);
     if(main === undefined) {
       if(trimmed.length < 1) continue/*before any file*/;
-      main = ''; files.set(main, current);
+      main = ''; files.set(main, current); currentFile = main;
     } /* else -- in a file */
     if(trimmed.toUpperCase() === END_MARKER) {
       // the end of the file it is in. The main model's: lines after it (a page of
-      // the previous release put parts there) are still the main model's. A
-      // component's: lines after it, up to the next file, are in none
+      // the previous release put parts there) are still the main model's. Another
+      // file's: lines after it, up to the next file, are in none
       if(current === files.get(main)) endMarker ??= { from: line.from, to: line.to };
-      else current = []/*in no file*/;
+      else {
+        if((currentFile !== undefined) && !markers.has(currentFile)) markers.set(currentFile, { from: line.from, to: line.to });
+        current = []/*in no file*/;
+        currentFile = undefined;
+      }
       continue;
     } /* else -- a line of the file */
+    const named = (currentFile !== undefined) && !nameLines.has(currentFile) ? SET_META.exec(trimmed) : null;
+    if(named) nameLines.set(currentFile!, { name: named[1].trim(), span: { from: line.from, to: line.to } });
     current.push(line);
   }
   if(reading) dataSpans.push({ from: reading.from, to: reading.to })/*the text's last section*/;
   const filesEnd = closingData(text, dataSpans);
 
-  // each file but the main model is a component: its parts in its own grid. Past
-  // the submodel budget none is read: the model is then read only in part
+  // the main model is a set, and so is each file naming itself one; every other file
+  // is a component: its parts in its own grid. Past the submodel budget none is read:
+  // the model is then read only in part
+  const named = [...files.keys()].filter(name => (name === main) || nameLines.has(name));
+  const setFiles = new Set(named.slice(0, MAX_SETS))/*the sets read*/;
+  const setLines = new Set(named.map(name => files.get(name)!));
+  const definitionLines = [...counted].reduce((total, [run, count]) => setLines.has(run) ? total : (total + count), 0);
   const tooManyDefinitionLines = definitionLines > MAX_EXPANDED_LINES;
-  const components = tooManyDefinitionLines ? [] : [...files].filter(([name]) => name !== main).map(([name, componentLines]) => readComponent(name, componentLines, files));
+  const components = tooManyDefinitionLines ? [] : [...files].filter(([name]) => !setLines.has(files.get(name)!)).map(([name, componentLines]) => readComponent(name, componentLines, files));
   // a name two files share (`bare` and `bare.ldr`) names neither for an edit; a file
   // defined twice (one name defined by two people at once) is read from its first
   // definition and named
   const repeated = new Set(components.map(component => component.name)).size < components.length;
   const sectionsOf = new Map<string, number>();
   for(const { name } of sectionStarts) sectionsOf.set(name, (sectionsOf.get(name) ?? 0) + 1);
-  const duplicated = components.filter(component => (sectionsOf.get(component.file) ?? 0) > 1).map(component => component.name);
   const spans = sectionSpans(sectionStarts, dataSpans, filesEnd, text.length);
   const sections = components.map(({ name, file }) => { const [span, ...repeats] = spans.get(file)!/*each component is a file's*/; return { name, file, span, repeats }; });
+
+  // each set's section, and where its own lines end: at the next section, its end
+  // marker or the files' end
+  const sets: SetSection[] = [...setFiles].map(file => {
+    const start = sectionStarts.find(each => each.name === file);
+    const next = start ? sectionStarts.find(each => each.from > start.from)?.from : undefined;
+    const marker = (file === main) ? endMarker : markers.get(file);
+    const nameLine = nameLines.get(file);
+    return {
+      name: nameLine?.name ?? MAIN_SET, named: !!nameLine, file,
+      ...(start ? { start: { from: start.from, to: start.to } } : {}), ...(nameLine ? { nameLine: nameLine.span } : {}),
+      pieces: spans.get(file) ?? [], end: minOf([next ?? Infinity, marker?.from ?? Infinity], filesEnd),
+    };
+  });
+  const setNames = sets.map(set => set.name.toLowerCase());
+  // a line of any file placing a set's file: the set is then a submodel too
+  const setPlaced = [...files.values()].some(fileLines => fileLines.some(({ text: line }) => {
+    const fields = line.trim().split(/\s+/);
+    return (fields[0] === '1') && (fields.length >= 15) && setFiles.has(normalizeName(fields.slice(14).join(' ')));
+  }));
+  const duplicated = [...components.filter(component => (sectionsOf.get(component.file) ?? 0) > 1), ...sets.filter(set => (set.file !== main) && ((sectionsOf.get(set.file) ?? 0) > 1))].map(each => each.name);
   const flat = (files.size === 1) && (main === '')/*no `0 FILE` section: each part is its own line*/;
   return {
-    lines: files, main, components, tooManyDefinitionLines,
-    mainTwice, unsectioned: (main === '') && !flat, nested: components.some(component => component.nested), repeated, duplicated, data,
+    lines: files, main, components, tooManyDefinitionLines, setFiles,
+    mainTwice, setPlaced, tooManySets: named.length > MAX_SETS, setNamedTwice: new Set(setNames).size < setNames.length, unsectioned: (main === '') && !flat, nested: components.some(component => component.nested), repeated, duplicated, data,
     layout: {
+      sets,
       ...(((main !== undefined) && (main !== '')) ? { mainFile: { from: sectionStarts[0].from, to: sectionStarts[0].to }/*the first section is the main model's*/ } : {}),
       ...(endMarker ? { endMarker } : {}),
       components: sections, data: dataSpans, filesEnd,
@@ -308,14 +406,15 @@ const readFiles = (text: string): Files => {
 };
 
 // ................................................................................
-/** the main model of a text's files: its parts walked through the components it
- *  places, and where its lines lie when edits can change them line by line */
-const readSet = (read: Files): Model => {
-  const { lines: files, main, components, layout: file } = read;
+/** one set of a text's files: its parts walked through the components it places,
+ *  and where its lines lie when edits can change them line by line */
+const readSet = (read: Files, set: SetSection | undefined): Model => {
+  const { lines: files, components, layout: file } = read;
   const withData = (read.data.length > 0) ? { data: read.data } : {};
-  if(main === undefined) return { ...EMPTY_MODEL, ...withData, layout: { placements: [], others: [], pieces: [], placed: [], parts: [], steps: [], end: 0, endsLine: true/*nothing before the data*/, file } }/*no file: empty text, or data alone*/;
+  if(!set) return { ...EMPTY_MODEL, ...withData, layout: { placements: [], others: [], pieces: [], placed: [], parts: [], steps: [], end: 0, endsLine: true/*nothing before the data*/, file } }/*no file: empty text, or data alone*/;
 
   const componentsByFile = new Map(components.map(component => [component.file, component]));
+  const main = set.file/*the file walked: the set's*/;
   let nested = read.nested;
   const header: string[] = [];
   const placements: Placement[] = [];
@@ -375,7 +474,7 @@ const readSet = (read: Files): Model => {
 
       if(files.has(reference) && (depth < 16/*guards a cyclic MPD*/)) {
         references++;
-        if(reference === main) nested = true/*the main model placed in itself*/;
+        if(reference === main) nested = true/*the set placed in itself*/;
         // a copy: the main model's line naming a component, on the grid
         const component = isMain ? componentsByFile.get(reference) : undefined;
         const position = component?.footprint && copyPosition(component.footprint, component.name, local);
@@ -447,12 +546,15 @@ const readSet = (read: Files): Model => {
   const overflows = others.some(other => ![...other.position, ...other.matrix].every(Number.isFinite))/*placed through submodels whose transforms overflow*/;
   const { mainTwice } = read;
   const uneditable = mainTwice ? UNEDITABLE.mainTwice : read.unsectioned ? UNEDITABLE.unsectioned : nested ? UNEDITABLE.nested : read.repeated ? UNEDITABLE.repeated
-    : untold ? UNEDITABLE.undecided : undefined;
-  const end = minOf([...file.components.flatMap(({ span, repeats }) => [span, ...repeats]).map(span => span.from), ...(file.endMarker ? [file.endMarker.from] : [])], file.filesEnd);
+    : read.tooManySets ? UNEDITABLE.tooManySets : read.setPlaced ? UNEDITABLE.setPlaced : read.setNamedTwice ? UNEDITABLE.setNamedTwice : untold ? UNEDITABLE.undecided : undefined;
+  const { end } = set;
   const lastPart = maxOf(parts.map(span => span.to), 0);
   const trailingStep = (parts.length > 0) ? stepSpans.find(span => span.from >= lastPart) : undefined;
   const steps = numberSteps(placementSteps, otherSteps, copySteps);
+  const several = file.sets.length > 1;
   return {
+    ...((several || set.named) ? { set: set.name } : {}),
+    ...(several ? { sets: file.sets.map(({ name, file: setFile }) => ({ name, file: setFile })) } : {}),
     header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others,
     ...(truncated ? { truncated } : {}),
     ...(ground ? { ground: ground.color } : {}),
@@ -955,14 +1057,75 @@ const newSectionEdits = (file: FileLayout, section: string): ContentChange[] => 
 /** lines as a text writes them, each ended by its line break */
 const sectionText = (file: FileLayout, lines: ReadonlyArray<string>): string => lines.map(line => line + file.lineBreak).join('');
 
-/** the edits that remove every part, copy, component and data section, keeping the
- *  main model's other lines (its header, the ground): the build is left as Brick
- *  Studio writes one whole, its main model's file line first and its end marker last.
- *  An empty text stays empty */
+// .. Sets ........................................................................
+/** the edits that add a set named `name`: its section, holding its name line and
+ *  `lines` (another set's, for a copy of it), goes at the files' end in a file of its
+ *  own (SEE: setFileName) */
+export const addSetEdits = (file: FileLayout, name: string, lines: ReadonlyArray<string>): ContentChange[] =>
+  newSectionEdits(file, sectionText(file, [`0 FILE ${setFileName(file, name)}`, `${SET_LINE} ${name}`, ...lines]));
+
+/** a set's lines that a copy of it takes, as written and in order: its ground, its
+ *  part and copy lines and its steps (its header comments and name line left) */
+export const setLines = (text: string, layout: ModelLayout): string[] =>
+  [...(layout.ground ? [layout.ground] : []), ...layout.parts, ...layout.steps].sort((a, b) => a.from - b.from).map(({ from, to }) => text.slice(from, to).replace(/[\r\n]+$/, ''));
+
+/** the edits that rename a set: its name line rewritten, or one written for a main
+ *  model that names none (after its `0 FILE` line, else before a flat file's first
+ *  part or step, else at its end). An empty text, which holds no section, gains the
+ *  header first (SEE: appendLines) */
+export const renameSetEdits = (layout: ModelLayout, set: SetSection | undefined, name: string): ContentChange[] => {
+  const { file } = layout;
+  const line = `${SET_LINE} ${name}`;
+  if(!set) return [{ from: 0, to: 0, insert: sectionText(file, [...DEFAULT_HEADER, line]) }]/*an empty text*/;
+  if(set.nameLine) {
+    const ending = ((set.nameLine.to < file.length) || file.endsWithBreak) ? file.lineBreak : ''/*the last line, unfinished*/;
+    return [{ ...set.nameLine, insert: line + ending }];
+  } /* else -- the main model, unnamed */
+  if(set.start) return [{ from: set.start.to, to: set.start.to, insert: line + file.lineBreak }];
+  const first = minOf([...layout.parts, ...layout.steps].map(span => span.from));
+  if(Number.isFinite(first)) return [{ from: first, to: first, insert: line + file.lineBreak }];
+  const lead = layout.endsLine ? '' : file.lineBreak/*the last line is unfinished*/;
+  return [{ from: layout.end, to: layout.end, insert: lead + line + file.lineBreak }];
+};
+
+/** the edits that remove a set and every line of its sections (a data section within
+ *  kept where it stands). The main set removed, the next set becomes the main model:
+ *  its lines (its name line among them) take the main model's place, after its `0
+ *  FILE` line and before its end marker */
+export const removeSetEdits = (text: string, file: FileLayout, set: SetSection): ContentChange[] => {
+  if(set.file !== file.sets[0]?.file) return deleteLines(set.pieces);
+  const next = file.sets[1]!/*by contract: a build keeps its last set*/;
+  const start = set.start!/*by contract: a build of two sets is an MPD file*/;
+  const [first, ...rest] = next.pieces;
+  const moved = [text.slice(next.start!.to, first.to), ...rest.map(({ from, to }) => text.slice(from, to))].join('');
+  const ended = (moved.length < 1) || /[\r\n]$/.test(moved) ? moved : (moved + file.lineBreak);
+  const own = set.pieces.map((piece, index) => (index === 0) ? { from: start.to, to: piece.to } : piece)/*its file line kept*/;
+  return [...deleteLines([...own, ...next.pieces]), { from: start.to, to: start.to, insert: ended + END_MARKER + file.lineBreak }];
+};
+
+/** the edits that empty a set: its part, copy and step lines removed, its name,
+ *  ground and other lines kept */
+export const clearSetEdits = (layout: ModelLayout): ContentChange[] => deleteLines([...layout.parts, ...layout.steps]);
+
+/** the file a set Brick Studio adds is written to: its name in lower case, every
+ *  other character a dash, then SET_FILE; numbered when a section has it */
+const setFileName = (file: FileLayout, name: string): string => {
+  const taken = new Set([...file.sets.map(set => set.file), ...file.components.map(component => component.file)]);
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'set';
+  let candidate = `${base}${SET_FILE}`;
+  for(let count=2; taken.has(candidate); count++) candidate = `${base}-${count}${SET_FILE}`;
+  return candidate;
+};
+
+// ................................................................................
+/** the edits that remove every part, copy, further set, component and data section,
+ *  keeping the main model's other lines (its header, its name, the ground): the build
+ *  is left as Brick Studio writes one whole, its main model's file line first and its
+ *  end marker last. An empty text stays empty */
 export const clearEdits = (layout: ModelLayout): ContentChange[] => {
   const { file } = layout;
   if(file.length < 1) return [];
-  const removed = [...layout.parts, ...layout.steps, ...file.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...file.data];
+  const removed = [...layout.parts, ...layout.steps, ...file.sets.slice(1).flatMap(set => set.pieces), ...file.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...file.data];
   // the main model's end, after the lines before it are removed
   const end = layout.end - removed.filter(span => span.to <= layout.end).reduce((total, span) => total + (span.to - span.from), 0);
   const lead = layout.endsLine ? '' : file.lineBreak/*the last line is unfinished*/;

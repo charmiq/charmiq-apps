@@ -12,7 +12,7 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | Command | Does |
 |---|---|
 | `scene({ title, fps, length, width, height, floor })` | the film's title, frames a second (24), length in seconds (the last key's when left out), its export size (1280 × 720), and the area (`{ x, z, width, depth }` in studs) the studio's baseplate covers at least, so actors have ground to move over |
-| `actor(name, source)` | an actor: a component of the studio's build (`{ component: 'car' }`), a catalog part dressed as a placement is (`{ part: 'figure', color: 'blue', legColor, face, hat, rightHand, leftHand }`), or a piece already standing in the build, by where `listPlacedParts` says it stands (`{ placed: { x: 30, z: -20, level: 0 } }`): it is lifted out of the set, dressed and posed as it is there; each value the scene keys comes from its keys from the first frame (held before its first key, as for any actor), and every value it never keys from where the piece stood |
+| `actor(name, source)` | an actor: a component of the studio's build (`{ component: 'car' }`), a catalog part dressed as a placement is (`{ part: 'figure', color: 'blue', legColor, face, hat, rightHand, leftHand }`), or a piece already standing in the build, by where `listPlacedParts` says it stands (`{ placed: { x: 30, z: -20, level: 0 } }`, and `set: 'Garage'` for a set other than the first): it is lifted out of the set, dressed and posed as it is there; each value the scene keys comes from its keys from the first frame (held before its first key, as for any actor), and every value it never keys from where the piece stood |
 | `a.at(time, values, ease)` | a key: the actor's values at a time, eased into from the key before (`linear`, `ease-in`, `ease-out`, `ease-in-out`, the default, or `hold`) |
 | `a.path(from, to, (u, t) => values)` | values from a function over a span (`u` from 0 to 1 across it, `t` in seconds), in place of the keys there |
 | `a.wobble(value, amount, { rate, from, to })` | smooth noise added to one value: `amount` at most, `rate` swings a second |
@@ -22,6 +22,7 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | `camera.shake(from, to, amount, rate)` | a handheld shake |
 | `view(name)` | another camera, used the same way: a second Brick Studio in the document shows the scene through it |
 | `view(name, { plan: true })` | a plan: the scene from straight above, north up, with every actor's path and the camera drawn over it. It takes no keys; `{ plan: { x, z, width, depth } }` frames an area instead of everything the film shows |
+| `set.at(time, name)` | a cut to another of the build's sets (Brick Studio's [sets](charmiq://../brick-studio/How%20It%20Works.md)): the set of that name stands from `time` on, until the next; the build's first set before the first |
 | `fade.at(time, value)`, `fade.out(from, to)`, `fade.in(from, to)` | the fade to black: 0 shows the frame, 1 is black |
 | `title(from, to, text, { style })` | words over the film: a full `card`, or a `caption` along the foot |
 | `arc(t, up, gravity)`, `noise(t)`, `lerp(a, b, u)` | a jump's height in plates after `t` seconds, smooth noise from -1 to 1, and a blend |
@@ -31,6 +32,8 @@ An actor's values are `x`, `z`, `height`, `yaw` (clockwise seen from above), `pi
 
 An actor with wheels rolls them on its own: they turn by the distance it moves along its own north.
 
+A story in more than one place cuts between the build's sets: the street, then `set.at(9, 'Garage')`, the garage. A set never eases into another; every set the scene names is staged when the film is, so the cut draws at once, and an actor goes wherever its keys put it in whichever set stands, so the car that left the street rolls into the garage.
+
 A shot runs from one cut to the next. A move may end exactly where the next shot cuts in: `.at(4.5, { orbit: { angle: 15 } }, 'linear').cut(4.5, { position: ... })` moves to the end of one shot, then cuts. An orbit's angle eases by the numbers written, so 345 to 15 swings back through 180 while −15 to 15 swings through 0; a plan shows which way a swing goes.
 
 
@@ -38,7 +41,7 @@ A shot runs from one cut to the next. A move may end exactly where the next shot
 
 Each time the scene runs, Stop Motion turns it into a reel, every frame of the film as data, and loads it into Brick Studio once. From then on the timeline only names a frame and the studio shows it: playing, scrubbing and seeking all happen in the studio, the fade and the titles drawn there too. The film plays in the studio while the timeline is scrolled out of view.
 
-The studio holding a build is the main one: its build is the set, and its camera is the film's. A Brick Studio with no build of its own is another screen, showing the same set through the scene's next `view`: give the scene a plan view, and a second studio is the film's map. When two studios both hold a build, the film waits until one of them is emptied.
+The studio holding a build is the main one: its build holds the sets, and its camera is the film's. A Brick Studio with no build of its own is another screen, showing the same set through the scene's next `view`: give the scene a plan view, and a second studio is the film's map. When two studios both hold a build, the film waits until one of them is emptied.
 
 The strip under the timeline is the film's picture track: a small picture of each frame, taken from the studio while the film is neither playing nor exporting, without moving the picture the studio shows.
 
@@ -62,7 +65,7 @@ The bar says the film's name and whether it has changed since it was saved or op
 
 ## The Timeline
 
-A row per track: the camera, each view, each actor, the fade and the titles. A key is a diamond, a path a solid band, a wobble or shake a striped band, the fade a ramp to black, a title its words. A camera's shots alternate shades from cut to cut, each named. Where two actors come within 2 studs of each other, a red notch on both their rows marks the moment they come closest. Drag anywhere on the ruler or the rows to scrub; a diamond seeks to its key and says what it sets. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, and Space plays.
+A row per track: the camera, each view, each actor, the sets the scene cuts between, the fade and the titles. A key is a diamond, a path a solid band, a wobble or shake a striped band, the fade a ramp to black, a title its words. A camera's shots alternate shades from cut to cut, each named, and so do the sets, each named from its key. Where two actors come within 2 studs of each other, a red notch on both their rows marks the moment they come closest. Drag anywhere on the ruler or the rows to scrub; a diamond seeks to its key and says what it sets. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, and Space plays.
 
 
 ## The Commands
@@ -71,12 +74,12 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 
 | Command | Does |
 |---|---|
-| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots, every two actors that come within 2 studs, and its log, or the scene's mistake and its line |
+| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, every two actors that come within 2 studs, and its log, or the scene's mistake and its line |
 | `seek` | shows a moment (`time` in seconds, or `frame` from 0) in the studios, answering once the studio has drawn it, so a screenshot sees it |
 | `play`, `pause` | the transport |
 | `storyboard` | shows up to 12 moments at once on a sheet over the main studio, each captioned with its time and shot (the middle of each shot when no `times` or `frames` are given), through a `view` when named: a screenshot of the studio reads them all. The film's next move closes it |
 | `measure` | where two actors come closest, over the film or `from` and `to`: the gap between their boxes in studs (each its footprint turned by its yaw and its height; 0 when they touch) and where each stood |
-| `where` | every actor's position and turn, and the camera, at a `time` or `frame` |
+| `where` | every actor's position and turn, the camera and the set standing, at a `time` or `frame` |
 | `listFilms` | the films (and designs) in the films folder, each by name and uri |
 | `saveFilm` | saves the set and the scene as one film: under `name` in the films folder, or over the film's own file wherever it is; another film of that name needs `replace` |
 | `openFilm` | opens a film by `uri` or `name`: its set into the studio, its scene into the code block (a plain design, its set alone) |

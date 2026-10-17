@@ -19,6 +19,9 @@ export type Key = Readonly<{ time: number; values: Readonly<Record<string, numbe
 /** a figure's face from `time` on, until the next: worn at once, never eased (SEE:
  *  Brick Studio's faces) */
 export type FaceKey = Readonly<{ time: number; face: string; line?: number; }>;
+/** the build's set standing from `time` on, until the next: a cut, never eased (SEE:
+ *  Brick Studio's sets) */
+export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
 
 /** a function of time over a span, sampled at each frame from `from` up to `to`
  *  (frame numbers, inclusive): `set` replaces its channels there, `add` adds to them */
@@ -71,6 +74,9 @@ export type Recorded = Readonly<{
   views: ReadonlyArray<RecordedCamera & Readonly<{ name: string; plan?: Readonly<{ area?: Area; }>; }>>;
   fade: ReadonlyArray<Key>;
   titles: ReadonlyArray<Title>;
+  /** which of the build's sets stands from each key on, in time order, when the scene
+   *  keys any (its first set stands before the first) */
+  sets?: ReadonlyArray<SetKey>;
   /** what the scene logged (console.log) */
   logs: ReadonlyArray<string>;
 }>;
@@ -85,7 +91,7 @@ export type SceneError = Readonly<{ message: string; line?: number; }>;
 export const castAs = (source: Readonly<Record<string, unknown>>): Readonly<{ words: string; definite: boolean; }> => {
   if(typeof source.component === 'string') return { words: source.component, definite: true };
   const placed = source.placed as Readonly<Record<string, unknown>> | undefined;
-  if((typeof placed === 'object') && (placed !== null)) return { words: `piece at x ${String(placed.x)}, z ${String(placed.z)}, level ${String(placed.level)}`, definite: true };
+  if((typeof placed === 'object') && (placed !== null)) return { words: `piece at x ${String(placed.x)}, z ${String(placed.z)}, level ${String(placed.level)}${(typeof placed.set === 'string') ? ` in ${placed.set}` : ''}`, definite: true };
   return { words: [source.color, source.part].filter(Boolean).join(' '), definite: false };
 };
 
@@ -155,6 +161,7 @@ export const record = (code: string): Recorded => {
   /** the views that are plans, each with the area it names, if any */
   const plans = new Map<string, { area?: Area; }>();
   const fadeKeys: Key[] = [];
+  const setKeys: SetKey[] = [];
   const titles: Title[] = [];
   const logs: string[] = [];
   let keyCount = 0;
@@ -348,6 +355,16 @@ export const record = (code: string): Recorded => {
     in: (from: unknown, to: unknown) => fade.at(from, 1, 'hold').at(to, 0, 'ease-out'),
   };
 
+  /** the build's set standing from a time on: a cut to another set */
+  const set = {
+    at: (time: unknown, name: unknown) => {
+      counted();
+      if((typeof name !== 'string') || (name.trim().length < 1) || (name.length > MAX_NAME)) fail(`set.at names one of the build's sets: set.at(time, name), the name 1 to ${MAX_NAME} characters`);
+      setKeys.push({ time: toTime(time, 'set.at'), set: (name as string).trim(), line: callerLine() });
+      return set;
+    },
+  };
+
   /** words over the film: a full card or a caption along the bottom */
   const title = (from: unknown, to: unknown, text: unknown, options: Record<string, unknown> = {}) => {
     const [start, end] = [toTime(from, 'title'), toTime(to, 'title')];
@@ -385,7 +402,7 @@ export const record = (code: string): Recorded => {
   // .. Run .......................................................................
   // the scene's code, given the API alone
   const api: Record<string, unknown> = {
-    scene, actor, camera, view, fade, title, noise,
+    scene, actor, camera, view, set, fade, title, noise,
     /** a jump's height (plates) at time t from leaving at `up` plates a second, under
      *  `gravity` plates a second squared */
     arc: (t: number, up: number, gravity = 120) => (up * t) - (gravity * t * t / 2),
@@ -404,7 +421,7 @@ export const record = (code: string): Recorded => {
   // sampled and each key in time order
   for(const each of actors) if(each.ride && !actors.some(other => other.name === each.ride!.parent)) fail(`${each.name} rides '${each.ride.parent}', which is no actor`, each.line);
   for(const [name, { keys }] of cameras) for(const key of keys) if(key.target && ('actor' in key.target) && !actors.some(other => other.name === (key.target as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) looks at '${(key.target as { actor: string; }).actor}', which is no actor`, key.line);
-  const times = [...actors.flatMap(each => [...each.keys, ...each.faces].map(key => key.time)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...titles.map(each => each.to)];
+  const times = [...actors.flatMap(each => [...each.keys, ...each.faces].map(key => key.time)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to)];
   settings.length ??= Math.max(1, ...times);
   /** keys in time order, a held key after any other at its time, so a move may end
    *  exactly where a cut jumps */
@@ -414,6 +431,6 @@ export const record = (code: string): Recorded => {
     actors: actors.map(({ name, source, ride, keys, faces, spans, line }) => ({ name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), spans: spans.map(span => span()), ...((line !== undefined) ? { line } : {}) })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
-    fade: byTime(fadeKeys), titles, logs,
+    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), logs,
   };
 };

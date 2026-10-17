@@ -2,7 +2,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 
 import { DesignExists, displayName } from '../../brick-shared/designs';
 
-import { cameraShots, type CameraShot, type Film } from './film';
+import { cameraShots, setAt, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
 import type { Player } from './player';
@@ -52,7 +52,8 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
         ...(film ? {
           title: film.scene.title, seconds: film.scene.length, fps: film.scene.fps, frames: film.frames.length,
           actors: film.scene.actors.map(actor => actor.name), views: film.scene.views.map(view => view.name),
-          shots: cameraShots(film.scene.camera, film.scene.length),
+          shots: cameraShots(film.scene.camera, film.scene.length).map(shot => { const set = setAt(film.scene.sets, shot.from); return (set !== undefined) ? { ...shot, set } : shot; }),
+          ...(film.scene.sets ? { sets: film.scene.sets.map(({ time, set }) => ({ time: thousandths(time), set })) } : {}),
           ...(sizes ? { close: closePairs(film, sizes).map(pair => ({ actors: pair.actors, frame: pair.frame, time: thousandths(pair.time), gap: hundredths(pair.gap) })) } : {}),
           ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
         } : {}),
@@ -145,7 +146,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       const film = filmOf(host);
       const at = film.frames[frameAt(film, time, frame)];
       return {
-        frame: at.index, time: thousandths(at.time),
+        frame: at.index, time: thousandths(at.time), ...((at.set !== undefined) ? { set: at.set } : {}),
         actors: at.actors.map(actor => ({ name: actor.name, position: rounded(actor.position), turn: { yaw: hundredths(actor.turn.yaw), pitch: hundredths(actor.turn.pitch), roll: hundredths(actor.turn.roll) } })),
         camera: { position: rounded(at.camera.position), target: rounded(at.camera.target), fov: hundredths(at.camera.fov) },
       };

@@ -14,10 +14,11 @@ import { getColor, getColorValue } from './grid';
 import { GroundControl } from './ground-control';
 import { LookAround } from './look-around';
 import { partCount, type Model } from './model';
+import { SetControl } from './set-control';
 import { Sheet } from './sheet';
 import { StageControl } from './stage-control';
 import { StepControl } from './step-control';
-import { DEFAULT_VIEW, STANDING, Viewer, type Walk } from './viewer';
+import { Viewer, type Walk, DEFAULT_VIEW, STANDING } from './viewer';
 
 // entry point: creates the modules, wires them, loads the parts, then the build
 // ********************************************************************************
@@ -62,6 +63,7 @@ const commands = new CommandSurface(build, designs, viewer, lookAround, stage, l
 /** why the last ground change was refused, until the build next changes */
 let groundRefused: string | undefined;
 const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build, reason => { groundRefused = reason; showStatus(build.getModel()); });
+const setPick = new SetControl({ root: element('setPick'), button: element('setButton'), menu: element('setMenu') }, build);
 const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);
 const designDialog = new DesignDialog(element('designs'), designs, {
   partCount: () => partCount(build.getModel()),
@@ -198,12 +200,15 @@ const start = async () => {
   await look.init();
   void designs.init()/*every save, list and load waits for it*/;
   build.onChange((model, source) => {
-    lookAround.hide()/*a picture of the build as it stood*/;
-    stage.buildChanged();
+    if(source !== 'elsewhere') lookAround.hide()/*a picture of the set as it stood*/;
+    if(source !== 'set') stage.buildChanged()/*another set shown is no change to the build*/;
     groundRefused = undefined/*a refusal is about the build as it stood*/;
-    steps.show(model, (source !== 'load') && !reducedMotion.matches)/*the build whole: any playback ends*/;
+    // the set whole, any playback ended: never for a change that leaves the set shown
+    // as it was, and another set shown drops nothing in
+    if(source !== 'elsewhere') steps.show(model, (source === 'document') && !reducedMotion.matches);
     ground.show(model);
-    if(source !== 'load') viewer.keepInView()/*the first view is framed once its parts are drawn: SEE start*/;
+    setPick.show(model);
+    if(source === 'document') viewer.keepInView()/*the first view is framed once its parts are drawn (SEE start); another set keeps the view*/;
     showStatus(model);
   });
   build.onUncertain(() => showStatus(build.getModel()));

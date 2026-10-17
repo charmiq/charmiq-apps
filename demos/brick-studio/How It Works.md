@@ -68,6 +68,16 @@ A thing a build repeats (a tower, a house, a tree with its fence) is defined onc
 A line another program wrote placing a component is removed whole the same way, even when it is not a copy on the grid (a component whose parts take the copy's color). A removal never edits a component's definition.
 
 
+## Sets
+
+A build can hold more than one set: each an arrangement on its own baseplate, with its own steps and ground, sharing the build's components. A film's street and its garage are two sets, and the car is a component both can place. The sets share one grid, so a part at x 4 stands at x 4 in each.
+
+- **In the file.** The first set is LDraw's main model, the one every LDraw tool opens. Each further set is a section holding a `0 !BRICKSTUDIO SET Garage` line, written to a file of its own (`garage.set.ldr`); other LDraw tools list it as a submodel nothing places. A build written before sets is one set, named Main until it is renamed.
+- **The menu.** With more than one set, a tag in the bar names the set shown and opens a menu of the sets. The steps, the ground swatch and the view buttons act on the set shown. An edit to another set leaves the set shown as it is, its step included; a Charm's edit to a set shows that set.
+- **Naming the set.** A Charm names the set on every command that reads or edits one (`set`); in a build of more than one set, a call naming none is refused, listing the sets. Redefining a component is checked in every set, since every copy changes with it.
+- **Limits.** A build holds at most 32 sets, each at most 3,000 parts. A build holding more sets is shown but not edited, and `setModel` refuses one.
+
+
 ## Steps
 
 A build can be split into building steps, LDraw's own `0 STEP` lines, so other LDraw tools show the same steps. The play, step and back buttons under the status show the build as it stands after each step, its parts dropping in. Playback never changes the document, and any change to the build ends it. A Charm starts a new step by adding parts with `newStep: true`.
@@ -96,7 +106,8 @@ Drag to orbit, right-drag to pan, scroll to zoom. Or walk with the keys once the
 
 The Studio can show a scene in place of the build: a still for a Charm (the car in mid-air over the ramp), or the frames of a film another Application drives, as [Stop Motion](charmiq://../stop-motion/README.md) does.
 
-- **The set** is a build: the Studio's own, or LDraw text the stage call gives. It is drawn as it stands; nothing on a stage is written to the build.
+- **The sets** are a build's: the Studio's own, or LDraw text the stage call gives (`ldraw`). A stage stands the sets it names (`sets`, at most 8; the first set alone when it names none), one at a time: the first, until a frame names another. Each is drawn as it stands, its meshes built when the scene is staged, so a cut to another set draws at once; nothing on a stage is written to the build.
+- **Actors** belong to the scene, not a set: an actor cast from a piece of the street is drawn in the garage wherever its frame puts it.
 - **Actors** are named once when the scene is staged: each a component of the set (the car) or a catalog part dressed as a placement is (a figure in a helmet). An actor is never on the grid and never checked. The answer names the actors with wheels.
 - **A frame** puts each actor anywhere. Its position is the middle of the bottom of its footprint, in studs east and north and plates up, fractions allowed; it turns about that point, rolled then pitched then yawed (yaw as a placement turns, pitch raising its south side, roll its west side). A figure's limbs take any angle, and its wheels turn as the actor having rolled any distance along its own north: each wheel set by its share, backward when it is turned round, not at all when it is turned across. An actor a frame leaves out is hidden. The frame's camera stands where it says, looks at its target, focuses there and takes any lens.
 - **A capture** answers the frame as an image, once settled, for the Application asking: the stage draws at that size from then on, and the canvas shows it whole.
@@ -148,17 +159,20 @@ A Charm drives the Studio through these:
 | `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy, or of any line placing a component, removes that whole line); answers with the build's check and the parts left unsupported |
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
 | `defineComponentFromDesign` | defines a component from a saved design (its `uri` from `listDesigns`, or its name), named after it |
-| `listComponents` | the components the build defines, their sizes and copies |
-| `clear` | removes every part, copy and component, and any file the build carries, keeping the ground; with `expect`, only while the build is still that text |
+| `listComponents` | the components the build defines, their sizes and copies (by set, in a build of more than one) |
+| `listSets` | the build's sets, each with its parts, copies, steps and ground, and the set shown |
+| `addSet` | adds a set and shows it: empty, or a copy of another (`from`) |
+| `renameSet` / `removeSet` | renames a set, or removes it and everything in it (never the last; removing the first makes the next the first) |
+| `clear` | removes every part, copy, further set and component, and any file the build carries, keeping the first set's name and ground; with `set`, empties that set alone; with `expect`, only while the build is still that text |
 | `check` | lists collisions and floating parts, for a build changed some other way |
 | `setGround` | colors the baseplate, as the swatch does |
 | `setView` | turns the camera and frames the build |
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
 | `setFidelity` | sets the look, from Draft to Path traced, as the Look slider does |
-| `describeStage` | whether a scene is staged, whether the person went back to the build since, and whether the studio holds a build |
-| `stage` | shows a scene in place of the build: its set (the build, or LDraw text) and its actors, each a component of the set, a dressed part, or a piece of the set by where it stands (`placed`: lifted out of the set while staged, its rest answered so a frame there draws it where it stood); answers each actor's box (`sizes`). A film's `marks` are what a plan view draws over the set |
-| `frame` | shows one moment of the staged scene: each actor where its shot puts it, through a camera; `capture` answers it as an image, for Applications |
-| `loadReel` | loads a page of a film's frames into the stage, for Applications (`stage` with a `reel` first); a frame's views are cameras, or plans looking straight down over an area, north up, the film's paths, names and camera drawn over it |
+| `describeStage` | whether a scene is staged, whether the person went back to the build since, whether the studio holds a build, and its sets |
+| `stage` | shows a scene in place of the build: its sets (`sets`, of the build or of LDraw text given as `ldraw`) and its actors, each a component, a dressed part, or a piece of a set by where it stands (`placed`, naming its set: lifted out of that set while staged, its rest answered so a frame there draws it where it stood); answers each actor's box (`sizes`). A film's `marks` are what a plan view draws over the set |
+| `frame` | shows one moment of the staged scene on one of its sets (`set`): each actor where its shot puts it, through a camera; `capture` answers it as an image, for Applications |
+| `loadReel` | loads a page of a film's frames into the stage, for Applications (`stage` with a `reel` first); each frame names the staged set it stands on (`set`), and its views are cameras, or plans looking straight down over an area, north up, the film's paths, names and camera drawn over it |
 | `show` | shows a frame of the film: at once, the newest asked; with `capture`, that exact frame as an image, its fade and title drawn |
 | `thumbnail` | a small picture of a frame of the film, through one of its views when named, the frame shown left as it is |
 | `storyboard` | shows up to 12 frames of the film, each captioned, on the sheet `lookAround` uses, for a screenshot to read; the film's next frame closes it |
@@ -168,7 +182,7 @@ A Charm drives the Studio through these:
 | `loadDesign` | replaces the build with a saved design (its `uri` from `listDesigns`, or its name) |
 | `saveDesign` | saves the build as a design in your designs folder; a name already there needs `replace` |
 
-Every edit resolves once the parts have landed, so a screenshot taken next shows the result.
+Every edit resolves once the parts have landed, so a screenshot taken next shows the result. `listPlacedParts`, `addParts`, `removeParts`, `setGround`, `check` and `lookAround` take `set`, and in a build of more than one set each answer names the set it acted on.
 
 A Charm can also call these from the Platform's Run Code: its script finds the Studio with `charmiq.discover('charmiq.command')` and calls each command as a method, checked as if called directly, so loops and functions build a whole scene in one action.
 
@@ -184,10 +198,11 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/catalog.ts`](charmiq://./src/catalog.ts) | the curated parts and colors |
 | [`src/grid.ts`](charmiq://./src/grid.ts) | grid placement to and from LDraw transforms, and the cells a turned carry fills |
 | [`src/pose.ts`](charmiq://./src/pose.ts) | a figure's pose and a hinge's turn, shared by the grid and the part measurer |
-| [`src/model.ts`](charmiq://./src/model.ts) | LDraw text to and from a build: a flat file, a single main-model section, or an MPD file of components |
+| [`src/model.ts`](charmiq://./src/model.ts) | LDraw text to and from a build: a flat file, a single main-model section, or an MPD file of sets and components |
 | [`src/check.ts`](charmiq://./src/check.ts) | collisions and what holds |
 | [`src/build.ts`](charmiq://./src/build.ts) | the current build and its edits |
-| [`src/stage.ts`](charmiq://./src/stage.ts) | a stage's set, its actors and each frame's shots, as part lines |
+| [`src/stage.ts`](charmiq://./src/stage.ts) | a stage's sets, its actors and each frame's shots, as part lines |
+| [`src/set-control.ts`](charmiq://./src/set-control.ts) | the set menu: the set shown, and the build's sets to show |
 | [`src/stage-control.ts`](charmiq://./src/stage-control.ts) | the Studio on stage: its strip, its way back and its frames in order |
 | [`src/numbers.ts`](charmiq://./src/numbers.ts) | the least and greatest of a build-sized list of numbers |
 | [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` app-content, edited with guarded edits |

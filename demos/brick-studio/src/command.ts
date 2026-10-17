@@ -5,12 +5,12 @@ import type { Design } from '../../brick-shared/drive';
 
 import type { Build } from './build';
 import type { Designs } from './designs';
-import { ACCESSORIES, CATALOG, COLORS, FIGURE_FACES, partsByKind, searchCatalog, type CatalogPart } from './catalog';
-import { MAX_LISTED, reportCheck, TRUNCATED } from './check';
+import { partsByKind, searchCatalog, type CatalogPart, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES } from './catalog';
+import { checkModel, reportCheck, MAX_LISTED, TRUNCATED } from './check';
 import type { FidelityControl } from './fidelity-control';
-import { filledCells, footprintSize, getColorByCode, getPart, getShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE, type PartShape } from './grid';
+import { filledCells, footprintSize, getColorByCode, getPart, getShape, type PartShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE } from './grid';
 import type { LookAround } from './look-around';
-import { copiesOf } from './model';
+import type { Model } from './model';
 import { fidelityLabel, toFidelity } from './render/fidelity';
 import type { StageControl } from './stage-control';
 import type { Viewer } from './viewer';
@@ -62,11 +62,12 @@ const GRID = [
 export class CommandSurface {
   public constructor(private readonly build: Build, private readonly designs: Designs, private readonly viewer: Viewer, private readonly lookAround: LookAround, private readonly stage: StageControl, private readonly look: FidelityControl) {}
 
-  /** the build's check, model-facing: never sound while the document holds more
-   *  than one build, since it covers only the one shown */
-  private report() {
+  /** a set's check (the set shown's when none is given), model-facing, naming the set
+   *  when the build has more than one: never sound while the document holds more than
+   *  one build, since it covers only the one shown */
+  private report(model: Model = this.build.getModel()) {
     const conflict = this.build.conflict();
-    return { ...reportCheck(this.build.check()), ...(conflict ? { ok: false, conflict } : {}) };
+    return { ...named(model), ...reportCheck(checkModel(model)), ...(conflict ? { ok: false, conflict } : {}) };
   }
 
   /** the design a call names: its uri (from listDesigns), which is that document, or
@@ -97,9 +98,9 @@ export class CommandSurface {
         return { parts: found.slice(0, count).map(partRow), total: found.length };
       },
 
-      listPlacedParts: async ({ from }: { from?: unknown; }) => {
+      listPlacedParts: async ({ from, set }: { from?: unknown; set?: unknown; }) => {
         await this.build.whenReady();
-        const model = this.build.getModel();
+        const model = this.build.modelOf(set);
         const conflict = this.build.conflict();
         const steps = model.steps;
         // a part of its own, or a component's line as one entry (its parts are its
@@ -126,52 +127,76 @@ export class CommandSurface {
         const start = pageStart(from);
         const end = Math.min(entries.length, start + PARTS_PER_PAGE);
         return {
-          parts: entries.slice(start, end), total: entries.length, ...((end < entries.length) ? { next: end } : {}),
+          ...named(model), parts: entries.slice(start, end), total: entries.length, ...((end < entries.length) ? { next: end } : {}),
           ...((model.others.length > 0) ? { unchecked: model.others.length } : {}), ...(model.truncated ? { truncated: TRUNCATED } : {}), ...(conflict ? { conflict } : {}),
         };
       },
 
       defineComponent: async ({ name, parts }: { name?: unknown; parts?: unknown; }) => {
         const component = await this.build.defineComponent(name, Array.isArray(parts) ? parts : []);
+        const shown = this.build.getModel()/*taken before drawing lets the person show another set*/;
         await this.viewer.whenSettled();
-        return { component, ...this.report() }/*the component's own counts apart from the build's*/;
+        return { component, ...this.report(shown) }/*the component's own counts apart from the build's*/;
       },
       listComponents: async () => {
         await this.build.whenReady();
         const model = this.build.getModel();
         return { components: (model.components ?? []).map(component => {
           const size = component.footprint ? footprintSize(component.footprint, 0) : [0, 0];
-          return { name: component.name, size: `${size[0]}x${size[1]}x${component.footprint?.height ?? 0}`, parts: component.placements.length, copies: copiesOf(model, component.name) };
+          const bySet = this.build.copiesBySet(component.name);
+          return {
+            name: component.name, size: `${size[0]}x${size[1]}x${component.footprint?.height ?? 0}`, parts: component.placements.length, copies: bySet.reduce((total, [, copies]) => total + copies, 0),
+            ...((bySet.length > 1) ? { copiesBySet: Object.fromEntries(bySet) } : {}),
+          };
         }) };
+      },
+      listSets: async () => {
+        await this.build.whenReady();
+        return { sets: this.build.sets(), shown: this.build.shownSet() };
+      },
+      addSet: async ({ name, from }: { name?: unknown; from?: unknown; }) => {
+        const added = await this.build.addSet(name, from);
+        await this.viewer.whenSettled()/*the set shown*/;
+        return added;
+      },
+      renameSet: async ({ set, name }: { set?: unknown; name?: unknown; }) => ({ name: await this.build.renameSet(set, name) }),
+      removeSet: async ({ set }: { set?: unknown; }) => {
+        const removed = await this.build.removeSet(set);
+        await this.viewer.whenSettled();
+        return removed;
       },
 
       // an edit answers with the check of the build it made, so no check call follows
-      addParts: async ({ parts, newStep }: { parts?: unknown; newStep?: unknown; }) => {
-        const result = await this.build.add(Array.isArray(parts) ? parts : [], newStep === true);
+      addParts: async ({ parts, newStep, set }: { parts?: unknown; newStep?: unknown; set?: unknown; }) => {
+        const result = await this.build.add(Array.isArray(parts) ? parts : [], newStep === true, set);
+        const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
         await this.viewer.whenSettled();
-        return { added: result.added, ...this.report() };
+        return { added: result.added, ...this.report(edited) };
       },
-      removeParts: async ({ at }: { at?: unknown; }) => {
-        const result = await this.build.remove(Array.isArray(at) ? at : []);
+      removeParts: async ({ at, set }: { at?: unknown; set?: unknown; }) => {
+        const result = await this.build.remove(Array.isArray(at) ? at : [], set);
+        const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
         await this.viewer.whenSettled();
         return {
           removed: result.removed,
           ...((result.empty.length > 0) ? { empty: result.empty } : {}),
           ...((result.unsupported.length > 0) ? { unsupported: result.unsupported.length, unsupportedParts: result.unsupported.slice(0, MAX_LISTED) } : {}),
-          ...this.report(),
+          ...this.report(edited),
         };
       },
 
-      setGround: async ({ color }: { color?: unknown; }) => {
-        const ground = await this.build.setGround(color ?? undefined/*null returns it to the theme's*/);
+      setGround: async ({ color, set }: { color?: unknown; set?: unknown; }) => {
+        const ground = await this.build.setGround(color ?? undefined/*null returns it to the theme's*/, set);
+        const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
         await this.viewer.whenSettled();
-        return { ground: ground ?? 'theme' };
+        return { ground: ground ?? 'theme', ...named(edited) };
       },
 
-      clear: async ({ expect }: { expect?: unknown; }) => {
-        const removed = await this.build.clear(expectedText(expect));
+      clear: async ({ expect, set }: { expect?: unknown; set?: unknown; }) => {
+        const removed = await this.build.clear(expectedText(expect), set);
+        const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
         await this.viewer.setView(this.viewer.getView(), true);
-        return { removed };
+        return { removed, ...((set !== undefined) ? named(edited) : {}) };
       },
 
       setFidelity: async ({ fidelity }: { fidelity?: unknown; }) => {
@@ -191,8 +216,9 @@ export class CommandSurface {
       },
       setModel: async ({ ldraw, expect }: { ldraw?: unknown; expect?: unknown; }) => {
         await this.build.replace((typeof ldraw === 'string') ? ldraw : '', expectedText(expect));
+        const shown = this.build.getModel()/*taken before drawing lets the person show another set*/;
         await this.showWhole();
-        return this.report();
+        return this.report(shown);
       },
 
       listDesigns: async () => {
@@ -200,14 +226,16 @@ export class CommandSurface {
         return { folder: this.designs.getFolder().name, designs: designs.map(design => ({ name: displayName(design), uri: design.uri })) };
       },
       defineComponentFromDesign: async ({ design, uri, name }: { design?: unknown; uri?: unknown; name?: unknown; }) => {
-        const { leftOut, ...component } = await this.designs.asComponent(await this.designGiven(uri, design), (typeof name === 'string') ? name : undefined);
+        const { leftOut, otherSets, ...component } = await this.designs.asComponent(await this.designGiven(uri, design), (typeof name === 'string') ? name : undefined);
+        const shown = this.build.getModel()/*taken before drawing lets the person show another set*/;
         await this.viewer.whenSettled();
-        return { component, ...((leftOut > 0) ? { leftOut } : {}), ...this.report() };
+        return { component, ...((leftOut > 0) ? { leftOut } : {}), ...((otherSets !== undefined) ? { otherSets } : {}), ...this.report(shown) };
       },
       loadDesign: async ({ name, uri }: { name?: unknown; uri?: unknown; }) => {
         const loaded = await this.designs.load(await this.designGiven(uri, name));
+        const shown = this.build.getModel()/*taken before drawing lets the person show another set*/;
         await this.showWhole();
-        return { loaded, ...this.report() };
+        return { loaded, ...this.report(shown) };
       },
       saveDesign: async ({ name, replace }: { name?: unknown; replace?: unknown; }) => {
         try {
@@ -219,7 +247,7 @@ export class CommandSurface {
         }
       },
 
-      check: async () => { await this.build.whenReady(); return this.report(); },
+      check: async ({ set }: { set?: unknown; }) => { await this.build.whenReady(); return this.report(this.build.modelOf(set)); },
 
       setView: async ({ azimuth, elevation, fit }: { azimuth?: unknown; elevation?: unknown; fit?: unknown; }) => {
         if([azimuth, elevation].some(value => (typeof value === 'number') && !Number.isFinite(value))) throw new Error('azimuth and elevation must be finite numbers');
@@ -232,19 +260,21 @@ export class CommandSurface {
         await this.viewer.whenSettled()/*a screenshot next shows the settled frame*/;
         return this.viewer.getView();
       },
-      lookAround: async () => {
+      lookAround: async ({ set }: { set?: unknown; }) => {
         if(this.viewer.isStaged) throw new Error('The studio is showing a film scene; unstage shows the build again.');
         await this.build.whenReady();
-        await this.viewer.whenSettled()/*the build as it stands*/;
-        return { sides: await this.lookAround.show() };
+        const shown = this.build.showSet(set);
+        await this.viewer.whenSettled()/*the set as it stands*/;
+        return { sides: await this.lookAround.show(), ...named(shown) };
       },
 
       // a stage: a film's scene shown in place of the build (SEE: stage.ts)
       describeStage: () => this.stage.describe(),
       stage$: () => this.stage.state$()/*a stream for the film, not a Charm's command*/,
-      stage: async ({ set, actors, floor, reel, view, marks }: { set?: unknown; actors?: unknown; floor?: unknown; reel?: unknown; view?: unknown; marks?: unknown; }) => {
+      stage: async ({ ldraw, set, sets, actors, floor, reel, view, marks }: { ldraw?: unknown; set?: unknown; sets?: unknown; actors?: unknown; floor?: unknown; reel?: unknown; view?: unknown; marks?: unknown; }) => {
+        if(set !== undefined) throw new Error('stage takes the sets it stands as sets (their names), and LDraw text standing for the build as ldraw.');
         this.lookAround.hide();
-        const staged = await this.stage.stage(set, actors, floor, reel, view, marks);
+        const staged = await this.stage.stage(ldraw, sets, actors, floor, reel, view, marks);
         await this.viewer.whenSettled()/*the set drawn*/;
         return staged;
       },
@@ -252,8 +282,8 @@ export class CommandSurface {
       show: async ({ reel, frame, capture }: { reel?: unknown; frame?: unknown; capture?: unknown; }) => this.stage.showReel(reel, frame, capture),
       thumbnail: async ({ reel, frame, width, height, view }: { reel?: unknown; frame?: unknown; width?: unknown; height?: unknown; view?: unknown; }) => ({ image: await this.stage.thumbnail(reel, frame, width, height, view) }),
       storyboard: async ({ reel, frames, view }: { reel?: unknown; frames?: unknown; view?: unknown; }) => this.stage.storyboard(reel, frames, view),
-      frame: async ({ actors, camera, capture }: { actors?: unknown; camera?: unknown; capture?: unknown; }) => {
-        const framed = await this.stage.frame(actors, camera, capture);
+      frame: async ({ set, actors, camera, capture }: { set?: unknown; actors?: unknown; camera?: unknown; capture?: unknown; }) => {
+        const framed = await this.stage.frame(set, actors, camera, capture);
         if(!framed.image) await this.viewer.whenSettled()/*a screenshot next shows the frame*/;
         return framed;
       },
@@ -263,6 +293,9 @@ export class CommandSurface {
 }
 
 // == Util ========================================================================
+/** the set a model is, as an answer names it: when the build has more than one */
+const named = (model: Model): Readonly<{ set?: string; }> => model.sets ? { set: model.set! } : {};
+
 /** the build's text a write expects, when given (SEE: Build#replace) */
 const expectedText = (value: unknown): string | undefined => (typeof value === 'string') ? value : undefined;
 

@@ -3,7 +3,7 @@ import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_FACES, type Cat
 import { checkModel, describeCopy, describePlaced, describePlacement, occupiedCells, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
-import { appendLines, applyChanges, clearEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, partCount, placementLines, serializeModel, type Model, type ModelLayout, EMPTY_MODEL, MAX_PARTS, READ_IN_PART } from './model';
+import { addSetEdits, appendLines, applyChanges, clearEdits, clearSetEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, parseSets, partCount, placementLines, removeSetEdits, renameSetEdits, sameSetName, serializeModel, setLines, stepCount, type Model, type ModelLayout, type SetSection, EMPTY_MODEL, MAIN_SET, MAX_PARTS, MAX_SET_NAME, MAX_SETS, READ_IN_PART } from './model';
 import { maxOf, minOf } from './numbers';
 import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
 
@@ -25,8 +25,10 @@ const BESIDE_GAP = 2/*studs*/;
 const COMPONENT_NAME = /^[a-z][a-z0-9-]{0,39}$/;
 
 // == Types =======================================================================
-/** why the build changed: the first load, or a change to the app-content */
-export type ModelSource = 'document' | 'load';
+/** why the model shown changed: the first load, a change to the app-content, a change
+ *  to the app-content that leaves the set shown as it was (another set's, a data
+ *  section's), or another set shown */
+export type ModelSource = 'document' | 'load' | 'elsewhere' | 'set';
 
 // ................................................................................
 /** a refused edit; its message is model-facing */
@@ -43,14 +45,22 @@ export class ComponentPlaced extends BuildError {
 // ................................................................................
 /** a component defined: its size, its own parts and the copies the build places */
 export type Defined = Readonly<{ name: string; size: string; parts: number; copies: number; }>;
-/** a component defined from a design, with the design's parts off the grid it left out */
-export type DefinedFromDesign = Defined & Readonly<{ leftOut: number; }>;
+/** a component defined from a design (its first set), with the design's parts off the
+ *  grid it left out and its further sets, when it has any */
+export type DefinedFromDesign = Defined & Readonly<{ leftOut: number; otherSets?: number; }>;
+/** a set as listSets tells it: its name, its parts (its copies' included), copies and
+ *  steps, and its ground when it names one */
+export type SetSummary = Readonly<{ name: string; parts: number; copies: number; steps: number; ground?: string; }>;
 
 // == Class =======================================================================
 export class Build {
+  /** the set shown: its model, and its file (the main set's when undefined), followed
+   *  through renames */
   private model: Model = EMPTY_MODEL;
-  /** the app-content's text the model was read from */
+  private shown: string | undefined;
+  /** the app-content's text the model was read from, and every set of it, read once */
   private text = '';
+  private read: Readonly<{ text: string; sets: ReadonlyArray<Model>; }> | undefined;
   private onModelChanged: ((model: Model, source: ModelSource) => void) | null = null;
   private onUncertainChanged: (() => void) | null = null;
   private ready: Promise<void> | null = null;
@@ -84,7 +94,38 @@ export class Build {
   public whenReady(): Promise<void> { return this.init(); }
 
   // == Read ======================================================================
+  /** the set shown, as a model */
   public getModel(): Model { return this.model; }
+  /** the name of the set shown */
+  public shownSet(): string { return this.model.set ?? MAIN_SET; }
+  /** every set of the build, the main set first */
+  public sets(): ReadonlyArray<SetSummary> {
+    return this.allSets().map(model => ({ name: model.set ?? MAIN_SET, parts: partCount(model), copies: model.placed?.length ?? 0/*every line placing a component*/, steps: stepCount(model), ...((model.ground !== undefined) ? { ground: model.ground } : {}) }));
+  }
+  /** every set of the build as a model, the main set first */
+  public allSets(): ReadonlyArray<Model> {
+    if(this.read?.text !== this.text) this.read = { text: this.text, sets: parseSets(this.text) };
+    return this.read.sets;
+  }
+  /** how many copies of a component each set places (its carried copies included),
+   *  by set name, the main set first */
+  public copiesBySet(component: string): ReadonlyArray<readonly [string, number]> {
+    return this.allSets().map(model => [model.set ?? MAIN_SET, copiesOf(model, component)] as const);
+  }
+  /** whether any set holds a part, or the build a component */
+  public holdsAnything(): boolean {
+    return (this.model.components?.length ?? 0) > 0 || this.allSets().some(model => partCount(model) > 0);
+  }
+  /** the set a call names as a model, the build's one set when it names none (SEE:
+   *  pickSet); refused naming the sets otherwise */
+  public modelOf(set: unknown): Model { return setModel(this.text, set).model; }
+
+  /** shows a set by name: the studio's choice, never an edit */
+  public showSet(set: unknown): Model {
+    const model = this.modelOf(set);
+    this.showFile(fileOf(model));
+    return this.model;
+  }
   /** whether the build may no longer be in the document (SEE: ContentBridge#isUncertain) */
   public isUncertain(): boolean { return this.bridge.isUncertain(); }
   /** why edits wait, when the document holds more than one build (SEE: ContentBridge#conflict) */
@@ -102,18 +143,20 @@ export class Build {
   public check(): CheckResult { return checkModel(this.model); }
 
   // == Edit ======================================================================
-  /** adds parts and copies of components to the last building step, or as a new
+  /** adds parts and copies of components to a set's last building step, or as a new
    *  step after it (`newStep`); refuses the whole batch when any item is invalid or
-   *  collides */
-  public async add(input: ReadonlyArray<unknown>, newStep: boolean): Promise<Readonly<{ added: number; }>> {
+   *  collides. Shows the set */
+  public async add(input: ReadonlyArray<unknown>, newStep: boolean, set?: unknown): Promise<Readonly<{ added: number; }>> {
     await this.whenReady();
     if(input.length < 1) throw new BuildError('No parts given.');
     if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per call.`);
     const items = validItems(input, 'parts', true);
 
     let outcome = { added: 0 };
+    let target: string | undefined;
     await this.bridge.edit(text => {
-      const { model, layout } = editable(text);
+      const { model, layout, name } = editable(text, set);
+      target = name;
       const named = (item: Placement | Copy) => ('component' in item) ? [item.component] : mountsOf(item).map(mount => mount.copy.component);
       const missing = [...new Set(items.flatMap(item => named(item).filter(name => !componentOf(model, name)?.footprint)))];
       if(missing.length > 0) throw new BuildError(`Nothing was added. No component named ${missing.join(', ')} holds parts on the grid (defineComponent defines one; listComponents names them).`);
@@ -124,7 +167,7 @@ export class Build {
         return [copyLine(withFootprint(componentOf(model, item.component)!/*by contract*/), item)];
       });
       const change = appendLines(layout, lines, newStep);
-      const next = readWhole(applyChanges(text, [change]));
+      const next = readWhole(applyChanges(text, [change]), name);
 
       // refuse any collision the batch introduces. A part or copy identical to one
       // already in the build was most likely added by an earlier call (one whose answer
@@ -149,6 +192,7 @@ export class Build {
       outcome = { added: items.length };
       return [change];
     });
+    this.showNamed(target);
     return outcome;
   }
 
@@ -173,50 +217,52 @@ export class Build {
    *  lowest part stands at level 0. Its ground and steps are left out, and so are its
    *  parts off the grid, counted in `leftOut` */
   public async defineComponentFromText(name: unknown, ldraw: string): Promise<DefinedFromDesign> {
-    const { parts, leftOut } = designParts(ldraw);
-    return { ...await this.defineComponent(name, parts), leftOut };
+    const { parts, leftOut, otherSets } = designParts(ldraw);
+    return { ...await this.defineComponent(name, parts), leftOut, ...((otherSets > 0) ? { otherSets } : {}) };
   }
 
   /** defines a component from LDraw text (SEE: defineComponentFromText) and places
    *  one copy of it on the ground just outside everything the build holds, as a new
-   *  step (SEE: besideBuild), in one edit: both land or neither does. A component of
-   *  that name placed already is redefined, every copy with it, only when `replace`
-   *  says it may be (ComponentPlaced otherwise), judged on the text the edit is made
-   *  on */
+   *  step of the set shown (SEE: besideBuild), in one edit: both land or neither
+   *  does. A component of that name placed already in any set is redefined, every copy
+   *  with it, only when `replace` says it may be (ComponentPlaced otherwise), judged on
+   *  the text the edit is made on */
   public async addDesign(name: unknown, ldraw: string, replace: boolean): Promise<Readonly<{ component: DefinedFromDesign; copy: Copy; }>> {
     await this.whenReady();
-    const { parts, leftOut } = designParts(ldraw);
+    const { parts, leftOut, otherSets } = designParts(ldraw);
     const placements = componentParts(name, parts);
     const component = name as string/*by componentParts*/;
 
     let outcome: Readonly<{ component: DefinedFromDesign; copy: Copy; }> | undefined;
+    const shown = this.shownSet();
     await this.bridge.edit(text => {
-      const placed = copiesOf(editable(text).model, component);
+      editable(text, shown)/*refused before anything is defined*/;
+      const placed = copiesIn(text, component);
       if((placed > 0) && !replace) throw new ComponentPlaced(component, placed);
       const defined = defineChecked(text, component, placements);
 
-      // the copy goes where the redefined build leaves room: nothing fills it there,
-      // so it never collides
+      // the copy goes where the redefined build leaves room in the set shown: nothing
+      // fills it there, so it never collides
       const definedText = applyChanges(text, defined.changes);
-      const { model, layout } = editable(definedText);
+      const { model, layout } = editable(definedText, shown);
       const { file, footprint } = componentOf(model, component)!/*by contract*/;
       const copy = besideBuild(model, component, footprint!/*its parts are on the grid*/);
       if(!copy) throw new BuildError(`Nothing was added. There is no room beside the build within ${MAX_COORDINATE} studs of the origin.`);
       const change = appendLines(layout, [copyLine({ file, footprint: footprint! }, copy)], true);
-      readWhole(applyChanges(definedText, [change]));
+      readWhole(applyChanges(definedText, [change]), shown);
 
-      outcome = { component: { ...defined.outcome, copies: defined.outcome.copies + 1, leftOut }, copy };
+      outcome = { component: { ...defined.outcome, copies: defined.outcome.copies + 1, leftOut, ...((otherSets > 0) ? { otherSets } : {}) }, copy };
       return [...defined.changes, change]/*each measured after the ones before it*/;
     });
     return outcome!/*the edit applied*/;
   }
 
   // ------------------------------------------------------------------------------
-  /** removes the part that fills each given cell, and the glass in a removed frame;
+  /** removes the part that fills each given cell of a set, and the glass in a removed frame;
    *  a cell a component's line fills (a copy or not) removes that whole line. The cells are read on the build as
    *  the edit applies to it: a part that took a cell's place meanwhile is the one
    *  removed. Names the parts the removal left floating (`unsupported`) */
-  public async remove(cells: ReadonlyArray<unknown>): Promise<Readonly<{ removed: ReadonlyArray<string>; empty: ReadonlyArray<string>; unsupported: ReadonlyArray<string>; }>> {
+  public async remove(cells: ReadonlyArray<unknown>, set?: unknown): Promise<Readonly<{ removed: ReadonlyArray<string>; empty: ReadonlyArray<string>; unsupported: ReadonlyArray<string>; }>> {
     await this.whenReady();
     if(cells.length < 1) throw new BuildError('No cells given.');
     const at = cells.map((cell, index) => {
@@ -226,8 +272,10 @@ export class Build {
     });
 
     let outcome = { removed: [] as ReadonlyArray<string>, empty: [] as ReadonlyArray<string>, unsupported: [] as ReadonlyArray<string> };
+    let target: string | undefined;
     await this.bridge.edit(text => {
-      const { model, layout } = editable(text);
+      const { model, layout, name } = editable(text, set);
+      target = name;
 
       // the placement that fills each cell, its mounts' cells its own
       const filled = new Map<string, number>();
@@ -260,40 +308,102 @@ export class Build {
 
       // what floats now that floated not before
       const floatingBefore = new Set(checkModel(model).floating);
-      const after = checkModel(parseModel(applyChanges(text, changes)));
+      const after = checkModel(parseModel(applyChanges(text, changes), { name }));
       outcome = {
         removed: [...own.map(index => describePlacement(model.placements[index])), ...[...placed].map(line => describePlaced(model, line))],
-        empty, unsupported: after.floating.filter(name => !floatingBefore.has(name)),
+        empty, unsupported: after.floating.filter(part => !floatingBefore.has(part)),
       };
       return changes;
     });
+    this.showNamed(target);
     return outcome;
   }
 
   // ------------------------------------------------------------------------------
-  /** removes every part, copy and component the build holds as the edit applies to
-   *  it, its header (and ground) kept; refused whole when `expected` is given and the
-   *  build is no longer that text */
-  public async clear(expected?: string): Promise<number> {
+  /** removes every part, copy, further set and component the build holds as the
+   *  edit applies to it, its main set's header (its name and ground) kept; or, given
+   *  `set`, that set's parts, copies and steps alone (the components every set shares
+   *  kept), and shows it. Refused whole when `expected` is given and the build is no
+   *  longer that text */
+  public async clear(expected?: string, set?: unknown): Promise<number> {
     await this.whenReady();
     let removed = 0;
+    let target: string | undefined;
     await this.bridge.edit(text => {
       refuseChanged(text, expected);
-      const { model, layout } = editable(text);
-      removed = partCount(model);
+      if(set !== undefined) {
+        const { model, layout, name } = editable(text, set);
+        target = name;
+        removed = partCount(model);
+        return clearSetEdits(layout);
+      } /* else -- the whole build */
+      const { layout } = editable(text, mainName(text));
+      removed = parseSets(text).reduce((total, model) => total + partCount(model), 0);
       return clearEdits(layout);
     });
+    this.showNamed(target);
     return removed;
   }
 
-  /** colors the baseplate (a catalog color that is not see-through), or returns it
-   *  to the theme's (`undefined`) */
-  public async setGround(color: unknown): Promise<string | undefined> {
+  /** colors a set's baseplate (a catalog color that is not see-through), or returns
+   *  it to the theme's (`undefined`), and shows the set */
+  public async setGround(color: unknown, set?: unknown): Promise<string | undefined> {
     await this.whenReady();
     if((color !== undefined) && ((typeof color !== 'string') || !getColor(color))) throw new BuildError(`unknown color '${String(color)}' (listParts names the colors)`);
     if((color !== undefined) && getColor(color)!.transparent) throw new BuildError('The ground cannot be see-through.');
-    await this.bridge.edit(text => groundEdit(editable(text).layout, color));
+    let target: string | undefined;
+    await this.bridge.edit(text => { const { layout, name } = editable(text, set); target = name; return groundEdit(layout, color); });
+    this.showNamed(target);
     return color;
+  }
+
+  // ------------------------------------------------------------------------------
+  /** adds a set named `name`: empty, or a copy of the set `from` names (its parts,
+   *  copies, steps and ground), and shows it */
+  public async addSet(name: unknown, from?: unknown): Promise<SetSummary> {
+    await this.whenReady();
+    const named = toSetName(name);
+    let added: SetSummary | undefined;
+    await this.bridge.edit(text => {
+      const { model: main, layout } = editable(text, mainName(text));
+      const names = setNames(main);
+      if(names.length >= MAX_SETS) throw new BuildError(`A build holds at most ${MAX_SETS} sets.`);
+      refuseTaken(names, named, undefined);
+      const source = (from === undefined) ? undefined : editable(text, from);
+      const changes = addSetEdits(layout.file, named, source ? setLines(text, source.layout) : []);
+      const next = readWhole(applyChanges(text, changes), named);
+      added = { name: named, parts: partCount(next), copies: next.placed?.length ?? 0, steps: stepCount(next), ...((next.ground !== undefined) ? { ground: next.ground } : {}) };
+      return changes;
+    });
+    this.showNamed(named);
+    return added!/*the edit applied*/;
+  }
+
+  /** renames a set, the build's unnamed main set included */
+  public async renameSet(set: unknown, name: unknown): Promise<string> {
+    await this.whenReady();
+    const named = toSetName(name);
+    await this.bridge.edit(text => {
+      const { model, layout, section } = editable(text, set);
+      refuseTaken(setNames(model), named, model.set ?? MAIN_SET);
+      return renameSetEdits(layout, section/*none in an empty text*/, named);
+    });
+    return named;
+  }
+
+  /** removes a set and its lines, never the build's last; the main set removed, the
+   *  next becomes the main model. The studio shows the main set when the set shown is
+   *  the one removed */
+  public async removeSet(set: unknown): Promise<Readonly<{ removed: string; parts: number; }>> {
+    await this.whenReady();
+    let removed: Readonly<{ removed: string; parts: number; }> | undefined;
+    await this.bridge.edit(text => {
+      const { model, layout, section, name } = editable(text, set);
+      if(!model.sets) throw new BuildError('This build has one set, and a build keeps its last set: clear empties it.');
+      removed = { removed: name, parts: partCount(model) };
+      return removeSetEdits(text, layout.file, section!/*a build of sets*/);
+    });
+    return removed!/*the edit applied*/;
   }
 
   /** replaces the build with LDraw text: a build with components as written, any
@@ -304,9 +414,13 @@ export class Build {
   public async replace(text: string, expected?: string): Promise<Model> {
     await this.whenReady();
     const model = parseModel(text);
-    if(model.truncated) throw new BuildError(`That LDraw is too large to take: ${READ_IN_PART} Nothing was changed.`);
-    if(partCount(model) > MAX_PARTS) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
-    const asWritten = hasComponents(model) && !!model.layout;
+    // every set is checked, never the main set alone: a text of several sets that edits
+    // cannot apply to is refused, since writing it flat keeps its main set alone
+    const sets = parseSets(text);
+    if(sets.some(each => each.truncated)) throw new BuildError(`That LDraw is too large to take: ${READ_IN_PART} Nothing was changed.`);
+    if(sets.some(each => partCount(each) > MAX_PARTS)) throw new BuildError(tooManyParts(sets.length));
+    if(model.sets && !model.layout) throw new BuildError(`That LDraw cannot be taken: ${model.uneditable!/*by contract: no layout*/}. Nothing was changed.`);
+    const asWritten = writtenAsGiven(model) && !!model.layout;
     if(!asWritten && model.unwritable) throw new BuildError(`That LDraw cannot be taken: ${model.unwritable}. Nothing was changed.`);
     const written = asWritten ? text : serializeModel(model);
     if(expected === undefined) await this.bridge.replace(written);
@@ -315,18 +429,38 @@ export class Build {
   }
 
   // == Internal ==================================================================
-  /** shows the build a new text holds */
+  /** shows the set shown of the build a new text holds: the main set once the set
+   *  shown is gone */
   private show(text: string, source: ModelSource): void {
     this.text = text;
-    this.model = parseModel(text);
-    this.onModelChanged?.(this.model, source);
+    const model = parseModel(text, (this.shown === undefined) ? undefined : { file: this.shown });
+    if(fileOf(model) !== this.shown) this.shown = undefined/*its set is gone: the main set*/;
+    const before = this.model;
+    this.model = model;
+    const unchanged = (source === 'document') && (model.set === before.set) && (looksOf(model) === looksOf(before));
+    this.onModelChanged?.(this.model, unchanged ? 'elsewhere' : source);
+  }
+
+  /** shows a set by its file (the main set's by none), when it is not shown already */
+  private showFile(file: string | undefined): void {
+    const target = (file === this.model.sets?.[0].file) ? undefined : file/*the main set is shown by none*/;
+    if(target === this.shown) return;
+    this.shown = target;
+    this.show(this.text, 'set');
+  }
+
+  /** shows a set by name, once an edit acting on it has landed */
+  private showNamed(set: string | undefined): void {
+    if(set === undefined) return;
+    this.showFile(fileOf(parseModel(this.text, { name: set })));
   }
 }
 
 // == Validation ==================================================================
-/** a build's text as it is given back (SEE: Build#getText): a build with components,
- *  or one no text may be written from, as written; any other flat */
-const givenText = (text: string, model: Model): string => (hasComponents(model) || model.unwritable) ? text : serializeModel(model);
+/** a build's text as it is given back (SEE: Build#getText): a build with components
+ *  or more than one set, or one no text may be written from, as written; any other
+ *  flat */
+const givenText = (text: string, model: Model): string => (writtenAsGiven(model) || model.unwritable) ? text : serializeModel(model);
 
 /** refuses a write naming the text it expects (as the build was given back) when the
  *  build is no longer that text */
@@ -334,22 +468,80 @@ const refuseChanged = (text: string, expected: string | undefined): void => {
   if((expected !== undefined) && (givenText(text, parseModel(text)) !== expected)) throw new BuildError('The build changed since it was read, so nothing was changed.');
 };
 
-/** the model an app-content's text holds, when an edit can apply to it line by line */
-const editable = (text: string): Readonly<{ model: Model; layout: ModelLayout; }> => {
-  const model = parseModel(text);
-  if(model.truncated) throw new BuildError(`This build cannot be edited here: ${READ_IN_PART} Replace it with a smaller one (setModel) to edit.`);
-  if(!model.layout) throw new BuildError(`This build cannot be edited line by line: ${model.uneditable!/*by contract: no layout*/}.`);
-  return { model, layout: model.layout };
+/** the set of an app-content's text a call names (SEE: pickSet), as a model, and its
+ *  name */
+const setModel = (text: string, set: unknown): Readonly<{ model: Model; name: string; }> => {
+  const main = parseModel(text);
+  const name = pickSet(main, set);
+  return { model: sameSetName(name, main.set ?? MAIN_SET) ? main : parseModel(text, { name }), name };
 };
 
-/** the model an edit's result holds, refused when it would hold more parts than a
- *  build may, or be read only in part (its submodels expanding past what is read):
- *  a build is never written that its next edit could not apply to */
-const readWhole = (text: string): Model => {
-  const model = parseModel(text);
-  if(model.truncated || (partCount(model) > MAX_PARTS)) throw new BuildError(`A build holds at most ${MAX_PARTS} parts.`);
+/** the set of an app-content's text a call names, when an edit can apply to it line
+ *  by line: its model, layout, section and name */
+const editable = (text: string, set?: unknown): Readonly<{ model: Model; layout: ModelLayout; section: SetSection | undefined; name: string; }> => {
+  const { model, name } = setModel(text, set);
+  if(model.truncated) throw new BuildError(`This build cannot be edited here: ${READ_IN_PART} Replace it with a smaller one (setModel) to edit.`);
+  if(!model.layout) throw new BuildError(`This build cannot be edited line by line: ${model.uneditable!/*by contract: no layout*/}.`);
+  return { model, layout: model.layout, section: model.layout.file.sets.find(each => sameSetName(each.name, name)), name };
+};
+
+/** the name of a text's main set */
+const mainName = (text: string): string => parseModel(text).set ?? MAIN_SET;
+
+/** the set a call names: the build's one set when it names none, refused naming the
+ *  sets when the build has more than one or names none it has */
+const pickSet = (main: Model, set: unknown): string => {
+  const names = setNames(main);
+  if(set === undefined) {
+    if(names.length > 1) throw new BuildError(`This build has ${names.length} sets, ${listed(names)}: name one as set.`);
+    return names[0];
+  } /* else -- named */
+  if((typeof set !== 'string') || (set.trim().length < 1)) throw new BuildError('set names one of the build\'s sets (listSets names them).');
+  const found = names.find(name => sameSetName(name, set));
+  if(found === undefined) throw new BuildError(`This build has no set named '${set}': its ${(names.length === 1) ? 'set is' : 'sets are'} ${listed(names)}.`);
+  return found;
+};
+
+/** every set's name, the main set's first */
+const setNames = (model: Model): ReadonlyArray<string> => model.sets?.map(each => each.name) ?? [model.set ?? MAIN_SET];
+
+/** the file of the set a model is, when the build holds more than one (the main set's
+ *  otherwise: none) */
+const fileOf = (model: Model): string | undefined => model.sets?.find(each => each.name === model.set)?.file;
+
+/** a set's name an input gives, or why it is none */
+const toSetName = (name: unknown): string => {
+  if((typeof name !== 'string') || (name.trim().length < 1) || (name.trim().length > MAX_SET_NAME) || /[\u0000-\u001f\u007f]/.test(name)) throw new BuildError(`name is a set's name: 1 to ${MAX_SET_NAME} characters on one line.`);
+  return name.trim();
+};
+
+/** refuses a set name another set has (`own`, the set renamed, may keep its own) */
+const refuseTaken = (names: ReadonlyArray<string>, name: string, own: string | undefined): void => {
+  if(names.some(each => sameSetName(each, name) && !((own !== undefined) && sameSetName(each, own)))) throw new BuildError(`This build has a set named '${name}' already.`);
+};
+
+/** names in a sentence: "A", "A and B", "A, B and C" */
+const listed = (names: ReadonlyArray<string>): string => (names.length < 2) ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+
+/** how many copies of a component every set of a text places */
+const copiesIn = (text: string, component: string): number => parseSets(text).reduce((total, model) => total + copiesOf(model, component), 0);
+
+/** a set as drawn, as one text: its header (its name and ground), its steps and every
+ *  line it draws, its copies' and mounts' included. Two models that look alike draw
+ *  alike */
+const looksOf = (model: Model): string => serializeModel({ ...model, data: undefined });
+
+/** the set an edit's result holds, refused when it would hold more parts than a set
+ *  may, or be read only in part (its submodels expanding past what is read): a build
+ *  is never written that its next edit could not apply to */
+const readWhole = (text: string, set?: string): Model => {
+  const model = parseModel(text, (set === undefined) ? undefined : { name: set });
+  if(model.truncated || (partCount(model) > MAX_PARTS)) throw new BuildError(tooManyParts(model.sets?.length ?? 1));
   return model;
 };
+
+/** the refusal of a set past its parts: a build's, when it is the build's one set */
+const tooManyParts = (sets: number): string => `A ${(sets > 1) ? 'set' : 'build'} holds at most ${MAX_PARTS} parts.`;
 
 /** the parts a component of that name holds: a name free for one, and parts that
  *  neither repeat nor collide; refuses the whole component otherwise */
@@ -509,25 +701,31 @@ const toPosition = (x: unknown, z: unknown, level: unknown, rotation: unknown): 
  *  the build would hold too many parts, a copy would collide, or a hinge carrying it
  *  would carry it no longer (its copy no longer on the hinge's top) */
 const defineChecked = (text: string, name: string, placements: ReadonlyArray<Placement>): Readonly<{ changes: ReadonlyArray<ContentChange>; outcome: Defined; }> => {
-  const { model, layout } = editable(text);
+  const { layout } = editable(text, mainName(text));
   const changes = defineEdits(layout.file, name, placements.flatMap(placementLines));
-  const next = readWhole(applyChanges(text, changes));
-  const carriers = (of: Model) => of.placements.filter(placement => mountsOf(placement).some(mount => mount.copy.component === name)).map(describePlacement);
-  const dropped = carriers(model).filter(carrier => !carriers(next).includes(carrier));
+  const definedText = applyChanges(text, changes);
+  const [before, after] = [parseSets(text), parseSets(definedText)];
+  after.forEach(model => readWhole(definedText, model.set));
+  // every set's copies change with it: each set is checked, named when there are more
+  const where = (model: Model) => (after.length > 1) ? ` (in ${model.set})` : '';
+  const carriers = (of: Model) => of.placements.filter(placement => mountsOf(placement).some(mount => mount.copy.component === name)).map(placement => describePlacement(placement) + where(of));
+  const dropped = before.flatMap((model, index) => { const kept = carriers(after[index]); return carriers(model).filter(carrier => !kept.includes(carrier)); });
   if(dropped.length > 0) throw new BuildError(['Nothing was defined. It would no longer stand on the studs of the hinges and faces carrying it:', ...refusal('', dropped).slice(1)].join('\n'));
-  const before = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
-  const introduced = checkModel(next).collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`));
-  if(introduced.length > 0) throw new BuildError(['Nothing was defined. Its copies would collide:', ...refusal('', introduced.map(pair => `${pair.b} overlaps ${pair.a}`)).slice(1)].join('\n'));
+  const introduced = before.flatMap((model, index) => {
+    const known = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
+    return checkModel(after[index]).collisions.filter(pair => !known.has(`${pair.a}|${pair.b}`)).map(pair => `${pair.b} overlaps ${pair.a}${where(after[index])}`);
+  });
+  if(introduced.length > 0) throw new BuildError(['Nothing was defined. Its copies would collide:', ...refusal('', introduced).slice(1)].join('\n'));
 
-  const footprint = componentOf(next, name)!.footprint!/*its parts are on the grid*/;
+  const footprint = componentOf(after[0], name)!.footprint!/*its parts are on the grid*/;
   const [width, depth] = footprintSize(footprint, 0);
-  return { changes, outcome: { name, size: `${width}x${depth}x${footprint.height}`, parts: placements.length, copies: copiesOf(next, name) } };
+  return { changes, outcome: { name, size: `${width}x${depth}x${footprint.height}`, parts: placements.length, copies: copiesIn(definedText, name) } };
 };
 
 /** a saved design's parts on the grid, moved so its footprint starts at x 0, z 0
  *  and its lowest part stands at level 0, and how many of its parts are off the grid.
  *  Refused for a design whose hinges carry components: a component holds none */
-const designParts = (ldraw: string): Readonly<{ parts: ReadonlyArray<Placement>; leftOut: number; }> => {
+const designParts = (ldraw: string): Readonly<{ parts: ReadonlyArray<Placement>; leftOut: number; otherSets: number; }> => {
   const design = parseModel(ldraw);
   if(design.truncated) throw new BuildError(`That design is too large to take: ${READ_IN_PART}`);
   if(design.untold) throw new BuildError(`That design cannot be taken: ${design.untold}.`);
@@ -536,7 +734,7 @@ const designParts = (ldraw: string): Readonly<{ parts: ReadonlyArray<Placement>;
   if(!footprint) throw new BuildError('That design holds no parts on the grid.');
   const lowest = minOf(design.placements.map(placement => placement.level));
   const parts = design.placements.map(placement => ({ ...placement, x: placement.x - footprint.minX, z: placement.z - footprint.minZ, level: placement.level - lowest }));
-  return { parts, leftOut: design.others.length };
+  return { parts, leftOut: design.others.length, otherSets: Math.max(0, (design.sets?.length ?? 1) - 1)/*a component is made from its first set*/ };
 };
 
 /** where a copy of a component goes beside a build: on the ground, its footprint
@@ -577,8 +775,9 @@ export const isReservedName = (name: string): boolean => !!getPart(name) || (nam
 /** a model's component of a name */
 const componentOf = (model: Model, name: string) => model.components?.find(component => component.name === name);
 
-/** whether a model defines components (its text is then kept as written) */
-const hasComponents = (model: Model): boolean => (model.components?.length ?? 0) > 0;
+/** whether a model's text is kept as written: it defines components, or holds more
+ *  than one set */
+const writtenAsGiven = (model: Model): boolean => ((model.components?.length ?? 0) > 0) || !!model.sets;
 
 // == Util ========================================================================
 /** a part or copy in one line */

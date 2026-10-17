@@ -1,9 +1,8 @@
 import { BehaviorSubject, type Observable } from 'rxjs';
 
 import type { Build } from './build';
-import { partCount, type Model } from './model';
 import type { Sheet } from './sheet';
-import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setOf, shotLines, shotsOf, sizesOf, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
+import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -45,9 +44,10 @@ export type StageState =
   | Readonly<{ kind: 'staged'; reel?: number; frame?: number; }>
   | Readonly<{ kind: 'left'; }>;
 /** the screen's state as a film follows it: the stage's, whether the studio holds a
- *  build (a film takes its set from the one that does), and how many times the build
- *  has changed since the studio opened (a film's file knows when to look again) */
-export type ScreenState = StageState & Readonly<{ build: boolean; edits: number; }>;
+ *  build (a film takes its sets from the one that does), the build's sets by name,
+ *  and how many times the build has changed since the studio opened (a film's file
+ *  knows when to look again) */
+export type ScreenState = StageState & Readonly<{ build: boolean; sets: ReadonlyArray<string>; edits: number; }>;
 
 /** a reel as loaded: its number, header and the frames loaded so far, each as this
  *  screen shows it */
@@ -55,7 +55,7 @@ type Reel = Readonly<{ id: number; header: ReelHeader; frames: ReelFrame[]; }>;
 
 // == Class =======================================================================
 export class StageControl {
-  /** the scene staged: its set and actors, while one is shown */
+  /** the scene staged: its sets and actors, while one is shown */
   private cast: Cast | undefined;
   /** the film staged with the scene, when one is */
   private reel: Reel | undefined;
@@ -74,10 +74,12 @@ export class StageControl {
   /** how many frames have been put on the canvas: a frame drawn is told only while it
    *  is still the last put there */
   private applied = 0;
-  /** whether the studio holds a build, as last told, and how many times it changed */
+  /** whether the studio holds a build and its sets, as last told, and how many times
+   *  it changed */
   private holds = false;
+  private sets: ReadonlyArray<string> = [];
   private edits = 0;
-  private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false, edits: 0 });
+  private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false, sets: [], edits: 0 });
 
   public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build, private readonly sheet: Pick<Sheet, 'show' | 'hide'>) {
     elements.back.addEventListener('click', () => { this.left = true; this.end(); });
@@ -85,28 +87,28 @@ export class StageControl {
 
   // == Stage =====================================================================
   /** whether a stage is shown, whether the person went back to the build since the
-   *  last stage call, and whether the studio holds a build of its own */
+   *  last stage call, whether the studio holds a build of its own, and its sets */
   public async describe() {
     await this.build.whenReady();
     this.tellBuild()/*the stream says the same from now on*/;
-    return { stage: STAGE_VERSION, staged: !!this.cast, left: this.left, build: this.holds };
+    return { stage: STAGE_VERSION, staged: !!this.cast, left: this.left, build: this.holds, sets: this.sets };
   }
 
   /** the screen's state, from now on */
   public state$(): Observable<ScreenState> { return this.state.asObservable(); }
 
-  /** stages a set (LDraw text, else the build) and casts its actors, showing the set
-   *  alone until a frame shows them; a reel header readies the screen for a film
-   *  shown through `view` (else the main camera), drawn at the film's size, and
-   *  `marks` are what a plan draws over the set */
-  public async stage(set: unknown, actors: unknown, floor: unknown, reel: unknown, view: unknown, marks: unknown): Promise<Staged> {
+  /** stages sets (of LDraw text, else of the build; its first set when none is named)
+   *  and casts its actors, showing the first set alone until a frame shows them; a reel
+   *  header readies the screen for a film shown through `view` (else the main camera),
+   *  drawn at the film's size, and `marks` are what a plan draws over the set */
+  public async stage(ldraw: unknown, sets: unknown, actors: unknown, floor: unknown, reel: unknown, view: unknown, marks: unknown): Promise<Staged> {
     await this.build.whenReady();
-    const scene = setOf(set, this.build.getModel());
+    const staged = setsOf(ldraw, sets, () => this.build.allSets());
     const area = floorOf(floor);
     const header = reelHeaderOf(reel);
     const named = viewOf(view);
     const marked = marksOf(marks);
-    const { cast, refused } = castOf(scene, actors);
+    const { cast, refused } = castOf(staged, actors);
     this.sheet.hide()/*a storyboard of the film before*/;
     this.cast = cast;
     this.reel = header ? { id: ++this.reels, header, frames: [] } : undefined;
@@ -114,7 +116,7 @@ export class StageControl {
     this.marks = marked;
     this.wanted = undefined/*a frame of the reel before*/;
     this.left = false;
-    this.viewer.showStage(cast.shown/*the set without the pieces cast*/, area);
+    this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged));
     if(header) this.viewer.drawStageAt(header.width, header.height);
     this.show(SHOWING);
     this.publish({ kind: 'staged', ...(this.reel ? { reel: this.reel.id } : {}) });
@@ -159,7 +161,7 @@ export class StageControl {
       const cast = this.ensure(loaded);
       this.applied++;
       const picture = this.pictureOf(loaded, shot, undefined);
-      this.viewer.showFrame(shotLines(cast, shot.shots), picture.camera, picture.overlay);
+      this.viewer.showFrame(shotLines(cast, shot.shots), picture.camera, picture.overlay, shot.set);
       const image = await this.viewer.capture(size.width, size.height);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
       this.publish({ kind: 'staged', reel: loaded.id, frame: frame as number });
@@ -176,7 +178,7 @@ export class StageControl {
     const picture = this.pictureOf(loaded, shot, viewOf(view));
     return this.after(async () => {
       const cast = this.ensure(loaded);
-      const image = await this.viewer.thumbnail(shotLines(cast, shot.shots), picture.camera, picture.overlay, size.width, size.height);
+      const image = await this.viewer.thumbnail(shotLines(cast, shot.shots), picture.camera, picture.overlay, size.width, size.height, shot.set);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while its parts were built*/; }
       return image;
     });
@@ -202,7 +204,7 @@ export class StageControl {
         for(const [index, board] of boards.entries()) {
           const cast = this.ensure(loaded);
           const shot = loaded.frames[board.frame];
-          images.push(await this.after(() => this.viewer.thumbnail(shotLines(cast, shot.shots), pictures[index].camera, pictures[index].overlay, size.width, size.height)));
+          images.push(await this.after(() => this.viewer.thumbnail(shotLines(cast, shot.shots), pictures[index].camera, pictures[index].overlay, size.width, size.height, shot.set)));
           this.ensure(loaded)/*ended while it was drawn*/;
         }
       } catch(error) {
@@ -215,18 +217,20 @@ export class StageControl {
   }
 
   // == Frames ====================================================================
-  /** shows a frame: each actor given where its shot puts it, any other hidden, seen
-   *  through the camera; captured at a size when one is given */
-  public frame(actors: unknown, camera: unknown, capture: unknown): Promise<Framed> {
+  /** shows a frame on a staged set (the first when none is named): each actor given
+   *  where its shot puts it, any other hidden, seen through the camera; captured at a
+   *  size when one is given */
+  public frame(set: unknown, actors: unknown, camera: unknown, capture: unknown): Promise<Framed> {
     this.sheet.hide()/*the stage moves on from a storyboard*/;
     return this.after(async () => {
       const cast = this.cast;
       if(!cast) throw new Error(this.ended());
+      const standing = stagedSetOf(cast, set);
       const shots = shotsOf(cast, actors);
       const view = cameraOf(camera);
       const size = captureOf(capture);
       this.applied++/*a reel frame waiting to be drawn is no longer the one shown*/;
-      this.viewer.showFrame(shotLines(cast, shots), view);
+      this.viewer.showFrame(shotLines(cast, shots), view, undefined/*no overlay*/, standing);
       if(!size) return { shown: shots.length };
       const image = await this.viewer.capture(size.width, size.height);
       if(this.cast !== cast) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
@@ -236,12 +240,13 @@ export class StageControl {
 
   // == Build =====================================================================
   /** the build changed: while staged, the strip says so; the film is told, with
-   *  whether the studio holds a build */
+   *  whether the studio holds a build and its sets */
   public buildChanged(): void {
     if(this.cast) this.show(`${SHOWING} · the build changed`);
     this.edits++;
-    this.holds = holdsBuild(this.build.getModel());
-    this.state.next({ ...this.state.value, build: this.holds, edits: this.edits });
+    this.holds = this.build.holdsAnything();
+    this.sets = this.build.sets().map(set => set.name);
+    this.state.next({ ...this.state.value, build: this.holds, sets: this.sets, edits: this.edits });
   }
 
   // == Internal ==================================================================
@@ -260,7 +265,7 @@ export class StageControl {
     const shot = loaded.frames[frame];
     const applied = ++this.applied;
     const picture = this.pictureOf(loaded, shot, undefined);
-    this.viewer.showFrame(shotLines(cast, shot.shots), picture.camera, picture.overlay);
+    this.viewer.showFrame(shotLines(cast, shot.shots), picture.camera, picture.overlay, shot.set);
     void this.viewer.whenSettled().then(() => { if((this.reel === loaded) && (this.applied === applied)) this.publish({ kind: 'staged', reel, frame }); });
   }
 
@@ -305,16 +310,19 @@ export class StageControl {
     this.publish(this.left ? { kind: 'left' } : { kind: 'none' });
   }
 
-  /** tells the film whether the studio holds a build, when that changed */
+  /** tells the film whether the studio holds a build and its sets, when either
+   *  changed */
   private tellBuild(): void {
-    const holds = holdsBuild(this.build.getModel());
-    if(holds === this.holds) return/*still holding one, or still none*/;
+    const holds = this.build.holdsAnything();
+    const sets = this.build.sets().map(set => set.name);
+    if((holds === this.holds) && (sets.join('\n') === this.sets.join('\n'))) return/*as told*/;
     this.holds = holds;
-    this.state.next({ ...this.state.value, build: holds });
+    this.sets = sets;
+    this.state.next({ ...this.state.value, build: holds, sets });
   }
 
   /** tells the film the screen's state */
-  private publish(state: StageState): void { this.state.next({ ...state, build: this.holds, edits: this.edits }); }
+  private publish(state: StageState): void { this.state.next({ ...state, build: this.holds, sets: this.sets, edits: this.edits }); }
 
   /** shows the strip saying `note`, or hides it */
   private show(note: string | undefined): void {
@@ -324,6 +332,3 @@ export class StageControl {
   }
 }
 
-// == Util ========================================================================
-/** whether a build holds anything a set can show or cast: a part, or a component */
-const holdsBuild = (model: Model): boolean => (partCount(model) > 0) || ((model.components?.length ?? 0) > 0);

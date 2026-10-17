@@ -119,18 +119,20 @@
       },
       {
         "name": "listPlacedParts",
-        "description": "The parts and copies of components in the build with their positions, a page at a time: pass next back as from for the next page",
+        "description": "The parts and copies of components in a set of the build with their positions, a page at a time: pass next back as from for the next page",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "from": { "type": "integer", "minimum": 0, "description": "The index to start at (the previous page's next)" }
+            "from": { "type": "integer", "minimum": 0, "description": "The index to start at (the previous page's next)" },
+            "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" }
           }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
             "parts":     { "type": "array", "items": { "type": "object" }, "description": "Each with its step when the build has more than one; a line placing a component that is not a copy on the grid is listed by component, color and at (a cell it fills: removeParts there removes the line)" },
-            "total":     { "type": "integer", "description": "Parts in the build" },
+            "total":     { "type": "integer", "description": "Parts in the set" },
+            "set":       { "type": "string", "description": "The set acted on, when the build has more than one" },
             "next":      { "type": "integer", "description": "Set while parts remain: the next page's from" },
             "unchecked": { "type": "integer", "description": "Parts off the grid or outside the catalog" },
             "truncated": { "type": "string", "description": "Set when the build expands past what Brick Studio reads: only part of it was read" },
@@ -173,7 +175,8 @@
                 "required": ["x", "z", "level"]
               }
             },
-            "newStep": { "type": "boolean", "description": "Put these parts in a new building step after the last" }
+            "newStep": { "type": "boolean", "description": "Put these parts in a new building step after the last" },
+            "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" }
           },
           "required": ["parts"]
         },
@@ -181,6 +184,7 @@
           "type": "object",
           "properties": {
             "added":         { "type": "integer" },
+            "set": { "type": "string", "description": "The set acted on, when the build has more than one" },
             "ok":            { "type": "boolean" },
             "parts":         { "type": "integer" },
             "collisions":    { "type": "integer" },
@@ -241,6 +245,7 @@
               },
               "required": ["name", "size", "parts", "copies"]
             },
+            "set": { "type": "string", "description": "The set the check covers (the set shown), when the build has more than one" },
             "ok":            { "type": "boolean" },
             "parts":         { "type": "integer", "description": "Parts in the build" },
             "collisions":    { "type": "integer" },
@@ -279,6 +284,8 @@
               "required": ["name", "size", "parts", "copies"]
             },
             "leftOut":       { "type": "integer", "description": "Parts of the design off the grid, left out" },
+            "otherSets":     { "type": "integer", "description": "The design's sets past its first, left out: a component is made from the first" },
+            "set": { "type": "string", "description": "The set the check covers (the set shown), when the build has more than one" },
             "ok":            { "type": "boolean" },
             "parts":         { "type": "integer", "description": "Parts in the build" },
             "collisions":    { "type": "integer" },
@@ -294,13 +301,66 @@
       },
       {
         "name": "listComponents",
-        "description": "The components the build defines: name, size (width x depth x height at rotation 0), parts and copies placed",
+        "description": "The components the build defines, which every set may place: name, size (width x depth x height at rotation 0), parts and copies placed (and copiesBySet, by set, when the build has more than one)",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
           "properties": { "components": { "type": "array", "items": { "type": "object" } } },
           "required": ["components"]
         }
+      },
+      {
+        "name": "listSets",
+        "description": "The build's sets, the first first: each an arrangement on its own baseplate (a film's street, its garage) sharing the build's components, with its parts, copies, steps and ground; and the set the studio shows. A build of more than one set takes set on every command that reads or edits one",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "sets":  { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "parts": { "type": "integer" }, "copies": { "type": "integer" }, "steps": { "type": "integer" }, "ground": { "type": "string" } }, "required": ["name", "parts", "copies", "steps"] } },
+            "shown": { "type": "string", "description": "The set the studio shows" }
+          },
+          "required": ["sets", "shown"]
+        }
+      },
+      {
+        "name": "addSet",
+        "description": "Add a set to the build and show it: empty, or a copy of the set from names (its parts, copies, steps and ground: the street at night). A build holds at most 32 sets",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "The set's name: 1 to 40 characters, no other set's (ignoring case)" },
+            "from": { "type": "string", "description": "The set to copy, by name" }
+          },
+          "required": ["name"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "name": { "type": "string" }, "parts": { "type": "integer" }, "copies": { "type": "integer" }, "steps": { "type": "integer" }, "ground": { "type": "string" } },
+          "required": ["name", "parts", "copies", "steps"]
+        }
+      },
+      {
+        "name": "renameSet",
+        "description": "Rename a set (the first, Main until it is named, included)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "set":  { "type": "string", "description": "The set, by name (when the build has one, it may be left out)" },
+            "name": { "type": "string", "description": "Its new name: 1 to 40 characters, no other set's (ignoring case)" }
+          },
+          "required": ["name"]
+        },
+        "outputSchema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }
+      },
+      {
+        "name": "removeSet",
+        "description": "Remove a set and everything in it (never the build's last set; clear empties that). The first set removed, the next becomes the first",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "set": { "type": "string", "description": "The set, by name" } },
+          "required": ["set"]
+        },
+        "outputSchema": { "type": "object", "properties": { "removed": { "type": "string" }, "parts": { "type": "integer" } }, "required": ["removed", "parts"] }
       },
       {
         "name": "removeParts",
@@ -320,7 +380,8 @@
                 },
                 "required": ["x", "z", "level"]
               }
-            }
+            },
+            "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" }
           },
           "required": ["at"]
         },
@@ -331,6 +392,7 @@
             "empty":            { "type": "array", "items": { "type": "string" } },
             "unsupported":      { "type": "integer", "description": "Parts the removal left floating" },
             "unsupportedParts": { "type": "array", "items": { "type": "string" } },
+            "set": { "type": "string", "description": "The set acted on, when the build has more than one" },
             "ok":            { "type": "boolean" },
             "parts":         { "type": "integer" },
             "collisions":    { "type": "integer" },
@@ -346,41 +408,44 @@
       },
       {
         "name": "setGround",
-        "description": "Color the baseplate (grass, a road, sand) instead of covering it with plates. Any catalog color that is not see-through; omit the color for the theme's",
+        "description": "Color a set's baseplate (grass, a road, sand) instead of covering it with plates. Any catalog color that is not see-through; omit the color for the theme's",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "color": { "type": "string", "description": "Catalog color, e.g. green" }
+            "color": { "type": "string", "description": "Catalog color, e.g. green" },
+            "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" }
           }
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "ground": { "type": "string", "description": "The color, or theme" } },
+          "properties": { "ground": { "type": "string", "description": "The color, or theme" }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
           "required": ["ground"]
         }
       },
       {
         "name": "clear",
-        "description": "Remove every part, copy and component, and any file the build carries (a film's scene), keeping the ground. With expect, only while the build is still that text",
+        "description": "Remove every part, copy, set but the first and component, and any file the build carries (a film's scene), keeping the first set's name and ground. With set, empty that set alone (its name and ground kept, the components every set shares left). With expect, only while the build is still that text",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "expect": { "type": "string", "description": "The build's text as last read (getModel): refused, nothing changed, once the build is no longer that text" }
+            "expect": { "type": "string", "description": "The build's text as last read (getModel): refused, nothing changed, once the build is no longer that text" },
+            "set":    { "type": "string", "description": "The one set to empty, by name (listSets names them)" }
           }
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "removed": { "type": "integer" } },
+          "properties": { "removed": { "type": "integer" }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
           "required": ["removed"]
         }
       },
       {
         "name": "check",
-        "description": "Find collisions and parts not held up from the baseplate, for a build that changed other than by addParts or removeParts (whose results carry it). Never ok while the build was read only in part or the document holds more than one build",
-        "inputSchema": { "type": "object", "properties": {} },
+        "description": "Find collisions and parts not held up from a set's baseplate, for a build that changed other than by addParts or removeParts (whose results carry it). Never ok while the build was read only in part or the document holds more than one build",
+        "inputSchema": { "type": "object", "properties": { "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" } } },
         "outputSchema": {
           "type": "object",
           "properties": {
+            "set": { "type": "string", "description": "The set acted on, when the build has more than one" },
             "ok":            { "type": "boolean" },
             "parts":         { "type": "integer" },
             "collisions":    { "type": "integer" },
@@ -416,31 +481,32 @@
       },
       {
         "name": "lookAround",
-        "description": "Show the build from all four sides at once (south, east, north, west, each framed) so one screenshot sees every side. Take that screenshot after each object and at the end. The next change closes it",
-        "inputSchema": { "type": "object", "properties": {} },
+        "description": "Show a set of the build from all four sides at once (south, east, north, west, each framed) so one screenshot sees every side. Take that screenshot after each object and at the end. The next change closes it",
+        "inputSchema": { "type": "object", "properties": { "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" } } },
         "outputSchema": {
           "type": "object",
-          "properties": { "sides": { "type": "array", "items": { "type": "string" } } },
+          "properties": { "sides": { "type": "array", "items": { "type": "string" } }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
           "required": ["sides"]
         }
       },
       {
         "name": "describeStage",
-        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, and whether the studio holds a build of its own",
+        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, whether the studio holds a build of its own, and its build's sets",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
-          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" } },
-          "required": ["stage", "staged", "left", "build"]
+          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" }, "sets": { "type": "array", "items": { "type": "string" }, "description": "The build's sets by name, the first first" } },
+          "required": ["stage", "staged", "left", "build", "sets"]
         }
       },
       {
         "name": "stage",
-        "description": "Show a scene in place of the build: a set (LDraw text; the build when left out) and actors, each a component of the set, a dressed catalog part, or a piece standing in the set by where it stands (placed: the set is then shown without it, and placed in the answer says where it stands), that frame then puts anywhere. Nothing is written to the build; unstage shows it again. Use it for a still (the car in mid-air) or a film's frames",
+        "description": "Show a scene in place of the build: its sets (the build's, or those of the LDraw text given; one stands at a time, a frame naming which) and actors, each a component, a dressed catalog part, or a piece standing in a set by where it stands (placed: its set is then shown without it, and placed in the answer says where it stands), that frame then puts anywhere; an actor is drawn in whichever set stands. Nothing is written to the build; unstage shows it again. Use it for a still (the car in mid-air) or a film's frames",
         "inputSchema": {
           "type": "object",
           "properties": {
-            "set": { "type": "string", "description": "The scene's LDraw text, its components the actors' (the build when left out)" },
+            "ldraw": { "type": "string", "description": "LDraw text standing for the build, its components the actors' (the build when left out)" },
+            "sets":  { "type": "array", "maxItems": 8, "items": { "type": "string" }, "description": "The sets the stage stands, by name, the first standing first and a frame's set showing in its place (the first set alone when left out)" },
             "actors": {
               "type": "array",
               "description": "Each actor once, by name: { name, component }, { name, part, color, legColor?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure, or { name, placed: { x, z, level } }, the part or copy standing there in the set as listPlacedParts gives it",
@@ -449,7 +515,7 @@
                 "properties": {
                   "name":      { "type": "string" },
                   "component": { "type": "string" },
-                  "placed":    { "type": "object", "description": "Where the piece stands in the set: { x, z, level }, as listPlacedParts gives it", "properties": { "x": { "type": "integer" }, "z": { "type": "integer" }, "level": { "type": "integer" } }, "required": ["x", "z", "level"] },
+                  "placed":    { "type": "object", "description": "Where the piece stands in its set: { set?, x, z, level }, as listPlacedParts gives it (in the first set staged when set is left out)", "properties": { "set": { "type": "string" }, "x": { "type": "integer" }, "z": { "type": "integer" }, "level": { "type": "integer" } }, "required": ["x", "z", "level"] },
                   "part":      { "type": "string" },
                   "color":     { "type": "string" },
                   "legColor":  { "type": "string" },
@@ -493,7 +559,7 @@
       },
       {
         "name": "loadReel",
-        "description": "Load a page of the staged reel's frames, for Applications: at most 240 frames from the count loaded so far, each { actors, camera, views?, fade?, title? } (actors and camera as frame takes them, views by name, each a camera or a plan { plan: { x, z, width, depth } } looking straight down over that area, fade from 0 to 1, title { text, style: card or caption, opacity? }). A page with a frame that is not one is refused whole",
+        "description": "Load a page of the staged reel's frames, for Applications: at most 240 frames from the count loaded so far, each { set?, actors, camera, views?, fade?, title? } (set, actors and camera as frame takes them, views by name, each a camera or a plan { plan: { x, z, width, depth } } looking straight down over that area, fade from 0 to 1, title { text, style: card or caption, opacity? }). A page with a frame that is not one is refused whole",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -555,6 +621,7 @@
         "inputSchema": {
           "type": "object",
           "properties": {
+            "set": { "type": "string", "description": "The staged set the moment stands on (the first staged when left out)" },
             "actors": {
               "type": "array",
               "items": {
