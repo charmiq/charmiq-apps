@@ -1,8 +1,9 @@
-@use 'family';
+@use 'kit';
 
-// the Brick family's save and open dialog (SEE: design-dialog.ts), on the family's
-// surfaces (SEE: _family.scss). An Application `@use`s it from its stylesheet beside
-// the family's look
+// the Brick family's save and open dialog: design-dialog.ts imports it, so it styles
+// the dialog wherever the dialog is used, ahead of the Application's own stylesheet.
+// It sits on the family's surfaces and tokens, which the Application's stylesheet
+// declares (SEE: _family.scss)
 // ********************************************************************************
 // == Dialog ======================================================================
 // a panel over the dimmed page, no taller than the window. The list gives way first;

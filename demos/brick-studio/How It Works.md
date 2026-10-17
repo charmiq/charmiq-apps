@@ -194,7 +194,7 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
 | [`src/designs.ts`](charmiq://./src/designs.ts) | the build saved as a design, and a design loaded whole or as a component |
 | [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog's Brick Studio choices: add a design to the build, or replace it |
-| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog, and the family's look (`_family.scss`, `_design-dialog.scss`) |
+| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog (the dialog brings its own styles, `design-dialog.scss`), and the family's look (`_family.scss`, `_kit.scss`) |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
 | [`src/frame-request.ts`](charmiq://./src/frame-request.ts) | a frame drawn once, at the next animation frame or after a moment when the Studio is out of view |
 | [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the effects and the path tracer; a film's fade, titles and plans drawn over the stage |

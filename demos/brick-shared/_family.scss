@@ -1,9 +1,12 @@
+@forward 'kit';
+
 // the Brick family's look, shared by Brick Studio and Stop Motion: a warm cream page,
 // primary brick colors on small outlined tags, Inter for titles and spaced JetBrains
 // Mono capitals for everything else. An Application `@use`s it from its stylesheet
 // through its `/brick-shared` mount and names the family's two surfaces from its own:
 // `--surface`, the page (the studio's stage, the film's bench), and `--field`, what
-// sits on it (an input, a hovered row)
+// sits on it (an input, a hovered row). It forwards the family's mixins and
+// placeholder (SEE: _kit.scss)
 // ********************************************************************************
 // == Variables ===================================================================
 // NOTE: --brick-* are LDraw's palette; an Application may set them from the palette
@@ -61,31 +64,3 @@ body {
 }
 
 [hidden] { display: none !important; }
-
-%mono-caps {
-  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-// == Tags ========================================================================
-/** a tag's look: an outlined, shadowed button of spaced capitals that presses down.
- *  Its size, padding and disabled look are each Application's */
-@mixin tag {
-  @extend %mono-caps;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--outline);
-  border-radius: 2px;
-  color: var(--tag-text);
-  cursor: pointer;
-  box-shadow: 0 1px 0 var(--outline);
-  transition: transform 90ms ease, box-shadow 90ms ease, filter 120ms ease;
-
-  &:hover { filter: brightness(1.06); }
-  &:active { transform: translateY(1px); box-shadow: 0 0 0 var(--outline); }
-  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-}

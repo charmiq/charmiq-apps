@@ -108,4 +108,4 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | [`src/films.ts`](charmiq://./src/films.ts) | the film's files: save, open and new, and whether the film changed since |
 | [`src/film-file.ts`](charmiq://./src/film-file.ts) | a film as one LDraw file: its set, then its scene as a data section |
 | [`src/film-dialog.ts`](charmiq://./src/film-dialog.ts) | the save and open dialog, the Brick family's own |
-| [`../brick-shared`](charmiq://../brick-shared) | what Stop Motion shares with Brick Studio: the Drive, designs and their dialog, and the family's look (`_family.scss`, `_design-dialog.scss`) |
+| [`../brick-shared`](charmiq://../brick-shared) | what Stop Motion shares with Brick Studio: the Drive, designs and their dialog (the dialog brings its own styles, `design-dialog.scss`), and the family's look (`_family.scss`, `_kit.scss`) |

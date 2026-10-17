@@ -1,6 +1,8 @@
 import { DesignError, DesignExists, displayName, TOP_OF_DRIVE, type DesignStore, type Saved } from './designs';
 import type { Design, Folder } from './drive';
 
+import './design-dialog.scss'/*styles the dialog wherever it is used*/;
+
 // the save and open dialog of the Brick family's designs. Save names the design and
 // shows the folder it goes to, which the folder chooser changes; open walks the
 // folders and lists their designs. A name already in the folder is confirmed first.

@@ -1,0 +1,32 @@
+// the Brick family's mixins and placeholder: they write no CSS of their own, so a
+// stylesheet compiled on its own (the dialog's, SEE: design-dialog.scss) takes them
+// without a second copy of the family's tokens and reset (SEE: _family.scss)
+// ********************************************************************************
+// == Type ========================================================================
+%mono-caps {
+  font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+// == Tags ========================================================================
+/** a tag's look: an outlined, shadowed button of spaced capitals that presses down.
+ *  Its size, padding and disabled look are each Application's */
+@mixin tag {
+  @extend %mono-caps;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  color: var(--tag-text);
+  cursor: pointer;
+  box-shadow: 0 1px 0 var(--outline);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter 120ms ease;
+
+  &:hover { filter: brightness(1.06); }
+  &:active { transform: translateY(1px); box-shadow: 0 0 0 var(--outline); }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+}
