@@ -38,7 +38,8 @@ export type RecordedCamera = Readonly<{ keys: ReadonlyArray<CameraKey>; spans: R
 
 export type RecordedActor = Readonly<{
   name: string;
-  /** how the stage casts it: a component of the set, or a dressed catalog part */
+  /** how the stage casts it: a component of the set, a dressed catalog part, or the
+   *  piece of the set standing where it names (`placed`) */
   source: Readonly<Record<string, unknown>>;
   /** what it rides and where on it (studs east and north, plates up, in the
    *  ridden actor's frame) */
@@ -76,6 +77,17 @@ export type Recorded = Readonly<{
 
 /** a scene that failed to run: why, and the line of the scene it failed on */
 export type SceneError = Readonly<{ message: string; line?: number; }>;
+
+// == Cast ========================================================================
+/** what an actor is cast as, in a few words: its component, its part in its color, or
+ *  the piece of the set standing where it names; and whether that is one thing (the
+ *  cart) or one of a kind (a red figure) */
+export const castAs = (source: Readonly<Record<string, unknown>>): Readonly<{ words: string; definite: boolean; }> => {
+  if(typeof source.component === 'string') return { words: source.component, definite: true };
+  const placed = source.placed as Readonly<Record<string, unknown>> | undefined;
+  if((typeof placed === 'object') && (placed !== null)) return { words: `piece at x ${String(placed.x)}, z ${String(placed.z)}, level ${String(placed.level)}`, definite: true };
+  return { words: [source.color, source.part].filter(Boolean).join(' '), definite: false };
+};
 
 // == Recorder ====================================================================
 /** runs a scene's code and records it. Throws a SceneError-shaped error for a scene
@@ -195,7 +207,7 @@ export const record = (code: string): Recorded => {
     if((typeof name !== 'string') || (name.trim().length < 1) || (name.length > 40)) fail('an actor is named: 1 to 40 characters');
     if(actors.some(each => each.name === name)) fail(`actor '${String(name)}' is declared twice`);
     if(actors.length >= MAX_ACTORS) fail(`a scene holds at most ${MAX_ACTORS} actors`);
-    if((typeof source !== 'object') || (source === null)) fail(`actor '${String(name)}' names what it is: { component } or { part, color }`);
+    if((typeof source !== 'object') || (source === null)) fail(`actor '${String(name)}' names what it is: { component }, { part, color } or { placed: { x, z, level } }`);
     const entry: (typeof actors)[number] = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], faces: [], spans: [], line: callerLine() };
     actors.push(entry);
     const handle = {

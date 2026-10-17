@@ -12,7 +12,7 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | Command | Does |
 |---|---|
 | `scene({ title, fps, length, width, height, floor })` | the film's title, frames a second (24), length in seconds (the last key's when left out), its export size (1280 × 720), and the area (`{ x, z, width, depth }` in studs) the studio's baseplate covers at least, so actors have ground to move over |
-| `actor(name, source)` | an actor: a component of the studio's build (`{ component: 'car' }`) or a catalog part dressed as a placement is (`{ part: 'figure', color: 'blue', legColor, face, hat, rightHand, leftHand }`) |
+| `actor(name, source)` | an actor: a component of the studio's build (`{ component: 'car' }`), a catalog part dressed as a placement is (`{ part: 'figure', color: 'blue', legColor, face, hat, rightHand, leftHand }`), or a piece already standing in the build, by where `listPlacedParts` says it stands (`{ placed: { x: 30, z: -20, level: 0 } }`): it is lifted out of the set, dressed and posed as it is there; each value the scene keys comes from its keys from the first frame (held before its first key, as for any actor), and every value it never keys from where the piece stood |
 | `a.at(time, values, ease)` | a key: the actor's values at a time, eased into from the key before (`linear`, `ease-in`, `ease-out`, `ease-in-out`, the default, or `hold`) |
 | `a.path(from, to, (u, t) => values)` | values from a function over a span (`u` from 0 to 1 across it, `t` in seconds), in place of the keys there |
 | `a.wobble(value, amount, { rate, from, to })` | smooth noise added to one value: `amount` at most, `rate` swings a second |

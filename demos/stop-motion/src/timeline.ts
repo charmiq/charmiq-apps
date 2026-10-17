@@ -1,6 +1,6 @@
 import { cameraShots, type Film } from './film';
 import type { ClosePair } from './measure';
-import type { CameraKey, Key, RecordedCamera, Span, Title } from './recorder';
+import { castAs, type CameraKey, type Key, type RecordedCamera, type Span, type Title } from './recorder';
 
 // the timeline: one row per track (the camera, each view, each actor, the fade and
 // the titles), each key a diamond at its time and each function of time a band over
@@ -81,7 +81,7 @@ export class Timeline {
       ...scene.views.map(view => cameraRow(`View ${view.name}`, view.plan ? 'plan' : 'view', view, scene.fps, length)),
       ...scene.actors.map((actor, index): Row => ({
         name: actor.name,
-        note: actor.ride ? `rides ${actor.ride.parent}` : ((sourceNote(actor.source) !== actor.name) ? sourceNote(actor.source) : undefined),
+        note: actor.ride ? `rides ${actor.ride.parent}` : ((castAs(actor.source).words !== actor.name) ? castAs(actor.source).words : undefined),
         color: actorColor(index),
         keys: [
           ...actor.keys.map(key => ({ time: key.time, label: `${actor.name} at ${seconds2(key.time)} · ${describeKey(key)}` })),
@@ -232,7 +232,6 @@ const describeCamera = (key: CameraKey): string => {
 const closeness = ({ actors: [a, b], time, gap }: ClosePair): string =>
   (gap > 0) ? `${a} and ${b} come within ${round(gap)} studs at ${seconds2(time)}` : `${a} touches ${b} at ${seconds2(time)}`;
 
-const sourceNote = (source: Readonly<Record<string, unknown>>): string => (typeof source.component === 'string') ? source.component : [source.color, source.part].filter(Boolean).join(' ');
 const round = (value: number) => Math.round(value * 100) / 100;
 
 // == DOM =========================================================================

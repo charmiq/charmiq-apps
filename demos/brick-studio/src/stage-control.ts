@@ -3,7 +3,7 @@ import { BehaviorSubject, type Observable } from 'rxjs';
 import type { Build } from './build';
 import { partCount, type Model } from './model';
 import type { Sheet } from './sheet';
-import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setOf, shotLines, shotsOf, sizesOf, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Size } from './stage';
+import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setOf, shotLines, shotsOf, sizesOf, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -33,7 +33,7 @@ export type StageElements = Readonly<{ root: HTMLElement; note: HTMLElement; bac
 /** what a stage call answers: the actors cast, those among them with wheels to roll,
  *  those refused with why, each cast actor's box, and the reel's number when one is
  *  staged */
-export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; reel?: number; }>;
+export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
 /** what a frame call answers: how many actors it shows, and the frame captured when
  *  one is asked for */
 export type Framed = Readonly<{ shown: number; image?: ImageBitmap; }>;
@@ -114,12 +114,12 @@ export class StageControl {
     this.marks = marked;
     this.wanted = undefined/*a frame of the reel before*/;
     this.left = false;
-    this.viewer.showStage(scene, area);
+    this.viewer.showStage(cast.shown/*the set without the pieces cast*/, area);
     if(header) this.viewer.drawStageAt(header.width, header.height);
     this.show(SHOWING);
     this.publish({ kind: 'staged', ...(this.reel ? { reel: this.reel.id } : {}) });
     const wheeled = [...cast.actors].filter(([, actor]) => actor.rolls).map(([name]) => name);
-    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...(this.reel ? { reel: this.reel.id } : {}) };
+    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
   }
 
   /** shows the build again */

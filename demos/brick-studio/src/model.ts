@@ -120,6 +120,9 @@ export type Model = Readonly<{
    *  index into `placed`), or undefined for a part of its own */
   placed?: ReadonlyArray<Placed>;
   placementPlaced?: ReadonlyArray<number | undefined>;
+  /** each part off the grid's line (an index into `placed`), or undefined for a part
+   *  of its own */
+  otherPlaced?: ReadonlyArray<number | undefined>;
   /** the building steps, when the build has more than one */
   steps?: ModelSteps;
   /** the lines of the files the text carries that are no part of the build (LDraw's
@@ -412,7 +415,7 @@ export const parseModel = (text: string): Model => {
     ...(ground ? { ground: ground.color } : {}),
     ...((components.length > 0) ? { components: components.map(({ nested: _, undecided: __, ...component }) => component) } : {}),
     ...((copies.length > 0) ? { copies, placementCopies } : {}),
-    ...((placed.length > 0) ? { placed, placementPlaced } : {}),
+    ...((placed.length > 0) ? { placed, placementPlaced, otherPlaced } : {}),
     ...(untold ? { untold: UNEDITABLE.undecided } : {}),
     ...((untold || overflows || mainTwice) ? { unwritable: mainTwice ? UNWRITABLE.mainTwice : untold ? UNEDITABLE.undecided : UNWRITABLE.overflows } : {}),
     ...((duplicated.length > 0) ? { duplicated } : {}),
@@ -784,9 +787,18 @@ export const upToStep = (model: Model, step: number): Model => {
     ...model,
     placements: model.placements.filter((_, index) => steps.placements[index] <= step),
     others: model.others.filter((_, index) => steps.others[index] <= step),
-    steps: undefined, layout: undefined, copies: undefined, placementCopies: undefined, placed: undefined, placementPlaced: undefined/*a view, never edited*/,
+    steps: undefined, layout: undefined, copies: undefined, placementCopies: undefined, placed: undefined, placementPlaced: undefined, otherPlaced: undefined/*a view, never edited*/,
   };
 };
+
+/** the model without some of its parts (indices into `placements` and `others`): a
+ *  view, never edited */
+export const withoutParts = (model: Model, placements: ReadonlySet<number>, others: ReadonlySet<number>): Model => ({
+  ...model,
+  placements: model.placements.filter((_, index) => !placements.has(index)),
+  others: model.others.filter((_, index) => !others.has(index)),
+  steps: undefined, layout: undefined, copies: undefined, placementCopies: undefined, placed: undefined, placementPlaced: undefined, otherPlaced: undefined,
+});
 
 // ................................................................................
 /** one line of the text: its content, and its span with its line break */

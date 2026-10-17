@@ -436,19 +436,20 @@
       },
       {
         "name": "stage",
-        "description": "Show a scene in place of the build: a set (LDraw text; the build when left out) and actors, each a component of the set or a dressed catalog part, that frame then puts anywhere. Nothing is written to the build; unstage shows it again. Use it for a still (the car in mid-air) or a film's frames",
+        "description": "Show a scene in place of the build: a set (LDraw text; the build when left out) and actors, each a component of the set, a dressed catalog part, or a piece standing in the set by where it stands (placed: the set is then shown without it, and placed in the answer says where it stands), that frame then puts anywhere. Nothing is written to the build; unstage shows it again. Use it for a still (the car in mid-air) or a film's frames",
         "inputSchema": {
           "type": "object",
           "properties": {
             "set": { "type": "string", "description": "The scene's LDraw text, its components the actors' (the build when left out)" },
             "actors": {
               "type": "array",
-              "description": "Each actor once, by name: { name, component } or { name, part, color, legColor?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure",
+              "description": "Each actor once, by name: { name, component }, { name, part, color, legColor?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure, or { name, placed: { x, z, level } }, the part or copy standing there in the set as listPlacedParts gives it",
               "items": {
                 "type": "object",
                 "properties": {
                   "name":      { "type": "string" },
                   "component": { "type": "string" },
+                  "placed":    { "type": "object", "description": "Where the piece stands in the set: { x, z, level }, as listPlacedParts gives it", "properties": { "x": { "type": "integer" }, "z": { "type": "integer" }, "level": { "type": "integer" } }, "required": ["x", "z", "level"] },
                   "part":      { "type": "string" },
                   "color":     { "type": "string" },
                   "legColor":  { "type": "string" },
@@ -484,6 +485,7 @@
             "wheeled": { "type": "array", "description": "The actors with wheels, which frame's rolled turns", "items": { "type": "string" } },
             "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
             "sizes":   { "type": "object", "description": "Each actor's box, unturned and unposed: studs across (x), studs along (z), plates up", "additionalProperties": { "type": "object", "properties": { "width": { "type": "number" }, "depth": { "type": "number" }, "height": { "type": "number" } }, "required": ["width", "depth", "height"] } },
+            "placed":  { "type": "object", "description": "Each placed actor's rest: the position and turn a frame gives it to stand where its piece stood (a posed figure's position is its unposed frame's: a seated one's 2 plates below its seat)", "additionalProperties": { "type": "object", "properties": { "position": { "type": "object" }, "turn": { "type": "object" } }, "required": ["position", "turn"] } },
             "reel":    { "type": "integer", "description": "The reel's number, when one is staged" }
           },
           "required": ["actors", "sizes"]

@@ -1,13 +1,15 @@
 import { toPosing } from './build';
-import { getFigureFace, FIGURE_FACES } from './catalog';
-import { compose, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type PartLine, type Placement, type Rotation, type Transform } from './grid';
-import { drawnLines, parseModel, type Model } from './model';
+import { getFigureFace, FIGURE_FACES, type CatalogPart } from './catalog';
+import { compose, footprint, footprintOf, footprintSize, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type PartLine, type Placement, type Rotation, type Transform } from './grid';
+import { drawnLines, parseModel, withoutParts, type Component, type Model } from './model';
 import { bankOf, swingOf, turnOf, LIMBS, type Limb, type Pose } from './pose';
 
 // a stage: a scene the studio shows in place of its build while another Application
 // (a film) drives it. The set is a build, shown as it is: LDraw text, or the
-// studio's own. Each actor is a component of the set or a dressed catalog part, and
-// each frame puts it anywhere: any position, any turn, a figure's limbs at any angle,
+// studio's own. Each actor is a component of the set, a dressed catalog part, or a
+// piece standing in the set (a part or a copy, named by where it stands), which the set
+// is shown without while it is cast and which a shot at its rest draws where it
+// stood. Each frame puts an actor anywhere: any position, any turn, a figure's limbs at any angle,
 // a wheel set's wheels rolled any distance. An actor is never a placement: never on
 // the grid, never checked, never written to the build. A film's frames arrive as a
 // reel, read and checked page by page as they load, so a frame shown from it is data
@@ -131,8 +133,13 @@ type Actor = Readonly<{
   lines: (pose: Pose | undefined, rolled: number, face?: string) => PartLine[];
 }>;
 
-/** a stage's set and its actors, by name */
-export type Cast = Readonly<{ set: Model; actors: ReadonlyMap<string, Actor>; }>;
+/** where a placed actor's piece stands in the set: a shot of it there draws the piece
+ *  as the set does */
+export type Rest = Readonly<{ position: Point; turn: Turn; }>;
+
+/** a stage's set and its actors, by name: each cast from a piece of the set at its
+ *  rest, and the set as it is shown, those pieces gone */
+export type Cast = Readonly<{ set: Model; actors: ReadonlyMap<string, Actor>; placed: ReadonlyMap<string, Rest>; shown: Model; }>;
 
 /** an actor a stage refused, and why */
 export type Refusal = Readonly<{ name: string; reason: string; }>;
@@ -159,23 +166,43 @@ export const floorOf = (input: unknown): Floor | undefined => {
 
 // -- Cast ------------------------------------------------------------------------
 /** the actors a stage call casts from a set: each named once, a component of the set
- *  (`{ name, component }`) or a catalog part dressed as a placement is
- *  (`{ name, part, color, legColor?, face?, hat?, rightHand?, leftHand? }`); every
- *  one refused names why */
+ *  (`{ name, component }`), a catalog part dressed as a placement is (`{ name, part,
+ *  color, legColor?, face?, hat?, rightHand?, leftHand? }`), or a piece standing in the
+ *  set by where it stands (`{ name, placed: { x, z, level } }`, as listPlacedParts says:
+ *  a part of its own as it is dressed there, a copy as its component); every one
+ *  refused names why */
 export const castOf = (set: Model, input: unknown): Readonly<{ cast: Cast; refused: ReadonlyArray<Refusal>; }> => {
-  if(!Array.isArray(input)) throw new Error('actors lists the actors: each { name, component } or { name, part, color }');
+  if(!Array.isArray(input)) throw new Error('actors lists the actors: each { name, component }, { name, part, color } or { name, placed }');
   if(input.length > MAX_ACTORS) throw new Error(`A stage casts at most ${MAX_ACTORS} actors.`);
   const actors = new Map<string, Actor>();
+  const placed = new Map<string, Rest>();
+  const pieces = new Map<string, string>()/*each piece cast, by the actor cast from it*/;
+  const hidden = { placements: new Set<number>(), others: new Set<number>() };
   const refused: Refusal[] = [];
   for(const item of input) {
     const { name } = (item ?? {}) as Record<string, unknown>;
     if(!isName(name)) { refused.push({ name: String(name), reason: `name must be 1 to ${MAX_NAME} characters` }); continue; }
     if(actors.has(name) || refused.some(refusal => refusal.name === name)) { refused.push({ name, reason: 'named twice' }); continue; }
-    const actor = actorOf(set, item as Record<string, unknown>);
-    if(typeof actor === 'string') refused.push({ name, reason: actor });
-    else actors.set(name, actor);
+    const fields = item as Record<string, unknown>;
+    if(fields.placed === undefined) {
+      const actor = actorOf(set, fields);
+      if(typeof actor === 'string') refused.push({ name, reason: actor });
+      else actors.set(name, actor);
+      continue;
+    } /* else -- a piece of the set */
+
+    const piece = pieceOf(set, fields);
+    if(typeof piece === 'string') { refused.push({ name, reason: piece }); continue; }
+    const caster = pieces.get(piece.key);
+    if(caster !== undefined) { refused.push({ name, reason: `the piece at ${piece.at} is cast already, as ${caster}` }); continue; }
+    pieces.set(piece.key, name);
+    actors.set(name, piece.actor);
+    placed.set(name, piece.rest);
+    for(const index of piece.placements) hidden.placements.add(index);
+    for(const index of piece.others) hidden.others.add(index);
   }
-  return { cast: { set, actors }, refused };
+  const shown = (pieces.size > 0) ? withoutParts(set, hidden.placements, hidden.others) : set;
+  return { cast: { set, actors, placed, shown }, refused };
 };
 
 /** the actor an input describes, or why it is not one */
@@ -186,37 +213,133 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
     if(face !== undefined) return 'a component wears no face: give the figures in it their faces, or cast a figure';
     const found = set.components?.find(each => each.name === component);
     if(!found?.footprint) return `unknown component '${String(component)}' (the set defines none by that name with parts)`;
-    const { minX, minZ, maxX, maxZ } = found.footprint;
-    const parts = found.placements.map(placement => getPart(placement.part)!/*by contract*/);
-    return {
-      anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
-      size: { width: maxX - minX, depth: maxZ - minZ, height: Math.max(...found.placements.map((placement, index) => placement.level + getShape(parts[index]).height))/*its tallest part's top, tires above the studs included*/ },
-      poses: false,
-      faces: false,
-      rolls: parts.some(each => !!each.wheels),
-      lines: (_, rolled) => [...found.placements.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(placement.rotation))), ...found.others],
-    };
+    return componentActor(set, found);
   } /* else -- a part */
 
   const catalogPart = (typeof part === 'string') ? getPart(part) : undefined/*no part named*/;
   if(!catalogPart) return `unknown part '${String(part)}' (listParts names the catalog)`;
-  if(catalogPart.hinge || catalogPart.faces) return `${catalogPart.key} carries components, which an actor never does: cast the component that holds it`;
+  if(catalogPart.hinge || catalogPart.faces) return carriesComponents(catalogPart);
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
   const dressing = toPosing(catalogPart, undefined/*each frame poses it*/, legColor, face, { hat, rightHand, leftHand });
   if(typeof dressing === 'string') return dressing;
-  const standing: Placement = { part: catalogPart.key, color, x: 0, z: 0, level: 0, rotation: 0, ...dressing };
+  return partActor(catalogPart, { part: catalogPart.key, color, x: 0, z: 0, level: 0, rotation: 0, ...dressing });
+};
+
+/** a piece of the set cast in place: a key naming it, where it stands, its actor, its
+ *  rest, and its parts (indices into the set's `placements` and `others`) */
+type Piece = Readonly<{ key: string; at: string; actor: Actor; rest: Rest; placements: ReadonlyArray<number>; others: ReadonlyArray<number>; }>;
+
+/** the piece of the set a placed actor names, by where it stands, or why it cannot be
+ *  cast in place: nothing stands there, or its rest lies where no frame reaches */
+const pieceOf = (set: Model, item: Record<string, unknown>): Piece | string => {
+  const piece = pieceAt(set, item);
+  if(typeof piece === 'string') return piece;
+  try { toPoint(piece.rest.position, 'its rest')/*as a frame takes it*/; }
+  catch { return `the piece at ${piece.at} cannot be cast in place: its middle lies past where a frame reaches (x and z within ${MAX_COORDINATE} of the origin)`; }
+  return piece;
+};
+
+/** the piece of the set standing where a placed actor names, or why there is none */
+const pieceAt = (set: Model, item: Record<string, unknown>): Piece | string => {
+  if((item.component !== undefined) || (item.part !== undefined)) return 'names a placed piece, a component or a part: one of them';
+  const { x, z, level } = (item.placed ?? {}) as Record<string, unknown>;
+  if(![x, z, level].every(Number.isInteger)) return 'placed is { x, z, level }: whole numbers, where listPlacedParts says the piece stands';
+  const at = `x ${String(x)}, z ${String(z)}, level ${String(level)}`;
+  const standsThere = (piece: Readonly<{ x: number; z: number; level: number; }>) => (piece.x === x) && (piece.z === z) && (piece.level === level);
+
+  // a part of its own
+  const own = set.placements.findIndex((placement, index) => (set.placementPlaced?.[index] === undefined) && standsThere(placement));
+  if(own >= 0) {
+    const placement = set.placements[own];
+    const catalogPart = getPart(placement.part)!/*by contract: the set's*/;
+    if(catalogPart.hinge || catalogPart.faces) return carriesComponents(catalogPart);
+    const shape = getShape(catalogPart);
+    const [width, depth] = footprint(shape, placement.rotation);
+    const standing = { ...placement, x: 0, z: 0, level: 0, rotation: 0 } as const;
+    const lift = (ldrawPosition(shape, { ...standing, pose: undefined })[1] - ldrawPosition(shape, standing)[1]) / LDU_PER_PLATE/*its pose's: a posed part's level is its posed bottom*/;
+    return {
+      key: `part ${own}`, at, actor: partActor(catalogPart, standing),
+      rest: { position: { x: placement.x + (width / 2), z: placement.z + (depth / 2), height: placement.level + lift }, turn: { yaw: placement.rotation, pitch: 0, roll: 0 } },
+      placements: [own], others: [],
+    };
+  } /* else -- a copy, or nothing */
+
+  const copy = (set.copies ?? []).findIndex(standsThere);
+  const component = (copy >= 0) ? set.components?.find(each => each.name === set.copies![copy].component) : undefined;
+  if(!component?.footprint) return `nothing stands at ${at} (listPlacedParts lists where each part and copy stands)`;
+  const { rotation } = set.copies![copy];
+  const lines = new Set((set.placed ?? []).flatMap((line, index) => (line.copy === copy) ? [index] : []));
+  const owned = (owners: ReadonlyArray<number | undefined> | undefined) => (owners ?? []).flatMap((owner, index) => ((owner !== undefined) && lines.has(owner)) ? [index] : []);
+  const [placements, others] = [owned(set.placementPlaced), owned(set.otherPlaced)];
+  // measured from its parts as the set holds them, each inherited color's part among
+  // them (its component's own footprint leaves those out)
+  const parts = placements.map(index => set.placements[index]);
+  const measured = footprintOf(parts)!/*a copy has parts*/;
+  const [width, depth] = footprintSize(measured, rotation)/*turned back*/;
+  const rest: Rest = { position: { x: (measured.minX + measured.maxX) / 2, z: (measured.minZ + measured.maxZ) / 2, height: level as number }, turn: { yaw: rotation, pitch: 0, roll: 0 } };
+  return { key: `copy ${copy}`, at, actor: copyActor(set, rotation, parts, others, rest, { width, depth, height: tallestTop(parts) - (level as number) }), rest, placements, others };
+};
+
+/** a copy's actor: its own parts as the set draws them (each inherited color its
+ *  copy's), in the frame of its rest, which is its anchor, `size` its box */
+const copyActor = (set: Model, rotation: Rotation, parts: ReadonlyArray<Placement>, others: ReadonlyArray<number>, rest: Rest, size: Size): Actor => {
+  const back = inverseOf(turnedAt(rest.position, rest.turn))/*the scene's frame into its own*/;
+  return {
+    anchor: [0, 0, 0],
+    size,
+    poses: false,
+    faces: false,
+    rolls: parts.some(placement => !!getPart(placement.part)!.wheels),
+    lines: (_, rolled) => [
+      ...parts.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(((placement.rotation - rotation + 360) % 360) as Rotation/*turned within the copy*/))),
+      ...others.map(index => set.others[index]),
+    ].map(line => ({ ...line, ...compose(back, line) })),
+  };
+};
+
+/** a component's actor: a copy of it, its footprint's middle its anchor */
+const componentActor = (set: Model, component: Component): Actor => {
+  const { minX, minZ, maxX, maxZ } = component.footprint!/*by contract*/;
+  const parts = component.placements.map(placement => getPart(placement.part)!/*by contract*/);
+  return {
+    anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
+    size: componentSize(component),
+    poses: false,
+    faces: false,
+    rolls: parts.some(each => !!each.wheels),
+    lines: (_, rolled) => [...component.placements.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(placement.rotation))), ...component.others],
+  };
+};
+
+/** a component's box: its footprint, and its tallest part's top (tires above the studs
+ *  included) */
+const componentSize = (component: Component): Size => {
+  const { minX, minZ, maxX, maxZ } = component.footprint!/*by contract*/;
+  return { width: maxX - minX, depth: maxZ - minZ, height: tallestTop(component.placements) };
+};
+
+/** the level the tallest of some parts reaches (tires above the studs included) */
+const tallestTop = (parts: ReadonlyArray<Placement>): number => Math.max(...parts.map(placement => placement.level + getShape(getPart(placement.part)!/*by contract*/).height));
+
+/** a catalog part's actor, `standing` as dressed at the origin unturned: a frame's pose
+ *  over its own (each limb a frame names, the rest as it stands) and its face in place
+ *  of its own, for that frame */
+const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
   const shape = getShape(catalogPart);
-  const origin = ldrawPosition(shape, standing)/*as it stands unposed: a pose turns limbs about their own pivots*/;
-  const colorCode = getColor(color)!.code;
+  const origin = ldrawPosition(shape, { ...standing, pose: undefined })/*as it stands unposed: a pose turns limbs about their own pivots*/;
+  const colorCode = getColor(standing.color)!.code;
   return {
     anchor: [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
     size: { width: shape.width, depth: shape.depth, height: shape.height },
     poses: !!catalogPart.limbs,
     faces: catalogPart.facePiece !== undefined,
     rolls: !!catalogPart.wheels,
-    lines: (pose, rolled, worn) => partLines(shape, { ...standing, ...(pose ? { pose } : {}), ...((worn !== undefined) ? { face: worn } : {}) }, colorCode, origin, rolled),
+    lines: (pose, rolled, worn) => partLines(shape, { ...standing, ...(pose ? { pose: { ...standing.pose, ...pose } } : {}), ...((worn !== undefined) ? { face: worn } : {}) }, colorCode, origin, rolled),
   };
 };
+
+/** the refusal of a part that carries components */
+const carriesComponents = (catalogPart: CatalogPart): string => `${catalogPart.key} carries components, which an actor never does: cast the component that holds it`;
 
 /** each cast actor's box, by name */
 export const sizesOf = (cast: Cast): Readonly<Record<string, Size>> => Object.fromEntries([...cast.actors].map(([name, actor]) => [name, actor.size]));
@@ -257,11 +380,20 @@ export const shotLines = (cast: Cast, shots: ReadonlyArray<Shot>): PartLine[] =>
 /** where a shot puts an actor's frame: its anchor at the shot's position, turned
  *  about it */
 const actorTransform = (actor: Actor, { position, turn }: Shot): Transform => {
-  const matrix = compose(compose(rotation(turnOf(turn.yaw)), rotation(swingOf(turn.pitch))), rotation(bankOf(turn.roll))).matrix;
-  const at = ldrawPoint(position);
+  const { matrix, position: at } = turnedAt(position, turn);
   const [ax, ay, az] = actor.anchor;
   const turned = [0, 1, 2].map(row => (matrix[row * 3] * ax) + (matrix[(row * 3) + 1] * ay) + (matrix[(row * 3) + 2] * az));
   return { matrix, position: [at[0] - turned[0], at[1] - turned[1], at[2] - turned[2]] };
+};
+
+/** a frame at a point, turned about it: rolled, then pitched, then yawed */
+const turnedAt = (position: Point, turn: Turn): Transform =>
+  ({ matrix: compose(compose(rotation(turnOf(turn.yaw)), rotation(swingOf(turn.pitch))), rotation(bankOf(turn.roll))).matrix, position: ldrawPoint(position) });
+
+/** a turn and a move undone: a rotation's inverse is its transpose */
+const inverseOf = ({ matrix, position }: Transform): Transform => {
+  const transposed = [0, 1, 2].flatMap(row => [0, 1, 2].map(column => matrix[(column * 3) + row]));
+  return { matrix: transposed, position: [0, 1, 2].map(row => -((transposed[row * 3] * position[0]) + (transposed[(row * 3) + 1] * position[1]) + (transposed[(row * 3) + 2] * position[2]))) as [number, number, number] };
 };
 
 // -- Camera ----------------------------------------------------------------------

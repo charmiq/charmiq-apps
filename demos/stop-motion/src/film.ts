@@ -78,14 +78,18 @@ export type Paint = Readonly<{ actor: (index: number) => string; camera: string;
 
 /** an actor's values in one frame, before any ride */
 type Local = Readonly<{ channels: Readonly<Record<string, number>>; }>;
+/** where an actor cast from a piece of the set stood, as the stage answers it: the
+ *  values its scene never keys (SEE: Brick Studio's stage Rest) */
+export type Rest = Readonly<{ position: Point; turn: Turn; }>;
 /** an actor where it stands in one frame */
 type Placed = Readonly<{ position: Point; matrix: ReadonlyArray<number>; visible: boolean; pose?: Readonly<Record<string, number>>; }>;
 
 // == Film ========================================================================
-/** the film a recorded scene makes: every frame, each wheeled actor's wheels rolled.
- *  Throws, naming the scene's line, when an actor rides in a circle or leaves the
- *  stage's reach */
-export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()): Film => {
+/** the film a recorded scene makes: every frame, each wheeled actor's wheels rolled,
+ *  each actor cast from a piece of the set starting from its rest (`rests`: each value
+ *  it keys from its keys, the rest from where the piece stood). Throws, naming the
+ *  scene's line, when an actor rides in a circle or leaves the stage's reach */
+export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set(), rests: ReadonlyMap<string, Rest> = new Map()): Film => {
   const order = rideOrder(scene.actors);
   const frames: FilmFrame[] = [];
   const rolled = new Map<string, number>();
@@ -94,7 +98,7 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
     const time = index / scene.fps;
     const placed = new Map<string, Placed>();
     for(const actor of order) {
-      const local = localAt(actor, index, time);
+      const local = localAt(actor, index, time, actor.ride ? undefined : rests.get(actor.name)/*a rider stands where it rides*/);
       const own = placedOf(local);
       const parent = actor.ride && placed.get(actor.ride.parent);
       const standing = parent ? riding(parent, actor.ride!.offset, own) : own;
@@ -231,9 +235,10 @@ const rideOrder = (actors: ReadonlyArray<RecordedActor>): ReadonlyArray<Recorded
   return ordered;
 };
 
-/** an actor's values at a frame: its keys eased, then its spans */
-const localAt = (actor: RecordedActor, index: number, time: number): Local => {
-  const channels: Record<string, number> = {};
+/** an actor's values at a frame: from its rest when it has one, its keys eased over
+ *  them, then its spans */
+const localAt = (actor: RecordedActor, index: number, time: number, rest: Rest | undefined): Local => {
+  const channels: Record<string, number> = rest ? { ...rest.position, ...rest.turn }/*its keys and paths from there*/ : {};
   for(const channel of new Set(actor.keys.flatMap(key => Object.keys(key.values)))) channels[channel] = channelAt(actor.keys, channel, time)!;
   applySpans(channels, actor.spans, index);
   return { channels };

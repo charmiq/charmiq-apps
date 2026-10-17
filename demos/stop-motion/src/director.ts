@@ -47,13 +47,13 @@ export class Director {
   public restage(): Promise<void> { return this.stageLatest(); }
 
   // == Internal ==================================================================
-  /** stages the latest scene, made with the wheels the stage finds, and shows its
-   *  film unless a newer scene took its place meanwhile (the film without wheels when
+  /** stages the latest scene, made with the wheels and rests the stage finds, and
+   *  shows its film unless a newer scene took its place meanwhile (the film without wheels when
    *  no studio took it) */
   private async stageLatest(): Promise<void> {
     const take = this.latest;
     if(!take) return/*no scene has run yet: its run stages it*/;
-    await this.studios.stage(take.scene, wheeled => (wheeled.size > 0) ? filmOf(take.scene, wheeled) : take.first);
+    await this.studios.stage(take.scene, (wheeled, rests) => ((wheeled.size > 0) || (rests.size > 0)) ? filmOf(take.scene, wheeled, rests) : take.first);
     if(this.latest !== take) return/*a newer scene*/;
     this.host.show((this.studios.film?.scene === take.scene) ? this.studios.film : take.first);
   }

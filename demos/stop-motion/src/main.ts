@@ -13,7 +13,7 @@ import { FilmDialog } from './film-dialog';
 import { Films } from './films';
 import { closePairs } from './measure';
 import { Player, type PlayerState } from './player';
-import type { SceneError } from './recorder';
+import { castAs, type SceneError } from './recorder';
 import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB } from './scene-source';
 import { Strip } from './strip';
@@ -136,7 +136,8 @@ const showSheet = () => {
   cast.replaceChildren(...scene.actors.map((actor, index) => {
     const item = document.createElement('li');
     item.style.setProperty('--row', `var(${actorColor(index)})`);
-    const what = (typeof actor.source.component === 'string') ? `the ${actor.source.component}` : `a ${[actor.source.color, actor.source.part].filter(Boolean).join(' ')}`;
+    const castWords = castAs(actor.source);
+    const what = `${castWords.definite ? 'the' : 'a'} ${castWords.words}`;
     const notes = [what, actor.ride ? `rides the ${actor.ride.parent}` : undefined, ((stage.kind === 'staged') && stage.wheeled.has(actor.name)) ? 'its wheels roll' : undefined].filter(Boolean).join(' · ');
     item.append(Object.assign(document.createElement('b'), { textContent: actor.name }), Object.assign(document.createElement('span'), { textContent: refused.get(actor.name) ?? notes }));
     item.classList.toggle('is-refused', refused.has(actor.name));
