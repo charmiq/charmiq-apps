@@ -239,15 +239,16 @@ export class CommandSurface {
       // a stage: a film's scene shown in place of the build (SEE: stage.ts)
       describeStage: () => this.stage.describe(),
       stage$: () => this.stage.state$()/*a stream for the film, not a Charm's command*/,
-      stage: async ({ set, actors, floor, reel, view }: { set?: unknown; actors?: unknown; floor?: unknown; reel?: unknown; view?: unknown; }) => {
+      stage: async ({ set, actors, floor, reel, view, marks }: { set?: unknown; actors?: unknown; floor?: unknown; reel?: unknown; view?: unknown; marks?: unknown; }) => {
         this.lookAround.hide();
-        const staged = await this.stage.stage(set, actors, floor, reel, view);
+        const staged = await this.stage.stage(set, actors, floor, reel, view, marks);
         await this.viewer.whenSettled()/*the set drawn*/;
         return staged;
       },
       loadReel: async ({ reel, from, frames }: { reel?: unknown; from?: unknown; frames?: unknown; }) => this.stage.loadReel(reel, from, frames),
       show: async ({ reel, frame, capture }: { reel?: unknown; frame?: unknown; capture?: unknown; }) => this.stage.showReel(reel, frame, capture),
-      thumbnail: async ({ reel, frame, width, height }: { reel?: unknown; frame?: unknown; width?: unknown; height?: unknown; }) => ({ image: await this.stage.thumbnail(reel, frame, width, height) }),
+      thumbnail: async ({ reel, frame, width, height, view }: { reel?: unknown; frame?: unknown; width?: unknown; height?: unknown; view?: unknown; }) => ({ image: await this.stage.thumbnail(reel, frame, width, height, view) }),
+      storyboard: async ({ reel, frames, view }: { reel?: unknown; frames?: unknown; view?: unknown; }) => this.stage.storyboard(reel, frames, view),
       frame: async ({ actors, camera, capture }: { actors?: unknown; camera?: unknown; capture?: unknown; }) => {
         const framed = await this.stage.frame(actors, camera, capture);
         if(!framed.image) await this.viewer.whenSettled()/*a screenshot next shows the frame*/;

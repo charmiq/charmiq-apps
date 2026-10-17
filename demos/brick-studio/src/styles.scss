@@ -280,8 +280,9 @@ body {
   &:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 }
 
-// == Four sides ==================================================================
-// the build from the south, east, north and west, under the bar's chrome
+// == Sheet =======================================================================
+// pictures in a grid under the bar's chrome: the build from the south, east, north
+// and west, or a film's storyboard
 .sheet {
   position: absolute;
   inset: 0;
@@ -304,7 +305,7 @@ body {
     overflow: hidden;
   }
 
-  img { width: 100%; height: 100%; display: block; }
+  img, canvas { width: 100%; height: 100%; display: block; object-fit: contain; }
 
   figcaption {
     @extend %mono-caps;
@@ -338,11 +339,11 @@ body {
   white-space: nowrap;
 }
 
-.sheet-sides {
+.sheet-panels {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template: 1fr 1fr / 1fr 1fr;
+  grid-template: repeat(var(--rows, 2), minmax(0, 1fr)) / repeat(var(--columns, 2), minmax(0, 1fr));
   gap: 10px;
 }
 

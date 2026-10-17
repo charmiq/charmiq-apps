@@ -1,7 +1,8 @@
 import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rxjs';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
-import { reelFrameOf, type Film } from './film';
+import { planMarksOf, reelFrameOf, type Film, type Paint } from './film';
+import type { Size } from './measure';
 import type { Recorded } from './recorder';
 
 // the studios a film is seen on: the Applications in the document that export
@@ -10,11 +11,12 @@ import type { Recorded } from './recorder';
 // film's, and its frames are the ones captured; studios without a build are further
 // screens, each showing the scene through the scene's views in the order found. More
 // than one holding a build stops the film rather than choosing by which loaded first.
-// A film is staged once per scene: the cast and the reel's header, then the film made
-// with the wheels the stage found, loaded on every screen a page at a time. A frame
-// is then a number sent to each screen, and each studio's state streams back: the
-// person going back to a build pauses the film at once, and a build appearing in a
-// studio or emptied out chooses the screens again
+// A film is staged once per scene: the cast and the reel's header (with a plan's
+// marks when the scene has a plan view), then the film made with the wheels the stage
+// found, loaded on every screen a page at a time; the stage's sizes of the actors are
+// kept for measuring. A frame is then a number sent to each screen, and each studio's
+// state streams back: the person going back to a build pauses the film at once, and a
+// build appearing in a studio or emptied out chooses the screens again
 // ********************************************************************************
 // == Constants ===================================================================
 const COMMANDS = 'charmiq.command';
@@ -23,7 +25,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 2;
+const STAGE_VERSION = 3;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -37,10 +39,11 @@ type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; f
 export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; }>>;
   stage$(): Observable<ScreenState>;
-  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; reel?: number; }>>;
+  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
   show(args: object): Promise<Readonly<{ shown: number; image?: ImageBitmap; }>>;
   thumbnail(args: object): Promise<Readonly<{ image: ImageBitmap; }>>;
+  storyboard(args: object): Promise<Readonly<{ shown: number; }>>;
   getModel(args: object): Promise<Readonly<{ ldraw?: string; nextLine?: number; conflict?: string; }>>;
 }
 
@@ -48,16 +51,19 @@ export interface StudioCommands {
 type Found = Readonly<{ commands: StudioCommands; build: boolean; }>;
 
 /** where the film stands on the studios: none found, more than one holding a build,
- *  staging, staged (with the actors cast that have wheels, and those refused), the
- *  person gone back to a studio's build, or a studio failed */
+ *  staging, staged (with the actors cast that have wheels, those refused, and each
+ *  actor's box), the person gone back to a studio's build, or a studio failed */
 export type StageState = Readonly<
   | { kind: 'none'; }
   | { kind: 'ambiguous'; builds: number; }
   | { kind: 'staging'; }
-  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; }
+  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes: Readonly<Record<string, Size>>; }
   | { kind: 'left'; }
   | { kind: 'failed'; message: string; }
 >;
+
+/** a frame on a storyboard: the frame and what its caption says */
+export type Board = Readonly<{ frame: number; caption: string; }>;
 
 /** a film staged: its scene and film, the screens it is on (the main first) and each
  *  screen's reel */
@@ -85,6 +91,9 @@ export class Studios {
   public get stageState(): StageState { return this.state.value; }
   /** the film staged, made with the wheels the stage found */
   public get film(): Film | undefined { return this.staged?.film; }
+
+  /** `paint` colors a plan's marks */
+  public constructor(private readonly paint: Paint) {}
 
   // == Discovery =================================================================
   /** follows the studios in the document; safe without the bridge (none) */
@@ -137,11 +146,12 @@ export class Studios {
       const actors = scene.actors.map(({ name, source }) => ({ name, ...source }));
       const floor = scene.floor ? { floor: scene.floor } : {};
       const reel = { fps: scene.fps, length: scene.frames, width: scene.width, height: scene.height };
-      const answer = await main.stage({ actors, ...floor, reel });
+      const marks = scene.views.some(view => view.plan) ? { marks: planMarksOf(filmFor(new Set())/*its wheels move nothing*/, this.paint) } : {};
+      const answer = await main.stage({ actors, ...floor, reel, ...marks });
       const set = (others.length > 0) ? await buildText(main) : undefined;
       const answers = await Promise.all(others.map((studio, index) => {
         const view = scene.views[index]?.name;
-        return studio.stage({ actors, ...floor, ...(set ? { set } : {}), reel, ...(view ? { view } : {}) });
+        return studio.stage({ actors, ...floor, ...(set ? { set } : {}), reel, ...(view ? { view } : {}), ...marks });
       }));
       const reels = [answer, ...answers].map(each => each.reel);
       if(reels.some(each => each === undefined)) throw new Error('A studio took the scene but no reel: it may need updating.');
@@ -157,7 +167,7 @@ export class Studios {
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
       this.staged = { scene, film, screens, reels: reels as number[] };
-      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [] });
+      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {} });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
     }
@@ -191,6 +201,14 @@ export class Studios {
     catch(error) { this.refused(staged, error); return undefined; }
   }
 
+  /** shows frames of the film on the main screen's storyboard sheet, through `view`
+   *  when named, answering how many it shows; refuses while the film is not staged */
+  public async storyboard(frames: ReadonlyArray<Board>, view?: string): Promise<number> {
+    const staged = this.ready();
+    if(!staged) throw new Error(notStaged(this.state.value));
+    return (await staged.screens[0].storyboard({ reel: staged.reels[0], frames, ...((view !== undefined) ? { view } : {}) })).shown;
+  }
+
   /** resolves once the main screen reports a frame drawn; refuses after SHOWN_MILLIS,
    *  or once the film stops being staged */
   public whenShown(index: number): Promise<void> {
@@ -200,7 +218,7 @@ export class Studios {
       const timer = setTimeout(() => { done(); reject(new Error(`The studio did not draw frame ${index} within ${SHOWN_MILLIS / 1000} seconds.`)); }, SHOWN_MILLIS);
       subscriptions.push(
         this.drawn.subscribe(frame => { if(frame === index) { done(); resolve(); } }),
-        this.state.subscribe(state => { if(state.kind !== 'staged') { done(); reject(new Error(`The film is not staged (${state.kind}): describeFilm says why.`)); } })/*answers at once: already stopped refuses now*/,
+        this.state.subscribe(state => { if(state.kind !== 'staged') { done(); reject(new Error(notStaged(state))); } })/*answers at once: already stopped refuses now*/,
       );
     });
   }
@@ -283,5 +301,8 @@ const buildText = async (studio: StudioCommands): Promise<string> => {
   }
   return text;
 };
+
+/** why a film not staged shows nothing */
+const notStaged = (state: StageState): string => `The film is not staged (${state.kind}): describeFilm says why.`;
 
 const messageOf = (error: unknown): string => (error instanceof Error) ? error.message : String((error as { message?: unknown; } | null)?.message ?? error);

@@ -4,7 +4,8 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import { exportFilmCommands } from './command';
 import { Director } from './director';
 import { exportFilm, fileName, save } from './export';
-import type { Film } from './film';
+import type { Film, Paint } from './film';
+import { closePairs } from './measure';
 import { Player, type PlayerState } from './player';
 import type { SceneError } from './recorder';
 import { runScene } from './scene-runner';
@@ -51,8 +52,13 @@ const loopButton = element<HTMLButtonElement>('loopButton');
 const exportButton = element<HTMLButtonElement>('exportButton');
 
 // == Instances ===================================================================
+/** a color the page's style names (a custom property), as a plan's marks take it */
+const styled = (property: string): string => getComputedStyle(document.documentElement).getPropertyValue(property).trim();
+/** a plan's marks in the timeline's colors: each actor's row, and the camera's */
+const paint: Paint = { actor: index => styled(actorColor(index)), camera: styled('--brick-azure') };
+
 const source = new SceneSource();
-const studios = new Studios();
+const studios = new Studios(paint);
 const director = new Director(studios, runScene, { show: next => showFilm(next), error: next => showError(next) });
 const player = new Player(index => studios.show(index));
 const timeline = new Timeline(element('timeline'), { seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle() });
@@ -72,10 +78,17 @@ let exporting: { cancelled: boolean; } | undefined;
 const showFilm = (next: Film) => {
   film = next;
   player.setFilm(next);
-  timeline.show(next);
+  showTimeline();
   strip.show(next);
   showSheet();
   showStatus();
+};
+
+/** the timeline of the film, marking the actors that come close once the stage has
+ *  sized them */
+const showTimeline = () => {
+  const stage = studios.stageState;
+  timeline.show(film, (film && (stage.kind === 'staged') && (studios.film?.scene === film.scene)) ? closePairs(film, stage.sizes) : []);
 };
 
 const showError = (next: SceneError | undefined) => {
@@ -219,7 +232,7 @@ studios.state$.subscribe((stage: StageState) => {
   showChip();
   showStatus();
   showSheet();
-  if(stage.kind === 'staged') void developTrack();
+  if(stage.kind === 'staged') { showTimeline()/*the actors sized*/; void developTrack(); }
 });
 studios.studios$.subscribe(() => { showChip(); showStatus(); void director.restage(); })/*new studios: the scene staged again on them*/;
 
@@ -239,7 +252,7 @@ source.text$.pipe(map(({ code }) => code), distinctUntilChanged(), debounceTime(
 source.init(charmiq);
 studios.init(charmiq);
 if(charmiq) {
-  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, player, shown: index => studios.whenShown(index) });
+  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view) });
 } /* else -- standalone: no Charm reaches the film */
 showSheet();
 showStatus();

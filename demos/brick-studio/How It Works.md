@@ -154,11 +154,12 @@ A Charm drives the Studio through these:
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
 | `setFidelity` | sets the look, from Draft to Path traced, as the Look slider does |
 | `describeStage` | whether a scene is staged, whether the person went back to the build since, and whether the studio holds a build |
-| `stage` | shows a scene in place of the build: its set (the build, or LDraw text) and its actors, each a component of the set or a dressed part |
+| `stage` | shows a scene in place of the build: its set (the build, or LDraw text) and its actors, each a component of the set or a dressed part; answers each actor's box (`sizes`). A film's `marks` are what a plan view draws over the set |
 | `frame` | shows one moment of the staged scene: each actor where its shot puts it, through a camera; `capture` answers it as an image, for Applications |
-| `loadReel` | loads a page of a film's frames into the stage, for Applications (`stage` with a `reel` first) |
+| `loadReel` | loads a page of a film's frames into the stage, for Applications (`stage` with a `reel` first); a frame's views are cameras, or plans looking straight down over an area, north up, the film's paths, names and camera drawn over it |
 | `show` | shows a frame of the film: at once, the newest asked; with `capture`, that exact frame as an image, its fade and title drawn |
-| `thumbnail` | a small picture of a frame of the film, the frame shown left as it is |
+| `thumbnail` | a small picture of a frame of the film, through one of its views when named, the frame shown left as it is |
+| `storyboard` | shows up to 12 frames of the film, each captioned, on the sheet `lookAround` uses, for a screenshot to read; the film's next frame closes it |
 | `unstage` | shows the build again |
 | `getModel` / `setModel` | reads the build as LDraw text, a page of lines at a time, or replaces it (a file of components kept as written) |
 | `listDesigns` | the designs in your designs folder, each by `name` and `uri` |
@@ -194,11 +195,12 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog and its folder chooser |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
 | [`src/frame-request.ts`](charmiq://./src/frame-request.ts) | a frame drawn once, at the next animation frame or after a moment when the Studio is out of view |
-| [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the effects and the path tracer |
+| [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the effects and the path tracer; a film's fade, titles and plans drawn over the stage |
 | [`src/step-control.ts`](charmiq://./src/step-control.ts) | playing the building steps |
 | [`src/fidelity-control.ts`](charmiq://./src/fidelity-control.ts) | the Look slider |
 | [`src/ground-control.ts`](charmiq://./src/ground-control.ts) | the ground swatch and its colors |
-| [`src/look-around.ts`](charmiq://./src/look-around.ts) | the build from four sides at once |
+| [`src/sheet.ts`](charmiq://./src/sheet.ts) | the sheet over the stage: pictures in a grid, each captioned, for one screenshot |
+| [`src/look-around.ts`](charmiq://./src/look-around.ts) | the build from four sides at once, on the sheet |
 | [`src/parts/`](charmiq://./src/parts) | the packed parts (generated): `built-in.ldr` comes with the Studio, each other family is a resource read when first shown |
 | [`src/parts.generated.ts`](charmiq://./src/parts.generated.ts) | each part's footprint, height, studs and fill, measured, and the family each is read from (generated) |
 | [`tools/pack-parts.ts`](charmiq://./tools/pack-parts.ts) | regenerates the parts, the measurements and the manifest's resources |

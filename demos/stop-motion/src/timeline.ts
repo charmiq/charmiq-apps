@@ -1,9 +1,12 @@
-import type { Film } from './film';
+import { cameraShots, type Film } from './film';
+import type { ClosePair } from './measure';
 import type { CameraKey, Key, RecordedCamera, Span, Title } from './recorder';
 
 // the timeline: one row per track (the camera, each view, each actor, the fade and
 // the titles), each key a diamond at its time and each function of time a band over
-// its span, under a ruler of seconds and frames. A press or a drag anywhere on the
+// its span, a camera's shots as alternating bands from cut to cut, and a notch on
+// both actors' rows where two come closest when they are close, under a ruler of
+// seconds and frames. A press or a drag anywhere on the
 // ruler or the rows scrubs the film; a key's diamond seeks to it and says what it
 // sets. The keyboard steps frames (arrows), jumps to the ends (Home, End) and plays
 // (Space)
@@ -19,8 +22,14 @@ export type TimelineHost = Readonly<{
   toggle: () => void;
 }>;
 
-/** a row's marks: keys at their times and bands over their spans */
-type Row = Readonly<{ name: string; note?: string; color: string; keys: ReadonlyArray<Readonly<{ time: number; label: string; face?: true; }>>; bands: ReadonlyArray<Readonly<{ from: number; to: number; label: string; kind: 'path' | 'wobble' | 'fade' | 'title'; strength?: number; }>>; }>;
+/** a row's marks: keys at their times, bands over their spans (every other shot
+ *  `alternate`), and notches where its actor comes close to another */
+type Row = Readonly<{
+  name: string; note?: string; color: string;
+  keys: ReadonlyArray<Readonly<{ time: number; label: string; face?: true; }>>;
+  bands: ReadonlyArray<Readonly<{ from: number; to: number; label: string; kind: 'path' | 'wobble' | 'fade' | 'title' | 'shot'; strength?: number; alternate?: true; }>>;
+  notches?: ReadonlyArray<Readonly<{ time: number; label: string; }>>;
+}>;
 
 // == Colors ======================================================================
 /** the color (a CSS custom property) of the actor at `index` in the scene */
@@ -42,8 +51,9 @@ export class Timeline {
   }
 
   // == Film ======================================================================
-  /** draws a film's tracks, or the empty timeline for none */
-  public show(film: Film | undefined): void {
+  /** draws a film's tracks, or the empty timeline for none, with the actors that come
+   *  close once the stage has sized them */
+  public show(film: Film | undefined, close: ReadonlyArray<ClosePair> = []): void {
     this.film = film;
     this.root.replaceChildren();
     this.root.classList.toggle('is-empty', !film);
@@ -67,8 +77,8 @@ export class Timeline {
     head.append(element('span', 'row-name'), ruler);
 
     const rows = [
-      cameraRow('Camera', 'camera', scene.camera, scene.fps),
-      ...scene.views.map(view => cameraRow(`View ${view.name}`, 'view', view, scene.fps)),
+      cameraRow('Camera', 'camera', scene.camera, scene.fps, length),
+      ...scene.views.map(view => cameraRow(`View ${view.name}`, view.plan ? 'plan' : 'view', view, scene.fps, length)),
       ...scene.actors.map((actor, index): Row => ({
         name: actor.name,
         note: actor.ride ? `rides ${actor.ride.parent}` : ((sourceNote(actor.source) !== actor.name) ? sourceNote(actor.source) : undefined),
@@ -78,6 +88,7 @@ export class Timeline {
           ...(actor.faces ?? []).map(key => ({ time: key.time, label: `${actor.name} at ${seconds2(key.time)} · face ${key.face}`, face: true as const })),
         ],
         bands: actor.spans.map(span => band(span, scene.fps)),
+        notches: close.filter(pair => pair.actors.includes(actor.name)).map(pair => ({ time: pair.time, label: closeness(pair) })),
       })),
       fadeRow(scene.fade),
       ...((scene.titles.length > 0) ? [titleRow(scene.titles)] : []),
@@ -105,12 +116,18 @@ export class Timeline {
     if(row.note) name.append(Object.assign(element('small', 'row-note'), { textContent: row.note }));
     const lane = element('div', 'lane');
     for(const each of row.bands) {
-      const mark = element('span', `band band--${each.kind}`);
+      const mark = element('span', `band band--${each.kind}${each.alternate ? ` band--${each.kind}-alternate` : ''}`);
       mark.style.left = at(each.from);
       mark.style.width = `calc(${at(each.to)} - ${at(each.from)})`;
       if(each.strength !== undefined) mark.style.setProperty('--strength', String(each.strength));
       mark.title = each.label;
-      if(each.kind === 'title') mark.textContent = each.label;
+      if((each.kind === 'title') || (each.kind === 'shot')) mark.textContent = each.label;
+      lane.append(mark);
+    }
+    for(const notch of row.notches ?? []) {
+      const mark = element('span', 'notch');
+      mark.style.left = at(notch.time);
+      mark.title = notch.label;
       lane.append(mark);
     }
     for(const key of row.keys) {
@@ -166,10 +183,13 @@ export class Timeline {
 }
 
 // == Rows ========================================================================
-const cameraRow = (name: string, kind: 'camera' | 'view', camera: RecordedCamera, fps: number): Row => ({
-  name, color: '--brick-azure', note: (kind === 'view') ? 'a second studio' : undefined,
+const cameraRow = (name: string, kind: 'camera' | 'view' | 'plan', camera: RecordedCamera, fps: number, length: number): Row => ({
+  name, color: '--brick-azure', note: (kind === 'view') ? 'a second studio' : (kind === 'plan') ? 'a plan from above' : undefined,
   keys: camera.keys.map(key => ({ time: key.time, label: `${name} at ${seconds2(key.time)} · ${describeCamera(key)}` })),
-  bands: camera.spans.map(span => band(span, fps)),
+  bands: [
+    ...((camera.keys.length > 0) ? cameraShots(camera, length).map((shot, index) => ({ from: shot.from, to: shot.to, label: shot.name ?? '', kind: 'shot' as const, ...((index % 2) ? { alternate: true as const } : {}) })) : []),
+    ...camera.spans.map(span => band(span, fps)),
+  ],
 });
 
 const fadeRow = (keys: ReadonlyArray<Key>): Row => ({
@@ -201,12 +221,16 @@ const describeKey = (key: Key): string => {
 };
 
 const describeCamera = (key: CameraKey): string => {
-  const parts: string[] = [];
+  const parts: string[] = (key.ease === 'hold') ? [(key.name !== undefined) ? `cuts to ${key.name}` : 'cuts'] : [];
   if(key.place) parts.push(('orbit' in key.place) ? `orbits at ${round(key.place.orbit.angle)}°, ${round(key.place.orbit.distance)} studs out` : `stands at x ${round(key.place.point.x)} z ${round(key.place.point.z)} height ${round(key.place.point.height)}`);
   if(key.target) parts.push(('actor' in key.target) ? `looks at ${key.target.actor}` : `looks at x ${round(key.target.point.x)} z ${round(key.target.point.z)}`);
   if(key.fov !== undefined) parts.push(`${round(key.fov)}° lens`);
-  return [...parts, key.ease].join(' · ');
+  return [...parts, ...((key.ease === 'hold') ? [] : [key.ease])].join(' · ');
 };
+
+/** how close two actors come, in words */
+const closeness = ({ actors: [a, b], time, gap }: ClosePair): string =>
+  (gap > 0) ? `${a} and ${b} come within ${round(gap)} studs at ${seconds2(time)}` : `${a} touches ${b} at ${seconds2(time)}`;
 
 const sourceNote = (source: Readonly<Record<string, unknown>>): string => (typeof source.component === 'string') ? source.component : [source.color, source.part].filter(Boolean).join(' ');
 const round = (value: number) => Math.round(value * 100) / 100;

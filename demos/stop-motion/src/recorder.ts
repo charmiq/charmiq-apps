@@ -10,6 +10,8 @@ export type Ease = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'hold';
 
 /** a point of the scene: x east and z north in studs, height up in plates */
 export type Point = Readonly<{ x: number; z: number; height: number; }>;
+/** an area of the scene in whole studs: its south-west corner and size */
+export type Area = Readonly<{ x: number; z: number; width: number; depth: number; }>;
 
 /** an actor's key: its channels at a time (x, z, height, yaw, pitch, roll, visible
  *  and each limb as `pose.<limb>`), eased into from the key before */
@@ -27,7 +29,8 @@ export type Target = Readonly<{ point: Point; } | { actor: string; height: numbe
 /** where the camera stands: a point, or around its target at `angle` degrees (0
  *  south of it, 90 east), `distance` studs out and `height` plates above it */
 export type CameraPlace = Readonly<{ point: Point; } | { orbit: Readonly<{ angle: number; distance: number; height: number; }>; }>;
-export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; ease: Ease; line?: number; }>;
+/** a camera's key; a cut is a held key, and `name` names the shot it starts */
+export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; ease: Ease; name?: string; line?: number; }>;
 
 export type Title = Readonly<{ from: number; to: number; text: string; style: 'card' | 'caption'; line?: number; }>;
 
@@ -62,8 +65,9 @@ export type Recorded = Readonly<{
   floor?: Readonly<{ x: number; z: number; width: number; depth: number; }>;
   actors: ReadonlyArray<RecordedActor>;
   camera: RecordedCamera;
-  /** more cameras, by name: each a second studio's view of the scene */
-  views: ReadonlyArray<RecordedCamera & Readonly<{ name: string; }>>;
+  /** more cameras, by name: each a second studio's view of the scene. A plan looks
+   *  straight down over `area`, or over everything the film shows when it names none */
+  views: ReadonlyArray<RecordedCamera & Readonly<{ name: string; plan?: Readonly<{ area?: Area; }>; }>>;
   fade: ReadonlyArray<Key>;
   titles: ReadonlyArray<Title>;
   /** what the scene logged (console.log) */
@@ -82,6 +86,7 @@ export const record = (code: string): Recorded => {
   const MAX_FPS = 60;
   const MAX_ACTORS = 64;
   const MAX_KEYS = 2_000;
+  const MAX_NAME = 40/*characters*/;
   const EASES = ['linear', 'ease-in', 'ease-out', 'ease-in-out', 'hold'];
   const LIMBS = ['head', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
   const ACTOR_CHANNELS = ['x', 'z', 'height', 'yaw', 'pitch', 'roll', 'visible', ...LIMBS.map(limb => `pose.${limb}`)];
@@ -135,6 +140,8 @@ export const record = (code: string): Recorded => {
   const settings = { title: 'Untitled film', fps: 24, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined };
   const actors: Array<{ name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; faces: FaceKey[]; spans: Array<() => Span>; line?: number; }> = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; }>();
+  /** the views that are plans, each with the area it names, if any */
+  const plans = new Map<string, { area?: Area; }>();
   const fadeKeys: Key[] = [];
   const titles: Title[] = [];
   const logs: string[] = [];
@@ -245,34 +252,47 @@ export const record = (code: string): Recorded => {
   };
 
   // .. Cameras ...................................................................
-  /** a camera: keys of where it stands, what it looks at and its lens, and shakes */
+  /** a camera: keys of where it stands, what it looks at and its lens, cuts, and
+   *  shakes */
   const cameraNamed = (name: string, label: string) => {
     const { keys: cameraKeys, spans: cameraSpans } = cameras.get(name) ?? cameras.set(name, { keys: [], spans: [] }).get(name)!;
+    /** refuses a key on a plan, which looks down over the whole scene */
+    const unplanned = () => { if(plans.has(name)) fail(`${label} is a plan: it takes no keys`); };
+    /** a key's values at a time, eased into, starting a named shot when it cuts */
+    const key = (verb: string, time: unknown, values: unknown, ease: Ease, shot?: string) => {
+      unplanned();
+      counted();
+      const at = toTime(time, `${label}.${verb}`);
+      const what = `${label}.${verb}(${at})`;
+      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov }`);
+      const { position, orbit, target, fov, ...rest } = values as Record<string, unknown>;
+      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov)`);
+      if((position !== undefined) && (orbit !== undefined)) fail(`${what}: a position or an orbit, not both`);
+      let place: CameraPlace | undefined;
+      if(position !== undefined) place = { point: toPoint(position, `${what}.position`) };
+      if(orbit !== undefined) {
+        const { angle, distance, height } = (orbit ?? {}) as Record<string, unknown>;
+        if(![angle, distance, height].every(isFiniteNumber) || ((distance as number) <= 0)) fail(`${what}.orbit is { angle, distance, height }: degrees (0 south of the target, 90 east), studs out and plates up`);
+        place = { orbit: { angle: angle as number, distance: distance as number, height: height as number } };
+      } /* else -- a position, or where the key before left it */
+      const aim = toTarget(target, `${what}.target`);
+      if((fov !== undefined) && (!isFiniteNumber(fov) || ((fov as number) < 5) || ((fov as number) > 120))) fail(`${what}.fov is degrees from 5 to 120`);
+      cameraKeys.push({ time: at, ...(place ? { place } : {}), ...(aim ? { target: aim } : {}), ...((fov !== undefined) ? { fov: fov as number } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), line: callerLine() });
+    };
     const camera = {
       /** a key: where the camera stands (a point or an orbit round its target), what
        *  it looks at and its lens at `time`, each left to the key before when left out */
-      at: (time: unknown, values: unknown, ease?: unknown) => {
-        counted();
-        const at = toTime(time, `${label}.at`);
-        const what = `${label}.at(${at})`;
-        if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov }`);
-        const { position, orbit, target, fov, ...rest } = values as Record<string, unknown>;
-        if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov)`);
-        if((position !== undefined) && (orbit !== undefined)) fail(`${what}: a position or an orbit, not both`);
-        let place: CameraPlace | undefined;
-        if(position !== undefined) place = { point: toPoint(position, `${what}.position`) };
-        if(orbit !== undefined) {
-          const { angle, distance, height } = (orbit ?? {}) as Record<string, unknown>;
-          if(![angle, distance, height].every(isFiniteNumber) || ((distance as number) <= 0)) fail(`${what}.orbit is { angle, distance, height }: degrees (0 south of the target, 90 east), studs out and plates up`);
-          place = { orbit: { angle: angle as number, distance: distance as number, height: height as number } };
-        } /* else -- a position, or where the key before left it */
-        const aim = toTarget(target, `${what}.target`);
-        if((fov !== undefined) && (!isFiniteNumber(fov) || ((fov as number) < 5) || ((fov as number) > 120))) fail(`${what}.fov is degrees from 5 to 120`);
-        cameraKeys.push({ time: at, ...(place ? { place } : {}), ...(aim ? { target: aim } : {}), ...((fov !== undefined) ? { fov: fov as number } : {}), ease: toEase(ease), line: callerLine() });
+      at: (time: unknown, values: unknown, ease?: unknown) => { key('at', time, values, toEase(ease)); return camera; },
+      /** a cut: the camera jumps to these values at `time`, held there from the key
+       *  before; `name` names the shot it starts */
+      cut: (time: unknown, values: unknown, name?: unknown) => {
+        if((name !== undefined) && ((typeof name !== 'string') || (name.trim().length < 1) || (name.length > MAX_NAME))) fail(`${label}.cut(${String(time)}): a shot's name is 1 to ${MAX_NAME} characters`);
+        key('cut', time, values, 'hold', name as string | undefined);
         return camera;
       },
       /** a handheld shake: noise added to where it stands, `amount` studs at most */
       shake: (from: unknown, to: unknown, amount: unknown = 0.3, rate: unknown = 6) => {
+        unplanned();
         const [start, end] = [toTime(from, `${label}.shake`), toTime(to, `${label}.shake`)];
         if(!isFiniteNumber(amount) || !isFiniteNumber(rate)) fail(`${label}.shake's amount and rate are numbers`);
         const line = callerLine();
@@ -286,10 +306,19 @@ export const record = (code: string): Recorded => {
   };
   /** the film's camera */
   const camera = cameraNamed('main', 'camera');
-  /** another camera, by name: a second studio shows the scene through it */
-  const view = (name: unknown) => {
+  /** another camera, by name: a second studio shows the scene through it. With
+   *  `plan`, it looks straight down over the area given, or over all the film shows */
+  const view = (name: unknown, options: Record<string, unknown> = {}) => {
     if((typeof name !== 'string') || !/^[a-z][a-z0-9-]{0,23}$/.test(name) || (name === 'main')) fail('a view is named in lower case letters, digits and dashes (not main)');
-    return cameraNamed(name as string, `view('${String(name)}')`);
+    const label = `view('${String(name)}')`;
+    const { plan } = options;
+    if(plan === true) plans.set(name as string, {});
+    else if(plan !== undefined) {
+      const { x, z, width, depth } = ((typeof plan === 'object') && (plan !== null)) ? plan as Record<string, unknown> : {};
+      if(![x, z, width, depth].every(Number.isInteger) || ((width as number) < 1) || ((depth as number) < 1)) fail(`${label}'s plan is true or { x, z, width, depth }: whole studs, its south-west corner and size`);
+      plans.set(name as string, { area: { x: x as number, z: z as number, width: width as number, depth: depth as number } });
+    } /* else -- a camera of keys */
+    return cameraNamed(name as string, label);
   };
 
   // .. Fade and Titles ...........................................................
@@ -365,12 +394,14 @@ export const record = (code: string): Recorded => {
   for(const [name, { keys }] of cameras) for(const key of keys) if(key.target && ('actor' in key.target) && !actors.some(other => other.name === (key.target as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) looks at '${(key.target as { actor: string; }).actor}', which is no actor`, key.line);
   const times = [...actors.flatMap(each => [...each.keys, ...each.faces].map(key => key.time)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...titles.map(each => each.to)];
   settings.length ??= Math.max(1, ...times);
-  const byTime = <T extends { time: number; }>(keys: T[]) => [...keys].sort((a, b) => a.time - b.time);
+  /** keys in time order, a held key after any other at its time, so a move may end
+   *  exactly where a cut jumps */
+  const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
   return {
     title: settings.title, fps: settings.fps, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}),
     actors: actors.map(({ name, source, ride, keys, faces, spans, line }) => ({ name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), spans: spans.map(span => span()), ...((line !== undefined) ? { line } : {}) })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()) },
-    views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()) })),
+    views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
     fade: byTime(fadeKeys), titles, logs,
   };
 };

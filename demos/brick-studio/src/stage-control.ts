@@ -2,7 +2,8 @@ import { BehaviorSubject, type Observable } from 'rxjs';
 
 import type { Build } from './build';
 import { partCount, type Model } from './model';
-import { cameraOf, captureOf, castOf, floorOf, reelHeaderOf, reelPageOf, setOf, shotLines, shotsOf, thumbnailOf, viewOf, STAGE_VERSION, type Cast, type ReelFrame, type ReelHeader, type Refusal } from './stage';
+import type { Sheet } from './sheet';
+import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setOf, shotLines, shotsOf, sizesOf, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -14,21 +15,25 @@ import type { Viewer } from './viewer';
 // stage call starts again. The state streams to the film, so it knows at once. Work
 // runs one piece at a time in the order asked (a capture never shares the canvas
 // with a frame shown live), and a new stage, the way back or unstage refuses
-// whatever waits for the reel it ends. The build is never written: an edit made
-// while staged reaches the build, and the strip says the build changed
+// whatever waits for the reel it ends. A storyboard shows frames of the reel on the
+// sheet until the film next shows or stages a frame. The build is never written: an
+// edit made while staged reaches the build, and the strip says the build changed
 // ********************************************************************************
 // == Constants ===================================================================
 const SHOWING = 'Showing a film scene';
 const LEFT = 'The person went back to the build: stage the scene again to go on.';
 const UNSTAGED = 'Nothing is staged: call stage first.';
+const STORYBOARD = 'Your Charm is looking at the film\'s storyboard';
+const BACK_TO_FILM = 'Back to the film';
 
 // == Types =======================================================================
 /** the strip's elements: the strip, what it says and its way back */
 export type StageElements = Readonly<{ root: HTMLElement; note: HTMLElement; back: HTMLButtonElement; }>;
 
 /** what a stage call answers: the actors cast, those among them with wheels to roll,
- *  those refused with why, and the reel's number when one is staged */
-export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; reel?: number; }>;
+ *  those refused with why, each cast actor's box, and the reel's number when one is
+ *  staged */
+export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; reel?: number; }>;
 /** what a frame call answers: how many actors it shows, and the frame captured when
  *  one is asked for */
 export type Framed = Readonly<{ shown: number; image?: ImageBitmap; }>;
@@ -57,6 +62,8 @@ export class StageControl {
   private reels = 0;
   /** the view this screen shows the reel through (the main camera when none) */
   private view: string | undefined;
+  /** what a plan draws over the set, when the stage gave marks */
+  private marks: Marks | undefined;
   /** the person went back to the build since the last stage call */
   private left = false;
   /** the work running, which the next waits for */
@@ -70,7 +77,7 @@ export class StageControl {
   private holds = false;
   private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false });
 
-  public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build) {
+  public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build, private readonly sheet: Pick<Sheet, 'show' | 'hide'>) {
     elements.back.addEventListener('click', () => { this.left = true; this.end(); });
   }
 
@@ -88,17 +95,21 @@ export class StageControl {
 
   /** stages a set (LDraw text, else the build) and casts its actors, showing the set
    *  alone until a frame shows them; a reel header readies the screen for a film
-   *  shown through `view` (else the main camera), drawn at the film's size */
-  public async stage(set: unknown, actors: unknown, floor: unknown, reel: unknown, view: unknown): Promise<Staged> {
+   *  shown through `view` (else the main camera), drawn at the film's size, and
+   *  `marks` are what a plan draws over the set */
+  public async stage(set: unknown, actors: unknown, floor: unknown, reel: unknown, view: unknown, marks: unknown): Promise<Staged> {
     await this.build.whenReady();
     const scene = setOf(set, this.build.getModel());
     const area = floorOf(floor);
     const header = reelHeaderOf(reel);
     const named = viewOf(view);
+    const marked = marksOf(marks);
     const { cast, refused } = castOf(scene, actors);
+    this.sheet.hide()/*a storyboard of the film before*/;
     this.cast = cast;
     this.reel = header ? { id: ++this.reels, header, frames: [] } : undefined;
     this.view = named;
+    this.marks = marked;
     this.wanted = undefined/*a frame of the reel before*/;
     this.left = false;
     this.viewer.showStage(scene, area);
@@ -106,7 +117,7 @@ export class StageControl {
     this.show(SHOWING);
     this.publish({ kind: 'staged', ...(this.reel ? { reel: this.reel.id } : {}) });
     const wheeled = [...cast.actors].filter(([, actor]) => actor.rolls).map(([name]) => name);
-    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((refused.length > 0) ? { refused } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
+    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...(this.reel ? { reel: this.reel.id } : {}) };
   }
 
   /** shows the build again */
@@ -134,6 +145,7 @@ export class StageControl {
     const { loaded } = this.reelNamed(reel);
     const shot = this.frameOf(loaded, frame);
     const size = captureOf(capture);
+    this.sheet.hide()/*the film moves on from its storyboard*/;
     if(!size) {
       const queued = !!this.wanted;
       this.wanted = { reel: loaded.id, frame: frame as number };
@@ -144,7 +156,8 @@ export class StageControl {
     return this.after(async () => {
       const cast = this.ensure(loaded);
       this.applied++;
-      this.viewer.showFrame(shotLines(cast, shot.shots), shot.camera, shot.overlay);
+      const picture = this.pictureOf(loaded, shot, undefined);
+      this.viewer.showFrame(shotLines(cast, shot.shots), picture.camera, picture.overlay);
       const image = await this.viewer.capture(size.width, size.height);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
       this.publish({ kind: 'staged', reel: loaded.id, frame: frame as number });
@@ -152,23 +165,58 @@ export class StageControl {
     });
   }
 
-  /** a loaded frame of the reel as a small picture, the frame shown left as it is */
-  public thumbnail(reel: unknown, frame: unknown, width: unknown, height: unknown): Promise<ImageBitmap> {
+  /** a loaded frame of the reel as a small picture through `view` (the screen's own
+   *  camera when none), the frame shown left as it is */
+  public thumbnail(reel: unknown, frame: unknown, width: unknown, height: unknown, view?: unknown): Promise<ImageBitmap> {
     const { loaded } = this.reelNamed(reel);
     const shot = this.frameOf(loaded, frame);
     const size = thumbnailOf(width, height);
+    const picture = this.pictureOf(loaded, shot, viewOf(view));
     return this.after(async () => {
       const cast = this.ensure(loaded);
-      const image = await this.viewer.thumbnail(shotLines(cast, shot.shots), shot.camera, shot.overlay, size.width, size.height);
+      const image = await this.viewer.thumbnail(shotLines(cast, shot.shots), picture.camera, picture.overlay, size.width, size.height);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while its parts were built*/; }
       return image;
     });
+  }
+
+  /** shows frames of the reel on the sheet, each captioned and drawn through `view`
+   *  (the screen's own camera when none) at the film's shape within its panel;
+   *  answers how many once the sheet shows them, none when the sheet was closed or
+   *  taken first */
+  public async storyboard(reel: unknown, frames: unknown, view: unknown): Promise<Readonly<{ shown: number; }>> {
+    const { loaded } = this.reelNamed(reel);
+    const boards = boardsOf(frames);
+    const named = viewOf(view);
+    const pictures = boards.map(board => this.pictureOf(loaded, this.frameOf(loaded, board.frame), named))/*each frame and the view, known first*/;
+    const columns = (boards.length <= 4) ? 2 : (boards.length <= 9) ? 3 : 4;
+    const panels = boards.map(board => ({ caption: board.caption, alt: `The film at ${board.caption}` }));
+    const shown = await this.sheet.show({ title: STORYBOARD, back: BACK_TO_FILM, columns, panels }, async (width, height) => {
+      const { header } = loaded;
+      const across = Math.min(MAX_THUMBNAIL, width, Math.floor(height * (header.width / header.height)));
+      const size = { width: Math.max(1, across), height: Math.max(1, Math.round(across * (header.height / header.width))) };
+      const images: ImageBitmap[] = [];
+      try {
+        for(const [index, board] of boards.entries()) {
+          const cast = this.ensure(loaded);
+          const shot = loaded.frames[board.frame];
+          images.push(await this.after(() => this.viewer.thumbnail(shotLines(cast, shot.shots), pictures[index].camera, pictures[index].overlay, size.width, size.height)));
+          this.ensure(loaded)/*ended while it was drawn*/;
+        }
+      } catch(error) {
+        images.forEach(image => image.close())/*the pictures drawn so far, which no sheet takes*/;
+        throw error;
+      }
+      return images;
+    });
+    return { shown: shown ? boards.length : 0 };
   }
 
   // == Frames ====================================================================
   /** shows a frame: each actor given where its shot puts it, any other hidden, seen
    *  through the camera; captured at a size when one is given */
   public frame(actors: unknown, camera: unknown, capture: unknown): Promise<Framed> {
+    this.sheet.hide()/*the stage moves on from a storyboard*/;
     return this.after(async () => {
       const cast = this.cast;
       if(!cast) throw new Error(this.ended());
@@ -207,7 +255,8 @@ export class StageControl {
     if(!loaded || !cast || (loaded.id !== reel)) return/*the reel ended while it waited*/;
     const shot = loaded.frames[frame];
     const applied = ++this.applied;
-    this.viewer.showFrame(shotLines(cast, shot.shots), shot.camera, shot.overlay);
+    const picture = this.pictureOf(loaded, shot, undefined);
+    this.viewer.showFrame(shotLines(cast, shot.shots), picture.camera, picture.overlay);
     void this.viewer.whenSettled().then(() => { if((this.reel === loaded) && (this.applied === applied)) this.publish({ kind: 'staged', reel, frame }); });
   }
 
@@ -226,6 +275,12 @@ export class StageControl {
     return loaded.frames[frame as number];
   }
 
+  /** a reel's frame as this screen draws it through `view` (its own camera when
+   *  none), a plan's marks with it */
+  private pictureOf(loaded: Reel, shot: ReelFrame, view: string | undefined) {
+    return pictureOf(shot, view, this.marks, loaded.header.width / loaded.header.height);
+  }
+
   /** the cast of a reel still staged, or why it is no longer */
   private ensure(loaded: Reel): Cast {
     if(!this.cast || (this.reel !== loaded)) throw new Error(this.ended());
@@ -235,8 +290,9 @@ export class StageControl {
   /** why nothing staged can be shown */
   private ended(): string { return this.left ? LEFT : this.cast ? 'The reel was replaced: show a frame of the reel staged.' : UNSTAGED; }
 
-  /** ends the stage: the build shown again, the strip hidden */
+  /** ends the stage: the build shown again, the strip and any storyboard hidden */
   private end(): void {
+    this.sheet.hide();
     this.cast = undefined/*nothing staged*/;
     this.reel = undefined;
     this.wanted = undefined;

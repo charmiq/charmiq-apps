@@ -62,16 +62,16 @@ const driver = actor('driver', { part: 'figure', color: 'blue', hat: { part: 'co
 driver.ride(car, { x: 0, z: 1.5, height: 5 })
 const cat = actor('cat', { part: 'cat', color: 'orange' })
 
-// shot by shot: each cut a camera key held up to its time
-const CAT = 4.5, STOPS = 7, BEHIND = 6.5, SEES = 7.2, SIDE = 8.6, RAMP = 8.6, TAKEOFF = 8.95, FLIGHT = 9.3, JOY = 10.6, WATCH = 12.6
+// the beats, in seconds
+const CAT = 4.5, STOPS = 7, BEHIND = 6.5, SEES = 6.9, SIDE = 8.6, RAMP = 8.6, TAKEOFF = 8.95, FLIGHT = 9.3, JOY = 10.6, WATCH = 12.6
 
 // .. the car: down a lane beside the ramp, then away from the cat onto it ............
 car.at(0, { x: -6, z: 80, height: 0 })
    .at(RAMP, { z: 6, height: 0 }, 'linear')
    .at(TAKEOFF, { z: 0.5, height: 6 }, 'linear')
 car.at(SEES, { x: -6, yaw: 0 })
-   .at(7.6, { x: -1.5, yaw: 30 }, 'ease-out')
-   .at(8.15, { x: 0.6, yaw: -10 }, 'ease-in-out')
+   .at(SEES + 0.4, { x: -1.5, yaw: 30 }, 'ease-out')
+   .at(SEES + 1.1, { x: 0.6, yaw: -10 }, 'ease-in-out')
    .at(RAMP, { x: 0, yaw: 0 }, 'ease-out')
 car.at(RAMP, { pitch: 0 }).at(RAMP + 0.12, { pitch: 21.8 }, 'ease-out')
 
@@ -102,27 +102,27 @@ cat.path(CAT, STOPS, (u, t) => ({ height: 0.5 * Math.abs(Math.sin(t * 9)), pitch
 cat.at(7.55, { height: 0 }).at(7.75, { height: 1.8 }, 'ease-out').at(7.95, { height: 0 }, 'ease-in')
 cat.at(WATCH + 0.1, { yaw: -90 }).at(WATCH + 0.7, { yaw: 0 }, 'ease-out')
 
-// .. the camera ......................................................................
-camera.at(0, { orbit: { angle: 250, distance: 34, height: 9 }, target: { actor: car, height: 4 }, fov: 32 })
-      .at(CAT - 2.01, { orbit: { angle: 236, distance: 30, height: 8 } }, 'linear')
-      // close on the driver, from the front
-      .at(CAT - 2, { orbit: { angle: -15, distance: 11, height: 3 }, target: { actor: driver, height: 8 }, fov: 26 }, 'hold')
-      .at(CAT - 0.01, { orbit: { angle: 15, distance: 10, height: 3 } }, 'linear')
-      // low, by the cat, the car coming up its lane
-      .at(CAT, { position: { x: -20, z: 4, height: 2.5 }, target: { actor: cat, height: 2.5 }, fov: 34 }, 'hold')
-      .at(BEHIND - 0.01, { position: { x: -18, z: 4, height: 2.5 } }, 'linear')
-      // over the driver's shoulder, the cat ahead
-      .at(BEHIND, { orbit: { angle: 180, distance: 13, height: 16 }, target: { actor: driver, height: 6 }, fov: 36 }, 'hold')
-      .at(SIDE - 0.01, { orbit: { angle: 190, distance: 12, height: 15 } }, 'linear')
+// .. the camera: shot by shot, each move ending where the next shot cuts in ..........
+camera.cut(0, { orbit: { angle: 250, distance: 34, height: 9 }, target: { actor: car, height: 4 }, fov: 32 }, 'the road')
+      .at(CAT - 2, { orbit: { angle: 236, distance: 30, height: 8 } }, 'linear')
+      .cut(CAT - 2, { orbit: { angle: -15, distance: 11, height: 3 }, target: { actor: driver, height: 8 }, fov: 26 }, 'the driver')
+      .at(CAT, { orbit: { angle: 15, distance: 10, height: 3 } }, 'linear')
+      .cut(CAT, { position: { x: -20, z: 4, height: 2.5 }, target: { actor: cat, height: 2.5 }, fov: 34 }, 'the cat')
+      .at(BEHIND, { position: { x: -18, z: 4, height: 2.5 } }, 'linear')
+      .cut(BEHIND, { orbit: { angle: 180, distance: 13, height: 16 }, target: { actor: driver, height: 6 }, fov: 36 }, 'over his shoulder')
+      .at(SIDE, { orbit: { angle: 190, distance: 12, height: 15 } }, 'linear')
       // wide from the side for the ramp, then round to the front in the air
-      .at(SIDE, { orbit: { angle: 270, distance: 26, height: 6 }, target: { actor: car, height: 4 }, fov: 32 }, 'hold')
+      .cut(SIDE, { orbit: { angle: 270, distance: 26, height: 6 }, target: { actor: car, height: 4 }, fov: 32 }, 'the ramp')
       .at(FLIGHT, { orbit: { angle: 280, distance: 22, height: 6 }, target: { actor: driver, height: 8 } })
       .at(9.8, { orbit: { angle: 330, distance: 15, height: -2 }, fov: 28 }, 'ease-in-out')
       .at(JOY, { orbit: { angle: 334, distance: 14, height: -2 } }, 'linear')
-      .at(WATCH - 0.01, { orbit: { angle: 346, distance: 11, height: -1 } }, 'linear')
-      // the cat watches him go
-      .at(WATCH, { position: { x: -10, z: 24, height: 3 }, target: { x: -4, z: 6, height: 10 }, fov: 42 }, 'hold')
+      .at(WATCH, { orbit: { angle: 346, distance: 11, height: -1 } }, 'linear')
+      .cut(WATCH, { position: { x: -10, z: 24, height: 3 }, target: { x: -4, z: 6, height: 10 }, fov: 42 }, 'the cat watches')
 camera.shake(TAKEOFF, TAKEOFF + 0.35, 0.25, 9)
+
+// the scene from above, framed on the cat, the swerve and the ramp: a second Brick
+// Studio shows it, and a storyboard through it maps each moment
+view('plan', { plan: { x: -40, z: -16, width: 72, depth: 44 } })
 
 fade.out(13.6, 14.2)
 title(14.0, 14.6, 'THE JUMP')
@@ -153,9 +153,11 @@ title(14.0, 14.6, 'THE JUMP')
 - Press **Back to the build** in the studio to work on the set: the film waits until you press **Stage again**.
 - Press **Export MP4** to save the film.
 - Change the scene: make the car leave the ramp faster, or the camera swing the other way. The timeline changes as you type.
+- Add a second Brick Studio below this one, its build empty: it shows the scene's plan, the whole jump from above with every path and where the camera stands.
 
 Or open the chat on this document and ask:
 
+- *Show me the storyboard of the jump.*
 - *Start the camera high above the ramp, then drop it behind the car as it takes off.*
 - *Add a second car that chases the first one up the ramp.*
 - *Build a castle gate in the studio, then film a knight riding out of it.*

@@ -18,8 +18,10 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | `a.wobble(value, amount, { rate, from, to })` | smooth noise added to one value: `amount` at most, `rate` swings a second |
 | `a.ride(other, { x, z, height })` | stands at an offset in another actor's frame and turns with it; its own position and turn add to the ride |
 | `camera.at(time, { position \| orbit, target, fov }, ease)` | the camera: standing at a point, or orbiting its target (`{ angle, distance, height }`: angle 0 south of it, 90 east), looking at a point or an actor (`target: car`, or `{ actor: car, height }` to look higher), through a lens of `fov` degrees (32) |
+| `camera.cut(time, { position \| orbit, target, fov }, name)` | a cut: the camera jumps to these values at `time`, starting a new shot, named for the timeline and storyboards |
 | `camera.shake(from, to, amount, rate)` | a handheld shake |
 | `view(name)` | another camera, used the same way: a second Brick Studio in the document shows the scene through it |
+| `view(name, { plan: true })` | a plan: the scene from straight above, north up, with every actor's path and the camera drawn over it. It takes no keys; `{ plan: { x, z, width, depth } }` frames an area instead of everything the film shows |
 | `fade.at(time, value)`, `fade.out(from, to)`, `fade.in(from, to)` | the fade to black: 0 shows the frame, 1 is black |
 | `title(from, to, text, { style })` | words over the film: a full `card`, or a `caption` along the foot |
 | `arc(t, up, gravity)`, `noise(t)`, `lerp(a, b, u)` | a jump's height in plates after `t` seconds, smooth noise from -1 to 1, and a blend |
@@ -29,12 +31,14 @@ An actor's values are `x`, `z`, `height`, `yaw` (clockwise seen from above), `pi
 
 An actor with wheels rolls them on its own: they turn by the distance it moves along its own north.
 
+A shot runs from one cut to the next. A move may end exactly where the next shot cuts in: `.at(4.5, { orbit: { angle: 15 } }, 'linear').cut(4.5, { position: ... })` moves to the end of one shot, then cuts. An orbit's angle eases by the numbers written, so 345 to 15 swings back through 180 while −15 to 15 swings through 0; a plan shows which way a swing goes.
+
 
 ## The Screen
 
 Each time the scene runs, Stop Motion turns it into a reel, every frame of the film as data, and loads it into Brick Studio once. From then on the timeline only names a frame and the studio shows it: playing, scrubbing and seeking all happen in the studio, the fade and the titles drawn there too. The film plays in the studio while the timeline is scrolled out of view.
 
-The studio holding a build is the main one: its build is the set, and its camera is the film's. A Brick Studio with no build of its own is another screen, showing the same set through the scene's next `view`. When two studios both hold a build, the film waits until one of them is emptied.
+The studio holding a build is the main one: its build is the set, and its camera is the film's. A Brick Studio with no build of its own is another screen, showing the same set through the scene's next `view`: give the scene a plan view, and a second studio is the film's map. When two studios both hold a build, the film waits until one of them is emptied.
 
 The strip under the timeline is the film's picture track: a small picture of each frame, taken from the studio while the film is neither playing nor exporting, without moving the picture the studio shows.
 
@@ -45,7 +49,7 @@ While the film is shown, Brick Studio says so and offers a way back to its build
 
 ## The Timeline
 
-A row per track: the camera, each view, each actor, the fade and the titles. A key is a diamond, a path a solid band, a wobble or shake a striped band, the fade a ramp to black, a title its words. Drag anywhere on the ruler or the rows to scrub; a diamond seeks to its key and says what it sets. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, and Space plays.
+A row per track: the camera, each view, each actor, the fade and the titles. A key is a diamond, a path a solid band, a wobble or shake a striped band, the fade a ramp to black, a title its words. A camera's shots alternate shades from cut to cut, each named. Where two actors come within 2 studs of each other, a red notch on both their rows marks the moment they come closest. Drag anywhere on the ruler or the rows to scrub; a diamond seeks to its key and says what it sets. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, and Space plays.
 
 
 ## The Commands
@@ -54,9 +58,12 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 
 | Command | Does |
 |---|---|
-| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views and its log, or the scene's mistake and its line |
+| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots, every two actors that come within 2 studs, and its log, or the scene's mistake and its line |
 | `seek` | shows a moment (`time` in seconds, or `frame` from 0) in the studios, answering once the studio has drawn it, so a screenshot sees it |
 | `play`, `pause` | the transport |
+| `storyboard` | shows up to 12 moments at once on a sheet over the main studio, each captioned with its time and shot (the middle of each shot when no `times` or `frames` are given), through a `view` when named: a screenshot of the studio reads them all. The film's next move closes it |
+| `measure` | where two actors come closest, over the film or `from` and `to`: the gap between their boxes in studs (each its footprint turned by its yaw and its height; 0 when they touch) and where each stood |
+| `where` | every actor's position and turn, and the camera, at a `time` or `frame` |
 
 A Charm can also stage a still without a film: Brick Studio's own `stage` and `frame` commands put actors anywhere.
 
@@ -71,7 +78,8 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | [`src/recorder.ts`](charmiq://./src/recorder.ts) | runs a scene's code and records it as data |
 | [`src/scene-runner.ts`](charmiq://./src/scene-runner.ts) | the worker a scene runs in |
 | [`src/scene-source.ts`](charmiq://./src/scene-source.ts) | the editor's `scene.js` tab, followed |
-| [`src/film.ts`](charmiq://./src/film.ts) | a recorded scene as a frame per frame (keys, rides, orbits, rolling wheels), and each frame as the studio's reel takes it |
+| [`src/film.ts`](charmiq://./src/film.ts) | a recorded scene as a frame per frame (keys, rides, orbits, rolling wheels, shots, plans), each frame as the studio's reel takes it, and a plan's marks |
+| [`src/measure.ts`](charmiq://./src/measure.ts) | how far apart actors come |
 | [`src/studios.ts`](charmiq://./src/studios.ts) | the Brick Studios found, the main one chosen, the reel staged, each frame shown, each studio's state followed |
 | [`src/player.ts`](charmiq://./src/player.ts) | the playhead and its clock |
 | [`src/timeline.ts`](charmiq://./src/timeline.ts) | the timeline |

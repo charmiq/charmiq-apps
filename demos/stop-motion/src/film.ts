@@ -1,14 +1,15 @@
-import type { CameraPlace, Ease, FaceKey, Key, Point, Recorded, RecordedActor, RecordedCamera, Span, Target, Title } from './recorder';
+import type { Area, CameraPlace, Ease, FaceKey, Key, Point, Recorded, RecordedActor, RecordedCamera, Span, Target, Title } from './recorder';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
 // replaces or adds to its values over its span; a rider stands at its offset in the
 // frame of what it rides, turned with it; the camera stands at a point or orbits its
 // target, the orbit's angle eased so it swings round on its circle; a wheeled
-// actor's wheels roll by the distance it moves along its own north. A film reaches
-// the studios as a reel: each frame's world values, every view's camera, its fade
-// and its title at the opacity it is drawn at, so a studio draws a frame knowing
-// nothing of time
+// actor's wheels roll by the distance it moves along its own north. A plan view
+// looks down over everything the film shows; its marks are each actor's path and the
+// camera's, broken at each cut. A film reaches the studios as a reel: each frame's
+// world values, every view's camera, its fade and its title at the opacity it is
+// drawn at, so a studio draws a frame knowing nothing of time
 // ********************************************************************************
 // == Constants ===================================================================
 const LDU_PER_STUD = 20;
@@ -25,12 +26,20 @@ export const DEFAULT_FOV = 32/*degrees: the studio's own lens*/;
 const TIME_EPSILON = 1e-9/*seconds*/;
 /** how long a title takes to come in and to go */
 const TITLE_EASE = 0.25/*seconds*/;
+/** how far a plan reaches past everything it shows */
+const PLAN_MARGIN = 4/*studs*/;
+/** what a plan's marks name the camera's path */
+const CAMERA_LABEL = 'camera';
 
 // == Types =======================================================================
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 /** an actor in one frame, as the stage's frame takes it */
 export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; face?: string; rolled?: number; }>;
 export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; }>;
+/** a plan: straight down over an area, north up */
+export type PlanCamera = Readonly<{ plan: Area; }>;
+/** the camera a view sees the scene through */
+export type ViewCamera = StageCamera | PlanCamera;
 
 export type FilmFrame = Readonly<{
   index: number;
@@ -39,7 +48,7 @@ export type FilmFrame = Readonly<{
   actors: ReadonlyArray<Shot>;
   camera: StageCamera;
   /** each named view's camera */
-  views: Readonly<Record<string, StageCamera>>;
+  views: Readonly<Record<string, ViewCamera>>;
   /** 0 shows the frame, 1 is black */
   fade: number;
   title?: Title;
@@ -51,10 +60,21 @@ export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>;
 export type ReelFrame = Readonly<{
   actors: ReadonlyArray<Shot>;
   camera: StageCamera;
-  views?: Readonly<Record<string, StageCamera>>;
+  views?: Readonly<Record<string, ViewCamera>>;
   fade?: number;
   title?: Readonly<{ text: string; style: 'card' | 'caption'; opacity: number; }>;
 }>;
+
+/** a camera's shot: from its cut (or the film's start) to the next cut (or the
+ *  film's end), in seconds, named by its cut */
+export type CameraShot = Readonly<{ from: number; to: number; name?: string; }>;
+
+/** what a plan draws over the set: each path labeled and colored, its points on the
+ *  ground (SEE: Brick Studio's stage marks) */
+export type Marks = Readonly<{ paths: ReadonlyArray<Readonly<{ label: string; color: string; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; }>>; }>;
+/** the colors marks are drawn in: an actor's by its place in the scene (its
+ *  timeline row's), and the camera's */
+export type Paint = Readonly<{ actor: (index: number) => string; camera: string; }>;
 
 /** an actor's values in one frame, before any ride */
 type Local = Readonly<{ channels: Readonly<Record<string, number>>; }>;
@@ -98,11 +118,85 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
     });
     const fade = channelAt(scene.fade, 'fade', time) ?? 0;
     const title = scene.titles.find(each => (time >= each.from) && (time < each.to));
-    const views = Object.fromEntries(scene.views.map(view => [view.name, cameraAt(view, index, time, placed)]));
+    const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, cameraAt(view, index, time, placed)]));
     frames.push({ index, time, actors, camera: cameraAt(scene.camera, index, time, placed), views, fade, ...(title ? { title } : {}) });
   }
-  return { scene, frames };
+  if(!scene.views.some(view => view.plan)) return { scene, frames };
+
+  // each plan over the area it names, or over all the film shows
+  const shown = scene.views.some(view => view.plan && !view.plan.area) ? planArea(scene, frames) : undefined/*every plan names its area*/;
+  const plans = new Map(scene.views.flatMap(view => view.plan ? [[view.name, { plan: view.plan.area ?? shown! }] as const] : []));
+  return { scene, frames: frames.map(frame => ({ ...frame, views: Object.fromEntries(scene.views.map(view => [view.name, plans.get(view.name) ?? frame.views[view.name]])) })) };
 };
+
+// == Shots =======================================================================
+/** a camera's shots: one from the start and one from each cut, each to the next */
+export const cameraShots = (camera: RecordedCamera, length: number): ReadonlyArray<CameraShot> => {
+  const starts = new Map<number, string | undefined>([[0, undefined]]);
+  for(const key of camera.keys) if((key.ease === 'hold') && (key.time < length)) starts.set(key.time, key.name ?? starts.get(key.time));
+  const times = [...starts.keys()].sort((a, b) => a - b);
+  return times.map((from, index) => { const name = starts.get(from); return { from, to: times[index + 1] ?? length, ...((name !== undefined) ? { name } : {}) }; });
+};
+
+// == Plan ========================================================================
+/** the area a plan shows when it names none: the floor, every actor's place in every
+ *  frame and every place the camera stands and looks, PLAN_MARGIN out, in whole studs
+ *  within the stage's reach */
+const planArea = (scene: Recorded, frames: ReadonlyArray<FilmFrame>): Area => {
+  const bounds = { west: Infinity, south: Infinity, east: -Infinity, north: -Infinity };
+  const take = ({ x, z }: Readonly<{ x: number; z: number; }>) => {
+    bounds.west = Math.min(bounds.west, x); bounds.east = Math.max(bounds.east, x);
+    bounds.south = Math.min(bounds.south, z); bounds.north = Math.max(bounds.north, z);
+  };
+  if(scene.floor) { take(scene.floor); take({ x: scene.floor.x + scene.floor.width, z: scene.floor.z + scene.floor.depth }); }
+  for(const frame of frames) {
+    for(const actor of frame.actors) take(actor.position);
+    take(frame.camera.position);
+    take(frame.camera.target);
+  }
+  const [west, south] = [Math.max(-MAX_COORDINATE, Math.floor(bounds.west - PLAN_MARGIN)), Math.max(-MAX_COORDINATE, Math.floor(bounds.south - PLAN_MARGIN))];
+  const [east, north] = [Math.min(MAX_COORDINATE, Math.ceil(bounds.east + PLAN_MARGIN)), Math.min(MAX_COORDINATE, Math.ceil(bounds.north + PLAN_MARGIN))];
+  return { x: west, z: south, width: Math.max(1, east - west), depth: Math.max(1, north - south) };
+};
+
+/** a plan's marks: each actor's path over the frames it shows (a frame it is hidden
+ *  breaks it), none for a rider, whose path is what it rides; then the camera's path,
+ *  broken at each cut. A point repeating the one before is left out */
+export const planMarksOf = (film: Film, paint: Paint): Marks => {
+  const { scene, frames } = film;
+  const paths: Array<Marks['paths'][number]> = [];
+  const shown = frames.map(frame => new Map(frame.actors.map(actor => [actor.name, actor.position])))/*each frame's actors, by name*/;
+  scene.actors.forEach((actor, index) => {
+    if(actor.ride) return/*its path is what it rides*/;
+    const color = paint.actor(index);
+    let points: Array<{ x: number; z: number; }> = [];
+    for(const positions of shown) {
+      const at = positions.get(actor.name);
+      if(!at) { if(points.length > 0) paths.push({ label: actor.name, color, points }); points = []; continue; }
+      pushPoint(points, at);
+    }
+    if(points.length > 0) paths.push({ label: actor.name, color, points });
+  });
+
+  const cuts = cameraShots(scene.camera, scene.length).slice(1).map(shot => shot.from);
+  let points: Array<{ x: number; z: number; }> = [];
+  frames.forEach((frame, index) => {
+    const cut = (index > 0) && cuts.some(time => (time > frames[index - 1].time) && (time <= (frame.time + TIME_EPSILON)));
+    if(cut && (points.length > 0)) { paths.push({ label: CAMERA_LABEL, color: paint.camera, points }); points = []; }
+    pushPoint(points, frame.camera.position);
+  });
+  if(points.length > 0) paths.push({ label: CAMERA_LABEL, color: paint.camera, points });
+  return { paths };
+};
+
+/** adds a point on the ground, to the hundredth of a stud, to a path unless it
+ *  repeats the last */
+const pushPoint = (points: Array<{ x: number; z: number; }>, point: Point) => {
+  const [x, z] = [hundredths(point.x), hundredths(point.z)];
+  const last = points[points.length - 1];
+  if(!last || (last.x !== x) || (last.z !== z)) points.push({ x, z });
+};
+const hundredths = (value: number): number => (Math.round(value * 100) / 100) || 0/*never -0*/;
 
 // == Reel ========================================================================
 /** a film's frame as a studio's reel takes it: what it leaves out, the studio takes

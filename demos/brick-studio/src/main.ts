@@ -11,6 +11,7 @@ import { FidelityControl } from './fidelity-control';
 import { getColor, getColorValue } from './grid';
 import { GroundControl } from './ground-control';
 import { LookAround } from './look-around';
+import { Sheet } from './sheet';
 import { partCount, type Model } from './model';
 import { StageControl } from './stage-control';
 import { StepControl } from './step-control';
@@ -51,9 +52,10 @@ const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
 const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
-const lookAround = new LookAround({ root: element('sheet'), sides: element('sheetSides'), back: element('sheetBack') }, document.querySelector<HTMLElement>('.bar')!/*by contract*/, viewer);
+const sheet = new Sheet({ root: element('sheet'), title: element('sheetTitle'), panels: element('sheetPanels'), back: element('sheetBack'), backLabel: element('sheetBackLabel') }, document.querySelector<HTMLElement>('.bar')!/*by contract*/);
+const lookAround = new LookAround(sheet, viewer);
 const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/;
-const stage = new StageControl({ root: element('staged'), note: element('stagedNote'), back: element('stagedBack') }, studio, viewer, build);
+const stage = new StageControl({ root: element('staged'), note: element('stagedNote'), back: element('stagedBack') }, studio, viewer, build, sheet);
 const commands = new CommandSurface(build, designs, viewer, lookAround, stage, look);
 /** why the last ground change was refused, until the build next changes */
 let groundRefused: string | undefined;
@@ -167,7 +169,7 @@ const isForOthers = (event: KeyboardEvent): boolean =>
 
 const onWalkKey = (event: KeyboardEvent, down: boolean) => {
   if(designDialog.isOpen) return/*the dialog has the keys*/;
-  if(down && lookAround.isOpen && !isForOthers(event) && !movesFocus(event)) { lookAround.hide(); return; }
+  if(down && sheet.isOpen && !isForOthers(event) && !movesFocus(event)) { sheet.hide(); return; }
   if(down && (event.code === 'KeyI') && !isForOthers(event)) { toggleHelp(); return; }
   if(!(event.code in WALK_KEYS)) { if(event.key === 'Shift') viewer.walk(walkFromKeys(down)); return; }
   if(down && (isForOthers(event) || help.open)) return;

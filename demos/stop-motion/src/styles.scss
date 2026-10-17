@@ -424,7 +424,8 @@ body {
 }
 
 // a function of time over a span: a path a solid band, a wobble a zigzag, a fade
-// darkening to its strength, a title its words
+// darkening to its strength, a title its words; a camera's shots alternate shades
+// from cut to cut, each starting at its cut's rule, its name along its top
 .band {
   position: absolute;
   top: 8px;
@@ -454,6 +455,35 @@ body {
     color: #1D1C19;
     border: 1px solid var(--outline);
   }
+  &--shot {
+    @extend %mono-caps;
+    top: 2px;
+    bottom: 2px;
+    padding: 1px 4px 0;
+    font-size: 7px;
+    line-height: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--ink-soft);
+    background: color-mix(in srgb, var(--row) 12%, transparent);
+    border-left: 2px solid var(--row);
+    border-radius: 0;
+  }
+  &--shot-alternate { background: color-mix(in srgb, var(--row) 26%, transparent); }
+}
+
+// two actors close: a red notch on each one's row where they come closest
+.notch {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: var(--brick-red);
+  box-shadow: 0 0 0 1px var(--outline);
+  z-index: 1;
 }
 
 // a key: a diamond on its time

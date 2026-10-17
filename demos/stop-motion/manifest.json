@@ -25,7 +25,7 @@
     "charmiq.command": [
       {
         "name": "describeFilm",
-        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views and what it logged), or the scene's mistake and its line",
+        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut, every two actors that come within 2 studs and where, and what it logged), or the scene's mistake and its line",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
@@ -41,6 +41,8 @@
             "frames":     { "type": "integer" },
             "actors":     { "type": "array", "items": { "type": "string" } },
             "views":      { "type": "array", "items": { "type": "string" } },
+            "shots":      { "type": "array", "description": "The camera's shots: from each cut (or the start) to the next (or the end), seconds, named by its cut", "items": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "name": { "type": "string" } }, "required": ["from", "to"] } },
+            "close":      { "type": "array", "description": "Every two actors that come within 2 studs (once the studio has staged the film), each where they come closest: the gap between their boxes in studs, 0 touching", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
             "logs":       { "type": "array", "items": { "type": "string" } },
             "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] }
           },
@@ -74,6 +76,72 @@
         "description": "Pause the film",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": { "type": "object", "properties": { "playing": { "type": "boolean" }, "frame": { "type": "integer" } }, "required": ["playing", "frame"] }
+      },
+      {
+        "name": "storyboard",
+        "description": "Show a storyboard of the film on the Brick Studio holding the build: up to 12 of its frames at once, each captioned with its time, frame and shot, through a view when named (a plan view shows each moment from above, with every actor's path and the camera). Resolves once the sheet shows; take an Application screenshot of that Brick Studio to read it. The sheet closes when the film next moves. Left without times or frames, it shows the middle of each shot",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "times":  { "type": "array", "description": "Seconds from the start", "items": { "type": "number" } },
+            "frames": { "type": "array", "description": "Frames, from 0", "items": { "type": "integer" } },
+            "view":   { "type": "string", "description": "One of the scene's views (the film's camera when left out)" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "shown":  { "type": "integer" },
+            "frames": { "type": "array", "items": { "type": "object", "properties": { "frame": { "type": "integer" }, "time": { "type": "number" }, "caption": { "type": "string" } }, "required": ["frame", "time", "caption"] } }
+          },
+          "required": ["shown", "frames"]
+        }
+      },
+      {
+        "name": "measure",
+        "description": "Where two actors come closest over the film (or from and to, seconds): the frame, the gap between their boxes in studs (each box its footprint turned by its yaw and its height, unposed; 0 when they touch) and where each stood",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "actors": { "type": "array", "description": "The two actors' names", "items": { "type": "string" } },
+            "from":   { "type": "number" },
+            "to":     { "type": "number" }
+          },
+          "required": ["actors"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "actors":    { "type": "array", "items": { "type": "string" } },
+            "frame":     { "type": "integer" },
+            "time":      { "type": "number" },
+            "gap":       { "type": "number" },
+            "touching":  { "type": "boolean" },
+            "positions": { "type": "object", "description": "Each actor's position then: x east and z north in studs, height in plates", "additionalProperties": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] } }
+          },
+          "required": ["actors", "frame", "time", "gap", "touching", "positions"]
+        }
+      },
+      {
+        "name": "where",
+        "description": "Where every actor shown stands at a moment, by time (seconds) or frame (from 0), and how it is turned (yaw clockwise seen from above, degrees), and where the film's camera stands and looks: x east and z north in studs, height in plates",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "time":  { "type": "number" },
+            "frame": { "type": "integer" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "frame":  { "type": "integer" },
+            "time":   { "type": "number" },
+            "actors": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "position": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "turn": { "type": "object", "properties": { "yaw": { "type": "number" }, "pitch": { "type": "number" }, "roll": { "type": "number" } }, "required": ["yaw", "pitch", "roll"] } }, "required": ["name", "position", "turn"] } },
+            "camera": { "type": "object", "properties": { "position": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "target": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "fov": { "type": "number" } }, "required": ["position", "target", "fov"] }
+          },
+          "required": ["frame", "time", "actors", "camera"]
+        }
       }
     ]
   }

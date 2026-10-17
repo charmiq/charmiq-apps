@@ -11,11 +11,15 @@ import { bankOf, swingOf, turnOf, LIMBS, type Limb, type Pose } from './pose';
 // a wheel set's wheels rolled any distance. An actor is never a placement: never on
 // the grid, never checked, never written to the build. A film's frames arrive as a
 // reel, read and checked page by page as they load, so a frame shown from it is data
-// already known good. Model-facing refusals, as the build's commands word theirs
+// already known good. A view of the reel may be a plan, straight down over an area,
+// which the film's marks (each path on the ground), each actor's name and the film's
+// camera are drawn over in place of its fade and title. Each actor's box is told with
+// the cast, so a film can measure gaps. Model-facing refusals, as the build's commands
+// word theirs
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 2;
+export const STAGE_VERSION = 3;
 
 /** the most actors a stage casts */
 export const MAX_ACTORS = 64;
@@ -43,6 +47,15 @@ export const MAX_REEL_PAGE = 240/*frames*/;
 export const MAX_VIEWS = 8;
 /** the longest title */
 export const MAX_TITLE = 200/*characters*/;
+/** a plan's marks: the most paths, points in a path and points in all */
+export const MAX_PATHS = 256;
+export const MAX_PATH_POINTS = 7_200;
+export const MAX_MARK_POINTS = 50_000;
+/** the longest mark label */
+const MAX_LABEL = 40/*characters*/;
+/** the most frames a storyboard shows, and its longest caption */
+export const MAX_BOARD = 12;
+const MAX_CAPTION = 80/*characters*/;
 
 // == Types =======================================================================
 /** a point of the scene: x east and z north in studs, height up in plates from the
@@ -67,25 +80,50 @@ export type StageCamera = Readonly<{ position: Point; target: Point; fov: number
 
 /** the area the baseplate covers at least (studs): its south-west corner and size */
 export type Floor = Readonly<{ x: number; z: number; width: number; depth: number; }>;
+/** an area of the scene in whole studs: its south-west corner and size */
+export type Area = Readonly<{ x: number; z: number; width: number; depth: number; }>;
+
+/** a plan: straight down over at least an area, north up */
+export type PlanCamera = Readonly<{ plan: Area; }>;
+/** the camera a screen sees a frame through: a camera, or a plan */
+export type ViewCamera = StageCamera | PlanCamera;
+
+/** a point on the ground: x east and z north in studs */
+export type GroundPoint = Readonly<{ x: number; z: number; }>;
+/** what a plan draws over the set: each path labeled and colored (#rrggbb) */
+export type Marks = Readonly<{ paths: ReadonlyArray<Readonly<{ label: string; color: string; points: ReadonlyArray<GroundPoint>; }>>; }>;
+/** what a frame seen through a plan draws over its picture: the marks' paths, each
+ *  actor's name where it stands, and the film's camera, whose picture is `aspect`
+ *  wide for each unit high */
+export type PlanPicture = Readonly<{ area: Area; paths: Marks['paths']; labels: ReadonlyArray<Readonly<{ text: string; x: number; z: number; }>>; camera: StageCamera; aspect: number; }>;
+
+/** an actor's box: studs across (x) and along (z), plates up, unturned and unposed */
+export type Size = Readonly<{ width: number; depth: number; height: number; }>;
 
 /** words over a frame: a card filling it or a caption along its foot, drawn at
  *  `opacity` (0 to 1) */
 export type Title = Readonly<{ text: string; style: 'card' | 'caption'; opacity: number; }>;
 /** what lies over a frame's picture: its fade to black (0 none, 1 black) and its
- *  title, standing over the black */
-export type FilmOverlay = Readonly<{ fade: number; title?: Title; }>;
+ *  title, standing over the black; a frame seen through a plan has its plan's marks
+ *  in their place */
+export type FilmOverlay = Readonly<{ fade: number; title?: Title; plan?: PlanPicture; }>;
 
 /** a reel's frames a second, its length in frames and the size its frames are drawn
  *  at (pixels): the film's shape */
 export type ReelHeader = Readonly<{ fps: number; length: number; width: number; height: number; }>;
 /** a reel's frame as one screen shows it: its shots, the camera the screen sees it
- *  through (its view's, else the main camera) and what lies over it */
-export type ReelFrame = Readonly<{ shots: ReadonlyArray<Shot>; camera: StageCamera; overlay: FilmOverlay; }>;
+ *  through (its view's, else the main camera), the film's main camera and every view,
+ *  and what lies over it */
+export type ReelFrame = Readonly<{ shots: ReadonlyArray<Shot>; camera: ViewCamera; main: StageCamera; views: ReadonlyMap<string, ViewCamera>; overlay: FilmOverlay; }>;
 
-/** an actor: the point of its own frame (LDU) a shot's position names, whether it
- *  poses or rolls, and its lines in its own frame */
+/** a frame on a storyboard, and what its caption says */
+export type Board = Readonly<{ frame: number; caption: string; }>;
+
+/** an actor: the point of its own frame (LDU) a shot's position names, its box,
+ *  whether it poses or rolls, and its lines in its own frame */
 type Actor = Readonly<{
   anchor: readonly [number, number, number];
+  size: Size;
   poses: boolean;
   /** it wears a face, which a frame may change: a figure */
   faces: boolean;
@@ -152,6 +190,7 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
     const parts = found.placements.map(placement => getPart(placement.part)!/*by contract*/);
     return {
       anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
+      size: { width: maxX - minX, depth: maxZ - minZ, height: Math.max(...found.placements.map((placement, index) => placement.level + getShape(parts[index]).height))/*its tallest part's top, tires above the studs included*/ },
       poses: false,
       faces: false,
       rolls: parts.some(each => !!each.wheels),
@@ -171,12 +210,16 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
   const colorCode = getColor(color)!.code;
   return {
     anchor: [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
+    size: { width: shape.width, depth: shape.depth, height: shape.height },
     poses: !!catalogPart.limbs,
     faces: catalogPart.facePiece !== undefined,
     rolls: !!catalogPart.wheels,
     lines: (pose, rolled, worn) => partLines(shape, { ...standing, ...(pose ? { pose } : {}), ...((worn !== undefined) ? { face: worn } : {}) }, colorCode, origin, rolled),
   };
 };
+
+/** each cast actor's box, by name */
+export const sizesOf = (cast: Cast): Readonly<Record<string, Size>> => Object.fromEntries([...cast.actors].map(([name, actor]) => [name, actor.size]));
 
 // == Frame =======================================================================
 // the frame call: each actor's shot, the camera, and the size a frame is captured at
@@ -285,20 +328,71 @@ const reelFrameOf = (cast: Cast, view: string | undefined, input: unknown): Reel
   const named = viewsOf(views);
   if((view !== undefined) && !named.has(view)) throw new Error(`views names no '${view}', the view this studio shows`);
   const titled = titleOf(title);
-  return { shots, camera: (view !== undefined) ? named.get(view)! : main, overlay: { fade: fadeOf(fade), ...(titled ? { title: titled } : {}) } };
+  return { shots, camera: (view !== undefined) ? named.get(view)! : main, main, views: named, overlay: { fade: fadeOf(fade), ...(titled ? { title: titled } : {}) } };
 };
 
-/** the views a frame names, each a camera */
-const viewsOf = (input: unknown): ReadonlyMap<string, StageCamera> => {
+/** the views a frame names, each a camera or a plan */
+const viewsOf = (input: unknown): ReadonlyMap<string, ViewCamera> => {
   if(input === undefined) return new Map()/*the main camera alone*/;
-  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error('views names cameras: { [name]: { position, target, fov? } }');
+  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error('views names cameras: { [name]: { position, target, fov? } or { plan } }');
   const entries = Object.entries(input);
   if(entries.length > MAX_VIEWS) throw new Error(`views names at most ${MAX_VIEWS} cameras`);
   return new Map(entries.map(([name, value]) => {
     if(!isName(name)) throw new Error(`views: a view's name is at most ${MAX_NAME} characters`);
-    try { return [name, cameraOf(value)]; }
+    try { return [name, ((typeof value === 'object') && (value !== null) && ('plan' in value)) ? { plan: planOf((value as { plan: unknown; }).plan) } : cameraOf(value)]; }
     catch(error) { throw new Error(`views.${name}: ${(error as Error).message}`); }
   }));
+};
+
+/** the area a plan shows at least */
+const planOf = (input: unknown): Area => {
+  const { x, z, width, depth } = (input ?? {}) as Record<string, unknown>;
+  const fits = [x, z, width, depth].every(Number.isInteger) && (Math.abs(x as number) <= MAX_COORDINATE) && (Math.abs(z as number) <= MAX_COORDINATE)
+    && [width, depth].every(size => ((size as number) >= 1) && ((size as number) <= (2 * MAX_COORDINATE)));
+  if(!fits) throw new Error(`plan is { x, z, width, depth }: whole studs within ${MAX_COORDINATE} of the origin, its south-west corner and size, 1 to ${2 * MAX_COORDINATE} each way`);
+  return { x: x as number, z: z as number, width: width as number, depth: depth as number };
+};
+
+/** whether a screen sees through a plan */
+export const isPlan = (camera: ViewCamera): camera is PlanCamera => 'plan' in camera;
+
+/** a frame as a screen draws it through `view` (its own camera when none is named):
+ *  the camera, and what lies over its picture. Through a plan, the marks' paths, each
+ *  actor's name where it stands and the film's camera (its picture `aspect` wide for
+ *  each unit high) lie over it in place of the fade and title */
+export const pictureOf = (frame: ReelFrame, view: string | undefined, marks: Marks | undefined, aspect: number): Readonly<{ camera: ViewCamera; overlay: FilmOverlay; }> => {
+  const camera = (view === undefined) ? frame.camera : frame.views.get(view);
+  if(!camera) throw new Error(`No view '${view}' in the reel: ${(frame.views.size > 0) ? `its views are ${[...frame.views.keys()].join(', ')}` : 'it has none'}.`);
+  if(!isPlan(camera)) return { camera, overlay: frame.overlay };
+  const labels = frame.shots.map(shot => ({ text: shot.name, x: shot.position.x, z: shot.position.z }));
+  return { camera, overlay: { fade: 0, plan: { area: camera.plan, paths: marks?.paths ?? [], labels, camera: frame.main, aspect } } };
+};
+
+// == Marks =======================================================================
+/** the marks a stage call gives, or undefined for none */
+export const marksOf = (input: unknown): Marks | undefined => {
+  if(input === undefined) return undefined/*a plan draws the set alone*/;
+  const { paths } = (input ?? {}) as Record<string, unknown>;
+  if(!Array.isArray(paths)) throw new Error('marks is { paths }: each { label, color, points }');
+  const read = paths.map((path, index) => {
+    const { label, color, points } = (path ?? {}) as Record<string, unknown>;
+    if(!isName(label) || (label.length > MAX_LABEL)) throw new Error(`marks.paths[${index}].label is 1 to ${MAX_LABEL} characters`);
+    if((typeof color !== 'string') || !/^#[0-9a-fA-F]{6}$/.test(color)) throw new Error(`marks.paths[${index}].color is #rrggbb`);
+    const ground = Array.isArray(points) && (points.length >= 1) && (points.length <= MAX_PATH_POINTS) && points.every(point => [(point as GroundPoint | null)?.x, (point as GroundPoint | null)?.z].every(isFiniteNumber));
+    if(!ground) throw new Error(`marks.paths[${index}].points is 1 to ${MAX_PATH_POINTS} points { x, z }`);
+    return { label, color, points: (points as GroundPoint[]).map(({ x, z }) => ({ x, z })) };
+  });
+  if((read.length > MAX_PATHS) || (read.reduce((sum, path) => sum + path.points.length, 0) > MAX_MARK_POINTS)) throw new Error(`marks holds at most ${MAX_PATHS} paths and ${MAX_MARK_POINTS} points`);
+  return { paths: read };
+};
+
+// == Storyboard ==================================================================
+/** the frames a storyboard call shows, each `{ frame, caption }` */
+export const boardsOf = (input: unknown): ReadonlyArray<Board> => {
+  const fits = Array.isArray(input) && (input.length >= 1) && (input.length <= MAX_BOARD)
+    && input.every(item => Number.isInteger((item as Board | null)?.frame) && (typeof (item as Board | null)?.caption === 'string') && ((item as Board).caption.length <= MAX_CAPTION));
+  if(!fits) throw new Error(`frames is 1 to ${MAX_BOARD} frames, each { frame, caption } (a caption at most ${MAX_CAPTION} characters)`);
+  return (input as Board[]).map(({ frame, caption }) => ({ frame, caption }));
 };
 
 /** a frame's fade to black, none when left out */

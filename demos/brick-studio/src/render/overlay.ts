@@ -1,9 +1,11 @@
 import type { FilmOverlay } from '../stage';
+import { drawPlan } from './plan';
 
 // what lies over a film's frame: its fade to black and its title, drawn over the
 // picture where it is shown and into every capture, so the film is whole wherever it
 // is seen. A title stands over the black of a fade; a card fills the frame in the
-// studio's type, a caption runs along its foot
+// studio's type, a caption runs along its foot. A frame seen through a plan has its
+// plan's marks in their place (SEE: plan.ts)
 // ********************************************************************************
 /** the type a card is set in, and a caption */
 const CARD_FONT = 'Inter, \'Helvetica Neue\', Arial, sans-serif';
@@ -15,10 +17,11 @@ const CAPTION_SHADE = 'rgba(16, 15, 13, 0.7)';
 
 // ================================================================================
 /** whether an overlay draws anything */
-export const isBlank = ({ fade, title }: FilmOverlay): boolean => (fade <= 0) && (!title || (title.opacity <= 0));
+export const isBlank = ({ fade, title, plan }: FilmOverlay): boolean => !plan && (fade <= 0) && (!title || (title.opacity <= 0));
 
 /** draws an overlay over a picture `width` by `height` at the context's origin */
-export const drawOverlay = (context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, { fade, title }: FilmOverlay, width: number, height: number): void => {
+export const drawOverlay = (context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, { fade, title, plan }: FilmOverlay, width: number, height: number): void => {
+  if(plan) { drawPlan(context, plan, width, height); return; }
   if(fade > 0) {
     context.fillStyle = `rgba(0, 0, 0, ${Math.min(1, fade)})`;
     context.fillRect(0, 0, width, height);

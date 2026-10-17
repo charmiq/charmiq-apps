@@ -9,12 +9,13 @@ import { CATALOG, resourceFamily } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, LDU_PER_STUD, partFiles, type PartLine } from './grid';
 import { drawnLines, type Model } from './model';
-import { ldrawPoint, type FilmOverlay, type Floor, type Point, type StageCamera } from './stage';
+import { isPlan, ldrawPoint, type FilmOverlay, type Floor, type Point, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { Effects } from './render/effects';
 import type { Fidelity } from './render/fidelity';
 import { drawOverlay, isBlank } from './render/overlay';
+import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
 import { applyGlass, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
 import { createStudio, type Studio } from './render/studio';
@@ -71,6 +72,13 @@ const TURN_SPEED = Math.PI / 2/*radians per second*/;
 const WALK_STEP_MAX_MS = 100/*ms*/;
 const UP = new THREE.Vector3(0, 1, 0);
 const GROUND = new THREE.Plane(UP, 0);
+/** a plan's top: north (the scene's -z) */
+const NORTH = new THREE.Vector3(0, 0, -1);
+/** the camera's nearest and farthest drawing (scene units); a plan, standing far
+ *  higher, draws from PLAN_DEPTH above the ground to just below it */
+const CAMERA_NEAR = 0.1;
+const CAMERA_FAR = 2_000;
+const PLAN_DEPTH = 900/*scene units: the stage's highest reach and more*/;
 
 /** the direction toward the sun, and the studio's key softbox, from the build */
 const KEY_DIRECTION = new THREE.Vector3(-0.45, 1, 0.6).normalize();
@@ -113,7 +121,7 @@ type Staging = { /*NOTE: Mutable: each frame replaces its actors and overlay, a 
 export class Viewer {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(32, 1, 0.1, 2000);
+  private readonly camera = new THREE.PerspectiveCamera(32, 1, CAMERA_NEAR, CAMERA_FAR);
   private readonly controls: OrbitControls;
   private readonly sun = new THREE.DirectionalLight(0xffffff, 1.6);
   private readonly sky = new THREE.HemisphereLight(0xfffaf0, 0xd8d0c0, 0.5);
@@ -623,10 +631,10 @@ export class Viewer {
   }
 
   /** shows a frame of the stage: its actors' lines (LDraw, the scene's frame) seen
-   *  through its camera */
-  public showFrame(actors: ReadonlyArray<PartLine>, camera: StageCamera, overlay: FilmOverlay = NO_OVERLAY): void {
+   *  through its camera, or its plan */
+  public showFrame(actors: ReadonlyArray<PartLine>, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY): void {
     if(!this.staging) return/*nothing staged*/;
-    this.aim(scenePoint(camera.position), scenePoint(camera.target), camera.fov);
+    this.look(camera);
     this.pose(actors, overlay);
   }
 
@@ -634,21 +642,21 @@ export class Viewer {
    *  parts are built first, unseen, and the studio settled on the frame it shows; then
    *  the frame is drawn, copied and the frame shown put back in one task, so the screen
    *  never shows it: the browser paints between tasks */
-  public async thumbnail(actors: ReadonlyArray<PartLine>, camera: StageCamera, overlay: FilmOverlay, width: number, height: number): Promise<ImageBitmap> {
+  public async thumbnail(actors: ReadonlyArray<PartLine>, camera: ViewCamera, overlay: FilmOverlay, width: number, height: number): Promise<ImageBitmap> {
     const staging = this.staging;
     if(!staging) throw new Error('nothing is staged');
     await this.partsBuilt(actors);
     await this.whenSettled();
     if(this.staging !== staging) throw new Error('the stage was replaced while the thumbnail\'s parts were built');
-    const shown = { actors: staging.actors, overlay: staging.overlay, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov };
+    const shown = { actors: staging.actors, overlay: staging.overlay, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, plan: this.camera.up.equals(NORTH) };
     const picture = Object.assign(document.createElement('canvas'), { width, height });
 
-    this.aim(scenePoint(camera.position), scenePoint(camera.target), camera.fov);
+    this.look(camera);
     this.pose(actors, overlay);
     this.renderNow();
     this.drawPicture(picture.getContext('2d')!, overlay, width, height);
 
-    this.aim(shown.position, shown.target, shown.fov);
+    this.aim(shown.position, shown.target, shown.fov, shown.plan);
     this.pose(shown.actors, shown.overlay);
     this.renderNow();
     return createImageBitmap(picture);
@@ -672,10 +680,7 @@ export class Viewer {
     const staging = this.staging;
     if(!staging) return/*nothing staged*/;
     this.staging = undefined;
-    this.camera.position.copy(staging.before.position);
-    this.controls.target.copy(staging.before.target);
-    this.camera.fov = staging.before.fov;
-    this.camera.updateProjectionMatrix();
+    this.aim(staging.before.position, staging.before.target, staging.before.fov)/*level again*/;
     this.controls.enabled = true;
     this.controls.update();
     this.renderer.setPixelRatio(screenPixelRatio());
@@ -686,11 +691,23 @@ export class Viewer {
   }
 
   // .. Stage frames ..............................................................
-  /** turns the camera to stand at `position`, looking at `target` through `fov` */
-  private aim(position: THREE.Vector3, target: THREE.Vector3, fov: number): void {
+  /** turns the camera to a frame's: where it stands, or straight down over a plan's
+   *  area at the canvas's shape */
+  private look(camera: ViewCamera): void {
+    const seen = isPlan(camera) ? planAim(camera.plan, this.camera.aspect) : camera;
+    this.aim(scenePoint(seen.position), scenePoint(seen.target), seen.fov, isPlan(camera));
+  }
+
+  /** turns the camera to stand at `position`, looking at `target` through `fov`;
+   *  looking straight down over a plan, north is up and the camera draws from high
+   *  over the ground */
+  private aim(position: THREE.Vector3, target: THREE.Vector3, fov: number, plan = false): void {
     this.camera.position.copy(position);
     this.controls.target.copy(target);
     this.camera.fov = fov;
+    this.camera.up.copy(plan ? NORTH : UP);
+    const height = position.distanceTo(target);
+    [this.camera.near, this.camera.far] = plan ? [Math.max(CAMERA_NEAR, height - PLAN_DEPTH), height + 1] : [CAMERA_NEAR, CAMERA_FAR];
     this.camera.updateProjectionMatrix();
     this.camera.lookAt(this.controls.target);
     this.cameraMoved = true;

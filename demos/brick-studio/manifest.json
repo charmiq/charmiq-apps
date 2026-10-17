@@ -461,7 +461,13 @@
               "properties": { "fps": { "type": "integer" }, "length": { "type": "integer" }, "width": { "type": "integer" }, "height": { "type": "integer" } },
               "required": ["fps", "length", "width", "height"]
             },
-            "view": { "type": "string", "description": "The view of the reel's frames this studio shows (the main camera when left out)" }
+            "view": { "type": "string", "description": "The view of the reel's frames this studio shows (the main camera when left out)" },
+            "marks": {
+              "type": "object",
+              "description": "What a plan view draws over the set, for Applications: paths along the ground, each { label, color: #rrggbb, points: [{ x, z }] } (at most 256 paths, 7200 points each, 50000 in all)",
+              "properties": { "paths": { "type": "array", "items": { "type": "object" } } },
+              "required": ["paths"]
+            }
           },
           "required": ["actors"]
         },
@@ -471,14 +477,15 @@
             "actors":  { "type": "array", "items": { "type": "string" } },
             "wheeled": { "type": "array", "description": "The actors with wheels, which frame's rolled turns", "items": { "type": "string" } },
             "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
+            "sizes":   { "type": "object", "description": "Each actor's box, unturned and unposed: studs across (x), studs along (z), plates up", "additionalProperties": { "type": "object", "properties": { "width": { "type": "number" }, "depth": { "type": "number" }, "height": { "type": "number" } }, "required": ["width", "depth", "height"] } },
             "reel":    { "type": "integer", "description": "The reel's number, when one is staged" }
           },
-          "required": ["actors"]
+          "required": ["actors", "sizes"]
         }
       },
       {
         "name": "loadReel",
-        "description": "Load a page of the staged reel's frames, for Applications: at most 240 frames from the count loaded so far, each { actors, camera, views?, fade?, title? } (actors and camera as frame takes them, views by name, fade from 0 to 1, title { text, style: card or caption, opacity? }). A page with a frame that is not one is refused whole",
+        "description": "Load a page of the staged reel's frames, for Applications: at most 240 frames from the count loaded so far, each { actors, camera, views?, fade?, title? } (actors and camera as frame takes them, views by name, each a camera or a plan { plan: { x, z, width, depth } } looking straight down over that area, fade from 0 to 1, title { text, style: card or caption, opacity? }). A page with a frame that is not one is refused whole",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -506,18 +513,33 @@
       },
       {
         "name": "thumbnail",
-        "description": "A loaded frame of the staged reel as a small picture (at most 480 a side), for Applications; the frame shown stays as it is",
+        "description": "A loaded frame of the staged reel as a small picture (at most 480 a side), for Applications, through one of the frame's views when named; the frame shown stays as it is",
         "inputSchema": {
           "type": "object",
           "properties": {
             "reel":   { "type": "integer" },
             "frame":  { "type": "integer" },
             "width":  { "type": "integer" },
-            "height": { "type": "integer" }
+            "height": { "type": "integer" },
+            "view":   { "type": "string", "description": "One of the frame's views (this studio's own camera when left out)" }
           },
           "required": ["reel", "frame", "width", "height"]
         },
         "outputSchema": { "type": "object", "properties": { "image": { "description": "The picture (an ImageBitmap)" } }, "required": ["image"] }
+      },
+      {
+        "name": "storyboard",
+        "description": "Show a storyboard of the staged reel, for Applications: up to 12 loaded frames on a sheet over the stage, each { frame, caption }, drawn through one of the frames' views when named. Resolves once the sheet shows, so an Application screenshot next reads them all; the next frame shown or staged closes it",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "reel":   { "type": "integer" },
+            "frames": { "type": "array", "items": { "type": "object", "properties": { "frame": { "type": "integer" }, "caption": { "type": "string" } }, "required": ["frame", "caption"] } },
+            "view":   { "type": "string" }
+          },
+          "required": ["reel", "frames"]
+        },
+        "outputSchema": { "type": "object", "properties": { "shown": { "type": "integer", "description": "The frames shown; none when the sheet was closed first" } }, "required": ["shown"] }
       },
       {
         "name": "frame",
