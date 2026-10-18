@@ -12,8 +12,10 @@ import { bandTiers, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type 
 // Holding the modifier (⌘, Ctrl off a Mac) over the lanes shows the moment under the
 // pointer in the sheet's inspector (SEE: inspector.ts), its marks lit on the lane; the
 // modifier and a press pin that moment there until it is let go (Escape, or the
-// inspector's Unpin), and a key focused shows its moment too. Pointer moves are
-// gathered into one update an animation frame, so a move costs the page little. The
+// inspector's Unpin), and a key focused shows its moment too. The line follows each
+// move at once, in the move's own handler (an Application frame's animation frames are
+// held back until the person presses in it, so the line never waits on one); the
+// inspector's heavier work gathers into one update after the moves of a task. The
 // keyboard steps frames (arrows), jumps to the ends (Home, End) and plays (Space)
 // ********************************************************************************
 // == Constants ===================================================================
@@ -71,10 +73,14 @@ export class Timeline {
   /** the pointer over the timeline as it last moved (page pixels), whether the
    *  modifier is held, the key focused, and the moment pinned */
   private pointer: Readonly<{ x: number; y: number; }> | undefined;
+  /** the moment under the pointer, and the line's time and hint as last written */
+  private hovered: Moment | undefined;
+  private lineFrame = -1;
+  private lineHint: string | undefined;
   private modifier = false;
   private focusedKey: HTMLElement | undefined;
   private pinned: Moment | undefined;
-  /** the update waiting for the next animation frame, while one waits */
+  /** the inspector's update waiting to run, while one waits */
   private updating: number | undefined;
   /** the marks lit, and the frame the inspector shows */
   private lit: ReadonlyArray<HTMLElement> = [];
@@ -108,20 +114,23 @@ export class Timeline {
       if(this.scrubbing) { this.scrub(event); return; }
       this.pointer = { x: event.clientX, y: event.clientY };
       this.modifier = held(event);
-      this.update();
+      this.hover(this.momentUnder(event.clientX, event.target as Element));
     });
-    this.scroller.addEventListener('pointerleave', () => { this.pointer = undefined; this.update(); });
+    this.scroller.addEventListener('pointerleave', () => { this.pointer = undefined; this.hover(undefined); });
     const end = () => { this.scrubbing = false; root.classList.remove('is-scrubbing'); };
     this.scroller.addEventListener('pointerup', end);
     this.scroller.addEventListener('pointercancel', end);
-    this.scroller.addEventListener('scroll', () => this.update()/*the rows moved under the pointer*/);
+    this.scroller.addEventListener('scroll', () => {
+      const pointer = this.pointer/*the rows moved under it*/;
+      this.hover(pointer && this.momentUnder(pointer.x, document.elementFromPoint(pointer.x, pointer.y)));
+    });
     root.addEventListener('keydown', event => this.key(event));
     root.addEventListener('focusin', event => { this.focusedKey = (event.target as HTMLElement).closest<HTMLElement>('.key') ?? undefined; this.update(); });
     root.addEventListener('focusout', () => { this.focusedKey = undefined; this.update(); });
     // the modifier pressed or let go with the pointer resting on the lanes
-    view.addEventListener('keydown', event => { if(event.key === MODIFIER_KEY) { this.modifier = true; this.update(); } });
-    view.addEventListener('keyup', event => { if(event.key === MODIFIER_KEY) { this.modifier = false; this.update(); } });
-    view.addEventListener('blur', () => { this.modifier = false; this.update(); });
+    view.addEventListener('keydown', event => { if(event.key === MODIFIER_KEY) { this.modifier = true; this.follow(); this.update(); } });
+    view.addEventListener('keyup', event => { if(event.key === MODIFIER_KEY) { this.modifier = false; this.follow(); this.update(); } });
+    view.addEventListener('blur', () => { this.modifier = false; this.follow(); this.update(); });
     new ResizeObserver(() => this.resized()).observe(root);
   }
 
@@ -133,6 +142,7 @@ export class Timeline {
     this.film = film;
     this.close = close;
     this.layout();
+    this.follow()/*the lanes laid out anew*/;
     this.update();
   }
 
@@ -261,7 +271,7 @@ export class Timeline {
     if(!film || (event.button !== 0)) return;
     if(held(event)) {
       // the modifier and a press: the moment pinned in the inspector, the film where it is
-      const moment = this.momentUnder(event.clientX, event.clientY);
+      const moment = this.momentUnder(event.clientX, event.target as Element);
       if(moment) { event.preventDefault(); this.pinned = moment; this.update(); }
       return;
     }
@@ -313,39 +323,53 @@ export class Timeline {
   }
 
   // == Hover =====================================================================
-  /** asks for one update at the next animation frame: moves between frames gather into
-   *  it, so a move costs the page little */
-  private update(): void {
-    if(this.updating !== undefined) return/*one waits*/;
-    this.updating = this.root.ownerDocument.defaultView!.requestAnimationFrame(() => { this.updating = undefined; this.redraw(); });
+  /** the pointer over a moment (none off the lanes): the line follows it at once, the
+   *  inspector after */
+  private hover(moment: Moment | undefined): void {
+    this.hovered = moment;
+    this.follow();
+    this.update();
   }
 
-  /** the line following the pointer, and the inspector: the moment under the pointer
-   *  while the modifier is held, else the key focused, else the moment pinned, else the
+  /** the line following the pointer, its time on the ruler and the modifier named
+   *  while it is not held: each written only when it changes */
+  private follow(): void {
+    const film = this.film, moment = this.hovered;
+    const box = (film && moment) ? this.lanes() : undefined;
+    this.hoverLine.hidden = !box;
+    if(!film || !moment || !box) return;
+    this.hoverLine.style.transform = `translateX(${(box.left + (moment.share * box.width)).toFixed(2)}px)`;
+    if(moment.frame !== this.lineFrame) { this.lineFrame = moment.frame; this.hoverTime.textContent = `${film.frames[moment.frame].time.toFixed(2)} s`; }
+    const hint = this.modifier ? '' : `${MODIFIER_NAME} for details`;
+    if(hint !== this.lineHint) { this.lineHint = hint; this.hoverTime.dataset.hint = hint; }
+  }
+
+  /** asks for one update of the inspector once the task's moves are done: the moves
+   *  between gather into it */
+  private update(): void {
+    if(this.updating !== undefined) return/*one waits*/;
+    this.updating = window.setTimeout(() => { this.updating = undefined; this.redraw(); }, 0);
+  }
+
+  /** the pinned moment's line, and the inspector: the moment under the pointer while
+   *  the modifier is held, else the key focused, else the moment pinned, else the
    *  film's sheet */
   private redraw(): void {
     const film = this.film;
-    const hovered = (film && this.pointer) ? this.momentUnder(this.pointer.x, this.pointer.y) : undefined;
-    const box = film ? this.lanes() : undefined;
-    this.hoverLine.hidden = !hovered || !box;
-    if(hovered && box) {
-      this.hoverLine.style.transform = `translateX(${(box.left + (hovered.share * box.width)).toFixed(2)}px)`;
-      this.hoverTime.textContent = `${film!.frames[hovered.frame].time.toFixed(2)} s`;
-      this.hoverTime.dataset.hint = this.modifier ? '' : `${MODIFIER_NAME} for details`;
-    } /* else -- off the lanes */
-    this.pinLine.hidden = !this.pinned || !box;
+    const box = (film && this.pinned) ? this.lanes() : undefined;
+    this.pinLine.hidden = !box;
     if(this.pinned && box) this.pinLine.style.transform = `translateX(${(box.left + (this.pinned.share * box.width)).toFixed(2)}px)`;
 
+    const hovered = this.hovered;
     const shown = (this.modifier && hovered) ? { moment: hovered, pinned: false } : this.focusedKey ? this.keyMoment(this.focusedKey) : this.pinned ? { moment: this.pinned, pinned: true } : undefined;
     if(!film || !shown) { this.inspector.hide(); this.light(undefined); this.inspecting = undefined; window.clearTimeout(this.restTimer); return; }
     this.inspect(shown.moment, shown.pinned);
   }
 
-  /** the moment under a page point on the lanes or the ruler, with the marks there on
-   *  a row; undefined off them */
-  private momentUnder(x: number, y: number): Moment | undefined {
+  /** the moment at a page x on the element under the pointer (the lanes or the ruler),
+   *  with the marks there on a row; undefined off them */
+  private momentUnder(x: number, hit: Element | null): Moment | undefined {
     const film = this.film;
-    const hit = this.root.ownerDocument.elementFromPoint(x, y);
     if(!film || !hit || !this.scroller.contains(hit) || !hit.closest('.lane, .ruler')) return undefined;
     const at = this.momentAt(x);
     if(!at) return undefined;
