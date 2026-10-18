@@ -56,6 +56,11 @@ export class CommandSurface {
         if(resolved === null) throw new Error(`No tab matches '${tabId ?? ''}'.`);
         return this.setText(text, resolved);
       },
+      editText: ({ from, to, text, measured, tabId }: { from: number; to: number; text: string; measured: string; tabId?: string; }) => {
+        const resolved = this.tabManager.resolveTabId(tabId);
+        if(resolved === null) throw new Error(`No tab matches '${tabId ?? ''}'.`);
+        return this.editText(from, to, text, measured, resolved);
+      },
 
       listTabs: () => this.tabManager.listTabs(),
       switchTab: ({ tabId }: { tabId: string; }) => {
@@ -93,6 +98,7 @@ export class CommandSurface {
       // action pass-through — subscribers can drive the editor in response to
       // their own UI (e.g. a previewer's "open file" button)
       setText:   (text: string, tabId?: TabId) => this.setText(text, tabId),
+      editText:  (from: number, to: number, text: string, measured: string, tabId?: TabId) => this.editText(from, to, text, measured, tabId),
       switchTab: (tabId: TabId) => this.switchTab(tabId),
       createTab: (name?: string, content = '', mode = DEFAULT_MODE) => this.createTab(name, content, mode),
       removeTab: (tabId: TabId) => this.removeTab(tabId)
@@ -117,6 +123,14 @@ export class CommandSurface {
     const targetId = tabId || this.tabManager.getActiveTabId();
     if(!targetId) throw new Error('No tab is open.');
     await this.tabManager.replaceText(targetId, text);
+  }
+
+  /** replaces a range of a tab's text only while it holds `expected`: refused,
+   *  nothing changed, when the range has changed since it was read */
+  private async editText(from: number, to: number, text: string, measured: string, tabId?: TabId): Promise<void> {
+    const targetId = tabId || this.tabManager.getActiveTabId();
+    if(!targetId) throw new Error('No tab is open.');
+    await this.tabManager.editText(targetId, from, to, text, measured);
   }
 
   private switchTab(tabId: TabId): boolean {

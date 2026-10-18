@@ -25,8 +25,8 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | `set.at(time, name)` | a cut to another of the build's sets (Brick Studio's [sets](charmiq://../brick-studio/How%20It%20Works.md)): the set of that name stands from `time` on, until the next; the build's first set before the first |
 | `fade.at(time, value)`, `fade.out(from, to)`, `fade.in(from, to)` | the fade to black: 0 shows the frame, 1 is black |
 | `title(from, to, text, { style })` | words over the film: a full `card`, or a `caption` along the foot |
-| `sound.at(time, name, { volume, until })` | one of the studio's sounds from `time`: once, or over and over `until` a time; `volume` from 0 to 4 (1 as recorded) |
-| `a.sound(time, name, { volume, until })` | a sound that follows an actor: it sounds from the side of the picture the actor stands on, quieter as it stands farther than 20 studs off or behind the camera |
+| `sound.at(time, sound, { volume, until })` | a sound from `time`: a file in the Platform by its URI (`charmiq://file/<assetId>`), or one Stop Motion ships by name; once, or over and over `until` a time; `volume` from 0 to 4 (1 as recorded) |
+| `a.sound(time, sound, { volume, until })` | a sound that follows an actor: it sounds from the side of the picture the actor stands on, quieter as it stands farther than 20 studs off or behind the camera |
 | `arc(t, up, gravity)`, `noise(t)`, `lerp(a, b, u)` | a jump's height in plates after `t` seconds, smooth noise from -1 to 1, and a blend |
 | `console.log(...)` | a line in the film's log, beside the cast |
 
@@ -67,7 +67,7 @@ The bar says the film's name and whether it has changed since it was saved or op
 
 ## The Sound
 
-The studio's sounds are short recordings a scene plays by name: impacts (`thud`, `bump`, `clack`, `clang`, `crash`, `glass`, `knock`, `punch`), steps (`step`, `step-grass`), doors (`door-open`, `door-close`), an `engine` (played until a time, following a car), a `whoosh`, a `boom`, and two musical stings (`jingle`, `fanfare`). They are Ogg files in [`sounds`](charmiq://./sounds/README.md), each a resource the manifest declares, all Creative Commons Zero.
+A film's sounds are the person's own files in the Platform, however they came there: uploaded, or made by a Charm (`create_audio` speaks a line, `create_music` composes a piece; each returns the file's id). A scene plays one by its URI, `charmiq://file/<assetId>`, reading it through the Drive; *Add sound* picks one from the Drive's folders and writes its line into the scene at the playhead (`sound.at(1.5, 'charmiq://file/…') // Horn.ogg`). The few sounds Stop Motion's example films play ship with it and play by name; they are Ogg files in [`sounds`](charmiq://./sounds/README.md), each a resource the manifest declares, each Creative Commons Zero.
 
 Stop Motion plays the film's sound itself as the studio shows its picture: started with the playhead, from wherever it starts, seeks or loops, and waiting the moment the studio takes to show a frame so the two meet on screen; at the film's end or its loop the last sounds play out, and a pause stops them at once. The film's fade fades its sound too. A sound following an actor sounds from where the actor stands in the camera's picture, however the camera tilts. A browser lets an Application sound only once the person has pressed in it: a film played otherwise (a Charm's `play`) stays silent, and a *Sound off · click to hear* chip lets it in. A sound whose file cannot be read is left out and a *Sounds missing* chip names it; with none readable, a *No sound* chip says why.
 
@@ -77,7 +77,9 @@ Exported, the film carries the same mix as AAC in its MP4, without any sound tha
 
 A row per track: the camera, each view, each actor, the sets the scene cuts between, the fade and the titles. A key is a diamond, a path a solid band, a wobble or shake a striped band, the fade a ramp to black, a title its words. A camera's shots alternate shades from cut to cut, each named, and so do the sets, each named from its key. Where two actors come within 2 studs of each other, a red notch on both their rows marks the moment they come closest. Keys too close to tell apart draw as one diamond with their count on it, and bands sharing a span stack, the row growing to fit, so nothing hides another.
 
-Drag anywhere on the ruler or the rows to scrub; a diamond seeks to its key. The rows scroll under the playhead, which stays on the ruler. Hovering shows a dashed line following the pointer, its time on the ruler. Hold ⌘ (Ctrl off a Mac) as you move and the sheet beside the timeline shows that moment instead of the film: the studio's own picture of the frame (the picture track's nearest, developing, until it arrives), its time, frame, shot and set, where the row's actor or camera stands then, and every mark under the pointer with what it sets, lit on the lane. Let go and the film's sheet comes back. ⌘-click (Ctrl-click) pins the moment in the sheet, marked on the ruler, until Unpin or Escape lets it go; a plain click still scrubs. A key focused from the keyboard shows its moment too. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, and Space plays.
+The Sound row draws each sound as its waveform, over the span it plays once read (over and over to its `until`), named by its file. Drag a sound along the row and it moves to the frame it is let go on: its time is rewritten where its line writes it (its `until` with it), and nothing else in the scene changes. The timeline reads only code for the call, never a comment or a string, and checks the edit before writing it: the scene as edited must play the same sounds with only that one moved, and the editor takes the edit only while the scene still reads as it was measured. A sound whose time the scene writes as an expression (`LATE`, `HOME + 0.2`) stays where it is, its title saying the line to change.
+
+Drag anywhere else on the ruler or the rows to scrub; a diamond seeks to its key. The rows scroll under the playhead, which stays on the ruler. Hovering shows a dashed line following the pointer, its time on the ruler. Hold ⌘ (Ctrl off a Mac) as you move and the sheet beside the timeline shows that moment instead of the film: the studio's own picture of the frame (the picture track's nearest, developing, until it arrives), its time, frame, shot and set, where the row's actor or camera stands then, and every mark under the pointer with what it sets, lit on the lane. Let go and the film's sheet comes back. ⌘-click (Ctrl-click) pins the moment in the sheet, marked on the ruler, until Unpin or Escape lets it go; a plain click still scrubs. A key focused from the keyboard shows its moment too. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, and Space plays.
 
 Opening a film says so: the film picked in the Open dialog shows *Opening…* while everything else in the dialog waits, and the bar says *opening…* until the film is staged. Staging shows its progress in the status, loading the film into the studio frame by frame.
 
@@ -88,7 +90,7 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 
 | Command | Does |
 |---|---|
-| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, its sounds, every two actors that come within 2 studs, and its log, or the scene's mistake and its line; and the sounds a scene can play |
+| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, its sounds, every two actors that come within 2 studs, and its log, or the scene's mistake and its line; and the sounds Stop Motion ships |
 | `seek` | shows a moment (`time` in seconds, or `frame` from 0) in the studios, answering once the studio has drawn it, so a screenshot sees it |
 | `play`, `pause` | the transport |
 | `storyboard` | shows up to 12 moments at once on a sheet over the main studio, each captioned with its time and shot (the middle of each shot when no `times` or `frames` are given), through a `view` when named: a screenshot of the studio reads them all. The film's next move closes it |
@@ -114,14 +116,16 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | [`src/director.ts`](charmiq://./src/director.ts) | each scene run into a film and staged; the latest scene is the one the studios show |
 | [`src/recorder.ts`](charmiq://./src/recorder.ts) | runs a scene's code and records it as data |
 | [`src/scene-runner.ts`](charmiq://./src/scene-runner.ts) | the worker a scene runs in |
-| [`src/scene-source.ts`](charmiq://./src/scene-source.ts) | the editor's `scene.js` tab, followed through renames and removals, and written |
+| [`src/scene-source.ts`](charmiq://./src/scene-source.ts) | the editor's `scene.js` tab, followed through renames and removals, written, and edited a range at a time |
+| [`src/scene-edit.ts`](charmiq://./src/scene-edit.ts) | the timeline's edits of the scene: a sound added, a sound moved |
 | [`src/film.ts`](charmiq://./src/film.ts) | a recorded scene as a frame per frame (keys, rides, orbits, rolling wheels, shots, plans), each frame as the studio's reel takes it, and a plan's marks |
 | [`src/measure.ts`](charmiq://./src/measure.ts) | how far apart actors come |
 | [`src/studios.ts`](charmiq://./src/studios.ts) | the Brick Studios found, the main one chosen, the reel staged, each frame shown, each studio's state followed |
 | [`src/player.ts`](charmiq://./src/player.ts) | the playhead and its clock |
-| [`src/sound.ts`](charmiq://./src/sound.ts) | the studio's sounds, read and decoded once, and the mix a film's cues make, for playing and exporting alike |
+| [`src/sound.ts`](charmiq://./src/sound.ts) | the film's sounds, read (Platform files through the Drive, shipped sounds as resources) and decoded once, their waveforms, and the mix a film's cues make, for playing and exporting alike |
+| [`src/sound-dialog.ts`](charmiq://./src/sound-dialog.ts) | *Add sound*: the Drive's audio files to pick from |
 | [`src/soundtrack.ts`](charmiq://./src/soundtrack.ts) | the film's sound as it plays, on the playhead's clock |
-| [`sounds`](charmiq://./sounds/README.md) | the studio's sounds and where each comes from |
+| [`sounds`](charmiq://./sounds/README.md) | the sounds Stop Motion ships for its example films, and where each comes from |
 | [`src/timeline.ts`](charmiq://./src/timeline.ts) | the timeline |
 | [`src/timeline-marks.ts`](charmiq://./src/timeline-marks.ts) | the timeline's marks as data: its rows, keys grouped, bands stacked, what lies under a moment, where each track stands |
 | [`src/inspector.ts`](charmiq://./src/inspector.ts) | the sheet's inspector: a moment of the film in the sheet's place |

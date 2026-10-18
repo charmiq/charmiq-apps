@@ -1,6 +1,6 @@
 import type { AppStateAPI } from '../../shared/charmiq';
 
-import { DESIGN_EXTENSION, DRIVE_PAGE, type Design, type Drive, type Folder, type FolderListing } from './drive';
+import { DESIGN_EXTENSION, DESIGNS, DRIVE_PAGE, type Design, type Drive, type DriveFile, type FileKind, type Folder, type FolderListing } from './drive';
 
 // the Brick family's saved designs in the Drive: what a design's name may be, which
 // folder designs go to, and saving and reading a design's LDraw text there. What the
@@ -37,8 +37,9 @@ export type Saved = Readonly<{ name: string; design: Design; folder?: Folder; re
 /** a save in the folder */
 export type SavedInFolder = Saved & Readonly<{ folder: Folder; }>;
 
-/** how the app names a design (`design`, `film`) and the command listing them */
-export type DesignWords = Readonly<{ noun: string; listing: string; }>;
+/** how the app names a design (`design`, `film`, `sound`), the command listing them,
+ *  and the verb a chooser picks one with (`Open`, unless named: `Add`) */
+export type DesignWords = Readonly<{ noun: string; listing: string; pick?: string; }>;
 
 // == Class =======================================================================
 export class DesignStore {
@@ -47,7 +48,8 @@ export class DesignStore {
   protected ready: Promise<void> = Promise.resolve();
   private readonly folderListeners = new Set<() => void>();
 
-  public constructor(protected readonly drive: Drive, private readonly appState: AppStateAPI, public readonly words: DesignWords) {}
+  /** `kind` names the files its chooser lists: designs, unless a sound picker's */
+  public constructor(protected readonly drive: Drive, private readonly appState: AppStateAPI, public readonly words: DesignWords, private readonly kind: FileKind = DESIGNS) {}
 
   /** follows the folder the app state names. A state that cannot be read leaves the
    *  top of the Drive */
@@ -82,8 +84,8 @@ export class DesignStore {
   // == Browse ====================================================================
   // the folders and designs a chooser walks, as the Drive gives them
 
-  /** a page of what a folder holds */
-  public browse(folder: Folder, offset: number): Promise<FolderListing> { return this.drive.list(folder.id, offset); }
+  /** a page of what a folder holds: its folders and its files of the store's kind */
+  public browse(folder: Folder, offset: number): Promise<FolderListing> { return this.drive.list(folder.id, offset, this.kind); }
   /** a page of the folders anywhere whose name matches the search */
   public searchFolders(search: string, offset: number) { return this.drive.searchFolders(search, offset); }
   /** makes a folder inside a folder */
@@ -99,7 +101,7 @@ export class DesignStore {
     const designs: Design[] = [];
     for(let offset=0; designs.length<MAX_LISTED;) {
       const page = await this.drive.list(this.folder.id, offset);
-      designs.push(...page.designs);
+      designs.push(...page.files);
       if(!page.hasMore) break;
       offset += page.read;
     }
@@ -185,8 +187,8 @@ export class DesignStore {
 }
 
 // == Util ========================================================================
-/** a design's name, without its file extension */
-export const displayName = (design: Design): string => design.fileName.slice(0, -DESIGN_EXTENSION.length);
+/** a file's name without its extension: a design's as the person named it */
+export const displayName = (file: DriveFile): string => file.fileName.replace(/\.[^./]+$/, '');
 
 const isFolder = (value: unknown): value is Folder =>
   (typeof value === 'object') && (value !== null) && (typeof (value as Folder).name === 'string') &&

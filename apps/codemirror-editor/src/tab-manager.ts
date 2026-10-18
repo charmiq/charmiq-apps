@@ -554,10 +554,29 @@ export class TabManager {
    *  like any other. Resolves once the document has applied it; rejects, with the
    *  reason, when it cannot be */
   public async replaceText(tabId: TabId, text: string): Promise<void> {
+    await this.change(tabId, current => ChangeSet.of({ from: 0, to: current.length, insert: text }, current.length));
+  }
+
+  /** replaces the text from `from` to `to` (offsets into `measured`) with `text` as
+   *  the user's own change, only while the tab's whole text is still `measured`: a
+   *  tab changed anywhere since the caller read it is refused, nothing changed, so
+   *  the offsets never land on other text */
+  public async editText(tabId: TabId, from: number, to: number, text: string, measured: string): Promise<void> {
+    await this.change(tabId, current => {
+      if(current !== measured) throw new Error('The text has changed since it was read: read it again.');
+      if(!Number.isInteger(from) || !Number.isInteger(to) || (from < 0) || (to < from) || (to > current.length)) throw new Error(`The range ${from} to ${to} is not within the text.`);
+      return ChangeSet.of({ from, to, insert: text }, current.length);
+    });
+  }
+
+  // a change to a tab's text as the user's own, made from the text as it stands now:
+  // shown at once when the tab is active, kept through others' like any edit; resolves
+  // once the document has applied it
+  private async change(tabId: TabId, of: (current: string) => ChangeSet): Promise<void> {
     const live = this.live.get(tabId);
     const tab = this.tabs.get(tabId);
     if(!live || !tab || !live.isEditable()) throw new Error('This file cannot be changed now: it is still loading, or can no longer be saved.');
-    const changes = ChangeSet.of({ from: 0, to: live.text().length, insert: text }, live.text().length);
+    const changes = of(live.text());
     if(this.activeTabId === tabId) this.editorWrapper.applyChanges(changes);
     live.local(changes);
     tab.content = live.text();

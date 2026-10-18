@@ -27,8 +27,9 @@ const MAX_DELAY = 250;
 // == Types =======================================================================
 /** where the film's sound stands: none to play, its sounds loading, ready, silent
  *  until a press (each but none and loading naming the sounds `missing`, those whose
- *  files could not be read), or unavailable (`reason` says why) */
-export type SoundState = Readonly<{ kind: 'none' | 'loading'; } | { kind: 'ready' | 'silent'; missing: ReadonlyArray<string>; } | { kind: 'unavailable'; reason: string; }>;
+ *  files could not be read), or unavailable (`reason` says why, or every sound is
+ *  `missing`) */
+export type SoundState = Readonly<{ kind: 'none' | 'loading'; } | { kind: 'ready' | 'silent'; missing: ReadonlyArray<string>; } | { kind: 'unavailable'; reason: string; } | { kind: 'unavailable'; missing: ReadonlyArray<string>; }>;
 
 // == Class =======================================================================
 export class Soundtrack implements PlayerSoundtrack {
@@ -68,7 +69,7 @@ export class Soundtrack implements PlayerSoundtrack {
     void this.bank.load(names).then(buffers => {
       if(film !== this.film) return/*another film meanwhile*/;
       [this.buffers, this.missing] = [buffers, missingSounds(film!, buffers)];
-      this.state.next((buffers.size < 1) ? { kind: 'unavailable', reason: `${this.missing.join(', ')} could not be read` } : this.heard());
+      this.state.next((buffers.size < 1) ? { kind: 'unavailable', missing: this.missing } : this.heard());
       if(this.started) this.restart()/*playing: the sounds in from here*/;
     });
   }

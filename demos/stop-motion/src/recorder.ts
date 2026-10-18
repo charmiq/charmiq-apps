@@ -102,10 +102,10 @@ export const castAs = (source: Readonly<Record<string, unknown>>): Readonly<{ wo
 };
 
 // == Recorder ====================================================================
-/** runs a scene's code and records it, its sounds named from the studio's `sounds`;
- *  throws a SceneError-shaped error for a scene that fails or declares something no
- *  film can show */
-export const record = (code: string, sounds: ReadonlyArray<string> = []): Recorded => {
+/** runs a scene's code and records it, its sounds Platform files (by URI) or named
+ *  from the `shipped` sounds; throws a SceneError-shaped error for a scene that
+ *  fails or declares something no film can show */
+export const record = (code: string, shipped: ReadonlyArray<string> = []): Recorded => {
   // .. Limits ....................................................................
   const MAX_LENGTH = 120/*seconds*/;
   const MAX_FPS = 60;
@@ -378,13 +378,15 @@ export const record = (code: string, sounds: ReadonlyArray<string> = []): Record
   };
 
   // .. Sounds ....................................................................
-  /** one of the studio's sounds from `time`: once, or over and over until `until`;
-   *  at `volume` (0 to 4, 1 as recorded); following `actor` */
+  /** a sound from `time` (a Platform file by its `charmiq://file/<assetId>` URI, or a
+   *  shipped sound by name): once, or over and over until `until`; at `volume` (0 to
+   *  4, 1 as recorded); following `actor` */
   const cue = (what: string, time: unknown, name: unknown, options: unknown, actor?: string) => {
     counted();
     const at = toTime(time, what);
     const call = `${what}(${at})`;
-    if(!sounds.includes(name as string)) fail((sounds.length > 0) ? `${call} names one of the studio's sounds: ${sounds.join(', ')}` : `${call}: the studio has no sounds`);
+    const file = (typeof name === 'string') && /^charmiq:\/\/file\/[^/?#\s]+$/.test(name);
+    if(!file && !shipped.includes(name as string)) fail(`${call} plays a Platform file by its URI (charmiq://file/<assetId>)${(shipped.length > 0) ? ` or a sound Stop Motion ships: ${shipped.join(', ')}` : ''}`);
     const { volume = 1, until } = ((typeof options === 'object') && (options !== null)) ? options as Record<string, unknown> : {};
     if(!isFiniteNumber(volume) || (volume < 0) || (volume > MAX_VOLUME)) fail(`${call}'s volume is a number from 0 to ${MAX_VOLUME}`);
     const end = (until === undefined) ? undefined : toTime(until, what);

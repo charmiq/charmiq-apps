@@ -1,7 +1,8 @@
 import { cameraShots, type Film } from './film';
 import type { Inspected, InspectedMark, Inspector } from './inspector';
 import type { ClosePair } from './measure';
-import { bandTiers, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type Row, type Under } from './timeline-marks';
+import type { SoundCue } from './recorder';
+import { bandTiers, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type Row, type RowBand, type SoundsKnown, type Under } from './timeline-marks';
 
 // the timeline: one row per track (SEE: timeline-marks.ts), each key a diamond at its
 // time (keys too near to tell apart one diamond, counted) and each function of time a
@@ -15,13 +16,20 @@ import { bandTiers, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type 
 // inspector's Unpin), and a key focused shows its moment too. The line follows each
 // move at once, in the move's own handler, never waiting on an animation frame; the
 // inspector's heavier work gathers into one update after the moves of a task. The
-// keyboard steps frames (arrows), jumps to the ends (Home, End) and plays (Space)
+// keyboard steps frames (arrows), jumps to the ends (Home, End) and plays (Space).
+// each sound draws as its waveform over the span it plays; one whose time the scene
+// writes as a number drags along its row to a new time, which the scene then holds,
+// and one written otherwise says where its time is written
 // ********************************************************************************
 // == Constants ===================================================================
 /** how near two keys draw (CSS pixels) before they draw as one diamond */
 const KEY_APART = 9;
 /** how near the pointer (CSS pixels) a key or a notch is under it */
 const NEAR = 6;
+/** how far (CSS pixels) a press on a sound moves before it is a drag, not a press */
+const DRAG_SLOP = 3;
+/** how long a note about a sound shows */
+const NOTE_MS = 4_000/*ms*/;
 /** how long the inspector rests on a frame before its exact picture is asked of the
  *  studio: a sweep across the timeline asks for none */
 const PICTURE_REST_MS = 90;
@@ -43,7 +51,20 @@ export type TimelineHost = Readonly<{
   picture: (index: number) => Promise<string | undefined>;
   /** the picture track's picture nearest a frame, when one is developed */
   nearPicture: (index: number) => string | undefined;
+  /** the film's sounds as far as they are read: how long each plays once, what it is
+   *  called and its waveform */
+  sounds: () => TimelineSounds;
+  /** why a sound cannot be moved here (the scene writes its time otherwise), or
+   *  undefined when it can */
+  fixed: (cue: SoundCue) => string | undefined;
+  /** moves a sound to a time of the film: undefined once the scene holds it, else why
+   *  it could not */
+  moveSound: (cue: SoundCue, time: number) => Promise<string | undefined>;
 }>;
+
+/** the film's sounds as the timeline draws them: their lengths and names, and each
+ *  one's waveform (its loudest sample in equal slices, 0 to 1) once it is read */
+export type TimelineSounds = SoundsKnown & Readonly<{ peaks: (sound: string) => Float32Array | undefined; }>;
 
 /** a row as laid out: its marks' elements, each key group's diamond */
 type Laid = Readonly<{ row: Row; groups: ReadonlyArray<KeyGroup>; keys: ReadonlyArray<HTMLElement>; bands: ReadonlyArray<HTMLElement>; notches: ReadonlyArray<HTMLElement>; }>;
@@ -89,6 +110,12 @@ export class Timeline {
   private asking: number | undefined;
   private waiting: number | undefined;
   private restTimer: number | undefined;
+  /** a sound being dragged: its band, its element and where the press began */
+  private dragging: Readonly<{ band: RowBand; mark: HTMLElement; startX: number; }> | undefined;
+  private dragged = 0;
+  /** the note about a sound, and its timer */
+  private readonly note: HTMLElement;
+  private noteTimer: number | undefined;
 
   public constructor(private readonly root: HTMLElement, private readonly host: TimelineHost, private readonly inspector: Inspector) {
     const document = root.ownerDocument;
@@ -105,11 +132,15 @@ export class Timeline {
     this.pinLine = element(document, 'div', 'pin-line');
     this.pinLine.append(element(document, 'i', 'pin-knob'));
     this.pinLine.hidden = true;
-    this.over.append(this.pinLine, this.hoverLine, this.playhead);
+    this.note = element(document, 'p', 'timeline-note');
+    this.note.hidden = true;
+    this.note.setAttribute('role', 'status');
+    this.over.append(this.pinLine, this.hoverLine, this.playhead, this.note);
     root.replaceChildren(this.scroller, this.over);
 
     this.scroller.addEventListener('pointerdown', event => this.press(event));
     this.scroller.addEventListener('pointermove', event => {
+      if(this.dragging) { this.drag(event); return; }
       if(this.scrubbing) { this.scrub(event); return; }
       this.pointer = { x: event.clientX, y: event.clientY };
       this.modifier = held(event);
@@ -117,8 +148,8 @@ export class Timeline {
     });
     this.scroller.addEventListener('pointerleave', () => { this.pointer = undefined; this.hover(undefined); });
     const end = () => { this.scrubbing = false; root.classList.remove('is-scrubbing'); };
-    this.scroller.addEventListener('pointerup', end);
-    this.scroller.addEventListener('pointercancel', end);
+    this.scroller.addEventListener('pointerup', event => { if(this.dragging) void this.drop(event); else end(); });
+    this.scroller.addEventListener('pointercancel', () => { this.cancelDrag(); end(); });
     this.scroller.addEventListener('scroll', () => {
       const pointer = this.pointer/*the rows moved under it*/;
       this.hover(pointer && this.momentUnder(pointer.x, document.elementFromPoint(pointer.x, pointer.y)));
@@ -149,6 +180,11 @@ export class Timeline {
   public unpin(): void {
     this.pinned = undefined;
     this.update();
+  }
+
+  /** draws the film's sounds again: one read since, its length and waveform known */
+  public soundsChanged(): void {
+    if(!this.dragging) this.layout()/*a drag keeps the marks it holds*/;
   }
 
   /** moves the playhead to a frame */
@@ -186,13 +222,15 @@ export class Timeline {
     this.laneWidth = ruler.getBoundingClientRect().width;
     const apart = (this.laneWidth > 0) ? ((KEY_APART * length) / this.laneWidth) : 0;
     const body = element(document, 'div', 'rows');
-    this.laid = rowsOf(film, this.close).map((row, index) => {
+    const sounds = this.host.sounds();
+    this.laid = rowsOf(film, this.close, sounds).map((row, index) => {
       const laid = this.row(row, keyGroups(row.keys, apart), at);
       laid.element.dataset.row = String(index);
       body.append(laid.element);
       return laid.laid;
     });
     this.scroller.append(body);
+    for(const laid of this.laid) laid.row.bands.forEach((band, index) => { if(band.cue) this.drawWave(laid.bands[index], band, sounds); });
     this.place();
   }
 
@@ -214,7 +252,8 @@ export class Timeline {
       mark.style.width = `calc(${at(each.to)} - ${at(each.from)})`;
       mark.style.setProperty('--tier', String(tiers[index]));
       if(each.strength !== undefined) mark.style.setProperty('--strength', String(each.strength));
-      if((each.kind === 'title') || (each.kind === 'shot') || (each.kind === 'set') || (each.kind === 'sound')) mark.textContent = each.label;
+      if((each.kind === 'title') || (each.kind === 'shot') || (each.kind === 'set')) mark.textContent = each.label;
+      if(each.cue) this.soundBand(mark, each.cue, each.label);
       lane.append(mark);
       return mark;
     });
@@ -236,6 +275,46 @@ export class Timeline {
     });
     line.append(name, lane);
     return { element: line, laid: { row, groups, keys, bands, notches } };
+  }
+
+  // .. Sounds ....................................................................
+  // a sound's band: its waveform under its name, movable or saying why not
+  private soundBand(mark: HTMLElement, cue: SoundCue, label: string): void {
+    const document = this.root.ownerDocument;
+    const why = this.host.fixed(cue);
+    mark.classList.toggle('is-fixed', why !== undefined);
+    mark.title = why ?? `Drag to move "${label}"`;
+    mark.append(element(document, 'canvas', 'band-wave'), Object.assign(element(document, 'span', 'band-label'), { textContent: label }));
+  }
+
+  // a sound band's waveform, its sound's slices stretched over the band (repeated
+  // over and over where it plays until a time); none until the sound is read
+  private drawWave(mark: HTMLElement, band: RowBand, sounds: TimelineSounds): void {
+    const canvas = mark.querySelector<HTMLCanvasElement>('.band-wave');
+    const peaks = sounds.peaks(band.cue!.name);
+    const duration = sounds.duration(band.cue!.name);
+    const [width, height] = [mark.clientWidth, mark.clientHeight];
+    if(!canvas || !peaks || !duration || (width < 1) || (height < 1)) return/*not read, or not laid out*/;
+    const scale = this.root.ownerDocument.defaultView?.devicePixelRatio ?? 1;
+    [canvas.width, canvas.height] = [Math.round(width * scale), Math.round(height * scale)];
+    const context = canvas.getContext('2d');
+    if(!context) return/*no 2D drawing here*/;
+    context.fillStyle = getComputedStyle(mark).getPropertyValue('--wave').trim() || 'currentColor';
+    const span = band.to - band.from;
+    for(let x=0; x<canvas.width; x++) {
+      const played = ((x / canvas.width) * span) % duration;
+      const peak = peaks[Math.min(peaks.length - 1, Math.floor((played / duration) * peaks.length))];
+      const tall = Math.max(1, peak * canvas.height);
+      context.fillRect(x, (canvas.height - tall) / 2, 1, tall);
+    }
+  }
+
+  // a note about a sound, shown a moment
+  private showNote(text: string): void {
+    this.note.textContent = text;
+    this.note.hidden = false;
+    window.clearTimeout(this.noteTimer);
+    this.noteTimer = window.setTimeout(() => { this.note.hidden = true; }, NOTE_MS);
   }
 
   /** the playhead on the ruler at the frame, whatever the rows' scroll */
@@ -279,12 +358,62 @@ export class Timeline {
       const group = this.groupOf(key);
       if(group) this.host.seek(Math.round(group.time * film.scene.fps));
       return;
-    }
+    } /* else -- not on a key: a sound, or the lane */
+    const sound = (event.target as HTMLElement).closest<HTMLElement>('.band--sound:not(.is-fixed)');
+    const band = sound && this.bandOf(sound);
+    if(sound && band?.cue) {
+      event.preventDefault();
+      this.dragging = { band, mark: sound, startX: event.clientX };
+      this.dragged = 0;
+      this.scroller.setPointerCapture(event.pointerId);
+      return;
+    } /* else -- the lane, or a sound the scene places: a scrub */
     if(!(event.target as HTMLElement).closest('.lane, .ruler')) return;
     this.scrubbing = true;
     this.root.classList.add('is-scrubbing');
     this.scroller.setPointerCapture(event.pointerId);
     this.scrub(event);
+  }
+
+  // .. Moving a sound ............................................................
+  // the dragged sound follows the pointer along its row
+  private drag(event: PointerEvent): void {
+    const dragging = this.dragging!;
+    this.dragged = event.clientX - dragging.startX;
+    if(Math.abs(this.dragged) < DRAG_SLOP) return/*still a press*/;
+    this.root.classList.add('is-moving');
+    dragging.mark.style.transform = `translateX(${this.dragged}px)`;
+  }
+
+  // the dragged sound let go: a press seeks where it fell, a drag moves the sound to
+  // the frame it was let go on (the scene then holds it, and draws it there)
+  private async drop(event: PointerEvent): Promise<void> {
+    const { band, mark } = this.dragging!;
+    const film = this.film!;
+    const moved = this.dragged;
+    this.dragging = undefined;
+    this.root.classList.remove('is-moving');
+    if(Math.abs(moved) < DRAG_SLOP) { mark.style.transform = ''; this.scrub(event); return; }
+    const time = Math.max(0, Math.round((band.cue!.time + ((moved / Math.max(1, this.laneWidth)) * film.scene.length)) * film.scene.fps) / film.scene.fps);
+    const refused = await this.host.moveSound(band.cue!, time);
+    if(refused !== undefined) { mark.style.transform = ''; this.showNote(refused); }
+  }
+
+  // a drag the browser took away: the sound back where it was
+  private cancelDrag(): void {
+    if(!this.dragging) return;
+    this.dragging.mark.style.transform = '';
+    this.dragging = undefined;
+    this.root.classList.remove('is-moving');
+  }
+
+  // the band a sound's element draws
+  private bandOf(mark: HTMLElement): RowBand | undefined {
+    for(const laid of this.laid) {
+      const index = laid.bands.indexOf(mark);
+      if(index >= 0) return laid.row.bands[index];
+    }
+    return undefined/*not this film's*/;
   }
 
   private scrub(event: PointerEvent): void {

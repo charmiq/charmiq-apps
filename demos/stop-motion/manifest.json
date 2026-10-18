@@ -1,7 +1,7 @@
 {
   "id": "ai.charmiq.demos.stop-motion",
   "name": "Stop Motion",
-  "description": "The timeline of a stop-motion film of toy-brick scenes: the scene is code in a code editor's scene.js tab, the film plays in Brick Studio, the screen, and scrubs on the timeline, exports as an MP4, and saves to the Drive as one film (its set and its scene)",
+  "description": "The timeline of a stop-motion film of toy-brick scenes: the scene is code in a code editor's scene.js tab, the film plays in Brick Studio, the screen, and scrubs on the timeline, exports as an MP4, and saves to the Drive as one film (its set and its scene). A scene plays sound with sound.at(time, sound, { volume, until }) or actor.sound(time, sound, { volume, until }) to follow an actor across the picture: the sound is any audio file in the Platform named by its URI, charmiq://file/<assetId> (an Asset you upload, download, or generate: create_audio and create_music return assetIds; use 'charmiq://file/' + assetId)",
   "requestedScopes": [
     "application.advertise",
     "application.call",
@@ -18,23 +18,17 @@
     "format": "esm",
     "mounts": { "/brick-shared": "../brick-shared" },
     "resources": {
-      "sound-thud": "/sounds/thud.ogg",
       "sound-bump": "/sounds/bump.ogg",
-      "sound-clack": "/sounds/clack.ogg",
-      "sound-clang": "/sounds/clang.ogg",
-      "sound-crash": "/sounds/crash.ogg",
-      "sound-glass": "/sounds/glass.ogg",
-      "sound-knock": "/sounds/knock.ogg",
-      "sound-punch": "/sounds/punch.ogg",
-      "sound-step": "/sounds/step.ogg",
-      "sound-step-grass": "/sounds/step-grass.ogg",
       "sound-door-open": "/sounds/door-open.ogg",
-      "sound-door-close": "/sounds/door-close.ogg",
       "sound-engine": "/sounds/engine.ogg",
-      "sound-whoosh": "/sounds/whoosh.ogg",
-      "sound-boom": "/sounds/boom.ogg",
-      "sound-jingle": "/sounds/jingle.ogg",
-      "sound-fanfare": "/sounds/fanfare.ogg"
+      "sound-fanfare": "/sounds/fanfare.ogg",
+      "sound-meow": "/sounds/meow.ogg",
+      "sound-purr": "/sounds/purr.ogg",
+      "sound-radio": "/sounds/radio.ogg",
+      "sound-scream": "/sounds/scream.ogg",
+      "sound-squeal": "/sounds/squeal.ogg",
+      "sound-thump": "/sounds/thump.ogg",
+      "sound-whoosh": "/sounds/whoosh.ogg"
     },
     "dependencies": {
       "importMap": {
@@ -66,8 +60,8 @@
             "views":      { "type": "array", "items": { "type": "string" } },
             "shots":      { "type": "array", "description": "The camera's shots: from each cut (or the start) to the next (or the end), seconds, named by its cut", "items": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "name": { "type": "string" }, "set": { "type": "string", "description": "The build's set standing as it starts, when the scene keys one by then (the build's first set otherwise)" } }, "required": ["from", "to"] } },
             "sets":       { "type": "array", "description": "Each set.at key: from when (seconds) the build's set it names stands, until the next", "items": { "type": "object", "properties": { "time": { "type": "number" }, "set": { "type": "string" } }, "required": ["time", "set"] } },
-            "sounds":     { "type": "array", "description": "Each sound the scene plays (sound.at, or an actor's .sound to follow it): from when (seconds), its name, its volume (1 as recorded), until when it plays over and over (absent: once) and the actor it follows", "items": { "type": "object", "properties": { "time": { "type": "number" }, "name": { "type": "string" }, "volume": { "type": "number" }, "until": { "type": "number" }, "actor": { "type": "string" } }, "required": ["time", "name", "volume"] } },
-            "soundCatalog": { "type": "array", "description": "The sounds a scene can play, by name: impacts (thud, bump, clack, clang, crash, glass, knock, punch), steps (step, step-grass), doors (door-open, door-close), engine (good played until a time, following a car), whoosh, boom, and two short musical stings (jingle, fanfare)", "items": { "type": "string" } },
+            "sounds":     { "type": "array", "description": "Each sound the scene plays (sound.at, or an actor's .sound to follow it): from when (seconds), the sound (a Platform file's charmiq://file/<assetId> URI, or a shipped sound's name), its volume (1 as recorded), until when it plays over and over (absent: once) and the actor it follows", "items": { "type": "object", "properties": { "time": { "type": "number" }, "name": { "type": "string" }, "volume": { "type": "number" }, "until": { "type": "number" }, "actor": { "type": "string" } }, "required": ["time", "name", "volume"] } },
+            "shippedSounds": { "type": "array", "description": "The few sounds Stop Motion ships for its example films, playable by name (sound.at(1, 'engine')). A film's own sounds are files in the Platform, played by URI", "items": { "type": "string" } },
             "close":      { "type": "array", "description": "Every two actors that come within 2 studs (once the studio has staged the film), each where they come closest: the gap between their boxes in studs, 0 touching", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
             "logs":       { "type": "array", "items": { "type": "string" } },
             "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] },

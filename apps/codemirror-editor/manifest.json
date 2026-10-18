@@ -62,6 +62,21 @@
         }
       },
       {
+        "name": "editText",
+        "description": "Replace one range of a tab's text, only while the tab still holds the text it was read as: read the tab with getText, then name the range by character offsets into that text (from inclusive, to exclusive) and pass the whole text read as measured. Refused, nothing changed, when the tab has changed anywhere since; read again and retry",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "from": { "type": "integer", "description": "Character offset where the range starts (0 is the first character)" },
+            "to": { "type": "integer", "description": "Character offset where the range ends (exclusive); equal to from to insert" },
+            "text": { "type": "string", "description": "The text that replaces the range" },
+            "measured": { "type": "string", "description": "The tab's whole text as read, which the offsets count into" },
+            "tabId": { "type": "string", "description": "ID of the tab to edit (defaults to active tab)" }
+          },
+          "required": ["from", "to", "text", "measured"]
+        }
+      },
+      {
         "name": "listTabs",
         "description": "Return metadata for every open tab",
         "inputSchema": { "type": "object", "properties": {} },

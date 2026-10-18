@@ -55,7 +55,8 @@ Three Applications, one document: Brick Studio is the screen, Stop Motion is the
 // The Jump. A driver cruises in, grinning, working the wheel. A cat strolls into his
 // lane and stops. He sees it, yanks the wheel away from it and onto the ramp: horror in
 // the air, then joy, arms up. The cat jumps, then turns to watch him go. Fade to black.
-// The engine follows the car until it leaves the ramp; a whoosh, a jingle for the joy.
+// The radio plays in the car until he swerves, the cat purrs as it strolls, the tires
+// squeal, a thump onto the ramp, a scream and a whoosh as he flies; the cat meows.
 scene({ title: 'The Jump', fps: 24, length: 14.6, floor: { x: -30, z: -40, width: 60, depth: 130 } })
 
 const car = actor('car', { component: 'car' })
@@ -125,9 +126,15 @@ camera.shake(TAKEOFF, TAKEOFF + 0.35, 0.25, 9)
 // Studio shows it, and a storyboard through it maps each moment
 view('plan', { plan: { x: -40, z: -16, width: 72, depth: 44 } })
 
-// .. the sound ......................................................................
-car.sound(0, 'engine', { until: TAKEOFF, volume: 0.6 })
-sound.at(SEES, 'clang', { volume: 0.5 }).at(TAKEOFF, 'whoosh').at(JOY, 'jingle')
+// .. the sound: each following what makes it ......................................
+car.sound(0, 'radio', { until: SEES, volume: 0.7 })
+car.sound(0, 'engine', { until: TAKEOFF, volume: 0.35 })
+cat.sound(CAT, 'purr', { until: BEHIND, volume: 0.8 })
+car.sound(SEES, 'squeal', { volume: 0.8 })
+car.sound(RAMP, 'thump')
+driver.sound(TAKEOFF, 'scream')
+car.sound(FLIGHT, 'whoosh', { volume: 0.6 })
+cat.sound(WATCH + 0.4, 'meow')
 
 fade.out(13.6, 14.2)
 title(14.0, 14.6, 'THE JUMP')
@@ -156,6 +163,7 @@ title(14.0, 14.6, 'THE JUMP')
 
 - Press play, or drag along the timeline: the film plays in the studio above.
 - Press **Back to the build** in the studio to work on the set: the film waits until you press **Stage again**.
+- Press **Add sound** to put a sound from your Drive into the film at the playhead, then drag it along the Sound row to move it.
 - Press **Export MP4** to save the film as a video, and **Save** to keep the film itself (its set and its scene) in your Drive; **Open…** brings one back, **New** starts afresh.
 - Change the scene: make the car leave the ramp faster, or the camera swing the other way. The timeline changes as you type.
 - Add a second Brick Studio below this one, its build empty: it shows the scene's plan, the whole jump from above with every path and where the camera stands.
@@ -172,4 +180,4 @@ The scene's commands, and how the three Applications work together, are in [How 
 
 ## Credits
 
-Parts from the [LDraw Parts Library](https://library.ldraw.org) ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)). Videos are encoded with [Mediabunny](https://mediabunny.dev).
+Parts from the [LDraw Parts Library](https://library.ldraw.org) ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)). The film's sounds are CC0, from Kenney, OpenGameArt and Freesound ([sounds](charmiq://./sounds/README.md) names each). Videos are encoded with [Mediabunny](https://mediabunny.dev).

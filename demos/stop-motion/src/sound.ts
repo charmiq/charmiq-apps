@@ -1,8 +1,10 @@
 import type { Film, StageCamera } from './film';
 import type { Point, SoundCue } from './recorder';
 
-// the film's sound: the studio's sounds (CC0 Ogg Vorbis files in ../sounds, each a
-// declared resource), read and decoded once, and the mix a film's cues make. a cue
+// the film's sound: each sound a film plays read and decoded once, and the mix its
+// cues make. a sound is any audio file in the Platform, named by its
+// `charmiq://file/<assetId>` URI, or one of the few Stop Motion ships for its example
+// films (CC0 Ogg Vorbis files in ../sounds, each a declared resource), named. a cue
 // plays its sound from its time, once or over and over until a time, at its volume;
 // following an actor, it pans to the side of the picture the actor stands on and
 // quiets as the actor stands far off or behind the camera, frame by frame. the film's
@@ -14,9 +16,11 @@ import type { Point, SoundCue } from './recorder';
 // film's length
 // ********************************************************************************
 // == Constants ===================================================================
-/** the studio's sounds, by name */
+/** the sounds Stop Motion ships for its example films, by name */
 // SEE: ../sounds/README.md
-export const SOUNDS: ReadonlyArray<string> = ['thud', 'bump', 'clack', 'clang', 'crash', 'glass', 'knock', 'punch', 'step', 'step-grass', 'door-open', 'door-close', 'engine', 'whoosh', 'boom', 'jingle', 'fanfare'];
+export const SHIPPED_SOUNDS: ReadonlyArray<string> = ['bump', 'door-open', 'engine', 'fanfare', 'meow', 'purr', 'radio', 'scream', 'squeal', 'thump', 'whoosh'];
+/** how a sound that is a file in the Platform is named: its URI's start */
+export const PLATFORM_FILE = 'charmiq://file/';
 
 /** how near (studs) an actor sounds at full volume; farther, it quiets as the
  *  distance grows */
@@ -34,9 +38,13 @@ type FrameCurve = Readonly<{ first: number; values: Float32Array; }>;
 /** the decoded sounds a mix plays, by name */
 export type SoundBuffers = ReadonlyMap<string, AudioBuffer>;
 
-// == Catalog =====================================================================
-/** the resource the manifest declares a sound as */
+// == Names =======================================================================
+/** the resource the manifest declares a shipped sound as */
 export const soundResource = (name: string): string => `sound-${name}`;
+
+/** whether a sound is a file in the Platform (named by its URI) rather than one Stop
+ *  Motion ships */
+export const isPlatformFile = (name: string): boolean => name.startsWith(PLATFORM_FILE);
 
 /** the names of the sounds a film's cues play */
 export const soundsOf = (film: Film): ReadonlySet<string> => new Set((film.scene.sounds ?? []).map(cue => cue.name));
@@ -178,16 +186,33 @@ const dot = (a: Vector, b: Vector): number => (a[0] * b[0]) + (a[1] * b[1]) + (a
 // a vector a unit long, or undefined for none
 const unit = (a: Vector): Vector | undefined => { const length = Math.hypot(...a); return (length > 1e-9) ? [a[0] / length, a[1] / length, a[2] / length] : undefined/*no direction*/; };
 
+// == Waveform ====================================================================
+/** a sound's loudest sample in each of `count` equal slices of it, from 0 to 1,
+ *  across its channels: what a waveform draws */
+export const peaksOf = (buffer: AudioBuffer, count: number): Float32Array => {
+  const peaks = new Float32Array(Math.max(1, count));
+  const slice = buffer.length / peaks.length;
+  for(let channel=0; channel<buffer.numberOfChannels; channel++) {
+    const data = buffer.getChannelData(channel);
+    for(let at=0; at<data.length; at++) {
+      const index = Math.min(peaks.length - 1, Math.floor(at / slice));
+      const sample = Math.abs(data[at]);
+      if(sample > peaks[index]) peaks[index] = Math.min(1, sample);
+    }
+  }
+  return peaks;
+};
+
 // == Bank ========================================================================
-/** the studio's sounds, read and decoded once each: `read` gives a declared
- *  resource's bytes */
+/** the film's sounds, read and decoded once each: `readFile` gives a Platform file's
+ *  bytes (by its URI), `readShipped` a declared resource's (a shipped sound's) */
 export class SoundBank {
   // each sound read, decoding or decoded, by name
   private readonly decoded = new Map<string, Promise<AudioBuffer | undefined>>();
   /** the sounds whose files could not be read or decoded, with why */
   public readonly failed = new Map<string, string>();
 
-  public constructor(private readonly read: (resource: string) => Promise<ArrayBuffer>) {}
+  public constructor(private readonly readShipped: (resource: string) => Promise<ArrayBuffer>, private readonly readFile: (uri: string) => Promise<ArrayBuffer>) {}
 
   /** the named sounds, decoded; one that cannot be read is left out (and `failed`
    *  says why) */
@@ -201,7 +226,7 @@ export class SoundBank {
   private buffer(name: string): Promise<AudioBuffer | undefined> {
     let decoded = this.decoded.get(name);
     if(!decoded) {
-      decoded = this.read(soundResource(name))
+      decoded = (isPlatformFile(name) ? this.readFile(name) : this.readShipped(soundResource(name)))
         .then(bytes => new OfflineAudioContext(2, 1, 48_000).decodeAudioData(bytes))
         .catch((error: unknown) => { this.failed.set(name, (error as Error)?.message ?? String(error)); this.decoded.delete(name); return undefined/*left out: `failed` says why*/; });
       this.decoded.set(name, decoded);

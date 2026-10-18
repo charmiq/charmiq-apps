@@ -149,7 +149,7 @@ export abstract class DesignDialog {
       : actions(button('Cancel', 'designs-secondary', 'button', () => this.dialog.close()));
 
     this.dialog.replaceChildren(element('div', { className: 'designs-form' },
-      heading(choosing ? 'Choose a folder' : `Open ${noun}`),
+      heading(choosing ? 'Choose a folder' : `${this.store.words.pick ?? 'Open'} ${noun}`),
       element('div', { className: 'designs-path' }, back, element('span', { className: 'designs-here' }, (this.search.length > 0) ? 'Folders matching your search' : here.name)),
       label('Search', searchBox),
       list,
@@ -172,7 +172,7 @@ export abstract class DesignDialog {
     list.append(loading);
     try {
       const page = (this.search.length > 0)
-        ? { ...(await this.store.searchFolders(this.search, offset)), designs: [] as ReadonlyArray<Design>, read: 0 }
+        ? { ...(await this.store.searchFolders(this.search, offset)), files: [] as ReadonlyArray<Design>, read: 0 }
         : await this.store.browse(here, offset);
       if(generation !== this.generation) return/*the view moved on*/;
       loading.remove();
@@ -184,7 +184,7 @@ export abstract class DesignDialog {
           this.show(this.view);
         })));
       }
-      for(const design of withDesigns ? page.designs : []) {
+      for(const design of withDesigns ? page.files : []) {
         const node = row('design', displayName(design), () => void this.picked(node, design));
         list.append(element('li', {}, node));
       }

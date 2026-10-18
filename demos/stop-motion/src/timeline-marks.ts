@@ -22,7 +22,13 @@ export type RowKey = Said & Readonly<{ time: number; face?: true; }>;
 /** a band over its span: a path, a wobble, a fade, a title, a camera's shot, a set or
  *  a sound played until a time */
 export type BandKind = 'path' | 'wobble' | 'fade' | 'title' | 'shot' | 'set' | 'sound';
-export type RowBand = Said & Readonly<{ from: number; to: number; label: string; kind: BandKind; strength?: number; alternate?: true; }>;
+/** a band over its span; a sound's carries its cue, so the timeline can draw and move it */
+export type RowBand = Said & Readonly<{ from: number; to: number; label: string; kind: BandKind; strength?: number; alternate?: true; cue?: SoundCue; }>;
+
+/** what the timeline knows of the film's sounds once they are read: how long each
+ *  plays once (seconds; undefined until it is decoded) and what to call it (a Platform
+ *  file's name, a shipped sound's own) */
+export type SoundsKnown = Readonly<{ duration: (sound: string) => number | undefined; label: (sound: string) => string; }>;
 /** where two actors come closest */
 export type RowNotch = Said & Readonly<{ time: number; }>;
 
@@ -48,8 +54,9 @@ export type Under = Readonly<{ groups: ReadonlyArray<KeyGroup>; bands: ReadonlyA
 export const actorColor = (index: number): string => ACTOR_COLORS[index % ACTOR_COLORS.length];
 
 // == Rows ========================================================================
-/** a film's rows, in the timeline's order, its close pairs on their actors' rows */
-export const rowsOf = (film: Film, close: ReadonlyArray<ClosePair>): ReadonlyArray<Row> => {
+/** a film's rows, in the timeline's order, its close pairs on their actors' rows,
+ *  its sounds as far as they are `known` */
+export const rowsOf = (film: Film, close: ReadonlyArray<ClosePair>, known: SoundsKnown = UNKNOWN_SOUNDS): ReadonlyArray<Row> => {
   const { scene } = film;
   const length = scene.length;
   return [
@@ -69,7 +76,7 @@ export const rowsOf = (film: Film, close: ReadonlyArray<ClosePair>): ReadonlyArr
       };
     }),
     ...(scene.sets ? [setRow(scene.sets, length)] : []),
-    ...(scene.sounds ? [soundRow(scene.sounds)] : []),
+    ...(scene.sounds ? [soundRow(scene.sounds, length, known)] : []),
     fadeRow(scene.fade),
     ...((scene.titles.length > 0) ? [titleRow(scene.titles)] : []),
   ];
@@ -101,17 +108,31 @@ const setRow = (keys: ReadonlyArray<SetKey>, length: number): Row => ({
   notches: [],
 });
 
-/** the sounds a scene plays: one played once a key at its time, one played until a
- *  time a band over its span, each saying its volume and the actor it follows */
-const soundRow = (cues: ReadonlyArray<SoundCue>): Row => {
+/** the sounds a scene plays, each a band over the span it plays (one played once
+ *  over its own length, once read; one played until a time over that span), named and
+ *  saying its volume and the actor it follows; one whose length is not yet known a key
+ *  at its time */
+const soundRow = (cues: ReadonlyArray<SoundCue>, length: number, known: SoundsKnown): Row => {
   const said = (cue: SoundCue) => [...((cue.volume !== 1) ? [`volume ${Math.round(cue.volume * 100)}%`] : []), ...((cue.actor !== undefined) ? [`follows ${cue.actor}`] : [])];
+  const spanOf = (cue: SoundCue) => {
+    const duration = known.duration(cue.name);
+    const to = cue.until ?? ((duration !== undefined) ? (cue.time + duration) : undefined);
+    return (to === undefined) ? undefined/*its length not yet known*/ : Math.min(to, length);
+  };
   return {
     name: 'Sound', color: '--brick-orange', track: { kind: 'sounds' },
-    keys: cues.filter(cue => cue.until === undefined).map(cue => ({ time: cue.time, title: `Sound "${cue.name}" at ${seconds2(cue.time)}`, chips: said(cue) })),
-    bands: cues.filter(cue => cue.until !== undefined).map(cue => ({ from: cue.time, to: cue.until!, label: cue.name, kind: 'sound' as const, title: `Sound "${cue.name}"`, chips: [`${seconds2(cue.time)} – ${seconds2(cue.until!)}`, ...said(cue)] })),
+    keys: cues.filter(cue => spanOf(cue) === undefined).map(cue => ({ time: cue.time, title: `Sound "${known.label(cue.name)}" at ${seconds2(cue.time)}`, chips: said(cue) })),
+    bands: cues.flatMap(cue => {
+      const to = spanOf(cue);
+      if(to === undefined) return [];
+      return [{ from: cue.time, to, label: known.label(cue.name), kind: 'sound' as const, cue, title: `Sound "${known.label(cue.name)}"`, chips: [`${seconds2(cue.time)} – ${seconds2(to)}`, ...((cue.until !== undefined) ? ['over and over'] : []), ...said(cue)] }];
+    }),
     notches: [],
   };
 };
+
+/** the sounds before any is read: no lengths, each called by its sound */
+const UNKNOWN_SOUNDS: SoundsKnown = { duration: () => undefined/*not read*/, label: sound => sound };
 
 const fadeRow = (keys: ReadonlyArray<Key>): Row => ({
   name: 'Fade', color: '--ink', track: { kind: 'fade' },

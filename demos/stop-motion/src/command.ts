@@ -5,7 +5,7 @@ import { DesignExists, displayName } from '../../brick-shared/designs';
 import { cameraShots, setAt, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
-import { SOUNDS } from './sound';
+import { SHIPPED_SOUNDS } from './sound';
 import type { Player } from './player';
 import type { Point, SceneError } from './recorder';
 import type { Board, StageState } from './studios';
@@ -60,7 +60,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
           ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
         } : {}),
         ...(error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {}),
-        soundCatalog: SOUNDS,
+        shippedSounds: SHIPPED_SOUNDS,
         file: host.films.state,
       };
     },

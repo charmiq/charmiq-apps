@@ -27,8 +27,9 @@ type Mediabunny = Readonly<{
   QUALITY_HIGH: unknown;
 }>;
 
-/** an exported film: its file; why it carries no sound when its film has some, or the
- *  sounds it carries without (their files could not be read) */
+/** an exported film: its file; why it carries no sound when its film has some (an
+ *  encoder it lacks), and the sounds it carries without (their files could not be
+ *  read), every one when none could be */
 export type Exported = Readonly<{ file: Blob; withoutSound?: string; missing?: ReadonlyArray<string>; }>;
 
 // == Export ======================================================================
@@ -50,9 +51,8 @@ export const exportFilm = async (film: Film, studios: Studios, sounds: SoundBuff
   let sound: Readonly<{ source: InstanceType<Mediabunny['AudioBufferSource']>; mixed: AudioBuffer; }> | undefined;
   let withoutSound: string | undefined;
   const missing = missingSounds(film, sounds);
-  if((film.scene.sounds?.length ?? 0) > 0) {
-    if(!sounds || (sounds.size < 1)) withoutSound = `${missing.join(', ')} could not be read`;
-    else if(!(await canEncodeAudio('aac', { numberOfChannels: CHANNELS, sampleRate: SAMPLE_RATE }))) withoutSound = 'This browser encodes no AAC sound';
+  if(sounds && (sounds.size > 0) && ((film.scene.sounds?.length ?? 0) > 0)) {
+    if(!(await canEncodeAudio('aac', { numberOfChannels: CHANNELS, sampleRate: SAMPLE_RATE }))) withoutSound = 'This browser encodes no AAC sound';
     else {
       const mixing = new OfflineAudioContext(CHANNELS, Math.ceil((film.frames.length / fps) * SAMPLE_RATE), SAMPLE_RATE);
       scheduleMix(mixing, film, sounds, 0, 0);
@@ -60,7 +60,7 @@ export const exportFilm = async (film: Film, studios: Studios, sounds: SoundBuff
       output.addAudioTrack(audio);
       sound = { source: audio, mixed: await mixing.startRendering() };
     }
-  } /* else -- a silent film */
+  } /* else -- a silent film, or none of its sounds read: every one missing */
   await output.start();
   for(const frame of film.frames) {
     if(cancelled()) { await output.cancel(); return undefined; }
@@ -75,7 +75,8 @@ export const exportFilm = async (film: Film, studios: Studios, sounds: SoundBuff
   await output.finalize();
   return {
     file: new Blob([output.target.buffer!], { type: 'video/mp4' }),
-    ...((withoutSound !== undefined) ? { withoutSound } : ((missing.length > 0) ? { missing } : {})),
+    ...((withoutSound !== undefined) ? { withoutSound } : {}),
+    ...((missing.length > 0) ? { missing } : {}),
   };
 };
 

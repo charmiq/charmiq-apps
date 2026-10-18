@@ -1,9 +1,10 @@
 import type { CharmIQMcpAPI } from '../../shared/charmiq';
 
-// the Drive as the Brick family reaches it through the VFS server: its folders, and the
+// the Drive as the Brick family reaches it through the VFS server: its folders, the
 // designs saved in them as Source documents of LDraw text, each named for its file
-// (`Beach house.ldr`). The top of the Drive is named (`root`), never implied: an
-// omitted folder is the User's default folder, which is not always the top
+// (`Beach house.ldr`), and the sounds a film plays, audio files (`engine.mp3`) read as
+// their bytes. The top of the Drive is named (`root`), never implied: an omitted folder
+// is the User's default folder, which is not always the top
 // SEE: charmiq-docs "CharmIQ | Docs | VFS MCP Server"
 // ********************************************************************************
 // == Constants ===================================================================
@@ -11,6 +12,7 @@ const VFS = 'vfs';
 const ROOT = 'root';
 const FOLDER_URI = 'charmiq://folder/';
 const SOURCE_URI = 'charmiq://source/';
+const FILE_URI = 'charmiq://file/';
 
 /** the file extension a design's name carries in the Drive */
 export const DESIGN_EXTENSION = '.ldr';
@@ -23,15 +25,30 @@ const CALL_DEADLINE_MS = 30_000/*ms*/;
 // == Types =======================================================================
 /** a folder in the Drive; the top of the Drive has no id */
 export type Folder = Readonly<{ id: string | undefined; name: string; }>;
-/** a saved design: its file name (with its extension) and its document */
-export type Design = Readonly<{ fileName: string; uri: string; }>;
-/** a page of what a folder holds: its folders and designs, and how many entries the
- *  page read (other documents included), which the next page starts after */
-export type FolderListing = Readonly<{ folders: ReadonlyArray<Folder>; designs: ReadonlyArray<Design>; read: number; hasMore: boolean; }>;
+/** a file in the Drive a listing counts: its file name (with its extension) and its
+ *  uri */
+export type DriveFile = Readonly<{ fileName: string; uri: string; }>;
+/** a saved design: a Source document named `.ldr` */
+export type Design = DriveFile;
+/** which entries a listing counts as its files: those whose uri starts so (a Source
+ *  document, a file) and whose name ends in one of the extensions */
+export type FileKind = Readonly<{ uriPrefix: string; extensions: ReadonlyArray<string>; }>;
+/** a page of what a folder holds: its folders and its files of a kind, and how many
+ *  entries the page read (every other entry included), which the next page starts
+ *  after */
+export type FolderListing = Readonly<{ folders: ReadonlyArray<Folder>; files: ReadonlyArray<DriveFile>; read: number; hasMore: boolean; }>;
+
+// == Kinds =======================================================================
+/** designs: Source documents named `.ldr` */
+export const DESIGNS: FileKind = { uriPrefix: SOURCE_URI, extensions: [DESIGN_EXTENSION] };
+/** sounds: audio files, by the extensions a browser decodes */
+export const SOUND_FILES: FileKind = { uriPrefix: FILE_URI, extensions: ['.aac', '.flac', '.m4a', '.mp3', '.oga', '.ogg', '.opus', '.wav', '.webm'] };
 
 type Entry = Readonly<{ name: string; uri: string; }>;
 type Listing = Readonly<{ entries: ReadonlyArray<Entry>; hasMore: boolean; }>;
 type Read = Readonly<{ content: string; nextRead?: Readonly<Record<string, unknown>>; }>;
+/** a binary file's read: its bytes as base64 */
+type BinaryRead = Readonly<{ content: string; contentType: string; }>;
 type Created = Readonly<{ uri: string; }>;
 
 // == Class =======================================================================
@@ -39,10 +56,11 @@ export class Drive {
   public constructor(private readonly mcp: CharmIQMcpAPI) {}
 
   // == Read ======================================================================
-  /** a page of the folders and designs a folder holds */
-  public async list(folder: string | undefined/*the top of the Drive*/, offset: number): Promise<FolderListing> {
+  /** a page of the folders and the files of a kind (designs, unless named) a folder
+   *  holds */
+  public async list(folder: string | undefined/*the top of the Drive*/, offset: number, kind: FileKind = DESIGNS): Promise<FolderListing> {
     const listing = await this.call<Listing>('list_dir', { uri: folderUri(folder), limit: DRIVE_PAGE, offset });
-    return { folders: listing.entries.flatMap(asFolder), designs: listing.entries.flatMap(asDesign), read: listing.entries.length, hasMore: listing.hasMore };
+    return { folders: listing.entries.flatMap(asFolder), files: listing.entries.flatMap(asFile(kind)), read: listing.entries.length, hasMore: listing.hasMore };
   }
 
   /** a page of the folders anywhere in the Drive whose name matches the search */
@@ -58,16 +76,27 @@ export class Drive {
    *  would search the whole Drive) */
   public async search(folder: string | undefined/*the top of the Drive*/, text: string): Promise<Readonly<{ designs: ReadonlyArray<Design>; hasMore: boolean; }>> {
     const listing = await this.call<Listing>('list_dir', { uri: folderUri(folder), nameSearch: text, limit: DRIVE_PAGE });
-    return { designs: listing.entries.flatMap(asDesign), hasMore: listing.hasMore };
+    return { designs: listing.entries.flatMap(asFile(DESIGNS)), hasMore: listing.hasMore };
   }
 
   /** the design a document is, by its uri (from a listing): refused when the
    *  document is not a design (a Source document named `.ldr`) */
   public async design(uri: string): Promise<Design> {
     const { name } = await this.call<Readonly<{ name: string; }>>('describe_file', { uri });
-    const [design] = asDesign({ name, uri });
+    const [design] = asFile(DESIGNS)({ name, uri });
     if(!design) throw new Error(`${uri} is not a saved design.`);
     return design;
+  }
+
+  /** a file's name, by its uri */
+  public async fileName(uri: string): Promise<string> {
+    return (await this.call<Readonly<{ name: string; }>>('describe_file', { uri })).name;
+  }
+
+  /** a file's bytes exactly as stored, by its uri (a sound, say) */
+  public async bytes(uri: string): Promise<ArrayBuffer> {
+    const { content } = await this.call<BinaryRead>('read_file', { uri });
+    return Uint8Array.from(atob(content), character => character.charCodeAt(0)).buffer;
   }
 
   /** a design's LDraw text, exactly as saved, every page of it */
@@ -121,6 +150,6 @@ const folderUri = (folder: string | undefined): string => folder ? `${FOLDER_URI
 const asFolder = ({ name, uri }: Entry): Folder[] =>
   uri.startsWith(FOLDER_URI) ? [{ id: uri.slice(FOLDER_URI.length), name: name.replace(/\/$/, '') }] : [];
 
-/** a listed entry as a design, when it is one: a Source document named `.ldr` */
-const asDesign = ({ name, uri }: Entry): Design[] =>
-  (uri.startsWith(SOURCE_URI) && name.endsWith(DESIGN_EXTENSION)) ? [{ fileName: name, uri }] : [];
+/** a listed entry as a file of the kind, when it is one */
+const asFile = (kind: FileKind) => ({ name, uri }: Entry): DriveFile[] =>
+  (uri.startsWith(kind.uriPrefix) && kind.extensions.some(extension => name.toLowerCase().endsWith(extension))) ? [{ fileName: name, uri }] : [];
