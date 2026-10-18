@@ -75,13 +75,16 @@
       </div>
 
       <aside class="sheet" aria-label="The film">
-        <p class="eyebrow">Now showing</p>
-        <h2 class="film-title" id="filmTitle">No film yet</h2>
-        <p class="facts" id="filmFacts"></p>
-        <div class="problem" id="problem" role="alert" hidden></div>
-        <p class="eyebrow">Cast</p>
-        <ul class="cast" id="cast"></ul>
-        <pre class="logs" id="logs" hidden></pre>
+        <div class="sheet-film" id="sheetFilm">
+          <p class="eyebrow">Now showing</p>
+          <h2 class="film-title" id="filmTitle">No film yet</h2>
+          <p class="facts" id="filmFacts"></p>
+          <div class="problem" id="problem" role="alert" hidden></div>
+          <p class="eyebrow">Cast</p>
+          <ul class="cast" id="cast"></ul>
+          <pre class="logs" id="logs" hidden></pre>
+        </div>
+        <div class="inspect" id="inspect" aria-live="polite" hidden></div>
       </aside>
     </main>
   </div>

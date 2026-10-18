@@ -18,6 +18,7 @@ import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB } from './scene-source';
 import { Strip } from './strip';
 import { Studios, type StageState } from './studios';
+import { Inspector } from './inspector';
 import { actorColor, Timeline } from './timeline';
 
 // entry point: the film's timeline. It follows the scene's code in the code editor,
@@ -37,9 +38,9 @@ const charmiq: CharmIQAPI | undefined = window.charmiq;
 const RECHECK_MS = 300/*ms*/;
 /** the width of a picture on the picture track (its height the film's shape) */
 const PICTURE_WIDTH = 128/*pixels*/;
-/** the width of the timeline card's picture of a frame (its height the film's shape):
- *  the card shows it at 288 CSS pixels */
-const PEEK_WIDTH = 480/*pixels*/;
+/** the width of the inspector's picture of a frame (its height the film's shape): the
+ *  sheet shows it at up to 300 CSS pixels */
+const INSPECT_WIDTH = 480/*pixels*/;
 /** how a picture is kept: a small image */
 const PICTURE_TYPE = 'image/jpeg';
 const PICTURE_QUALITY = 0.8;
@@ -79,10 +80,11 @@ const source = new SceneSource();
 const studios = new Studios(paint);
 const director = new Director(studios, runScene, { show: next => showFilm(next), error: next => showError(next) });
 const player = new Player(index => studios.show(index));
+const inspector = new Inspector(element('inspect'), element('sheetFilm'), () => timeline.unpin());
 const timeline = new Timeline(element('timeline'), {
   seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle(),
-  picture: index => picture(index, PEEK_WIDTH), nearPicture: index => strip.nearest(index),
-});
+  picture: index => picture(index, INSPECT_WIDTH), nearPicture: index => strip.nearest(index),
+}, inspector);
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack());
 /** the film's files: Stop Motion reads and writes the main studio's build and the
  *  code block's scene for them, the set written staged anew */

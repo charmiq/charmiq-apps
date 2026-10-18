@@ -225,6 +225,7 @@
 .sheet {
   min-height: 0;
   min-width: 0;
+  contain: size/*the deck sets the floor's height; the sheet fills it and scrolls, whatever it shows*/;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -339,6 +340,7 @@
 // take the scrub cursor; the names keep the arrow and a key the hand
 .timeline {
   position: relative;
+  align-self: start/*as tall as its rows, up to the scroll's cap: never stretched by the floor*/;
   border: 1px solid var(--edge);
   border-radius: 3px;
   background: var(--bench);
@@ -375,6 +377,8 @@
 
   &:last-child { border-bottom: none; }
 }
+
+.rows { position: relative; isolation: isolate/*its marks stack within it, under the ruler*/; }
 
 .row--ruler {
   position: sticky;
@@ -528,10 +532,11 @@
   transform: rotate(45deg);
   cursor: pointer;
   box-shadow: 1px 1px 0 var(--outline);
-  transition: transform 110ms cubic-bezier(0.3, 1.6, 0.5, 1), box-shadow 110ms ease;
+  transition: transform 110ms ease, box-shadow 110ms ease;
   z-index: 2;
 
-  &:hover, &:focus-visible, &.is-lit { transform: rotate(45deg) scale(1.4); outline: none; z-index: 3; box-shadow: 1px 1px 0 var(--outline), 0 0 0 3px color-mix(in srgb, var(--row) 35%, transparent); }
+  &:hover, &:focus-visible { transform: rotate(45deg) scale(1.4); outline: none; z-index: 3; }
+  &:hover, &:focus-visible, &.is-lit { box-shadow: 1px 1px 0 var(--outline), 0 0 0 3px color-mix(in srgb, var(--row) 45%, transparent); }
 
   // a face key: a round face in the head's yellow, worn at once
   &--face {
@@ -539,7 +544,7 @@
     background: var(--brick-yellow);
     transform: none;
 
-    &:hover, &:focus-visible, &.is-lit { transform: scale(1.4); }
+    &:hover, &:focus-visible { transform: scale(1.4); }
   }
 }
 
@@ -574,6 +579,10 @@
 
 .playhead { background: var(--brick-red); z-index: 3; }
 
+// the moment pinned in the inspector: a rule in the ink, a pin on the ruler
+.pin-line { position: absolute; top: 0; bottom: 0; left: 0; width: 2px; margin-left: -1px; background: color-mix(in srgb, var(--ink) 45%, transparent); z-index: 2; will-change: transform; }
+.pin-knob { position: absolute; top: 2px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--bench); }
+
 .playhead-knob {
   position: absolute;
   top: 0;
@@ -594,6 +603,7 @@
 
 .hover-time {
   @extend %mono-caps;
+  &:not([data-hint=''])::after { content: ' · ' attr(data-hint); opacity: 0.65; }
   position: absolute;
   top: 3px;
   left: 0;
@@ -607,58 +617,26 @@
   border-radius: 2px;
 }
 
-// == Peek ========================================================================
-// the timeline's hover card, compact enough to fit beside a row in a short frame: the
-// frame's picture framed as a cell of film, sprocket holes along both edges
-// (developing while it is the picture track's nearest), and beside it the moment, the
-// row's track there and the marks under the pointer
-.peek {
-  --pointer: 50%;
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 20;
-  display: grid;
-  grid-template-columns: minmax(96px, 168px) minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-  width: 440px;
-  max-width: calc(100vw - 16px);
-  padding: 7px;
-  border: 1px solid var(--outline);
-  border-radius: 4px;
-  background: var(--bench);
-  color: var(--ink);
-  box-shadow: 0 2px 0 var(--outline), 0 12px 28px rgba(0, 0, 0, 0.22);
-  pointer-events: none;
-  transform-origin: var(--pointer) 100%;
+// == Inspector ===================================================================
+// a moment of the film in the sheet's place: its picture framed as a cell of film,
+// sprocket holes along both edges (developing while it is the picture track's
+// nearest), the moment, the row's track there and the marks under the pointer. Pinned,
+// it says so and carries the way to let it go
+.sheet-film[hidden], .inspect[hidden] { display: none; }
+.sheet-film { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.inspect { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 
-  &[hidden] { display: none; }
-  &.is-below { transform-origin: var(--pointer) 0; }
-  &.is-in { animation: peek-in 140ms cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+.inspect-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.inspect.is-pinned .inspect-head .eyebrow { color: var(--brick-red); }
+.inspect.is-pinned .inspect-head .eyebrow::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--brick-red); vertical-align: 1px; }
+.inspect-unpin { flex: none; height: 22px; padding: 0 8px; width: auto; font-size: 8px; }
 
-  // the notch pointing at the moment, on the side toward the row
-  &::after {
-    content: '';
-    position: absolute;
-    left: var(--pointer);
-    bottom: -6px;
-    width: 10px;
-    height: 10px;
-    margin-left: -5px;
-    background: var(--bench);
-    border-right: 1px solid var(--outline);
-    border-bottom: 1px solid var(--outline);
-    transform: rotate(45deg);
-  }
-  &.is-below::after { bottom: auto; top: -6px; transform: rotate(225deg); }
-}
+.inspect-top { display: grid; grid-template-columns: minmax(0, 132px) minmax(0, 1fr); align-items: start; gap: 8px; }
+.inspect-moment { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 
-@keyframes peek-in { from { opacity: 0; scale: 0.96; } }
-@media (prefers-reduced-motion: reduce) { .peek.is-in { animation: none; } }
-
-.peek-picture {
+.inspect-picture {
   position: relative;
+  flex: none;
   aspect-ratio: 16 / 9;
   border-radius: 2px;
   background: var(--film-cell) center / cover no-repeat;
@@ -694,14 +672,14 @@
   &.is-developing { filter: sepia(0.6) blur(1px) brightness(0.85); }
 }
 
-.peek-body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.inspect-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 
-.peek-when { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; }
-.peek-time { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
-.peek-frame { @extend %mono-caps; font-size: 8px; color: var(--ink-soft); }
+.inspect-when { display: flex; flex-direction: column; gap: 2px; }
+.inspect-time { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; }
+.inspect-frame { @extend %mono-caps; font-size: 8px; color: var(--ink-soft); }
 
-.peek-context { display: flex; flex-wrap: wrap; gap: 4px; }
-.peek-tag {
+.inspect-context { display: flex; flex-wrap: wrap; gap: 4px; }
+.inspect-tag {
   @extend %mono-caps;
   max-width: 100%;
   padding: 2px 5px;
@@ -717,53 +695,52 @@
   &--set::before { content: 'set · '; color: var(--ink-soft); }
 }
 
-.peek-row {
+.inspect-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 3px 6px;
-  padding-top: 5px;
+  padding-top: 6px;
   border-top: 1px solid var(--lane-line);
 }
-.peek-swatch { flex: none; width: 9px; height: 9px; border: 1px solid var(--outline); border-radius: 1px; background: var(--row); }
-.peek-row-name { @extend %mono-caps; font-size: 9px; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.inspect-swatch { flex: none; width: 9px; height: 9px; border: 1px solid var(--outline); border-radius: 1px; background: var(--row); }
+.inspect-row-name { @extend %mono-caps; font-size: 9px; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-.peek-chips { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
-.peek-chip {
+.inspect-chips { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
+.inspect-chip {
   max-width: 100%;
   padding: 0 4px;
   font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
   font-size: 10px;
   line-height: 1.6;
   overflow-wrap: anywhere;
-  background: var(--lane);
+  background: var(--bench);
   border-radius: 2px;
 }
 
-.peek-marks {
+.inspect-marks {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin: 0;
-  padding: 5px 0 0;
+  padding: 6px 0 0;
   list-style: none;
   border-top: 1px solid var(--lane-line);
 }
 
-.peek-mark {
+.inspect-mark {
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr);
   align-items: center;
   column-gap: 6px;
   row-gap: 2px;
   font-size: 11px;
-  .peek-chips { grid-column: 2; }
+  .inspect-chips { grid-column: 2; }
 }
-.peek-mark-title { font-weight: 600; overflow-wrap: anywhere; }
-.peek-more { @extend %mono-caps; padding-left: 18px; font-size: 8px; color: var(--ink-soft); }
+.inspect-mark-title { font-weight: 600; overflow-wrap: anywhere; }
 
 // each mark's shape, in its row's color, as the lane draws it
-.peek-shape {
+.inspect-shape {
   justify-self: center;
   width: 9px;
   height: 9px;
@@ -831,7 +808,7 @@
   .motion { padding: 12px 16px; grid-template-rows: auto auto auto; overflow: auto; }
   body { overflow: auto; }
   .floor { grid-template-columns: 1fr; }
-  .sheet { max-height: 220px; }
+  .sheet { contain: none; max-height: 220px; }
   .actions { margin-left: 0; }
   // the film's file on a row of its own under the title and the chips
   .bar { flex-wrap: wrap; }

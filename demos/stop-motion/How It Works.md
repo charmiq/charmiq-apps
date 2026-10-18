@@ -67,7 +67,7 @@ The bar says the film's name and whether it has changed since it was saved or op
 
 A row per track: the camera, each view, each actor, the sets the scene cuts between, the fade and the titles. A key is a diamond, a path a solid band, a wobble or shake a striped band, the fade a ramp to black, a title its words. A camera's shots alternate shades from cut to cut, each named, and so do the sets, each named from its key. Where two actors come within 2 studs of each other, a red notch on both their rows marks the moment they come closest. Keys too close to tell apart draw as one diamond with their count on it, and bands sharing a span stack, the row growing to fit, so nothing hides another.
 
-Drag anywhere on the ruler or the rows to scrub; a diamond seeks to its key. The rows scroll under the playhead, which stays on the ruler. Hover anywhere over the rows or the ruler and a dashed line follows the pointer, its time on the ruler, while a card beside the row shows that moment: the studio's own picture of the frame (the picture track's nearest, developing, until it arrives), its time, frame, shot and set, where the row's actor or camera stands then, and every mark under the pointer with what it sets. The marks it describes light up on the lane. A key focused from the keyboard shows its card too. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, Space plays, and Escape puts the card away.
+Drag anywhere on the ruler or the rows to scrub; a diamond seeks to its key. The rows scroll under the playhead, which stays on the ruler. Hovering shows a dashed line following the pointer, its time on the ruler. Hold ⌘ (Ctrl off a Mac) as you move and the sheet beside the timeline shows that moment instead of the film: the studio's own picture of the frame (the picture track's nearest, developing, until it arrives), its time, frame, shot and set, where the row's actor or camera stands then, and every mark under the pointer with what it sets, lit on the lane. Let go and the film's sheet comes back. ⌘-click (Ctrl-click) pins the moment in the sheet, marked on the ruler, until Unpin or Escape lets it go; a plain click still scrubs. A key focused from the keyboard shows its moment too. With the timeline focused, the arrows step a frame (with Shift, a second), Home and End go to the ends, and Space plays.
 
 Opening a film says so: the film picked in the Open dialog shows *Opening…* while everything else in the dialog waits, and the bar says *opening…* until the film is staged. Staging shows its progress in the status, loading the film into the studio frame by frame.
 
@@ -110,7 +110,7 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | [`src/player.ts`](charmiq://./src/player.ts) | the playhead and its clock |
 | [`src/timeline.ts`](charmiq://./src/timeline.ts) | the timeline |
 | [`src/timeline-marks.ts`](charmiq://./src/timeline-marks.ts) | the timeline's marks as data: its rows, keys grouped, bands stacked, what lies under a moment, where each track stands |
-| [`src/peek.ts`](charmiq://./src/peek.ts) | the timeline's hover card |
+| [`src/inspector.ts`](charmiq://./src/inspector.ts) | the sheet's inspector: a moment of the film in the sheet's place |
 | [`src/strip.ts`](charmiq://./src/strip.ts) | the picture track, a strip of film |
 | [`src/export.ts`](charmiq://./src/export.ts) | the film as an MP4 |
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
