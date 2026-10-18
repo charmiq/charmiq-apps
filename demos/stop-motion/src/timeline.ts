@@ -214,7 +214,7 @@ export class Timeline {
       mark.style.width = `calc(${at(each.to)} - ${at(each.from)})`;
       mark.style.setProperty('--tier', String(tiers[index]));
       if(each.strength !== undefined) mark.style.setProperty('--strength', String(each.strength));
-      if((each.kind === 'title') || (each.kind === 'shot') || (each.kind === 'set')) mark.textContent = each.label;
+      if((each.kind === 'title') || (each.kind === 'shot') || (each.kind === 'set') || (each.kind === 'sound')) mark.textContent = each.label;
       lane.append(mark);
       return mark;
     });

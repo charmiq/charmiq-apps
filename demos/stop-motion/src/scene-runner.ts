@@ -8,10 +8,11 @@ import { record, type Recorded, type SceneError } from './recorder';
 // == Constants ===================================================================
 const RUN_MILLIS = 4_000/*ms*/;
 
-/** the Worker's source: the recorder as its own text, answering each scene posted */
+/** the Worker's source: the recorder as its own text, answering each scene posted
+ *  with the studio's sounds */
 const WORKER_SOURCE = `const record = ${record.toString()};
 self.onmessage = (event) => {
-  try { self.postMessage({ ok: true, scene: record(event.data) }); }
+  try { self.postMessage({ ok: true, scene: record(event.data.code, event.data.sounds) }); }
   catch(error) { self.postMessage({ ok: false, error: { message: String((error && error.message) || error), line: error && error.sceneLine } }); }
 };`;
 
@@ -19,8 +20,9 @@ self.onmessage = (event) => {
 export type SceneRun = Readonly<{ ok: true; scene: Recorded; } | { ok: false; error: SceneError; }>;
 
 // == Runner ======================================================================
-/** the scene a code makes, or why it makes none */
-export const runScene = (code: string): Promise<SceneRun> => new Promise(resolve => {
+/** the scene a code makes, its sounds named from the studio's `sounds`, or why it
+ *  makes none */
+export const runScene = (code: string, sounds: ReadonlyArray<string>): Promise<SceneRun> => new Promise(resolve => {
   let worker: Worker;
   try { worker = new Worker(URL.createObjectURL(new Blob([WORKER_SOURCE], { type: 'text/javascript' }))); }
   catch(error) { resolve({ ok: false, error: { message: `The scene could not start: ${(error as Error).message}` } }); return; }
@@ -28,5 +30,5 @@ export const runScene = (code: string): Promise<SceneRun> => new Promise(resolve
   const timeout = setTimeout(() => { worker.terminate(); resolve({ ok: false, error: { message: `The scene ran past ${RUN_MILLIS / 1000} seconds: a loop that never ends?` } }); }, RUN_MILLIS);
   worker.onmessage = event => { clearTimeout(timeout); worker.terminate(); resolve(event.data as SceneRun); };
   worker.onerror = event => { clearTimeout(timeout); worker.terminate(); resolve({ ok: false, error: { message: event.message || 'The scene could not run' } }); event.preventDefault(); };
-  worker.postMessage(code);
+  worker.postMessage({ code, sounds });
 });

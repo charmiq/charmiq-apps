@@ -1,4 +1,4 @@
-import { readLocalApplicationResource } from '@charmiq/service-common/application/localResource';
+import { readLocalApplicationResource, readLocalApplicationResourceBytes } from '@charmiq/service-common/application/localResource';
 import { appContentLayer, type AppContentObservableFactory, type AppContentObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentLayer';
 import { Observable } from 'rxjs';
 
@@ -11,9 +11,9 @@ import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnaps
 //
 //   appState / appContent → localStorage (survives reload)
 //   fetch                 → the real window.fetch (fine for CORS-friendly APIs)
-//   resources             → the texts `build-app` read for the manifest's declared
-//                           resources and embedded in the page, refused as the
-//                           Platform refuses them
+//   resources             → the files `build-app` read for the manifest's declared
+//                           resources and embedded in the page, as text or bytes,
+//                           refused as the Platform refuses them
 //   oauth                 → a paste-an-access-token flow (see below), with the
 //                           same listAuth / getValidAuth({connectionKey}) shape
 //                           the app uses against the real bridge
@@ -454,7 +454,7 @@ export const installLocalBridge = (): void => {
     appContent: makeAppContent(),
     oauth: makeOAuth(),
     fetch: (url: string, options?: RequestInit) => fetch(url, options),
-    resources: { text: (name: string) => readLocalApplicationResource(document, name) },
+    resources: { text: (name: string) => readLocalApplicationResource(document, name), bytes: (name: string) => readLocalApplicationResourceBytes(document, name) },
 
     advertise: registry.advertise,
     discover: registry.discover,

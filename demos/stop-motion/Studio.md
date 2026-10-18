@@ -263,7 +263,8 @@ theme: charmiq:none
 // The Homecoming. The driver cruises home down the street, grinning, working the wheel.
 // Cut to the garage: the car rolls in through the door toward us and stops, the driver
 // throws an arm up and laughs. Fade to black, and the title. The street and the garage
-// are two sets of one build; the car is a component both can place
+// are two sets of one build; the car is a component both can place. The engine follows
+// the car across the picture; the garage door clanks, the car stops, the fanfare plays
 scene({ title: 'The Homecoming', fps: 24, length: 9, floor: { x: -30, z: -40, width: 60, depth: 130 } })
 
 const car = actor('car', { component: 'car' })
@@ -280,6 +281,7 @@ car.wobble('yaw', 4, { rate: 0.6, from: 0, to: HOME })
 driver.at(0, { face: 'grin', pose: { leftLeg: 90, rightLeg: 90, leftArm: 50, rightArm: 50, head: 0 } })
       .at(1.5, { pose: { head: -25 } }).at(2.5, { pose: { head: 15 } }).at(3.4, { pose: { head: 0 } })
 camera.cut(0, { position: { x: -36, z: 14, height: 16 }, target: car }, 'down the street')
+car.sound(0, 'engine', { until: PARKED, volume: 0.6 })
 
 // .. the garage: in through the door, toward the camera, and stopped ..................
 set.at(HOME, 'Garage')
@@ -289,6 +291,7 @@ camera.cut(HOME, { position: { x: -0.5, z: 22, height: 32 }, target: { x: -0.5, 
 camera.at(PARKED, { position: { x: -0.5, z: 20, height: 28 }, target: { x: -0.5, z: -5, height: 5 } })
 driver.at(PARKED, { pose: { rightArm: 50, head: 0 } })/*the arm down until the car stops*/
       .at(CHEER, { face: 'laugh', pose: { rightArm: 165, head: 20 } }, 'ease-out')
+sound.at(HOME, 'door-open').at(PARKED, 'bump').at(CHEER, 'fanfare')
 
 fade.out(7.9, 9)
 title(7.9, 9, 'The Homecoming')

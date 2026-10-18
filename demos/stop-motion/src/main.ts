@@ -16,6 +16,8 @@ import { Player, type PlayerState } from './player';
 import { castAs, type SceneError } from './recorder';
 import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB } from './scene-source';
+import { soundsOf, SoundBank, SOUNDS } from './sound';
+import { Soundtrack, type SoundState } from './soundtrack';
 import { Strip } from './strip';
 import { Studios, type StageState } from './studios';
 import { Inspector } from './inspector';
@@ -26,10 +28,12 @@ import { actorColor, Timeline } from './timeline';
 // playhead, the timeline, the picture track and the transport. Stop Motion draws no
 // film: the studios show it. A scene with a mistake keeps the last film that ran and
 // says where the mistake is. The film's file (New, Open, Save) is its set and its scene
-// in one design in the Drive, written and read by Stop Motion between the two
+// in one design in the Drive, written and read by Stop Motion between the two. Stop
+// Motion plays the film's sound itself, on the player's clock (SEE: soundtrack.ts)
 //
 //   SceneSource (the editor's scene.js) -> Director: runScene (a Worker), filmOf
-//     -> Studios.stage (the wheels found, the reel loaded) -> Player, Timeline, Strip
+//     -> Studios.stage (the wheels found, the reel loaded) -> Player (+ Soundtrack),
+//        Timeline, Strip
 // ********************************************************************************
 const charmiq: CharmIQAPI | undefined = window.charmiq;
 
@@ -47,6 +51,8 @@ const PICTURE_QUALITY = 0.8;
 /** how long after a film opens its bar says so while nothing stages: a film opened
  *  over the same set and scene stages nothing anew */
 const OPENING_MS = 2_000/*ms*/;
+/** how long the export button says a film saved without its sound */
+const WITHOUT_SOUND_MS = 6_000/*ms*/;
 
 // == Elements ====================================================================
 const element = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -66,6 +72,7 @@ const frameCount = element<HTMLSpanElement>('frameCount');
 const playButton = element<HTMLButtonElement>('playButton');
 const loopButton = element<HTMLButtonElement>('loopButton');
 const exportButton = element<HTMLButtonElement>('exportButton');
+const soundChip = element<HTMLButtonElement>('soundChip');
 const fileControls = element<HTMLDivElement>('file');
 const fileTitle = element<HTMLSpanElement>('fileTitle');
 const fileState = element<HTMLSpanElement>('fileState');
@@ -78,8 +85,11 @@ const paint: Paint = { actor: index => styled(actorColor(index)), camera: styled
 
 const source = new SceneSource();
 const studios = new Studios(paint);
-const director = new Director(studios, runScene, { show: next => showFilm(next), error: next => showError(next) });
-const player = new Player(index => studios.show(index));
+const director = new Director(studios, code => runScene(code, SOUNDS), { show: next => showFilm(next), error: next => showError(next) });
+/** the studio's sounds, read through the Platform's file bytes where it delivers them */
+const bank = charmiq?.resources?.bytes ? new SoundBank(name => charmiq.resources.bytes(name)) : undefined;
+const soundtrack = new Soundtrack(bank);
+const player = new Player(index => showFrame(index), soundtrack);
 const inspector = new Inspector(element('inspect'), element('sheetFilm'), () => timeline.unpin());
 const timeline = new Timeline(element('timeline'), {
   seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle(),
@@ -111,6 +121,7 @@ let exporting: { cancelled: boolean; } | undefined;
 // == Film ========================================================================
 const showFilm = (next: Film) => {
   film = next;
+  soundtrack.setFilm(next);
   player.setFilm(next);
   showTimeline();
   strip.show(next);
@@ -274,6 +285,14 @@ element('openButton').addEventListener('click', () => filmDialog?.openOpen());
 element('saveButton').addEventListener('click', () => void saveFilm());
 
 // == Transport ===================================================================
+/** a frame on the studios; while playing, how long the main studio takes to show it
+ *  is what the sound waits */
+const showFrame = (index: number) => {
+  const asked = performance.now();
+  studios.show(index);
+  if(player.current.playing) void studios.whenShown(index).then(() => soundtrack.observeDelay(performance.now() - asked), () => undefined/*another frame meanwhile*/);
+};
+
 const showPlayer = (state: PlayerState) => {
   timeline.setFrame(state.index);
   strip.setFrame(state.index);
@@ -295,6 +314,25 @@ element('nextButton').addEventListener('click', () => player.step(1));
 element('lastButton').addEventListener('click', () => { player.pause(); player.seek(Number.MAX_SAFE_INTEGER); });
 loopButton.addEventListener('click', () => player.setLoop(!player.current.loop));
 
+/** the sound chip: shown only when the film's sound is silent until a press (the
+ *  press lets it in), plays without some of its sounds, or cannot play (its title
+ *  says why) */
+const showSound = (state: SoundState) => {
+  const missing = (('missing' in state) && (state.missing.length > 0)) ? `${state.missing.join(', ')} could not be read` : undefined;
+  const [shown, text, title] =
+    (state.kind === 'silent') ? [true, 'Sound off · click to hear', `Let the film's sound play${missing ? ` (${missing})` : ''}`]
+    : (state.kind === 'unavailable') ? [true, 'No sound', state.reason]
+    : ((state.kind === 'ready') && missing) ? [true, 'Sounds missing', missing]
+    : [false, '', ''];
+  soundChip.hidden = !shown;
+  soundChip.dataset.state = (missing && (state.kind === 'ready')) ? 'missing' : state.kind;
+  soundChip.disabled = (state.kind !== 'silent');
+  soundChip.textContent = text;
+  soundChip.title = title;
+};
+soundtrack.state$.subscribe(showSound);
+soundChip.addEventListener('click', () => void soundtrack.resume());
+
 exportButton.addEventListener('click', async () => {
   if(exporting) { exporting.cancelled = true; return; }
   if(!film) return;
@@ -303,8 +341,11 @@ exportButton.addEventListener('click', async () => {
   player.pause();
   exportButton.classList.add('is-busy');
   try {
-    const file = await exportFilm(filming, studios, (done, total) => { exportButton.textContent = `Exporting ${Math.round((done / total) * 100)}% · stop`; }, () => request.cancelled);
-    if(file) save(file, fileName(filming.scene.title));
+    const sounds = bank && await bank.load(soundsOf(filming));
+    const exported = await exportFilm(filming, studios, sounds, (done, total) => { exportButton.textContent = `Exporting ${Math.round((done / total) * 100)}% · stop`; }, () => request.cancelled);
+    if(exported) save(exported.file, fileName(filming.scene.title));
+    if(exported?.withoutSound) exportedNote('Saved without sound', exported.withoutSound);
+    else if(exported?.missing) exportedNote('Saved, sounds missing', `${exported.missing.join(', ')} could not be read`);
   } catch(failure) {
     console.error('stop-motion: the export failed:', failure);
     showError({ message: `The export failed: ${(failure as Error).message}` });
@@ -316,6 +357,16 @@ exportButton.addEventListener('click', async () => {
     void developTrack();
   }
 });
+
+/** an export saved without its film's sound, or some of it: the export button says
+ *  so a moment, its title why */
+const exportedNote = (label: string, reason: string) => {
+  setTimeout(() => {
+    exportButton.textContent = label;
+    exportButton.title = reason;
+    setTimeout(() => { if(!exporting) { exportButton.textContent = 'Export MP4'; exportButton.title = 'Save the film as a video'; } }, WITHOUT_SOUND_MS);
+  });
+};
 
 // == Studios =====================================================================
 /** the studio chip: how many studios, and where the film stands on them */

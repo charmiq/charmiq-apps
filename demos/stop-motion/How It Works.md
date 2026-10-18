@@ -25,6 +25,8 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | `set.at(time, name)` | a cut to another of the build's sets (Brick Studio's [sets](charmiq://../brick-studio/How%20It%20Works.md)): the set of that name stands from `time` on, until the next; the build's first set before the first |
 | `fade.at(time, value)`, `fade.out(from, to)`, `fade.in(from, to)` | the fade to black: 0 shows the frame, 1 is black |
 | `title(from, to, text, { style })` | words over the film: a full `card`, or a `caption` along the foot |
+| `sound.at(time, name, { volume, until })` | one of the studio's sounds from `time`: once, or over and over `until` a time; `volume` from 0 to 4 (1 as recorded) |
+| `a.sound(time, name, { volume, until })` | a sound that follows an actor: it sounds from the side of the picture the actor stands on, quieter as it stands farther than 20 studs off or behind the camera |
 | `arc(t, up, gravity)`, `noise(t)`, `lerp(a, b, u)` | a jump's height in plates after `t` seconds, smooth noise from -1 to 1, and a blend |
 | `console.log(...)` | a line in the film's log, beside the cast |
 
@@ -63,6 +65,14 @@ The scene is written into the code editor's tab named `scene.js` as it stands th
 The bar says the film's name and whether it has changed since it was saved or opened. New and Open read the film as it stands just before changing it and ask first rather than lose unsaved changes; a set that cannot be read counts as changed, and an edit made in the studio after that read stops the change with nothing replaced. Save, Open and New run one at a time, in the order asked; a Drive that does not answer within 30 seconds is refused, so the next one runs. Stop Motion is between the two parts: it reads and writes the studio's build and the code block's scene, and nothing else.
 
 
+## The Sound
+
+The studio's sounds are short recordings a scene plays by name: impacts (`thud`, `bump`, `clack`, `clang`, `crash`, `glass`, `knock`, `punch`), steps (`step`, `step-grass`), doors (`door-open`, `door-close`), an `engine` (played until a time, following a car), a `whoosh`, a `boom`, and two musical stings (`jingle`, `fanfare`). They are Ogg files in [`sounds`](charmiq://./sounds/README.md), each a resource the manifest declares, all Creative Commons Zero.
+
+Stop Motion plays the film's sound itself as the studio shows its picture: started with the playhead, from wherever it starts, seeks or loops, and waiting the moment the studio takes to show a frame so the two meet on screen; at the film's end or its loop the last sounds play out, and a pause stops them at once. The film's fade fades its sound too. A sound following an actor sounds from where the actor stands in the camera's picture, however the camera tilts. A browser lets an Application sound only once the person has pressed in it: a film played otherwise (a Charm's `play`) stays silent, and a *Sound off · click to hear* chip lets it in. A sound whose file cannot be read is left out and a *Sounds missing* chip names it; with none readable, a *No sound* chip says why.
+
+Exported, the film carries the same mix as AAC in its MP4, without any sound that could not be read (the export button names them). A browser that encodes no AAC exports the picture alone, and the export button says so.
+
 ## The Timeline
 
 A row per track: the camera, each view, each actor, the sets the scene cuts between, the fade and the titles. A key is a diamond, a path a solid band, a wobble or shake a striped band, the fade a ramp to black, a title its words. A camera's shots alternate shades from cut to cut, each named, and so do the sets, each named from its key. Where two actors come within 2 studs of each other, a red notch on both their rows marks the moment they come closest. Keys too close to tell apart draw as one diamond with their count on it, and bands sharing a span stack, the row growing to fit, so nothing hides another.
@@ -78,7 +88,7 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 
 | Command | Does |
 |---|---|
-| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, every two actors that come within 2 studs, and its log, or the scene's mistake and its line |
+| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, its sounds, every two actors that come within 2 studs, and its log, or the scene's mistake and its line; and the sounds a scene can play |
 | `seek` | shows a moment (`time` in seconds, or `frame` from 0) in the studios, answering once the studio has drawn it, so a screenshot sees it |
 | `play`, `pause` | the transport |
 | `storyboard` | shows up to 12 moments at once on a sheet over the main studio, each captioned with its time and shot (the middle of each shot when no `times` or `frames` are given), through a `view` when named: a screenshot of the studio reads them all. The film's next move closes it |
@@ -109,6 +119,9 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | [`src/measure.ts`](charmiq://./src/measure.ts) | how far apart actors come |
 | [`src/studios.ts`](charmiq://./src/studios.ts) | the Brick Studios found, the main one chosen, the reel staged, each frame shown, each studio's state followed |
 | [`src/player.ts`](charmiq://./src/player.ts) | the playhead and its clock |
+| [`src/sound.ts`](charmiq://./src/sound.ts) | the studio's sounds, read and decoded once, and the mix a film's cues make, for playing and exporting alike |
+| [`src/soundtrack.ts`](charmiq://./src/soundtrack.ts) | the film's sound as it plays, on the playhead's clock |
+| [`sounds`](charmiq://./sounds/README.md) | the studio's sounds and where each comes from |
 | [`src/timeline.ts`](charmiq://./src/timeline.ts) | the timeline |
 | [`src/timeline-marks.ts`](charmiq://./src/timeline-marks.ts) | the timeline's marks as data: its rows, keys grouped, bands stacked, what lies under a moment, where each track stands |
 | [`src/inspector.ts`](charmiq://./src/inspector.ts) | the sheet's inspector: a moment of the film in the sheet's place |

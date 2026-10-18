@@ -5,6 +5,7 @@ import { DesignExists, displayName } from '../../brick-shared/designs';
 import { cameraShots, setAt, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
+import { SOUNDS } from './sound';
 import type { Player } from './player';
 import type { Point, SceneError } from './recorder';
 import type { Board, StageState } from './studios';
@@ -54,10 +55,12 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
           actors: film.scene.actors.map(actor => actor.name), views: film.scene.views.map(view => view.name),
           shots: cameraShots(film.scene.camera, film.scene.length).map(shot => { const set = setAt(film.scene.sets, shot.from); return (set !== undefined) ? { ...shot, set } : shot; }),
           ...(film.scene.sets ? { sets: film.scene.sets.map(({ time, set }) => ({ time: thousandths(time), set })) } : {}),
+          ...(film.scene.sounds ? { sounds: film.scene.sounds.map(({ time, name, volume, until, actor }) => ({ time: thousandths(time), name, volume, ...((until !== undefined) ? { until: thousandths(until) } : {}), ...((actor !== undefined) ? { actor } : {}) })) } : {}),
           ...(sizes ? { close: closePairs(film, sizes).map(pair => ({ actors: pair.actors, frame: pair.frame, time: thousandths(pair.time), gap: hundredths(pair.gap) })) } : {}),
           ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
         } : {}),
         ...(error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {}),
+        soundCatalog: SOUNDS,
         file: host.films.state,
       };
     },

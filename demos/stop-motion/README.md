@@ -55,6 +55,7 @@ Three Applications, one document: Brick Studio is the screen, Stop Motion is the
 // The Jump. A driver cruises in, grinning, working the wheel. A cat strolls into his
 // lane and stops. He sees it, yanks the wheel away from it and onto the ramp: horror in
 // the air, then joy, arms up. The cat jumps, then turns to watch him go. Fade to black.
+// The engine follows the car until it leaves the ramp; a whoosh, a jingle for the joy.
 scene({ title: 'The Jump', fps: 24, length: 14.6, floor: { x: -30, z: -40, width: 60, depth: 130 } })
 
 const car = actor('car', { component: 'car' })
@@ -123,6 +124,10 @@ camera.shake(TAKEOFF, TAKEOFF + 0.35, 0.25, 9)
 // the scene from above, framed on the cat, the swerve and the ramp: a second Brick
 // Studio shows it, and a storyboard through it maps each moment
 view('plan', { plan: { x: -40, z: -16, width: 72, depth: 44 } })
+
+// .. the sound ......................................................................
+car.sound(0, 'engine', { until: TAKEOFF, volume: 0.6 })
+sound.at(SEES, 'clang', { volume: 0.5 }).at(TAKEOFF, 'whoosh').at(JOY, 'jingle')
 
 fade.out(13.6, 14.2)
 title(14.0, 14.6, 'THE JUMP')

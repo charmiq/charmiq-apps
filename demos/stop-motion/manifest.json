@@ -17,6 +17,25 @@
     },
     "format": "esm",
     "mounts": { "/brick-shared": "../brick-shared" },
+    "resources": {
+      "sound-thud": "/sounds/thud.ogg",
+      "sound-bump": "/sounds/bump.ogg",
+      "sound-clack": "/sounds/clack.ogg",
+      "sound-clang": "/sounds/clang.ogg",
+      "sound-crash": "/sounds/crash.ogg",
+      "sound-glass": "/sounds/glass.ogg",
+      "sound-knock": "/sounds/knock.ogg",
+      "sound-punch": "/sounds/punch.ogg",
+      "sound-step": "/sounds/step.ogg",
+      "sound-step-grass": "/sounds/step-grass.ogg",
+      "sound-door-open": "/sounds/door-open.ogg",
+      "sound-door-close": "/sounds/door-close.ogg",
+      "sound-engine": "/sounds/engine.ogg",
+      "sound-whoosh": "/sounds/whoosh.ogg",
+      "sound-boom": "/sounds/boom.ogg",
+      "sound-jingle": "/sounds/jingle.ogg",
+      "sound-fanfare": "/sounds/fanfare.ogg"
+    },
     "dependencies": {
       "importMap": {
         "rxjs": "https://esm.sh/rxjs@7.8.2",
@@ -29,7 +48,7 @@
     "charmiq.command": [
       {
         "name": "describeFilm",
-        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, every two actors that come within 2 studs and where, and what it logged), or the scene's mistake and its line",
+        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, the sounds it plays, every two actors that come within 2 studs and where, and what it logged), or the scene's mistake and its line, and the sounds a scene can play",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
@@ -47,6 +66,8 @@
             "views":      { "type": "array", "items": { "type": "string" } },
             "shots":      { "type": "array", "description": "The camera's shots: from each cut (or the start) to the next (or the end), seconds, named by its cut", "items": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "name": { "type": "string" }, "set": { "type": "string", "description": "The build's set standing as it starts, when the scene keys one by then (the build's first set otherwise)" } }, "required": ["from", "to"] } },
             "sets":       { "type": "array", "description": "Each set.at key: from when (seconds) the build's set it names stands, until the next", "items": { "type": "object", "properties": { "time": { "type": "number" }, "set": { "type": "string" } }, "required": ["time", "set"] } },
+            "sounds":     { "type": "array", "description": "Each sound the scene plays (sound.at, or an actor's .sound to follow it): from when (seconds), its name, its volume (1 as recorded), until when it plays over and over (absent: once) and the actor it follows", "items": { "type": "object", "properties": { "time": { "type": "number" }, "name": { "type": "string" }, "volume": { "type": "number" }, "until": { "type": "number" }, "actor": { "type": "string" } }, "required": ["time", "name", "volume"] } },
+            "soundCatalog": { "type": "array", "description": "The sounds a scene can play, by name: impacts (thud, bump, clack, clang, crash, glass, knock, punch), steps (step, step-grass), doors (door-open, door-close), engine (good played until a time, following a car), whoosh, boom, and two short musical stings (jingle, fanfare)", "items": { "type": "string" } },
             "close":      { "type": "array", "description": "Every two actors that come within 2 studs (once the studio has staged the film), each where they come closest: the gap between their boxes in studs, 0 touching", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
             "logs":       { "type": "array", "items": { "type": "string" } },
             "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] },

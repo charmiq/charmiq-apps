@@ -146,6 +146,7 @@
   &--plain  { background: var(--bench); color: var(--ink); }
   &--azure  { background: var(--brick-azure); }
   &--yellow { background: var(--brick-yellow); }
+  &--orange { background: var(--brick-orange); }
   &--red    { background: var(--brick-red); color: #FFFDF2; padding: 0; width: 34px; }
   &.is-busy { background: repeating-linear-gradient(-45deg, var(--brick-yellow) 0 8px, color-mix(in srgb, var(--brick-yellow) 70%, white) 8px 16px); background-size: 22px 22px; animation: march 0.8s linear infinite; }
 }
@@ -158,6 +159,13 @@
 }
 
 #loopButton[aria-pressed='false'] { background: var(--bench); color: var(--ink-soft); }
+
+// the film's sound waiting on a press, or unable to play (its title says why)
+.sound-chip {
+  &[hidden] { display: none; }
+  &[data-state='silent'] { animation: pulse 1.6s ease-in-out infinite; }
+  &:disabled { cursor: help; opacity: 0.8; background: var(--bench); color: var(--ink-soft); }
+}
 
 // == Status ======================================================================
 // what stops the film (no studio, the way back, a refusal), and what to do
@@ -500,6 +508,21 @@
     border-radius: 0;
   }
   &--shot-alternate, &--set-alternate { background: color-mix(in srgb, var(--row) 26%, transparent); }
+  // a sound played until a time: its name over the lines of a waveform
+  &--sound {
+    @extend %mono-caps;
+    --pad: 4px;
+    padding: 0 4px;
+    display: flex;
+    align-items: center;
+    font-size: 7px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--ink);
+    background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--row) 55%, transparent) 0 1px, transparent 1px 3px), color-mix(in srgb, var(--row) 14%, transparent);
+    border: 1px solid var(--row);
+  }
 }
 
 // two actors close: a red notch on each one's row where they come closest
@@ -753,6 +776,7 @@
   &--fade { width: 12px; height: 6px; background: linear-gradient(90deg, transparent, #000); }
   &--title { width: 12px; height: 7px; background: var(--brick-yellow); }
   &--shot, &--set { width: 4px; height: 12px; border: none; background: var(--row); }
+  &--sound { width: 12px; height: 7px; background: repeating-linear-gradient(90deg, var(--row) 0 1px, transparent 1px 3px); }
   &--close { width: 4px; height: 12px; border-radius: 2px; background: var(--brick-red); }
 }
 

@@ -1,9 +1,9 @@
 import { cameraShots, type Film, type FilmFrame } from './film';
 import type { ClosePair } from './measure';
-import { castAs, type CameraKey, type Key, type RecordedCamera, type SetKey, type Span, type Title } from './recorder';
+import { castAs, type CameraKey, type Key, type RecordedCamera, type SetKey, type SoundCue, type Span, type Title } from './recorder';
 
 // the timeline's marks as data: a row per track (the camera, each view, each actor,
-// the sets, the fade and the titles), each with its keys, its bands over their spans and
+// the sets, the sounds, the fade and the titles), each with its keys, its bands over their spans and
 // its notches where two actors come closest. Keys too near to tell apart on the lane
 // draw as one group; bands sharing a span stack in tiers, so nothing draws over
 // anything else. What lies under a moment of a row (its marks, and where the row's
@@ -19,15 +19,16 @@ export type Said = Readonly<{ title: string; chips: ReadonlyArray<string>; }>;
 
 /** a key at its time; a face key wears a face */
 export type RowKey = Said & Readonly<{ time: number; face?: true; }>;
-/** a band over its span: a path, a wobble, a fade, a title, a camera's shot or a set */
-export type BandKind = 'path' | 'wobble' | 'fade' | 'title' | 'shot' | 'set';
+/** a band over its span: a path, a wobble, a fade, a title, a camera's shot, a set or
+ *  a sound played until a time */
+export type BandKind = 'path' | 'wobble' | 'fade' | 'title' | 'shot' | 'set' | 'sound';
 export type RowBand = Said & Readonly<{ from: number; to: number; label: string; kind: BandKind; strength?: number; alternate?: true; }>;
 /** where two actors come closest */
 export type RowNotch = Said & Readonly<{ time: number; }>;
 
-/** whose track a row is: the camera or a view, an actor, the sets, the fade or the
- *  titles */
-export type Track = Readonly<{ kind: 'camera'; view?: string; } | { kind: 'actor'; name: string; } | { kind: 'sets'; } | { kind: 'fade'; } | { kind: 'titles'; }>;
+/** whose track a row is: the camera or a view, an actor, the sets, the sounds, the
+ *  fade or the titles */
+export type Track = Readonly<{ kind: 'camera'; view?: string; } | { kind: 'actor'; name: string; } | { kind: 'sets'; } | { kind: 'sounds'; } | { kind: 'fade'; } | { kind: 'titles'; }>;
 
 /** a row: its name, a note under it, its color (a CSS custom property), whose track
  *  it is and its marks */
@@ -68,6 +69,7 @@ export const rowsOf = (film: Film, close: ReadonlyArray<ClosePair>): ReadonlyArr
       };
     }),
     ...(scene.sets ? [setRow(scene.sets, length)] : []),
+    ...(scene.sounds ? [soundRow(scene.sounds)] : []),
     fadeRow(scene.fade),
     ...((scene.titles.length > 0) ? [titleRow(scene.titles)] : []),
   ];
@@ -98,6 +100,18 @@ const setRow = (keys: ReadonlyArray<SetKey>, length: number): Row => ({
   }),
   notches: [],
 });
+
+/** the sounds a scene plays: one played once a key at its time, one played until a
+ *  time a band over its span, each saying its volume and the actor it follows */
+const soundRow = (cues: ReadonlyArray<SoundCue>): Row => {
+  const said = (cue: SoundCue) => [...((cue.volume !== 1) ? [`volume ${Math.round(cue.volume * 100)}%`] : []), ...((cue.actor !== undefined) ? [`follows ${cue.actor}`] : [])];
+  return {
+    name: 'Sound', color: '--brick-orange', track: { kind: 'sounds' },
+    keys: cues.filter(cue => cue.until === undefined).map(cue => ({ time: cue.time, title: `Sound "${cue.name}" at ${seconds2(cue.time)}`, chips: said(cue) })),
+    bands: cues.filter(cue => cue.until !== undefined).map(cue => ({ from: cue.time, to: cue.until!, label: cue.name, kind: 'sound' as const, title: `Sound "${cue.name}"`, chips: [`${seconds2(cue.time)} – ${seconds2(cue.until!)}`, ...said(cue)] })),
+    notches: [],
+  };
+};
 
 const fadeRow = (keys: ReadonlyArray<Key>): Row => ({
   name: 'Fade', color: '--ink', track: { kind: 'fade' },
@@ -160,7 +174,7 @@ export const underAt = (groups: ReadonlyArray<KeyGroup>, row: Row, time: number,
 // == Where the track stands ======================================================
 /** where a row's track stands in a frame, as the hover card's chips: an actor's place
  *  and turn (or hidden), a camera's place, target and lens (or the plan it shows), the
- *  set standing, the fade or the title */
+ *  set standing, the sounds playing until a time, the fade or the title */
 export const standingAt = (row: Row, frame: FilmFrame): ReadonlyArray<string> => {
   const track = row.track;
   switch(track.kind) {
@@ -178,6 +192,10 @@ export const standingAt = (row: Row, frame: FilmFrame): ReadonlyArray<string> =>
       return [`at ${point(camera.position)}`, `looks at ${point(camera.target)}`, `${round(camera.fov)}° lens`];
     }
     case 'sets': return [frame.set ?? 'the build\'s first set'];
+    case 'sounds': {
+      const playing = row.bands.filter(each => (each.from <= frame.time) && (frame.time < each.to)).map(each => each.label);
+      return (playing.length > 0) ? playing : ['quiet'];
+    }
     case 'fade': return [`${Math.round(frame.fade * 100)}% black`];
     case 'titles': return frame.title ? [frame.title.text] : ['no title'];
   }

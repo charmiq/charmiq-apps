@@ -468,6 +468,10 @@ export interface CharmIQOAuthAPI {
 
 // == Resources ===================================================================
 export type ResourcesAPI = Readonly<{
+  /** the complete bytes of the resource the manifest declares as `name`, as stored:
+   *  an Asset's newest version (a sound, an image), or a Source's text as UTF-8;
+   *  rejects as `text` does, a file's bytes never refused for not being UTF-8 */
+  bytes: (name: string) => Promise<ArrayBuffer>;
   /** the complete UTF-8 text of the resource the manifest declares as `name`.
    *  Rejects for an undeclared name (`code` `functions/not-found`) and for a file
    *  that is missing, unreadable, not UTF-8 or over 32 MB (32,000,000 bytes), with

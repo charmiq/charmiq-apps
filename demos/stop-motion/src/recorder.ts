@@ -1,6 +1,6 @@
 // the scene recorder: runs a scene's code and records what it declares as plain
-// data: the scene's settings, each actor's keys and the camera's, the fade and the
-// titles, every function of time sampled once per frame. It runs inside a Worker
+// data: the scene's settings, each actor's keys and the camera's, the fade, the
+// titles and the sounds, every function of time sampled once per frame. It runs inside a Worker
 // (SEE: scene-runner.ts), so `record` is self-contained: it reaches nothing outside
 // its own body but the language's globals, and is shipped as its own source text
 // ********************************************************************************
@@ -22,6 +22,10 @@ export type FaceKey = Readonly<{ time: number; face: string; line?: number; }>;
 /** the build's set standing from `time` on, until the next: a cut, never eased (SEE:
  *  Brick Studio's sets) */
 export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
+/** one of the studio's sounds played from `time`: once, or over and over `until` a
+ *  time; at a volume (1 as recorded); from where an actor stands in the picture
+ *  when it follows one (SEE: sound.ts) */
+export type SoundCue = Readonly<{ time: number; name: string; volume: number; until?: number; actor?: string; line?: number; }>;
 
 /** a function of time over a span, sampled at each frame from `from` up to `to`
  *  (frame numbers, inclusive): `set` replaces its channels there, `add` adds to them */
@@ -77,6 +81,8 @@ export type Recorded = Readonly<{
   /** which of the build's sets stands from each key on, in time order, when the scene
    *  keys any (its first set stands before the first) */
   sets?: ReadonlyArray<SetKey>;
+  /** the sounds it plays, in time order, when it plays any */
+  sounds?: ReadonlyArray<SoundCue>;
   /** what the scene logged (console.log) */
   logs: ReadonlyArray<string>;
 }>;
@@ -96,15 +102,17 @@ export const castAs = (source: Readonly<Record<string, unknown>>): Readonly<{ wo
 };
 
 // == Recorder ====================================================================
-/** runs a scene's code and records it. Throws a SceneError-shaped error for a scene
- *  that fails or declares something no film can show */
-export const record = (code: string): Recorded => {
+/** runs a scene's code and records it, its sounds named from the studio's `sounds`;
+ *  throws a SceneError-shaped error for a scene that fails or declares something no
+ *  film can show */
+export const record = (code: string, sounds: ReadonlyArray<string> = []): Recorded => {
   // .. Limits ....................................................................
   const MAX_LENGTH = 120/*seconds*/;
   const MAX_FPS = 60;
   const MAX_ACTORS = 64;
   const MAX_KEYS = 2_000;
   const MAX_NAME = 40/*characters*/;
+  const MAX_VOLUME = 4;
   const EASES = ['linear', 'ease-in', 'ease-out', 'ease-in-out', 'hold'];
   const LIMBS = ['head', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'];
   const ACTOR_CHANNELS = ['x', 'z', 'height', 'yaw', 'pitch', 'roll', 'visible', ...LIMBS.map(limb => `pose.${limb}`)];
@@ -162,6 +170,7 @@ export const record = (code: string): Recorded => {
   const plans = new Map<string, { area?: Area; }>();
   const fadeKeys: Key[] = [];
   const setKeys: SetKey[] = [];
+  const soundCues: SoundCue[] = [];
   const titles: Title[] = [];
   const logs: string[] = [];
   let keyCount = 0;
@@ -259,6 +268,9 @@ export const record = (code: string): Recorded => {
         });
         return handle;
       },
+      /** one of the studio's sounds from `time`, from where the actor stands in the
+       *  picture (SEE: cue) */
+      sound: (time: unknown, named: unknown, options?: unknown) => { cue(`${String(name)}.sound`, time, named, options, name as string); return handle; },
       /** rides another actor: stands at `offset` (studs east and north, plates up) in
        *  its frame, turned with it */
       ride: (parent: unknown, offset: unknown) => {
@@ -365,6 +377,23 @@ export const record = (code: string): Recorded => {
     },
   };
 
+  // .. Sounds ....................................................................
+  /** one of the studio's sounds from `time`: once, or over and over until `until`;
+   *  at `volume` (0 to 4, 1 as recorded); following `actor` */
+  const cue = (what: string, time: unknown, name: unknown, options: unknown, actor?: string) => {
+    counted();
+    const at = toTime(time, what);
+    const call = `${what}(${at})`;
+    if(!sounds.includes(name as string)) fail((sounds.length > 0) ? `${call} names one of the studio's sounds: ${sounds.join(', ')}` : `${call}: the studio has no sounds`);
+    const { volume = 1, until } = ((typeof options === 'object') && (options !== null)) ? options as Record<string, unknown> : {};
+    if(!isFiniteNumber(volume) || (volume < 0) || (volume > MAX_VOLUME)) fail(`${call}'s volume is a number from 0 to ${MAX_VOLUME}`);
+    const end = (until === undefined) ? undefined : toTime(until, what);
+    if((end !== undefined) && (end <= at)) fail(`${call} plays until after it starts`);
+    soundCues.push({ time: at, name: name as string, volume: volume as number, ...((end !== undefined) ? { until: end } : {}), ...((actor !== undefined) ? { actor } : {}), line: callerLine() });
+  };
+  /** the studio's sounds at their times, following no actor */
+  const sound = { at: (time: unknown, name: unknown, options?: unknown) => { cue('sound.at', time, name, options); return sound; } };
+
   /** words over the film: a full card or a caption along the bottom */
   const title = (from: unknown, to: unknown, text: unknown, options: Record<string, unknown> = {}) => {
     const [start, end] = [toTime(from, 'title'), toTime(to, 'title')];
@@ -402,7 +431,7 @@ export const record = (code: string): Recorded => {
   // .. Run .......................................................................
   // the scene's code, given the API alone
   const api: Record<string, unknown> = {
-    scene, actor, camera, view, set, fade, title, noise,
+    scene, actor, camera, view, set, fade, title, sound, noise,
     /** a jump's height (plates) at time t from leaving at `up` plates a second, under
      *  `gravity` plates a second squared */
     arc: (t: number, up: number, gravity = 120) => (up * t) - (gravity * t * t / 2),
@@ -421,7 +450,7 @@ export const record = (code: string): Recorded => {
   // sampled and each key in time order
   for(const each of actors) if(each.ride && !actors.some(other => other.name === each.ride!.parent)) fail(`${each.name} rides '${each.ride.parent}', which is no actor`, each.line);
   for(const [name, { keys }] of cameras) for(const key of keys) if(key.target && ('actor' in key.target) && !actors.some(other => other.name === (key.target as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) looks at '${(key.target as { actor: string; }).actor}', which is no actor`, key.line);
-  const times = [...actors.flatMap(each => [...each.keys, ...each.faces].map(key => key.time)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to)];
+  const times = [...actors.flatMap(each => [...each.keys, ...each.faces].map(key => key.time)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to), ...soundCues.map(each => each.until ?? each.time)];
   settings.length ??= Math.max(1, ...times);
   /** keys in time order, a held key after any other at its time, so a move may end
    *  exactly where a cut jumps */
@@ -431,6 +460,6 @@ export const record = (code: string): Recorded => {
     actors: actors.map(({ name, source, ride, keys, faces, spans, line }) => ({ name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), spans: spans.map(span => span()), ...((line !== undefined) ? { line } : {}) })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
-    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), logs,
+    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), ...((soundCues.length > 0) ? { sounds: byTime(soundCues) } : {}), logs,
   };
 };

@@ -1,0 +1,211 @@
+import type { Film, StageCamera } from './film';
+import type { Point, SoundCue } from './recorder';
+
+// the film's sound: the studio's sounds (CC0 Ogg Vorbis files in ../sounds, each a
+// declared resource), read and decoded once, and the mix a film's cues make. a cue
+// plays its sound from its time, once or over and over until a time, at its volume;
+// following an actor, it pans to the side of the picture the actor stands on and
+// quiets as the actor stands far off or behind the camera, frame by frame. the film's
+// fade fades its sound with its picture. one mix serves playing (an AudioContext) and
+// exporting (an OfflineAudioContext), so what plays is what exports. every sound
+// following one actor shares that actor's pan and gain: one bus per followed actor,
+// its curves over the film's frames each one value curve (frames are evenly spaced),
+// so a mix's automation grows with the actors followed, never with the sounds or the
+// film's length
+// ********************************************************************************
+// == Constants ===================================================================
+/** the studio's sounds, by name */
+// SEE: ../sounds/README.md
+export const SOUNDS: ReadonlyArray<string> = ['thud', 'bump', 'clack', 'clang', 'crash', 'glass', 'knock', 'punch', 'step', 'step-grass', 'door-open', 'door-close', 'engine', 'whoosh', 'boom', 'jingle', 'fanfare'];
+
+/** how near (studs) an actor sounds at full volume; farther, it quiets as the
+ *  distance grows */
+const NEAR = 20;
+/** how loud an actor behind the camera sounds, of what it would in front */
+const BEHIND = 0.5;
+/** studs a plate stands (8 LDU of a stud's 20) */
+const STUDS_PER_PLATE = 0.4;
+/** a time past a frame's that rounding alone puts there (seconds) */
+const TIME_EPSILON = 1e-9;
+
+// == Types =======================================================================
+/** values at each frame from `first` on (the frame index), a frame apart */
+type FrameCurve = Readonly<{ first: number; values: Float32Array; }>;
+/** the decoded sounds a mix plays, by name */
+export type SoundBuffers = ReadonlyMap<string, AudioBuffer>;
+
+// == Catalog =====================================================================
+/** the resource the manifest declares a sound as */
+export const soundResource = (name: string): string => `sound-${name}`;
+
+/** the names of the sounds a film's cues play */
+export const soundsOf = (film: Film): ReadonlySet<string> => new Set((film.scene.sounds ?? []).map(cue => cue.name));
+
+/** the sounds a film plays that `buffers` lacks (their files could not be read), by
+ *  name: what a film plays and exports without */
+export const missingSounds = (film: Film, buffers: SoundBuffers | undefined): ReadonlyArray<string> =>
+  [...soundsOf(film)].filter(name => !buffers?.has(name));
+
+// == Placement ===================================================================
+/** where a point sounds from through a camera: `pan` from -1 (the picture's left
+ *  edge and beyond) to 1 (its right), and `gain`, 1 within NEAR studs and quieter
+ *  past it, halved behind the camera. `aspect` is the picture's width over its
+ *  height (the camera's lens is its height's angle); the camera's right is its
+ *  forward crossed with up, as the studio aims it (+y up, -z north): looking straight
+ *  down, east is right and north up */
+export const placement = (camera: StageCamera, at: Point, aspect: number): Readonly<{ pan: number; gain: number; }> => {
+  const [eye, target, point] = [sceneOf(camera.position), sceneOf(camera.target), sceneOf(at)];
+  const forward = unit(minus(target, eye)) ?? [0, 0, -1];
+  const right = unit([-forward[2], 0, forward[0]]/*forward × up*/) ?? [1, 0, 0]/*straight down*/;
+  const toward = minus(point, eye);
+  const [ahead, across] = [dot(toward, forward), dot(toward, right)];
+  const halfWidth = Math.tan((camera.fov * Math.PI) / 360) * aspect;
+  const pan = Math.max(-1, Math.min(1, across / Math.max(Math.abs(ahead) * halfWidth, 1e-9)));
+  const distance = Math.hypot(...toward);
+  const gain = Math.min(1, NEAR / Math.max(distance, 1e-9)) * ((ahead < 0) ? BEHIND : 1);
+  return { pan, gain };
+};
+
+// == Curves ======================================================================
+/** an actor's pan and gain at every frame of the film, as a sound following it hears
+ *  them: an actor a frame does not show is silent there */
+export const actorCurves = (film: Film, actor: string): Readonly<{ pan: FrameCurve; gain: FrameCurve; }> => {
+  const aspect = film.scene.width / film.scene.height;
+  const [pan, gain] = [new Float32Array(film.frames.length), new Float32Array(film.frames.length)];
+  film.frames.forEach((frame, at) => {
+    const shot = frame.actors.find(each => each.name === actor);
+    const placed = shot ? placement(frame.camera, shot.position, aspect) : { pan: 0, gain: 0 };
+    [pan[at], gain[at]] = [placed.pan, placed.gain];
+  });
+  return { pan: { first: 0, values: pan }, gain: { first: 0, values: gain } };
+};
+
+/** a followed actor's pan and gain at each frame its cue plays over (from its time to
+ *  its `until`, a sound played once to the film's end), by the frame's time */
+export const followCurve = (film: Film, cue: SoundCue): ReadonlyArray<Readonly<{ time: number; pan: number; gain: number; }>> => {
+  const { pan, gain } = actorCurves(film, cue.actor!);
+  const { first, count } = framesOf(film, cue.time, cue.until ?? film.scene.length);
+  return Array.from({ length: count }, (_, at) => ({ time: film.frames[first + at].time, pan: pan.values[first + at], gain: gain.values[first + at] }));
+};
+
+/** the film's gain at each frame: what its fade leaves of its picture */
+export const fadeCurve = (film: Film): ReadonlyArray<Readonly<{ time: number; gain: number; }>> =>
+  film.frames.map(frame => ({ time: frame.time, gain: 1 - frame.fade }));
+
+// the frames from `from` up to `to` (seconds): the first's index and how many
+const framesOf = (film: Film, from: number, to: number): Readonly<{ first: number; count: number; }> => {
+  const first = film.frames.findIndex(frame => frame.time >= (from - TIME_EPSILON));
+  if(first < 0) return { first: film.frames.length, count: 0 };
+  let last = first;
+  while((last < film.frames.length) && (film.frames[last].time < (to - TIME_EPSILON))) last++;
+  return { first, count: last - first };
+};
+
+// == Mix =========================================================================
+/** a film's sound from `from` seconds into it, starting at the context's time `at`
+ *  (the moment its picture shows `from`): every cue sounding then or later within the
+ *  film, each through its volume (and, following an actor, that actor's bus: its gain
+ *  and pan), the film's fade over them all, every sound ending as the film's last
+ *  picture shows; returns what stops it */
+export const scheduleMix = (context: BaseAudioContext, film: Film, buffers: SoundBuffers, from: number, at: number): (() => void) => {
+  const ends = at + Math.max(0, film.scene.length - from);
+  const master = context.createGain();
+  master.connect(context.destination);
+  follow(master.gain, { first: 0, values: Float32Array.from(film.frames, frame => 1 - frame.fade) }, film.scene.fps, from, at);
+
+  // each followed actor's bus: its gain, then its pan, into the master
+  const buses = new Map<string, AudioNode>();
+  const busOf = (actor: string): AudioNode => {
+    let bus = buses.get(actor);
+    if(!bus) {
+      const curves = actorCurves(film, actor);
+      const [gain, panner] = [context.createGain(), context.createStereoPanner()];
+      follow(gain.gain, curves.gain, film.scene.fps, from, at);
+      follow(panner.pan, curves.pan, film.scene.fps, from, at);
+      gain.connect(panner);
+      panner.connect(master);
+      buses.set(actor, bus = gain);
+    } /* else -- made for an earlier sound following the actor */
+    return bus;
+  };
+
+  const sources: AudioBufferSourceNode[] = [];
+  for(const cue of film.scene.sounds ?? []) {
+    const buffer = buffers.get(cue.name);
+    if(!buffer) continue/*not decoded: its file could not be read*/;
+    const end = cue.until ?? (cue.time + buffer.duration);
+    if((end <= from) || (cue.time >= film.scene.length)) continue/*over before the mix starts, or past the film's end*/;
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = (cue.until !== undefined);
+    const volume = context.createGain();
+    volume.gain.value = cue.volume;
+    source.connect(volume);
+    volume.connect((cue.actor === undefined) ? master : busOf(cue.actor));
+    const into = Math.max(0, from - cue.time);
+    source.start(at + Math.max(0, cue.time - from), source.loop ? (into % buffer.duration) : into);
+    source.stop(Math.min(ends, at + (end - from)));
+    sources.push(source);
+  }
+  return () => {
+    for(const source of sources) { try { source.stop(); } catch{ /*never started*/ } }
+    master.disconnect();
+  };
+};
+
+// a parameter following a curve over the film's frames from `from` seconds on, as
+// the context's time from `at`: the frame at `from` at once, then one value curve to
+// the curve's last frame
+const follow = (param: AudioParam, curve: FrameCurve, fps: number, from: number, at: number): void => {
+  if(curve.values.length < 1) return;
+  const into = Math.min(curve.values.length - 1, Math.max(0, Math.ceil((from * fps) - curve.first - TIME_EPSILON)))/*the first frame at or past `from`*/;
+  const values = curve.values.subarray(into);
+  param.value = values[0];
+  if(values.length < 2) return;
+  const start = at + Math.max(0, ((curve.first + into) / fps) - from);
+  param.setValueCurveAtTime(values, start, (values.length - 1) / fps);
+};
+
+// == Geometry ====================================================================
+// a direction or a point in the studio's space (studs)
+type Vector = [number, number, number];
+// a scene point (studs east and north, plates up) in the studio's space: +y up, -z
+// north, in studs
+const sceneOf = ({ x, z, height }: Point): Vector => [x, height * STUDS_PER_PLATE, -z];
+const minus = (a: Vector, b: Vector): Vector => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot = (a: Vector, b: Vector): number => (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
+// a vector a unit long, or undefined for none
+const unit = (a: Vector): Vector | undefined => { const length = Math.hypot(...a); return (length > 1e-9) ? [a[0] / length, a[1] / length, a[2] / length] : undefined/*no direction*/; };
+
+// == Bank ========================================================================
+/** the studio's sounds, read and decoded once each: `read` gives a declared
+ *  resource's bytes */
+export class SoundBank {
+  // each sound read, decoding or decoded, by name
+  private readonly decoded = new Map<string, Promise<AudioBuffer | undefined>>();
+  /** the sounds whose files could not be read or decoded, with why */
+  public readonly failed = new Map<string, string>();
+
+  public constructor(private readonly read: (resource: string) => Promise<ArrayBuffer>) {}
+
+  /** the named sounds, decoded; one that cannot be read is left out (and `failed`
+   *  says why) */
+  public async load(names: Iterable<string>): Promise<SoundBuffers> {
+    const loaded = await Promise.all([...names].map(async name => [name, await this.buffer(name)] as const));
+    return new Map(loaded.filter((entry): entry is readonly [string, AudioBuffer] => entry[1] !== undefined));
+  }
+
+  // the named sound decoded, read once; a failed read is forgotten, so a later load
+  // asks again
+  private buffer(name: string): Promise<AudioBuffer | undefined> {
+    let decoded = this.decoded.get(name);
+    if(!decoded) {
+      decoded = this.read(soundResource(name))
+        .then(bytes => new OfflineAudioContext(2, 1, 48_000).decodeAudioData(bytes))
+        .catch((error: unknown) => { this.failed.set(name, (error as Error)?.message ?? String(error)); this.decoded.delete(name); return undefined/*left out: `failed` says why*/; });
+      this.decoded.set(name, decoded);
+    } /* else -- read, or being read, for an earlier load */
+    return decoded;
+  }
+}
