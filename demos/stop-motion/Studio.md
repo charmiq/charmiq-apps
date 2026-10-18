@@ -293,6 +293,23 @@ driver.at(PARKED, { pose: { rightArm: 50, head: 0 } })/*the arm down until the c
 fade.out(7.9, 9)
 title(7.9, 9, 'The Homecoming')
       </app-content>
+      <app-state>
+{
+  "config": {
+    "lineNumbers": true,
+    "lineWrapping": false,
+    "smartIndent": true,
+    "indentWithTabs": false,
+    "maxTabs": 1
+  },
+  "tabModes": {
+    "scene": "javascript"
+  },
+  "tabOrder": [
+    "scene"
+  ]
+}
+      </app-state>
     </iframe-app>
   </p>
   <p class="timeline">
