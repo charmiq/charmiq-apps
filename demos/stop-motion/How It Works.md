@@ -98,6 +98,7 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 
 | File | Purpose |
 |---|---|
+| [`Studio.md`](charmiq://./Studio.md) | the studio as one page, no words: the screen and the scene side by side over the timeline, on a bench of studs, its film the homecoming (a street and a garage, two sets) |
 | [`manifest.json`](charmiq://./manifest.json) | scopes, the import map and the command surface |
 | [`src/main.ts`](charmiq://./src/main.ts) | entry point: the scene, the studios, the playhead, the timeline and the picture track, wired |
 | [`src/director.ts`](charmiq://./src/director.ts) | each scene run into a film and staged; the latest scene is the one the studios show |
