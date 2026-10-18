@@ -13,8 +13,7 @@ import { bandTiers, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type 
 // pointer in the sheet's inspector (SEE: inspector.ts), its marks lit on the lane; the
 // modifier and a press pin that moment there until it is let go (Escape, or the
 // inspector's Unpin), and a key focused shows its moment too. The line follows each
-// move at once, in the move's own handler (an Application frame's animation frames are
-// held back until the person presses in it, so the line never waits on one); the
+// move at once, in the move's own handler, never waiting on an animation frame; the
 // inspector's heavier work gathers into one update after the moves of a task. The
 // keyboard steps frames (arrows), jumps to the ends (Home, End) and plays (Space)
 // ********************************************************************************
