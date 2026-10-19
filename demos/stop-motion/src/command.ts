@@ -5,7 +5,6 @@ import { DesignExists, displayName } from '../../brick-shared/designs';
 import { cameraShots, setAt, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
-import { SHIPPED_SOUNDS } from './sound';
 import type { Player } from './player';
 import type { Point, SceneError } from './recorder';
 import type { Board, StageState } from './studios';
@@ -37,12 +36,14 @@ export type FilmHost = Readonly<{
   storyboard: (frames: ReadonlyArray<Board>, view?: string) => Promise<number>;
   /** the film's files */
   films: Films;
+  /** the names of the sounds Stop Motion ships, once listed */
+  shippedSounds: () => Promise<ReadonlyArray<string>>;
 }>;
 
 // == Commands ====================================================================
 export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void => {
   charmiq.exportCommands({
-    describeFilm: () => {
+    describeFilm: async () => {
       const film = host.film(), error = host.error(), stage = host.stage();
       const sizes = sizesOf(stage);
       return {
@@ -60,7 +61,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
           ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
         } : {}),
         ...(error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {}),
-        shippedSounds: SHIPPED_SOUNDS,
+        ...(await host.shippedSounds().then(shippedSounds => ({ shippedSounds }), (failure: unknown) => ({ shippedSounds: [], shippedSoundsError: (failure as Error).message }))),
         file: host.films.state,
       };
     },

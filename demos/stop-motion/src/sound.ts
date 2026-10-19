@@ -1,3 +1,4 @@
+import { SOUND_FILES } from '../../brick-shared/drive';
 import type { Film, StageCamera } from './film';
 import type { Point, SoundCue } from './recorder';
 
@@ -16,9 +17,10 @@ import type { Point, SoundCue } from './recorder';
 // film's length
 // ********************************************************************************
 // == Constants ===================================================================
-/** the sounds Stop Motion ships for its example films, by name */
+/** the folder manifest.json `bundle.resources` declares for the sounds Stop Motion
+ *  ships for its example films: whatever audio files it holds are the shipped sounds */
 // SEE: ../sounds/README.md
-export const SHIPPED_SOUNDS: ReadonlyArray<string> = ['bump', 'door-open', 'engine', 'fanfare', 'meow', 'purr', 'radio', 'scream', 'squeal', 'thump', 'whoosh'];
+export const SHIPPED_FOLDER = 'sound/';
 /** how a sound that is a file in the Platform is named: its URI's start */
 export const PLATFORM_FILE = 'charmiq://file/';
 
@@ -39,8 +41,43 @@ type FrameCurve = Readonly<{ first: number; values: Float32Array; }>;
 export type SoundBuffers = ReadonlyMap<string, AudioBuffer>;
 
 // == Names =======================================================================
-/** the resource the manifest declares a shipped sound as */
-export const soundResource = (name: string): string => `sound-${name}`;
+/** the shipped sounds a listing of {@link SHIPPED_FOLDER} names: each audio file at
+ *  its top by the name a scene plays it by (its file's name without its extension,
+ *  `radio` for `sound/radio.ogg`) and the resource it is read as; the first of two
+ *  that share a name */
+export const shippedSoundsOf = (names: ReadonlyArray<string>): ReadonlyMap<string, string> => {
+  const shipped = new Map<string, string>();
+  for(const resource of names) {
+    const file = resource.startsWith(SHIPPED_FOLDER) ? resource.slice(SHIPPED_FOLDER.length) : '';
+    const extension = SOUND_FILES.extensions.find(each => file.toLowerCase().endsWith(each));
+    if(!extension || file.includes('/') || (file.length <= extension.length)) continue/*a subfolder, or no audio file*/;
+    const name = file.slice(0, -extension.length);
+    if(!shipped.has(name)) shipped.set(name, resource);
+  }
+  return shipped;
+};
+
+/** the shipped sounds as `list` gives them, listed when first asked and kept once a
+ *  listing succeeds: a failed listing rejects that ask alone, and the next asks again */
+export const shippedSoundsLister = (list: () => Promise<ReadonlyMap<string, string>>): (() => Promise<ReadonlyMap<string, string>>) => {
+  let listed: Promise<ReadonlyMap<string, string>> | undefined/*not yet asked, or failed*/;
+  return () => {
+    listed ??= list().catch((error: unknown) => { listed = undefined/*asked again next time*/; throw error; });
+    return listed;
+  };
+};
+
+/** the shipped sounds, from every page of {@link SHIPPED_FOLDER}'s listing */
+export const listShippedSounds = async (resources: Readonly<{ list: (prefix: string, options?: Readonly<{ next?: string; }>) => Promise<Readonly<{ names: ReadonlyArray<string>; next?: string; }>>; }>): Promise<ReadonlyMap<string, string>> => {
+  const names: string[] = [];
+  let page = await resources.list(SHIPPED_FOLDER);
+  names.push(...page.names);
+  while(page.next !== undefined) {
+    page = await resources.list(SHIPPED_FOLDER, { next: page.next });
+    names.push(...page.names);
+  }
+  return shippedSoundsOf(names);
+};
 
 /** whether a sound is a file in the Platform (named by its URI) rather than one Stop
  *  Motion ships */
@@ -205,14 +242,15 @@ export const peaksOf = (buffer: AudioBuffer, count: number): Float32Array => {
 
 // == Bank ========================================================================
 /** the film's sounds, read and decoded once each: `readFile` gives a Platform file's
- *  bytes (by its URI), `readShipped` a declared resource's (a shipped sound's) */
+ *  bytes (by its URI), `readShipped` a shipped sound's (by the name a scene plays it
+ *  by) */
 export class SoundBank {
   // each sound read, decoding or decoded, by name
   private readonly decoded = new Map<string, Promise<AudioBuffer | undefined>>();
   /** the sounds whose files could not be read or decoded, with why */
   public readonly failed = new Map<string, string>();
 
-  public constructor(private readonly readShipped: (resource: string) => Promise<ArrayBuffer>, private readonly readFile: (uri: string) => Promise<ArrayBuffer>) {}
+  public constructor(private readonly readShipped: (name: string) => Promise<ArrayBuffer>, private readonly readFile: (uri: string) => Promise<ArrayBuffer>) {}
 
   /** the named sounds, decoded; one that cannot be read is left out (and `failed`
    *  says why) */
@@ -226,7 +264,7 @@ export class SoundBank {
   private buffer(name: string): Promise<AudioBuffer | undefined> {
     let decoded = this.decoded.get(name);
     if(!decoded) {
-      decoded = (isPlatformFile(name) ? this.readFile(name) : this.readShipped(soundResource(name)))
+      decoded = (isPlatformFile(name) ? this.readFile(name) : this.readShipped(name))
         .then(bytes => new OfflineAudioContext(2, 1, 48_000).decodeAudioData(bytes))
         .catch((error: unknown) => { this.failed.set(name, (error as Error)?.message ?? String(error)); this.decoded.delete(name); return undefined/*left out: `failed` says why*/; });
       this.decoded.set(name, decoded);

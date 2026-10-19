@@ -18,17 +18,7 @@
     "format": "esm",
     "mounts": { "/brick-shared": "../brick-shared" },
     "resources": {
-      "sound-bump": "/sounds/bump.ogg",
-      "sound-door-open": "/sounds/door-open.ogg",
-      "sound-engine": "/sounds/engine.ogg",
-      "sound-fanfare": "/sounds/fanfare.ogg",
-      "sound-meow": "/sounds/meow.ogg",
-      "sound-purr": "/sounds/purr.ogg",
-      "sound-radio": "/sounds/radio.ogg",
-      "sound-scream": "/sounds/scream.ogg",
-      "sound-squeal": "/sounds/squeal.ogg",
-      "sound-thump": "/sounds/thump.ogg",
-      "sound-whoosh": "/sounds/whoosh.ogg"
+      "sound/": "/sounds/"
     },
     "dependencies": {
       "importMap": {
@@ -62,6 +52,7 @@
             "sets":       { "type": "array", "description": "Each set.at key: from when (seconds) the build's set it names stands, until the next", "items": { "type": "object", "properties": { "time": { "type": "number" }, "set": { "type": "string" } }, "required": ["time", "set"] } },
             "sounds":     { "type": "array", "description": "Each sound the scene plays (sound.at, or an actor's .sound to follow it): from when (seconds), the sound (a Platform file's charmiq://file/<assetId> URI, or a shipped sound's name), its volume (1 as recorded), until when it plays over and over (absent: once) and the actor it follows", "items": { "type": "object", "properties": { "time": { "type": "number" }, "name": { "type": "string" }, "volume": { "type": "number" }, "until": { "type": "number" }, "actor": { "type": "string" } }, "required": ["time", "name", "volume"] } },
             "shippedSounds": { "type": "array", "description": "The few sounds Stop Motion ships for its example films, playable by name (sound.at(1, 'engine')). A film's own sounds are files in the Platform, played by URI", "items": { "type": "string" } },
+            "shippedSoundsError": { "type": "string", "description": "Why the shipped sounds could not be listed (shippedSounds is then empty): describe the film again to retry" },
             "close":      { "type": "array", "description": "Every two actors that come within 2 studs (once the studio has staged the film), each where they come closest: the gap between their boxes in studs, 0 touching", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
             "logs":       { "type": "array", "items": { "type": "string" } },
             "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] },

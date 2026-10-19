@@ -87,11 +87,12 @@ export const familyOf = (part: CatalogPart): string | undefined => {
   }
 };
 
-/** the resource a family is declared as in manifest.json `bundle.resources`, and the
- *  family a resource holds */
-export const familyResource = (family: string): string => `${FAMILY_RESOURCE_PREFIX}${family}`;
-export const resourceFamily = (resource: string): string => resource.slice(FAMILY_RESOURCE_PREFIX.length);
-const FAMILY_RESOURCE_PREFIX = 'parts-';
+/** the resource a family is read as: its file in the `parts/` folder manifest.json
+ *  `bundle.resources` declares (`parts/nature.ldr`), and the family a resource holds */
+export const familyResource = (family: string): string => `${PARTS_FOLDER}${family}${FAMILY_EXTENSION}`;
+export const resourceFamily = (resource: string): string => resource.slice(PARTS_FOLDER.length, -FAMILY_EXTENSION.length);
+const PARTS_FOLDER = 'parts/';
+const FAMILY_EXTENSION = '.ldr';
 
 /** a family's name as a person reads it: a creature by its own name, words apart
  *  (`creature-dog-bulldog` is `dog bulldog`) */

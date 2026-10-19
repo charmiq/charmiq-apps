@@ -4,8 +4,9 @@
 //                             uses, as `0 FILE` sections keyed the way three's
 //                             LDrawLoader looks them up: built into the Application
 //   src/parts/<family>.ldr    each family's own files (SEE: catalog.ts familyOf),
-//                             declared in manifest.json `bundle.resources` and read
-//                             the first time a build shows one of its parts
+//                             read through the `parts/` folder manifest.json
+//                             `bundle.resources` declares, the first time a build
+//                             shows one of its parts
 //   src/parts.generated.ts    each part's footprint, height and top studs measured
 //                             from its geometry, the resource holding each family
 //                             part, and each color's value from LDConfig
@@ -579,7 +580,7 @@ writeFileSync(join(PARTS_DIR, 'built-in.ldr'), pack);
 const families = [...familyFiles.keys()].filter((family): family is string => family !== undefined).sort();
 const familySizes = families.map(family => {
   const own = [...familyFiles.get(family)!].filter(name => !builtIn.has(name));
-  const text = packText(`brick-studio-${familyResource(family)}.ldr`, `the ${family} family's own files`, own);
+  const text = packText(`brick-studio-parts-${family}.ldr`, `the ${family} family's own files`, own);
   writeFileSync(join(PARTS_DIR, `${family}.ldr`), text);
   return [family, text.length] as const;
 });
@@ -593,9 +594,10 @@ const partResources = Object.fromEntries(CATALOG.flatMap(part => {
 }));
 
 // .. Manifest ....................................................................
-// the declarations are the families packed: `bundle.resources` is replaced whole,
-// the rest of the manifest kept as written
-const declared = Object.fromEntries(families.map(family => [familyResource(family), `/src/parts/${family}.ldr`]));
+// the declaration is the folder the families are packed into, each family a file of
+// it (SEE: catalog.ts familyResource): `bundle.resources` is replaced whole, the rest
+// of the manifest kept as written
+const declared = { 'parts/': '/src/parts/' };
 const resourcesBlock = `    "resources": {\n${Object.entries(declared).map(([name, path]) => `      ${JSON.stringify(name)}: ${JSON.stringify(path)}`).join(',\n')}\n    },\n`;
 const manifest = readFileSync(MANIFEST, 'utf8');
 const RESOURCES_BLOCK = /^    "resources": \{[^}]*\},\n/m;
@@ -668,8 +670,9 @@ const facts = [
   ' *  right, z up), keyed by LDraw file stem */',
   `export const FACE_GEOMETRY: Readonly<Record<string, Readonly<Partial<Record<'north' | 'east' | 'south' | 'west', Readonly<{ origin: readonly [number, number, number]; studs: ReadonlyArray<readonly [number, number]>; }>>>>>> = ${JSON.stringify(faces)};`,
   '',
-  '/** the declared resource (manifest.json `bundle.resources`) holding each LDraw file',
-  ' *  stem not built into the Application, lower case; every other stem is in parts/built-in.ldr */',
+  '/** the resource holding each LDraw file stem not built into the Application (its',
+  ' *  family\'s file in the `parts/` folder manifest.json `bundle.resources` declares),',
+  ' *  lower case; every other stem is in parts/built-in.ldr */',
   `export const PART_RESOURCES: Readonly<Record<string, string>> = ${JSON.stringify(partResources, null, 2)};`,
   '',
   '/** LDConfig color value of every color the packed parts are drawn in (the catalog\'s',

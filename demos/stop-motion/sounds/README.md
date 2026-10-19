@@ -1,9 +1,10 @@
 # Sounds
 
-The sounds Stop Motion's example films play, by name (`sound.at(time, 'engine')`), each
-an Ogg Vorbis file read as a declared resource. A film of your own plays any audio file
-in the Platform by its `charmiq://file/<assetId>` URI: one you upload, one a Charm
-downloads, or one it generates.
+The sounds Stop Motion's example films play, by name (`sound.at(time, 'engine')` plays
+`engine.ogg`): every audio file in this folder, which the manifest declares as the
+resource folder `sound/`. A file added here is a shipped sound, nothing else to change.
+A film of your own plays any audio file in the Platform by its `charmiq://file/<assetId>`
+URI: one you upload, one a Charm downloads, or one it generates.
 
 Every one is released under Creative Commons Zero
 ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)): free to use in any

@@ -1,4 +1,4 @@
-import { readLocalApplicationResource, readLocalApplicationResourceBytes } from '@charmiq/service-common/application/localResource';
+import { listLocalApplicationResources, readLocalApplicationResource, readLocalApplicationResourceBytes } from '@charmiq/service-common/application/localResource';
 import { appContentLayer, type AppContentObservableFactory, type AppContentObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentLayer';
 import { Observable } from 'rxjs';
 
@@ -454,7 +454,7 @@ export const installLocalBridge = (): void => {
     appContent: makeAppContent(),
     oauth: makeOAuth(),
     fetch: (url: string, options?: RequestInit) => fetch(url, options),
-    resources: { text: (name: string) => readLocalApplicationResource(document, name), bytes: (name: string) => readLocalApplicationResourceBytes(document, name) },
+    resources: { text: (name: string) => readLocalApplicationResource(document, name), bytes: (name: string) => readLocalApplicationResourceBytes(document, name), list: (prefix: string) => listLocalApplicationResources(document, prefix) },
 
     advertise: registry.advertise,
     discover: registry.discover,

@@ -468,16 +468,30 @@ export interface CharmIQOAuthAPI {
 
 // == Resources ===================================================================
 export type ResourcesAPI = Readonly<{
-  /** the complete bytes of the resource the manifest declares as `name`, as stored:
-   *  an Asset's newest version (a sound, an image), or a Source's text as UTF-8;
-   *  rejects as `text` does, a file's bytes never refused for not being UTF-8 */
+  /** the complete bytes of the resource the manifest declares as `name` (or of the
+   *  file `name` names beneath a folder it declares), as stored: an Asset's newest
+   *  version (a sound, an image), or a Source's text as UTF-8; rejects as `text`
+   *  does, a file's bytes never refused for not being UTF-8 */
   bytes: (name: string) => Promise<ArrayBuffer>;
-  /** the complete UTF-8 text of the resource the manifest declares as `name`.
-   *  Rejects for an undeclared name (`code` `functions/not-found`) and for a file
-   *  that is missing, unreadable, not UTF-8 or over 32 MB (32,000,000 bytes), with
-   *  `code` naming the refusal; a failure the Platform cannot classify (a network
-   *  failure) carries no `code`. A failed read can be retried */
+  /** the complete UTF-8 text of the resource the manifest declares as `name`, or of
+   *  the file `name` names beneath a folder it declares (`sound/README.md`: the
+   *  folder's name, then the file's path within it). Rejects for an undeclared name
+   *  (`code` `functions/not-found`), a name reaching outside its folder
+   *  (`functions/invalid-argument`) and for a file that is missing, unreadable, not
+   *  UTF-8 or over 32 MB (32,000,000 bytes), with `code` naming the refusal; a
+   *  failure the Platform cannot classify (a network failure) carries no `code`. A
+   *  failed read can be retried */
   text: (name: string) => Promise<string>;
+
+  /** a page of the names one level beneath `prefix`, a folder the manifest declares
+   *  (`"sound/": "/sounds/"` lists as `sound/`) or a directory beneath it
+   *  (`sound/effects/`): each file by the name it is read by (`sound/radio.ogg`),
+   *  each subfolder by its name and `/`, as the folder is now. `next` is the next
+   *  page's cursor (pass it back as `next`), absent on the last. Rejects for a
+   *  prefix beneath no declared folder (`code` `functions/not-found`), one reaching
+   *  outside its folder (`functions/invalid-argument`) and a folder missing or not
+   *  listable by the current User */
+  list: (prefix: string, options?: Readonly<{ next?: string; }>) => Promise<Readonly<{ names: ReadonlyArray<string>; next?: string; }>>;
 }>;
 
 // == Visual Editor ===============================================================
@@ -628,11 +642,14 @@ export interface CharmIQAPI {
   fetch: CharmIQFetch;
 
   /** the files the manifest declares in `bundle.resources` (a name for each path),
-   *  read by name when needed rather than built into the Application. Each read is
-   *  the file as it is now, read as the current User; a declaration grants nothing
-   *  the User cannot read. Not covered by the Application's signature
+   *  and the files beneath the folders it declares (a name and a path each ending in
+   *  `/`), read by name when needed rather than built into the Application, and a
+   *  folder listed. Each read is the file as it is now, read as the current User; a
+   *  declaration grants nothing the User cannot read. Not covered by the
+   *  Application's signature
    *  @example
-   *  const parts = await window.charmiq.resources.text('parts-creatures');
+   *  const parts = await window.charmiq.resources.text('parts/nature.ldr');
+   *  const { names } = await window.charmiq.resources.list('sound/');
    */
   resources: ResourcesAPI;
 

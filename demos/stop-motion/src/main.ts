@@ -18,7 +18,7 @@ import { castAs, type SceneError, type SoundCue } from './recorder';
 import { addSound, applyEdit, isRefusal, retimeSound, sameSounds, soundsAdded, soundsMoved, type Refusal, type SceneEdit } from './scene-edit';
 import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB, type MeasuredScene } from './scene-source';
-import { isPlatformFile, peaksOf, soundsOf, SoundBank, SHIPPED_SOUNDS } from './sound';
+import { isPlatformFile, listShippedSounds, peaksOf, shippedSoundsLister, soundsOf, SoundBank } from './sound';
 import { SoundDialog } from './sound-dialog';
 import { Soundtrack, type SoundState } from './soundtrack';
 import { Strip } from './strip';
@@ -91,13 +91,36 @@ const paint: Paint = { actor: index => styled(actorColor(index)), camera: styled
 
 const source = new SceneSource();
 const studios = new Studios(paint);
-const director = new Director(studios, code => runScene(code, SHIPPED_SOUNDS), { show: next => showFilm(next), error: next => showError(next) });
+/** the sounds Stop Motion ships, listed from their folder until a listing succeeds:
+ *  each by the name a scene plays it by, and the resource it is read as (none
+ *  standalone) */
+const shipped = shippedSoundsLister(() => charmiq ? listShippedSounds(charmiq.resources) : Promise.resolve(new Map()/*standalone: none*/));
+const shippedNames = async (): Promise<ReadonlyArray<string>> => [...(await shipped()).keys()];
+/** why the shipped sounds could not be listed, while they cannot: the scene waits for
+ *  them, and the status offers to try again */
+let shippedFailure: string | undefined/*listed, or not yet asked*/;
+const director = new Director(studios, async code => {
+  let names: ReadonlyArray<string>;
+  try {
+    names = await shippedNames();
+  } catch(failure) {
+    console.warn('stop-motion: the shipped sounds could not be listed:', failure);
+    shippedFailure = (failure as Error).message;
+    return { ok: false, error: { message: `The sounds Stop Motion ships could not be listed (${shippedFailure}).` } };
+  }
+  shippedFailure = undefined;
+  return runScene(code, names);
+}, { show: next => showFilm(next), error: next => showError(next) });
 /** the Drive, through the Platform: the film's files and its sounds */
 const drive = charmiq && new Drive(charmiq.mcp);
 /** the film's sounds, read once each: a Platform file through the Drive, a shipped
  *  sound as the manifest declares it */
 const bank = drive && new SoundBank(
-  name => charmiq?.resources?.bytes ? charmiq.resources.bytes(name) : Promise.reject(new Error('This Platform delivers no Application files')),
+  async name => {
+    const resource = (await shipped()).get(name);
+    if(!resource || !charmiq?.resources?.bytes) throw new Error(`Stop Motion ships no sound named ${name}`);
+    return charmiq.resources.bytes(resource);
+  },
   uri => drive.bytes(uri));
 const soundtrack = new Soundtrack(bank);
 const player = new Player(index => showFrame(index), soundtrack);
@@ -205,6 +228,7 @@ const showStatus = () => {
   if(stage.kind === 'ambiguous') return say(`${stage.builds} studios hold a build.`, 'The set is the build of one studio: keep it in one, and the others empty.');
   if(editors < 1) return say('No scene.', `The scene is code in a code editor's ${SCENE_TAB} tab: add a code editor to this document.`);
   if(!hasCode) return say('No scene.', `Waiting for a ${SCENE_TAB} tab in the code editor.`);
+  if(shippedFailure !== undefined) return say('Stop Motion\'s sounds could not be listed.', shippedFailure, 'Try again');
   if(!film) return error ? say('The scene has a mistake.', `${(error.line !== undefined) ? `Line ${error.line}: ` : ''}${error.message}`) : say('Reading the scene…', '', undefined, null);
   if(stage.kind === 'left') return say('The studio went back to its build.', 'The film is paused; stage it again to go on.', 'Stage again');
   if(stage.kind === 'failed') return say('The studio refused the film.', stage.message, 'Try again');
@@ -212,7 +236,12 @@ const showStatus = () => {
   status.hidden = true;
 };
 
-statusAction.addEventListener('click', () => void director.restage());
+// the shipped sounds listed again and the scene run again, or the latest scene staged
+// again as it is
+statusAction.addEventListener('click', () => {
+  if((shippedFailure !== undefined) && (source.code !== null)) void director.take(source.code);
+  else void director.restage();
+});
 
 // == Picture track ===============================================================
 /** the darkroom: a picture is drawn here to keep */
@@ -335,7 +364,8 @@ const unread = (sounds: ReadonlyArray<string>) => `${sounds.map(soundsKnown.labe
  *  edited is shown to play what `expected` makes of the sounds the scene plays now
  *  (both run as the film runs them); undefined once the scene holds it, else why not */
 const editScene = async (scene: MeasuredScene, edit: SceneEdit, expected: (sounds: ReadonlyArray<SoundCue>) => ReadonlyArray<SoundCue> | Refusal): Promise<string | undefined> => {
-  const [before, after] = await Promise.all([runScene(edit.measured, SHIPPED_SOUNDS), runScene(applyEdit(edit), SHIPPED_SOUNDS)]);
+  const names = await shippedNames();
+  const [before, after] = await Promise.all([runScene(edit.measured, names), runScene(applyEdit(edit), names)]);
   if(!before.ok) return `The scene has a mistake to fix first: ${before.error.message}`;
   if(!after.ok) return after.error.message;
   const wanted = expected(before.scene.sounds ?? []);
@@ -506,7 +536,7 @@ if(films) {
   merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
 } /* else -- standalone: no Drive */
 if(charmiq) {
-  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films! });
+  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
 } /* else -- standalone: no Charm reaches the film */
 showSheet();
 showStatus();
