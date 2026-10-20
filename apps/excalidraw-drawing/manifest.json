@@ -3,8 +3,7 @@
   "name": "Excalidraw Drawing",
   "description": "A collaborative drawing canvas powered by Excalidraw: every element kept in step between collaborators, persistent configuration, and an LLM command surface",
   "requestedScopes": [
-    "application.advertise",
-    "navigation.popupEscape"
+    "application.advertise"
   ],
   "bundle": {
     "entry": {
