@@ -1,4 +1,4 @@
-import { timer, type Observable, Subject, Subscription } from 'rxjs';
+import { timer, type Observable, Subject, Subscription, type Unsubscribable } from 'rxjs';
 import { retry } from 'rxjs/operators';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
@@ -64,7 +64,7 @@ const CHANGES_RETRY_MAX_MS    = 1000/*ms*/;
  *  Subject the player can react to */
 export class EditorBridge {
   /** outer subscription on `discover$(EDITOR_CAPABILITY)` */
-  private discoverySubscription: Subscription | null = null;
+  private discoverySubscription: Unsubscribable | null = null;
   /** per-provider subscriptions on `changes$()` — torn down on every discover$
    *  emission so a removed advertiser doesn't keep streaming stale text */
   private providerSubscriptions: Subscription[] = [];

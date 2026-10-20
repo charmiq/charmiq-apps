@@ -1,4 +1,4 @@
-import type { Observable } from 'rxjs';
+import type { AppStateAPI } from '../../../shared/charmiq';
 
 // owns gallery configuration (slot definitions, orientation override, zoom,
 // item cap, picker category) persisted via appState. Only this module touches
@@ -55,13 +55,6 @@ export type ConfigField = keyof GalleryConfig;
  *  it to avoid re-running side effects for every unrelated update */
 type ConfigChangedCallback = (config: Readonly<GalleryConfig>, changedFields: ReadonlySet<ConfigField>) => void;
 
-// == Charmiq API (global) ========================================================
-interface CharmiqAppState {
-  onChange$(): Observable<AppState | null>;
-  set(state: AppState): Promise<void>;
-  get(): Promise<AppState | null>;
-}
-
 // == Defaults ====================================================================
 /** the default gallery configuration */
 const DEFAULT_CONFIG: Readonly<GalleryConfig> = {
@@ -81,13 +74,13 @@ const ZOOM_MAX = 400/*px*/;
 /** manages gallery configuration via appState. Configuration only — item
  *  data and slot bindings live in appContent */
 export class ConfigStore {
-  private readonly appState: CharmiqAppState;
+  private readonly appState: AppStateAPI;
 
   private config: GalleryConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: CharmiqAppState) {
+  public constructor(appState: AppStateAPI) {
     this.appState = appState;
   }
 

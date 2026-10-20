@@ -1,4 +1,4 @@
-import type { Observable } from 'rxjs';
+import type { AppStateAPI } from '../../../shared/charmiq';
 
 // owns the small amount of configuration this demo persists via appState:
 //   * autoCompile          -- recompile automatically after debounced edits
@@ -31,13 +31,6 @@ interface AppState {
   readonly config?: Readonly<Partial<ShaderDemoConfig>>;
 }
 
-// == Charmiq API (global) ========================================================
-interface CharmiqAppState {
-  onChange$(): Observable<AppState | null>;
-  set(state: AppState): Promise<void>;
-  get(): Promise<AppState | null>;
-}
-
 // == Defaults ====================================================================
 const DEFAULT_CONFIG: Readonly<ShaderDemoConfig> = {
   autoCompile:           false/*Compile button by default*/,
@@ -51,13 +44,13 @@ const DEBOUNCE_MAX_MS = 5_000;
 
 // == Class =======================================================================
 export class ConfigStore {
-  private readonly appState: CharmiqAppState;
+  private readonly appState: AppStateAPI;
 
   private config: ShaderDemoConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: CharmiqAppState) {
+  public constructor(appState: AppStateAPI) {
     this.appState = appState;
   }
 

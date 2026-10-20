@@ -10,6 +10,7 @@
       "style": "/styles.scss"
     },
     "format": "esm",
+    "mounts": { "/shared": "../../shared" },
     "dependencies": {
       "importMap": {
         "react": "https://esm.sh/react@19.3.0",

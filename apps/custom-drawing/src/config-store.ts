@@ -1,4 +1,4 @@
-import type { Observable } from 'rxjs';
+import type { AppStateAPI } from '../../../shared/charmiq';
 
 // owns drawing configuration persisted via appState. Configuration includes grid
 // visibility / color, canvas background, read-only flag, and UI chrome toggles
@@ -76,13 +76,6 @@ interface AppState {
 // --------------------------------------------------------------------------------
 type ConfigChangedCallback = (config: Readonly<DrawingConfig>) => void;
 
-// == CharmIQ API (global) ========================================================
-interface CharmiqAppState {
-  onChange$(): Observable<AppState | null>;
-  set(state: AppState): Promise<void>;
-  get(): Promise<AppState | null>;
-}
-
 // == Defaults ====================================================================
 /** maximum number of session recents retained per property */
 export const RECENTS_MAX = 6;
@@ -129,11 +122,11 @@ export const DEFAULT_CONFIG: Readonly<DrawingConfig> = {
 
 // == Class =======================================================================
 export class ConfigStore {
-  private readonly appState: CharmiqAppState;
+  private readonly appState: AppStateAPI;
   private config: DrawingConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
-  public constructor(appState: CharmiqAppState) {
+  public constructor(appState: AppStateAPI) {
     this.appState = appState;
   }
 

@@ -37,6 +37,18 @@ export const Fragment: Component = ({ children }): Node => {
   return fragment;
 };
 
+// == JSX =========================================================================
+// the JSX types TypeScript reads for `/** @jsx h */`: an element is the DOM node the
+// factory builds, an intrinsic element takes any attribute (applyProps sets each as an
+// attribute, an event listener or a style) and a component its children by `children`
+declare global {
+  namespace JSX {
+    type Element = Node;
+    interface IntrinsicElements { [tag: string]: Record<string, unknown>; }
+    interface ElementChildrenAttribute { children: unknown; }
+  }
+}
+
 // == Internal ====================================================================
 const applyProps = (element: Element, props: Record<string, any>): void => {
   for(const [key, value] of Object.entries(props)) {

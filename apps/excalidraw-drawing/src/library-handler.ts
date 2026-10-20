@@ -55,7 +55,7 @@ export class LibraryHandler {
     try {
       const response = await fetch(libraryUrl);
       const blob = await response.blob();
-      await (this.excalidrawAPI as any).updateLibrary({
+      await this.excalidrawAPI.updateLibrary({
         libraryItems: blob,
         merge: true,
         openLibraryMenu: true

@@ -1,3 +1,4 @@
+/// <reference path="./pathTracer.d.ts" />
 import * as THREE from 'three';
 import type { PhysicalCamera, WebGLPathTracer } from 'three-gpu-pathtracer';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';

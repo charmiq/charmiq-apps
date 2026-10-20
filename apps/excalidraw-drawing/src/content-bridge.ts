@@ -1,3 +1,6 @@
+import type { Excalidraw } from '@excalidraw/excalidraw';
+import type { ComponentProps } from 'react';
+
 import type { AppContentAPI } from '../../../shared/charmiq';
 import { parseRecord } from '/shared/line-records/line-records';
 import { RecordSync } from '/shared/line-records/record-sync';
@@ -34,12 +37,17 @@ const DELETED_ELEMENT_KEPT_MS = 24 * 60 * 60 * 1000/*one day*/;
 const SAVE_DEBOUNCE_MS = 500/*ms*/;
 
 // == Types =======================================================================
-/** the parts of an Excalidraw element this bridge reads */
-export type SceneElement = Readonly<{ id: string; version: number; versionNonce: number; index?: string | null; isDeleted?: boolean; updated?: number; }> & Readonly<Record<string, unknown>>;
+// the scene's records hold what Excalidraw gives: its own elements, image files and
+// library items, typed as its props and its API type them
+type ExcalidrawProps = ComponentProps<typeof Excalidraw>;
+/** Excalidraw's imperative API */
+export type ExcalidrawAPI = Parameters<NonNullable<ExcalidrawProps['excalidrawAPI']>>[0];
+/** an Excalidraw element */
+export type SceneElement = ReturnType<ExcalidrawAPI['getSceneElementsIncludingDeleted']>[number];
 /** an image file the scene's elements show */
-export type SceneFile = Readonly<{ id: string; mimeType: string; dataURL: string; created?: number; }> & Readonly<Record<string, unknown>>;
+export type SceneFile = ReturnType<ExcalidrawAPI['getFiles']>[string];
 /** a library item the drawing keeps */
-export type LibraryItem = Readonly<{ id: string; }> & Readonly<Record<string, unknown>>;
+export type LibraryItem = Parameters<NonNullable<ExcalidrawProps['onLibraryChange']>>[0][number];
 /** the scene's settings the drawing keeps */
 export type SceneSettings = Readonly<{ viewBackgroundColor?: string; }>;
 
@@ -57,18 +65,6 @@ export type SceneJson = Readonly<{
   files?: Readonly<Record<string, SceneFile>>;
   libraryItems?: ReadonlyArray<LibraryItem>;
 }>;
-
-// ................................................................................
-/** Excalidraw API surface used by this module */
-export interface ExcalidrawAPI {
-  updateScene(scene: Readonly<{ elements?: ReadonlyArray<unknown>; appState?: Record<string, unknown>; captureUpdate?: 'IMMEDIATELY' | 'NEVER' | 'EVENTUALLY'; }>): void;
-  updateLibrary(opts: Readonly<{ libraryItems: unknown; merge: boolean; }>): void | Promise<unknown>;
-  addFiles(files: ReadonlyArray<unknown>): void;
-  getSceneElements(): ReadonlyArray<unknown>;
-  getSceneElementsIncludingDeleted(): ReadonlyArray<unknown>;
-  getAppState(): Record<string, unknown>;
-  getFiles(): Record<string, unknown>;
-}
 
 // == Class =======================================================================
 /** follows the drawing's app-content and saves the scene onto it by record id */
@@ -190,7 +186,7 @@ export class ContentBridge {
     if(this.unreadable) throw new Error('The drawing could not be read, so nothing was changed.');
     if(!this.live || !this.api) throw new Error('The drawing is still opening, so nothing was changed. Try again once it shows.');
     const scene = JSON.parse(text) as SceneJson;
-    const current = new Map((this.api.getSceneElementsIncludingDeleted() as ReadonlyArray<SceneElement>).map(element => [element.id, element]));
+    const current = new Map(this.api.getSceneElementsIncludingDeleted().map(element => [element.id, element]));
     const given = (scene.elements ?? []).map(element => bumped(element, current.get(element.id)));
     const kept = new Set(given.map(element => element.id));
     const removed = [...current.values()].filter(element => !kept.has(element.id) && !element.isDeleted).map(element => ({ ...bumped(element, element), isDeleted: true }));
@@ -207,9 +203,9 @@ export class ContentBridge {
     if(!this.live || !this.api) return [ ...this.latest ]/*still opening: the canvas is what was read*/;
     const now = Date.now();
     const background = this.api.getAppState().viewBackgroundColor;
-    const elements = inDrawingOrder((this.api.getSceneElementsIncludingDeleted() as ReadonlyArray<SceneElement>)
+    const elements = inDrawingOrder(this.api.getSceneElementsIncludingDeleted()
       .filter(element => !element.isDeleted || ((element.updated ?? now) > (now - DELETED_ELEMENT_KEPT_MS))));
-    const files = Object.values(this.api.getFiles() as Record<string, SceneFile>).map(storedFile);
+    const files = Object.values(this.api.getFiles()).map(storedFile);
     return [
       ...((typeof background === 'string') ? [{ scene: { viewBackgroundColor: background } }] : []),
       ...files.map(file => ({ file })),
@@ -245,10 +241,10 @@ export class ContentBridge {
   /** the ids of the elements this client is editing right now: being drawn,
    *  resized, its text or points edited, or dragged with the selection */
   private editing(): ReadonlySet<string> {
-    const state = this.api?.getAppState() ?? {};
-    const idOf = (element: unknown) => (element as { id?: unknown; } | null | undefined)?.id;
-    const ids = [ idOf(state.newElement), idOf(state.resizingElement), idOf(state.editingTextElement), (state.editingLinearElement as { elementId?: unknown; } | null)?.elementId ];
-    if(state.selectedElementsAreBeingDragged) ids.push(...Object.keys((state.selectedElementIds as Record<string, unknown> | undefined) ?? {}));
+    const state = this.api?.getAppState();
+    if(!state) return new Set()/*still opening*/;
+    const ids = [ state.newElement?.id, state.resizingElement?.id, state.editingTextElement?.id, state.editingLinearElement?.elementId ];
+    if(state.selectedElementsAreBeingDragged) ids.push(...Object.keys(state.selectedElementIds));
     return new Set(ids.filter((id): id is string => typeof id === 'string'));
   }
 }
@@ -277,7 +273,7 @@ const bumped = (element: SceneElement, current: SceneElement | undefined): Scene
 /** a file as the drawing keeps it: without when it was last read here */
 const storedFile = (file: SceneFile): SceneFile => {
   const { lastRetrieved: _lastRetrieved, ...stored } = file;
-  return stored as SceneFile;
+  return stored;
 };
 
 const recordId = (record: SceneRecord): string =>

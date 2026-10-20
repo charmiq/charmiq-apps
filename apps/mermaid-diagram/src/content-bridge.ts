@@ -1,5 +1,4 @@
 import mermaid from 'mermaid';
-import { firstValueFrom } from 'rxjs';
 
 import type { AppContent, AppContentAPI } from '../../../shared/charmiq';
 import type { DiagramConfig } from './config-store';
@@ -60,9 +59,14 @@ export class ContentBridge {
   public async follow(): Promise<void> {
     if(!this.appContent.content$) { this.showProblem('Reload this page to show the diagram.'); return/*a page opened before content$*/; }
 
+    // one subscription: it shows every revision, and its first answer settles the follow
     const content$ = this.appContent.content$();
-    content$.subscribe({ next: content => this.show(content), error: () => this.showReadFailure() });
-    await firstValueFrom(content$).catch(() => undefined/*shown by the subscription*/);
+    await new Promise<void>(settle => {
+      content$.subscribe({
+        next: content => { this.show(content); settle(); },
+        error: () => { this.showReadFailure(); settle(); },
+      });
+    });
   }
 
   // == Getters ===================================================================

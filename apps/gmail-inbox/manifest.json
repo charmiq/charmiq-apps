@@ -13,7 +13,8 @@
       "html": "/src/index.html",
       "script": "/src/main.tsx",
       "style": "/src/styles.scss"
-    }
+    },
+    "mounts": { "/shared": "../../shared" }
   },
   "runtime": {
     "appState": true

@@ -1,4 +1,4 @@
-import type { Observable } from 'rxjs';
+import type { AppStateAPI } from '../../../shared/charmiq';
 
 // owns drawing configuration persisted via appState. All reads/writes go
 // through here — nobody else touches appState directly
@@ -14,13 +14,6 @@ export interface DrawingConfig {
 /** callback when config changes (from a remote appState update) */
 type ConfigChangedCallback = (config: Readonly<DrawingConfig>) => void;
 
-// == Charmiq API (global) ========================================================
-interface CharmiqAppState {
-  onChange$(): Observable<Record<string, unknown> | null>;
-  set(state: Record<string, unknown>): Promise<void>;
-  get(): Promise<Record<string, unknown> | null>;
-}
-
 // == Defaults ====================================================================
 const DEFAULT_CONFIG: Readonly<DrawingConfig> = {
   showMainMenu: true
@@ -29,12 +22,12 @@ const DEFAULT_CONFIG: Readonly<DrawingConfig> = {
 // == Class =======================================================================
 /** manages drawing configuration via appState */
 export class ConfigStore {
-  private readonly appState: CharmiqAppState;
+  private readonly appState: AppStateAPI;
   private config: DrawingConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: CharmiqAppState) {
+  public constructor(appState: AppStateAPI) {
     this.appState = appState;
   }
 
@@ -69,7 +62,7 @@ export class ConfigStore {
 
     // persist — the onChange$ subscription reconciles if someone else writes
     try {
-      await this.appState.set(newConfig as unknown as Record<string, unknown>);
+      await this.appState.set(newConfig);
     } catch(error) {
       console.error('failed to persist config:', error);
     }

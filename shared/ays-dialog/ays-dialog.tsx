@@ -1,5 +1,5 @@
 /** @jsx h */
-import { h, render } from 'preact';
+import { h, render, type VNode } from 'preact';
 
 // ********************************************************************************
 // == Types =======================================================================
@@ -69,7 +69,7 @@ class AysDialog extends HTMLElement {
     );
   }
 
-  private template(): HTMLElement {
+  private template(): VNode {
     return (
       <div className="overlay" part="overlay">
         <div className="dialog" part="dialog" role="dialog" aria-modal="true">

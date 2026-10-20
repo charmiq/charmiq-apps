@@ -12,6 +12,7 @@
       "style": "/src/styles.scss"
     },
     "format": "esm",
+    "mounts": { "/shared": "../../shared" },
     "dependencies": {
       "importMap": {
         "rxjs": "https://esm.sh/rxjs@7.8.2",

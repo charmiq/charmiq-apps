@@ -3,7 +3,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import type { DrawingConfig } from './config-store';
-import type { ExcalidrawAPI } from './content-bridge';
+import type { ExcalidrawAPI, LibraryItem, SceneElement, SceneFile, SceneSettings } from './content-bridge';
 
 // factory for the React App component (React.createElement: the app has no TSX)
 // ********************************************************************************
@@ -12,10 +12,10 @@ import type { ExcalidrawAPI } from './content-bridge';
 /** callback bag passed to renderApp — wires the component to external modules */
 export interface AppCallbacks {
   readonly onReady: (api: ExcalidrawAPI) => void;
-  readonly onChange: (elements: any[], appState: Record<string, unknown>, files: Record<string, unknown>) => void;
-  readonly onLibraryChange: (items: any[], api: ExcalidrawAPI) => void;
+  readonly onChange: (...change: Parameters<NonNullable<React.ComponentProps<typeof Excalidraw>['onChange']>>) => void;
+  readonly onLibraryChange: (items: ReadonlyArray<LibraryItem>, api: ExcalidrawAPI) => void;
   /** the drawing to open with, once it is read */
-  readonly loadScene: () => Promise<Readonly<{ elements: ReadonlyArray<unknown>; appState: Record<string, unknown>; files: Record<string, unknown>; libraryItems: ReadonlyArray<unknown>; }>>;
+  readonly loadScene: () => Promise<Readonly<{ elements: ReadonlyArray<SceneElement>; appState: SceneSettings; files: Readonly<Record<string, SceneFile>>; libraryItems: ReadonlyArray<LibraryItem>; }>>;
   readonly getConfig: () => Readonly<DrawingConfig>;
   readonly updateMenuCSS: (show: boolean) => void;
 }
@@ -86,10 +86,8 @@ export const renderApp = (container: HTMLElement, callbacks: AppCallbacks): AppH
           callbacks.onReady(api);
         } /* else -- already initialized */
       },
-      onChange: (elements: any[], appState: Record<string, unknown>, files: Record<string, unknown>) => {
-        callbacks.onChange(elements, appState, files);
-      },
-      onLibraryChange: (items: any[]) => {
+      onChange: callbacks.onChange,
+      onLibraryChange: (items) => {
         if(!excalidrawAPIRef) return;
         callbacks.onLibraryChange(items, excalidrawAPIRef);
       },

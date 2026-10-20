@@ -1,4 +1,4 @@
-import type { Observable } from 'rxjs';
+import type { AppStateAPI } from '../../../shared/charmiq';
 
 import type { TabSlug } from './tab-types';
 
@@ -40,13 +40,6 @@ type TabModesChangedCallback = (tabModes: Readonly<Record<TabSlug, string>>) => 
 /** callback when tab order changes (from a remote appState update) */
 type TabOrderChangedCallback = (tabOrder: ReadonlyArray<TabSlug>) => void;
 
-// == Charmiq API (global) ========================================================
-interface CharmiqAppState {
-  onChange$(): Observable<AppState | null>;
-  set(state: AppState): Promise<void>;
-  get(): Promise<AppState | null>;
-}
-
 // == Defaults ====================================================================
 const DEFAULT_CONFIG: Readonly<EditorConfig> = {
   lineNumbers: true,
@@ -59,7 +52,7 @@ const DEFAULT_CONFIG: Readonly<EditorConfig> = {
 // == Class =======================================================================
 /** manages editor configuration and tab metadata via appState */
 export class ConfigStore {
-  private readonly appState: CharmiqAppState;
+  private readonly appState: AppStateAPI;
 
   private config: EditorConfig = { ...DEFAULT_CONFIG };
   private tabModes: Record<TabSlug, string> = {};
@@ -70,7 +63,7 @@ export class ConfigStore {
   private onTabOrderChanged: TabOrderChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: CharmiqAppState) {
+  public constructor(appState: AppStateAPI) {
     this.appState = appState;
   }
 

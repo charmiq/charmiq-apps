@@ -15,7 +15,7 @@
       "style": "/src/styles.scss"
     },
     "format": "esm",
-    "mounts": { "/brick-shared": "../brick-shared" },
+    "mounts": { "/brick-shared": "../brick-shared", "/shared": "../../shared" },
     "resources": {
       "sound/": "/sounds/"
     },

@@ -19,11 +19,5 @@ Apps embedded by the CharmIQ platform via an app iframe. No `package.json` or `t
 
 ## Typecheck
 
-- No local tsc; use the platform binary:
-  ```sh
-  cd <app>/src
-  /Users/rgrzywinski/Devel/charmiq.ai/platform/node_modules/.bin/tsc \
-    --noEmit --target es2022 --module esnext --moduleResolution bundler \
-    --strict --lib es2022,dom,dom.iterable --skipLibCheck --esModuleInterop *.ts
-  ```
-  `TS2307: Cannot find module 'rxjs'` / `'rxjs/operators'` is expected noise (importMap, not node_modules). Any other error is real.
+- Every Application is type-checked as the Platform builds it, its libraries typed from esm.sh at the versions its `importMap` pins: `?typecheck=true` on the Application in the Platform, or the Platform's Application CLI, `npm run build-app -- <app folder> --typecheck`. Every reported error is real; an import served without types, or a library declaration that could not be read, is named rather than passed as typed.
+- A type import from `shared/` (`../../../shared/charmiq`) resolves only through a `/shared` mount: `"mounts": { "/shared": "../../shared" }`.

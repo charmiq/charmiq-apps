@@ -1,4 +1,6 @@
-import type { Observable } from 'rxjs';
+import type { MermaidConfig } from 'mermaid';
+
+import type { AppStateAPI } from '../../../shared/charmiq';
 
 // owns diagram configuration persisted via appState. All reads/writes go
 // through here — nobody else touches appState directly
@@ -11,19 +13,12 @@ export type MermaidTheme = 'default' | 'neutral' | 'dark' | 'forest' | 'base';
 /** diagram configuration options synced to appState */
 export interface DiagramConfig {
   readonly theme: MermaidTheme;
-  readonly flowchart?: Readonly<{ curve?: string }>;
+  readonly flowchart?: Readonly<{ curve?: NonNullable<MermaidConfig['flowchart']>['curve'] }>;
 }
 
 // ................................................................................
 /** callback when config changes (from a remote appState update) */
 type ConfigChangedCallback = (config: Readonly<DiagramConfig>) => void;
-
-// == Charmiq API (global) ========================================================
-interface CharmiqAppState {
-  onChange$(): Observable<Record<string, unknown> | null>;
-  set(state: Record<string, unknown>): Promise<void>;
-  get(): Promise<Record<string, unknown> | null>;
-}
 
 // == Defaults ====================================================================
 const DEFAULT_CONFIG: Readonly<DiagramConfig> = {
@@ -33,12 +28,12 @@ const DEFAULT_CONFIG: Readonly<DiagramConfig> = {
 // == Class =======================================================================
 /** manages diagram configuration via appState */
 export class ConfigStore {
-  private readonly appState: CharmiqAppState;
+  private readonly appState: AppStateAPI;
   private config: DiagramConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: CharmiqAppState) {
+  public constructor(appState: AppStateAPI) {
     this.appState = appState;
   }
 
@@ -73,7 +68,7 @@ export class ConfigStore {
 
     // persist — the onChange$ subscription reconciles if someone else writes
     try {
-      await this.appState.set(newConfig as unknown as Record<string, unknown>);
+      await this.appState.set(newConfig);
     } catch(error) {
       console.error('failed to persist config:', error);
     }
