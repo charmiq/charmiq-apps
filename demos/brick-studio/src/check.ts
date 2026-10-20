@@ -29,7 +29,17 @@ export type CheckResult = Readonly<{
 export const MAX_LISTED = 12;
 
 // == Check =======================================================================
+/** each model's check, made once: a set read once is checked once (SEE: model.ts
+ *  parseModel) */
+const checks = new WeakMap<Model, CheckResult>();
+
 export const checkModel = (model: Model): CheckResult => {
+  let result = checks.get(model);
+  if(!result) { result = checkWhole(model); checks.set(model, result); }
+  return result;
+};
+
+const checkWhole = (model: Model): CheckResult => {
   const { placements } = model;
   const name = (index: number): string => describeIn(model, index);
 

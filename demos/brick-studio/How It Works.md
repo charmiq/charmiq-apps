@@ -9,7 +9,7 @@ The build is LDraw text in the document's `model` app-content. Each part is one 
 
 LDraw pasted into an app-content with no name, or named `Model` or ` model `, is found too: when no app-content is named `model`, the one such app-content holding parts is the build. The Studio edits it in place, its name and other lines left as they are, and it stays the build when its parts are gone. One named `model` always comes first; two such app-contents wait as two builds do (see Building Together).
 
-A build without components is a flat LDraw file, or a single main-model section (`0 FILE model.ldr` through `0 NOFILE`) once the Studio has written it whole (Clear, `setModel`). A build with components is a standard multi-file LDraw (MPD) file: the main model first, each component a `0 FILE` section after it, and a copy one line naming its component, so other LDraw tools open it as it is. A build holds at most 3,000 parts; a Charm adds at most 400 in one call.
+A build without components is a flat LDraw file, or a single main-model section (`0 FILE model.ldr` through `0 NOFILE`) once the Studio has written it whole (Clear, `setModel`). A build with components is a standard multi-file LDraw (MPD) file: the main model first, each component a `0 FILE` section after it, and a copy one line naming its component, so other LDraw tools open it as it is. A set holds at most 20,000 parts; a Charm adds at most 400 in one call.
 
 
 ## The Grid
@@ -75,7 +75,7 @@ A build can hold more than one set: each an arrangement on its own baseplate, wi
 - **In the file.** The first set is LDraw's main model, the one every LDraw tool opens. Each further set is a section holding a `0 !BRICKSTUDIO SET Garage` line, written to a file of its own (`garage.set.ldr`); other LDraw tools list it as a submodel nothing places. A build written before sets is one set, named Main until it is renamed.
 - **The menu.** With more than one set, a tag in the bar names the set shown and opens a menu of the sets. The steps, the ground swatch and the view buttons act on the set shown. An edit to another set leaves the set shown as it is, its step included; a Charm's edit to a set shows that set.
 - **Naming the set.** A Charm names the set on every command that reads or edits one (`set`); in a build of more than one set, a call naming none is refused, listing the sets. Redefining a component is checked in every set, since every copy changes with it.
-- **Limits.** A build holds at most 32 sets, each at most 3,000 parts. A build holding more sets is shown but not edited, and `setModel` refuses one.
+- **Limits.** A build holds at most 32 sets, each at most 20,000 parts. A build holding more sets is shown but not edited, and `setModel` refuses one.
 
 
 ## Steps
@@ -97,7 +97,7 @@ Reaching the Drive takes the `mcp.platform.vfs` scope, which can reach any docum
 
 ## The Look and Moving Around
 
-The Look slider sets how real the bricks look, in five stops: Draft, Plastic, Shaded, Photo and Path traced. Each stop costs more of the graphics card than the last. The stop is each viewer's own and is kept in their browser, never in the document. Path traced builds its scene over every stud it is given, so a baseplate past 65,536 studs (a build spread over more than about 256 studs each way) keeps its studs within 16 studs of the parts there, the rest of the plate plain; the other stops always draw every stud.
+The Look slider sets how real the bricks look, in five stops: Draft, Plastic, Shaded, Photo and Path traced. Each stop costs more of the graphics card than the last. The stop is each viewer's own and is kept in their browser, never in the document. Path traced builds its scene over every stud it is given, so a baseplate past 65,536 studs (a build spread over more than about 256 studs each way) keeps its studs within 16 studs of the parts there, the rest of the plate plain; the other stops always draw every stud. Path traced also merges every part it draws into one scene, so past 3,000 parts shown (a set and its actors) it draws as Photo, saying so beside the slider, until fewer are shown.
 
 Drag to orbit, right-drag to pan, scroll to zoom. Or walk with the keys once the Studio has focus: W and S forward and back, A and D sideways, Q and E turn, Space and C up and down, Shift to hurry. The corner button takes the Studio full screen; Esc leaves. The info button in the bottom corner, or I, shows these again.
 
@@ -143,7 +143,7 @@ A multi-file model is edited line by line as a flat one is, its sections kept as
 
 The refusal says which, and how to make the build editable. For submodels that is `setModel` with a flat model, which drops the comments inside them. A build whose pieces cannot be told apart is given back by `getModel` exactly as written, and `setModel` takes such text only once the extra lines are gone.
 
-A model whose submodels expand past 3,000 parts or 3,000 submodel references, or whose definitions run past 100,000 submodel lines, is read only in part. The Studio says so, refuses to edit it, and `getModel` refuses to hand it back as the whole build.
+A model whose submodels expand past 100,000 part lines (a figure drawn in pieces takes about ten) or 20,000 submodel references, or whose definitions run past 100,000 submodel lines, is read only in part. The Studio says so, refuses to edit it, and `getModel` refuses to hand it back as the whole build.
 
 
 ## The Commands

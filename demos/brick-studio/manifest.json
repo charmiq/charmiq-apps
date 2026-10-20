@@ -626,7 +626,7 @@
       },
       {
         "name": "setFidelity",
-        "description": "Set how real the bricks look: 0 Draft, 1 Plastic, 2 Shaded, 3 Photo, 4 Path traced (slow; falls back to 3 where unavailable). Resolves once settled, so a screenshot next shows it",
+        "description": "Set how real the bricks look: 0 Draft, 1 Plastic, 2 Shaded, 3 Photo, 4 Path traced (slow; falls back to 3 where unavailable; past 3,000 parts shown it draws as Photo, and untraced says why). Resolves once settled, so a screenshot next shows it",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -638,7 +638,8 @@
           "type": "object",
           "properties": {
             "fidelity": { "type": "integer" },
-            "look":     { "type": "string" }
+            "look":     { "type": "string" },
+            "untraced": { "type": "string" }
           },
           "required": ["fidelity", "look"]
         }

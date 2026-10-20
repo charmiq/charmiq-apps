@@ -163,7 +163,10 @@ export type Model = Readonly<{
 
 // == Constants ===================================================================
 /** the most parts a build holds */
-export const MAX_PARTS = 3000;
+export const MAX_PARTS = 20_000;
+/** the most part lines a build is read with, a limit apart from MAX_PARTS: a part
+ *  drawn in pieces (a figure, about ten) takes a line per piece */
+export const MAX_PART_LINES = 100_000;
 /** the most submodel lines read while expanding references: a submodel is read
  *  again for every reference to it */
 const MAX_EXPANDED_LINES = 100_000;
@@ -188,7 +191,7 @@ const UNWRITABLE = {
 } as const;
 
 /** why a truncated model was read only in part, model-facing */
-export const READ_IN_PART = `Its submodels expand past what Brick Studio reads (${MAX_PARTS} parts, ${MAX_PARTS} submodel references or ${MAX_EXPANDED_LINES} submodel lines), so it was read only in part.`;
+export const READ_IN_PART = `Its submodels expand past what Brick Studio reads (${MAX_PART_LINES} part lines, ${MAX_PARTS} submodel references or ${MAX_EXPANDED_LINES} submodel lines), so it was read only in part.`;
 
 const DEFAULT_HEADER = ['0 Brick Studio model', '0 Name: model.ldr'];
 /** below this a number's thousandths are exact in a double, so a line rounds them */
@@ -237,16 +240,43 @@ const IDENTITY: Transform = { matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], position: [0,
  *  unless `at` names another. Submodels are flattened; LDraw's inherited colors (16,
  *  24) take the parent's color */
 export const parseModel = (text: string, at?: SetAt): Model => {
-  const read = readFiles(text);
+  const read = readingOf(text);
   const sets = read.layout.sets;
   const found = !at ? undefined : ('name' in at) ? sets.find(set => sameSetName(set.name, at.name)) : sets.find(set => set.file === at.file);
-  return readSet(read, found ?? sets[0]);
+  return setOf(read, found ?? sets[0]);
 };
 
 /** every set of a text as a Model, the main set first, its files read once */
 export const parseSets = (text: string): ReadonlyArray<Model> => {
-  const read = readFiles(text);
-  return (read.layout.sets.length < 1) ? [readSet(read, undefined)] : read.layout.sets.map(set => readSet(read, set));
+  const read = readingOf(text);
+  return (read.layout.sets.length < 1) ? [setOf(read, undefined)] : read.layout.sets.map(set => setOf(read, set));
+};
+
+// ................................................................................
+// a text is read once: its most recent readings are kept by text, and each set of a
+// reading is read once, so every reader of a set of one text (an edit, the set shown,
+// its check, a command's report) shares one Model
+/** the readings kept: the build shown, an edit's result and the texts between */
+const KEPT_READINGS = 4;
+const readings: Array<Readonly<{ text: string; read: Files; }>> = []/*the most recent first*/;
+const readSets = new WeakMap<Files, Map<SetSection | undefined, Model>>();
+
+/** a text's files, read once while the text is among the most recent read */
+const readingOf = (text: string): Files => {
+  const at = readings.findIndex(reading => reading.text === text);
+  const reading = (at < 0) ? { text, read: readFiles(text) } : readings.splice(at, 1)[0];
+  readings.unshift(reading);
+  readings.length = Math.min(readings.length, KEPT_READINGS);
+  return reading.read;
+};
+
+/** a set of a reading as a Model, read once */
+const setOf = (read: Files, set: SetSection | undefined): Model => {
+  let sets = readSets.get(read);
+  if(!sets) { sets = new Map(); readSets.set(read, sets); }
+  let model = sets.get(set);
+  if(!model) { model = readSet(read, set); sets.set(set, model); }
+  return model;
 };
 
 /** whether two set names name one set: alike ignoring case and outer spaces */
@@ -445,7 +475,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
   let references = 0;
   let expandedLines = 0;
   let truncated = false;
-  const exceeded = () => truncated ||= (((placements.length + others.length) > MAX_PARTS) || (references > MAX_PARTS) || (expandedLines > MAX_EXPANDED_LINES));
+  const exceeded = () => truncated ||= (((placements.length + others.length) > MAX_PART_LINES) || (references > MAX_PARTS) || (expandedLines > MAX_EXPANDED_LINES));
 
   const walk = (name: string, transform: Transform, inheritedColor: number, depth: number, owner: number | undefined/*an index into placed*/): void => {
     const isMain = (depth === 0);

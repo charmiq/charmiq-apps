@@ -11,7 +11,7 @@ import type { FidelityControl } from './fidelity-control';
 import { filledCells, footprintSize, getColorByCode, getPart, getShape, type PartShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE } from './grid';
 import type { LookAround } from './look-around';
 import type { Model } from './model';
-import { fidelityLabel, toFidelity } from './render/fidelity';
+import { fidelityLabel, toFidelity, untracedReason } from './render/fidelity';
 import type { StageControl } from './stage-control';
 import type { Viewer } from './viewer';
 
@@ -205,7 +205,8 @@ export class CommandSurface {
         if(stop === undefined) throw new Error('fidelity must be 0, 1, 2, 3 or 4');
         const reached = await this.look.set(stop);
         await this.viewer.whenSettled()/*a screenshot next shows the settled look*/;
-        return { fidelity: reached, look: fidelityLabel(reached) };
+        const untraced = this.viewer.untracedParts;
+        return { fidelity: reached, look: fidelityLabel(reached), ...((untraced !== undefined) ? { untraced: untracedReason(untraced) } : {}) };
       },
 
       getModel: async ({ fromLine }: { fromLine?: unknown; }) => {

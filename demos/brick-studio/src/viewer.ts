@@ -8,12 +8,12 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CATALOG, resourceFamily } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
-import { drawnLines, type Model } from './model';
-import { isPlan, ldrawPoint, type FilmOverlay, type Floor, type Point, type ViewCamera } from './stage';
+import { drawnLines, partCount, type Model } from './model';
+import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type Point, type ShownActors, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { Effects } from './render/effects';
-import type { Fidelity } from './render/fidelity';
+import { PATH_TRACED_PARTS, type Fidelity } from './render/fidelity';
 import { drawOverlay, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
@@ -106,14 +106,14 @@ export const STANDING: Walk = { forward: 0, right: 0, up: 0, turn: 0, fast: fals
 type Theme = Readonly<{ stage: string; baseplate: string; }>;
 
 /** a stage shown in place of the build: its sets and the one standing (an index into
- *  them), the area its baseplate covers at least, its actors' lines (LDraw, the
+ *  them), the area its baseplate covers at least, its actors (their lines in the
  *  scene's frame) in the frame shown, the size frames are captured at once one is, and
  *  the camera to put back when it ends */
 type Staging = { /*NOTE: Mutable: each frame replaces its set, actors and overlay, a capture its size*/
   readonly sets: ReadonlyArray<Model>;
   standing: number;
   floor?: Floor;
-  actors: ReadonlyArray<PartLine>;
+  actors: ShownActors;
   overlay: FilmOverlay;
   size?: Readonly<{ width: number; height: number; }>;
   readonly before: Readonly<{ position: THREE.Vector3; target: THREE.Vector3; fov: number; }>;
@@ -132,6 +132,11 @@ export class Viewer {
   private readonly effects: Effects;
   private pathTrace: PathTrace | undefined;
   private pathTraceStale = true;
+  /** the parts drawn, as a set counts them: the build's, or the standing set's and
+   *  its actors' */
+  private drawnParts = 0;
+  /** the parts of the set drawn */
+  private setParts = 0;
   private cameraMoved = false;
   private fidelity: Fidelity = 0;
   private fidelityRequest = 0;
@@ -438,14 +443,14 @@ export class Viewer {
    *  Staged, the build is kept and shown when the stage ends */
   public setModel(model: Model, animate: boolean): void {
     this.model = model;
-    if(!this.staging) this.draw(model, [], animate);
+    if(!this.staging) this.draw(model, NO_ACTORS, animate);
   }
 
   /** draws again what is shown: the stage, or the build, every set's meshes built anew */
   private redraw(animate: boolean): void {
     this.forgetSetMeshes();
     if(this.staging) this.draw(this.staging.sets[this.staging.standing], this.staging.actors, false);
-    else if(this.model) this.draw(this.model, [], animate);
+    else if(this.model) this.draw(this.model, NO_ACTORS, animate);
   }
 
   /** the items drawn for render items: each part's prints beside it, only those
@@ -460,12 +465,14 @@ export class Viewer {
 
   /** draws a build and, over it, actors' lines (LDraw, the scene's frame). Staged, a
    *  set's meshes drawn before stand again (SEE: setMeshes) */
-  private draw(model: Model, actors: ReadonlyArray<PartLine>, animate: boolean): void {
+  private draw(model: Model, actors: ShownActors, animate: boolean): void {
     const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
     this.setGround(ground);
     const kept = this.staging ? this.setMeshes.get(model) : undefined;
     const setItems = kept ? [] : renderItems(model)/*a set kept is built*/;
-    const actorItems = actors.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));
+    const actorItems = actors.lines.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));
+    this.setParts = partCount(model);
+    this.drawnParts = this.setParts + actors.parts;
     this.buildGeometries([...setItems, ...actorItems], model, animate);
 
     for(const child of [...this.parts.children]) { this.parts.remove(child); if(!this.kept.has(child)) (child as THREE.InstancedMesh).dispose(); }
@@ -666,10 +673,10 @@ export class Viewer {
       this.controls.enabled = false/*the stage's camera, never the mouse's*/;
     } /* else -- staged: the camera to put back stays the build's */
     this.forgetSetMeshes()/*the last stage's*/;
-    this.staging = { sets, standing: 0, floor, actors: [], overlay: NO_OVERLAY, size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
+    this.staging = { sets, standing: 0, floor, actors: NO_ACTORS, overlay: NO_OVERLAY, size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
     this.overlayStale = true;
     for(const other of sets.slice(1)) this.buildGeometries(renderItems(other), other, false);
-    this.draw(sets[0], [], false);
+    this.draw(sets[0], NO_ACTORS, false);
   }
 
   /** draws the stage at `width` by `height` pixels from now on, the canvas showing
@@ -685,7 +692,7 @@ export class Viewer {
 
   /** shows a frame of the stage on one of its sets (`set`, an index into them): its
    *  actors' lines (LDraw, the scene's frame) seen through its camera, or its plan */
-  public showFrame(actors: ReadonlyArray<PartLine>, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY, set = 0): void {
+  public showFrame(actors: ShownActors, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY, set = 0): void {
     if(!this.staging) return/*nothing staged*/;
     this.look(camera);
     this.pose(actors, overlay, set);
@@ -695,10 +702,10 @@ export class Viewer {
    *  parts are built first, unseen, and the studio settled on the frame it shows; then
    *  the frame is drawn, copied and the frame shown put back in one task, so the screen
    *  never shows it: the browser paints between tasks */
-  public async thumbnail(actors: ReadonlyArray<PartLine>, camera: ViewCamera, overlay: FilmOverlay, width: number, height: number, set = 0): Promise<ImageBitmap> {
+  public async thumbnail(actors: ShownActors, camera: ViewCamera, overlay: FilmOverlay, width: number, height: number, set = 0): Promise<ImageBitmap> {
     const staging = this.staging;
     if(!staging) throw new Error('nothing is staged');
-    await this.partsBuilt(actors, set);
+    await this.partsBuilt(actors.lines, set);
     await this.whenSettled();
     if(this.staging !== staging) throw new Error('the stage was replaced while the thumbnail\'s parts were built');
     const shown = { set: staging.standing, actors: staging.actors, overlay: staging.overlay, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, plan: this.camera.up.equals(NORTH) };
@@ -769,14 +776,15 @@ export class Viewer {
   /** shows a frame's set, actors and overlay: the standing actors moved where the
    *  frame puts them, or the stage drawn again when the frame stands another set or
    *  shows other parts (an actor appearing or leaving) */
-  private pose(actors: ReadonlyArray<PartLine>, overlay: FilmOverlay, set: number): void {
+  private pose(actors: ShownActors, overlay: FilmOverlay, set: number): void {
     const staging = this.staging!/*by contract: staged*/;
     staging.overlay = overlay;
     this.overlayStale = true;
     const cut = (set !== staging.standing);
     staging.standing = set;
-    if(cut || !this.moveActors(actors)) this.draw(staging.sets[set], actors, false);
+    if(cut || !this.moveActors(actors.lines)) this.draw(staging.sets[set], actors, false);
     staging.actors = actors;
+    this.drawnParts = this.setParts + actors.parts/*moved, the set drawn stands*/;
     this.pathTraceStale = true;
     this.requestFrame();
   }
@@ -1037,7 +1045,7 @@ export class Viewer {
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
-    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && (!this.pathTrace || this.pathTrace.settled);
+    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && (this.tracer()?.settled ?? true);
     if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
     if(moving || (this.drops.length > 0) || refining) this.requestFrame();
@@ -1085,15 +1093,21 @@ export class Viewer {
   private focusDistance(): number { return this.camera.position.distanceTo(this.controls.target); }
 
   /** whether the path tracer is still refining toward a settled frame */
-  public get refining(): boolean { return !!this.pathTrace && !this.pathTrace.settled; }
+  public get refining(): boolean { return !(this.tracer()?.settled ?? true); }
+  /** the parts drawn at the Path traced stop as Photo, being past what it draws (SEE:
+   *  PATH_TRACED_PARTS) */
+  public get untracedParts(): number | undefined { return (this.pathTrace && !this.tracer()) ? this.drawnParts : undefined; }
+  /** the path tracer, while the parts drawn are within what it draws */
+  private tracer(): PathTrace | undefined { return (this.drawnParts <= PATH_TRACED_PARTS) ? this.pathTrace : undefined; }
 
   /** draws the frame at the current stop; true while the path tracer still refines */
   private render(moving: boolean): boolean {
-    if(!this.pathTrace || (this.drops.length > 0)) { this.effects.render(); return false; }
+    const tracer = this.tracer();
+    if(!tracer || (this.drops.length > 0)) { this.effects.render(); return false; }
 
     if(this.pathTraceStale) {
       const { plate, free } = this.tracedBaseplate();
-      this.pathTrace.setScene({
+      tracer.setScene({
         parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: plate,
         environment: this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.stage,
         key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity },
@@ -1101,11 +1115,11 @@ export class Viewer {
       free()/*the tracer merged its own copy*/;
       this.pathTraceStale = false;
     } else if(moving || this.cameraMoved) {
-      this.pathTrace.moved(this.focusDistance());
+      tracer.moved(this.focusDistance());
     } /* else -- still: keep refining */
     this.cameraMoved = false;
-    this.pathTrace.render();
-    return this.pathTrace.refining;
+    tracer.render();
+    return tracer.refining;
   }
 }
 

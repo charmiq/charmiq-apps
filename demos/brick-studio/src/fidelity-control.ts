@@ -1,4 +1,4 @@
-import { fidelityLabel, loadFidelity, saveFidelity, toFidelity, MAX_FIDELITY, type Fidelity } from './render/fidelity';
+import { fidelityLabel, loadFidelity, saveFidelity, toFidelity, MAX_FIDELITY, UNTRACED_STATE, type Fidelity } from './render/fidelity';
 import type { Viewer } from './viewer';
 
 // the look slider: one stop per notch, from the draft look to path traced. The
@@ -43,11 +43,12 @@ export class FidelityControl {
     this.follow(reached);
   }
 
-  /** shows the stop's name, and that the path tracer is refining until it settles */
+  /** shows the stop's name, and that the path tracer is refining until it settles, or
+   *  draws as Photo while the parts shown are past what it draws */
   private follow(stop: Fidelity): void {
     clearInterval(this.poll);
     this.label.textContent = fidelityLabel(stop);
-    const show = () => { this.state.textContent = this.viewer.refining ? 'refining' : ''; };
+    const show = () => { this.state.textContent = this.viewer.refining ? 'refining' : (this.viewer.untracedParts !== undefined) ? UNTRACED_STATE : ''; };
     show();
     if(stop === MAX_FIDELITY) this.poll = setInterval(show, REFINING_POLL_MS);
   }

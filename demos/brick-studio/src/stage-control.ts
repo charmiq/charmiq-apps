@@ -2,7 +2,7 @@ import { BehaviorSubject, type Observable } from 'rxjs';
 
 import type { Build } from './build';
 import type { Sheet } from './sheet';
-import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
+import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -161,7 +161,7 @@ export class StageControl {
       const cast = this.ensure(loaded);
       this.applied++;
       const picture = this.pictureOf(loaded, shot, undefined);
-      this.viewer.showFrame(shotLines(cast, shot.shots), picture.camera, picture.overlay, shot.set);
+      this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set);
       const image = await this.viewer.capture(size.width, size.height);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
       this.publish({ kind: 'staged', reel: loaded.id, frame: frame as number });
@@ -178,7 +178,7 @@ export class StageControl {
     const picture = this.pictureOf(loaded, shot, viewOf(view));
     return this.after(async () => {
       const cast = this.ensure(loaded);
-      const image = await this.viewer.thumbnail(shotLines(cast, shot.shots), picture.camera, picture.overlay, size.width, size.height, shot.set);
+      const image = await this.viewer.thumbnail(shownActors(cast, shot.shots), picture.camera, picture.overlay, size.width, size.height, shot.set);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while its parts were built*/; }
       return image;
     });
@@ -204,7 +204,7 @@ export class StageControl {
         for(const [index, board] of boards.entries()) {
           const cast = this.ensure(loaded);
           const shot = loaded.frames[board.frame];
-          images.push(await this.after(() => this.viewer.thumbnail(shotLines(cast, shot.shots), pictures[index].camera, pictures[index].overlay, size.width, size.height, shot.set)));
+          images.push(await this.after(() => this.viewer.thumbnail(shownActors(cast, shot.shots), pictures[index].camera, pictures[index].overlay, size.width, size.height, shot.set)));
           this.ensure(loaded)/*ended while it was drawn*/;
         }
       } catch(error) {
@@ -230,7 +230,7 @@ export class StageControl {
       const view = cameraOf(camera);
       const size = captureOf(capture);
       this.applied++/*a reel frame waiting to be drawn is no longer the one shown*/;
-      this.viewer.showFrame(shotLines(cast, shots), view, undefined/*no overlay*/, standing);
+      this.viewer.showFrame(shownActors(cast, shots), view, undefined/*no overlay*/, standing);
       if(!size) return { shown: shots.length };
       const image = await this.viewer.capture(size.width, size.height);
       if(this.cast !== cast) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
@@ -265,7 +265,7 @@ export class StageControl {
     const shot = loaded.frames[frame];
     const applied = ++this.applied;
     const picture = this.pictureOf(loaded, shot, undefined);
-    this.viewer.showFrame(shotLines(cast, shot.shots), picture.camera, picture.overlay, shot.set);
+    this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set);
     void this.viewer.whenSettled().then(() => { if((this.reel === loaded) && (this.applied === applied)) this.publish({ kind: 'staged', reel, frame }); });
   }
 

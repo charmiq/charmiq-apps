@@ -134,6 +134,8 @@ type Actor = Readonly<{
   /** it wears a face, which a frame may change: a figure */
   faces: boolean;
   rolls: boolean;
+  /** how many parts it is, as a set counts them */
+  parts: number;
   lines: (pose: Pose | undefined, rolled: number, face?: string) => PartLine[];
 }>;
 
@@ -343,6 +345,7 @@ const copyActor = (set: Model, rotation: Rotation, parts: ReadonlyArray<Placemen
     poses: false,
     faces: false,
     rolls: parts.some(placement => !!getPart(placement.part)!.wheels),
+    parts: parts.length + others.length/*those the set shown leaves out*/,
     lines: (_, rolled) => [
       ...parts.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(((placement.rotation - rotation + 360) % 360) as Rotation/*turned within the copy*/))),
       ...others.map(index => set.others[index]),
@@ -360,6 +363,7 @@ const componentActor = (set: Model, component: Component): Actor => {
     poses: false,
     faces: false,
     rolls: parts.some(each => !!each.wheels),
+    parts: component.placements.length + component.others.length,
     lines: (_, rolled) => [...component.placements.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(placement.rotation))), ...component.others],
   };
 };
@@ -387,6 +391,7 @@ const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
     poses: !!catalogPart.limbs,
     faces: catalogPart.facePiece !== undefined,
     rolls: !!catalogPart.wheels,
+    parts: 1,
     lines: (pose, rolled, worn) => partLines(shape, { ...standing, ...(pose ? { pose: { ...standing.pose, ...pose } } : {}), ...((worn !== undefined) ? { face: worn } : {}) }, colorCode, origin, rolled),
   };
 };
@@ -429,6 +434,13 @@ export const shotLines = (cast: Cast, shots: ReadonlyArray<Shot>): PartLine[] =>
   const placed = actorTransform(actor, shot);
   return actor.lines(shot.pose, shot.rolled, shot.face).map(line => ({ ...line, ...compose(placed, line) }));
 });
+
+/** a frame's actors as drawn: their lines (SEE: shotLines), and how many parts they
+ *  are, as a set counts them */
+export type ShownActors = Readonly<{ lines: ReadonlyArray<PartLine>; parts: number; }>;
+export const NO_ACTORS: ShownActors = { lines: [], parts: 0 };
+export const shownActors = (cast: Cast, shots: ReadonlyArray<Shot>): ShownActors =>
+  ({ lines: shotLines(cast, shots), parts: shots.reduce((total, shot) => total + cast.actors.get(shot.name)!/*by contract: shotsOf*/.parts, 0) });
 
 /** where a shot puts an actor's frame: its anchor at the shot's position, turned
  *  about it */
