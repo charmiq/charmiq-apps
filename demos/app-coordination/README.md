@@ -6,7 +6,7 @@
 
 One app owns the state. It advertises a `"counter"` capability with methods (`increment`, `decrement`, `reset`, `add(amount)`) and a reactive `value$()` stream, and exports two commands (`lastValue`, `setValue({ value })`). Any app on the page can discover both.
 
-<iframe-app height="350px" width="100%">
+<iframe-app height="350px" width="100%" requested-scopes="%5B%22application.advertise%22%5D">
   <app-source>
 <!DOCTYPE html>
 <html>
@@ -149,7 +149,7 @@ initializeApp();
 
 The left panel discovers the counter and drives it — buttons call methods across iframes. Add passes the amount positionally to the counter's `add`; Set to passes it to the provider's `setValue` command as one named-arguments object, the way a Charm calls a command. The right panel subscribes to the counter's `value$()` stream and displays updates in real time, comparing `discover$()` (observable, reconnects automatically) with `discover()` (promise, self-healing proxy).
 
-<iframe-app height="350px" width="49%">
+<iframe-app height="350px" width="49%" requested-scopes="%5B%22application.discover%22%2C%22application.call%22%5D">
   <app-source>
 <!DOCTYPE html>
 <html>
@@ -356,7 +356,7 @@ initializeApp();
 </body>
 </html>
   </app-source>
-</iframe-app>   <iframe-app height="400px" width="49%">
+</iframe-app>   <iframe-app height="400px" width="49%" requested-scopes="%5B%22application.discover%22%2C%22application.call%22%5D">
   <app-source>
 <!DOCTYPE html>
 <html>
@@ -564,6 +564,8 @@ These three apps share no code and have no knowledge of each other at build time
 **`discover(name)`** — returns a promise that resolves to a self-healing proxy. If the provider disconnects and reconnects, the proxy reconnects transparently. The observer's right panel demonstrates this.
 
 **Streams across iframes** — the provider's `value$()` returns a `BehaviorSubject` observable. The observer subscribes to it through the proxy, receiving live updates as the controller clicks buttons. RxJS operators like `switchMap` and `retry` work normally across the boundary.
+
+**What each declares** — the provider declares `application.advertise` (announcing `counter` and its commands); the controller and the observer each declare `application.discover` (finding it) and `application.call` (calling its methods and following `value$()`). Each declaration is the `requested-scopes` on its `<iframe-app>`.
 
 **Charms can play too** — the provider's commands are the ones a Charm calls. A Charm is told the commands of apps loaded from a `charmiq://` source with a manifest; inline apps like these three it is not told about, so it reaches them through Run Code, a short script that discovers and calls them as the controller does: `const counter = await charmiq.discover('charmiq.command'); return await counter.setValue({ value: 10 });`.
 

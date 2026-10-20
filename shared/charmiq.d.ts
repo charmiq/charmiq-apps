@@ -565,7 +565,8 @@ export interface CharmIQAPI {
    *  Use this for app-to-app communication (e.g. a previewer subscribing to an
    *  editor's text stream). For host-callable commands described by JSON-Schema
    *  in the app's manifest, use {@link CharmIQAPI.exportCommands} instead —
-   *  calling `advertise('charmiq.command', ...)` will throw.
+   *  calling `advertise('charmiq.command', ...)` will throw. Declares
+   *  `application.advertise`.
    *  @example
    *  window.charmiq.advertise('counter', {
    *    increment: () => ++count,
@@ -575,7 +576,10 @@ export interface CharmIQAPI {
   advertise: AdvertiseCapability;
 
   /** discover Applications by capability (Observable-based, full control). Returns an
-   *  Observable that emits arrays of proxies whenever providers change.
+   *  Observable that emits arrays of proxies whenever providers change. Declares
+   *  `application.discover`, and `application.call` to call what it finds. It errors
+   *  with the reason and `code` (`functions/permission-denied`) when the Platform
+   *  refuses the discovery.
    *  @example
    *  window.charmiq.discover$('counter')
    *    .pipe(
@@ -587,7 +591,11 @@ export interface CharmIQAPI {
   discover$: DiscoverCapability$;
   /** discover Applications by capability (Promise-based, self-healing). Returns a
    *  Promise that resolves to a self-healing proxy for the first application
-   *  advertising the requested capability.
+   *  advertising the requested capability, waiting for one as long as it takes.
+   *  Declares `application.discover`, and `application.call` to call what it finds.
+   *  It rejects with the reason and `code` (`functions/permission-denied`) when the
+   *  Platform refuses the discovery; a call through the proxy waiting for a provider
+   *  is refused the same way once the proxy's own discovery is refused.
    *  @example
    *  const counter = await window.charmiq.discover('counter');
    *  const val = await counter.increment();  // auto-waits during reload
