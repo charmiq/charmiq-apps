@@ -73,6 +73,8 @@ export type ReelFrame = Readonly<{
 /** a camera's shot: from its cut (or the film's start) to the next cut (or the
  *  film's end), in seconds, named by its cut */
 export type CameraShot = Readonly<{ from: number; to: number; name?: string; }>;
+/** a shot's frames: its first, and its middle (the frame a storyboard pictures) */
+export type ShotFrames = Readonly<{ shot: CameraShot; first: number; middle: number; }>;
 
 /** what a plan draws over the set: each path labeled and colored, its points on the
  *  ground (SEE: Brick Studio's stage marks) */
@@ -148,6 +150,20 @@ export const cameraShots = (camera: RecordedCamera, length: number): ReadonlyArr
   return times.map((from, index) => { const name = starts.get(from); return { from, to: times[index + 1] ?? length, ...((name !== undefined) ? { name } : {}) }; });
 };
 
+/** the shot showing at `time`: the last whose cut it has reached */
+export const shotAt = (shots: ReadonlyArray<CameraShot>, time: number): CameraShot | undefined => shots.filter(shot => isReached(shot.from, time)).pop();
+
+/** each of a film's shots that a frame shows, with its first frame and the one nearest
+ *  its middle: a shot holds the frames that reach its cut and not the next, so one
+ *  holding no frame has none */
+export const shotFrames = ({ scene, frames }: Film): ReadonlyArray<ShotFrames> => cameraShots(scene.camera, scene.length).flatMap(shot => {
+  const first = frames.findIndex(frame => isReached(shot.from, frame.time));
+  const next = frames.findIndex(frame => isReached(shot.to, frame.time));
+  const last = ((next < 0) ? frames.length : next) - 1;
+  if((first < 0) || (first > last)) return []/*no frame shows it*/;
+  return [{ shot, first, middle: Math.min(last, Math.max(first, Math.round(((shot.from + shot.to) / 2) * scene.fps))) }];
+});
+
 // == Plan ========================================================================
 /** the area a plan shows when it names none: the floor, every actor's place in every
  *  frame and every place the camera stands and looks, PLAN_MARGIN out, in whole studs
@@ -191,7 +207,7 @@ export const planMarksOf = (film: Film, paint: Paint): Marks => {
   const cuts = cameraShots(scene.camera, scene.length).slice(1).map(shot => shot.from);
   let points: Array<{ x: number; z: number; }> = [];
   frames.forEach((frame, index) => {
-    const cut = (index > 0) && cuts.some(time => (time > frames[index - 1].time) && (time <= (frame.time + TIME_EPSILON)));
+    const cut = (index > 0) && cuts.some(time => !isReached(time, frames[index - 1].time) && isReached(time, frame.time));
     if(cut && (points.length > 0)) { paths.push({ label: CAMERA_LABEL, color: paint.camera, points }); points = []; }
     pushPoint(points, frame.camera.position);
   });
@@ -348,11 +364,15 @@ export const setAt = (keys: ReadonlyArray<SetKey> | undefined, time: number): st
 export const channelAt = (keys: ReadonlyArray<Key>, channel: string, time: number): number | undefined =>
   eased(keys.filter(key => channel in key.values), time, key => key.values[channel], lerp);
 
+/** whether `time` has reached a key at `at`: a key holds from its own time on,
+ *  compared exactly, so a cut's shot and the frames that show it agree */
+export const isReached = (at: number, time: number): boolean => at <= time;
+
 /** a value at a time over keys sorted by time: each key's value eased into from the
  *  key before by the later key's ease */
 const eased = <K extends Readonly<{ time: number; ease: Ease; }>, V>(keys: ReadonlyArray<K>, time: number, value: (key: K) => V, between: (from: V, to: V, u: number) => V): V | undefined => {
   if(keys.length < 1) return undefined;
-  const next = keys.findIndex(key => key.time > time);
+  const next = keys.findIndex(key => !isReached(key.time, time));
   if(next === 0) return value(keys[0]);
   if(next < 0) return value(keys[keys.length - 1]);
   const [from, to] = [keys[next - 1], keys[next]];

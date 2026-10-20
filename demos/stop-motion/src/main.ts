@@ -132,6 +132,16 @@ const timeline = new Timeline(element('timeline'), {
   sounds: () => soundsKnown, fixed: cue => fixedWhy(cue), moveSound: (cue, time) => moveSound(cue, time),
 }, inspector);
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack());
+/** the picture track as a storyboard: this browser's own choice, kept across visits */
+const STORYBOARD_KEY = 'stop-motion:storyboard';
+const storyboardButton = element<HTMLButtonElement>('storyboardButton');
+const showStoryboard = (storyboard: boolean) => {
+  storyboardButton.setAttribute('aria-pressed', String(storyboard));
+  strip.setStoryboard(storyboard);
+  try { localStorage.setItem(STORYBOARD_KEY, String(storyboard)); } catch { /*a preference only*/ }
+};
+storyboardButton.addEventListener('click', () => showStoryboard(storyboardButton.getAttribute('aria-pressed') !== 'true'));
+try { if(localStorage.getItem(STORYBOARD_KEY) === 'true') showStoryboard(true); } catch { /*storage can be absent or refused*/ }
 /** the film's files: Stop Motion reads and writes the main studio's build and the
  *  code block's scene for them, the set written staged anew */
 const films = charmiq && drive && new Films(drive, charmiq.appState, {

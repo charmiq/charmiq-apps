@@ -1,4 +1,4 @@
-import { cameraShots, type Film } from './film';
+import { cameraShots, shotAt, type Film } from './film';
 import type { Inspected, InspectedMark, Inspector } from './inspector';
 import type { ClosePair } from './measure';
 import type { SoundCue } from './recorder';
@@ -549,7 +549,7 @@ export class Timeline {
     const film = this.film!;
     const shown = film.frames[moment.frame];
     const laid = (moment.row === undefined) ? undefined : this.laid[moment.row];
-    const shot = cameraShots(film.scene.camera, film.scene.length).filter(each => each.from <= (shown.time + 1e-9)).pop();
+    const shot = shotAt(cameraShots(film.scene.camera, film.scene.length), shown.time);
     const color = laid?.row.color ?? '--ink';
     const under = moment.under;
     const marks: InspectedMark[] = [

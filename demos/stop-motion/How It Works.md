@@ -45,7 +45,7 @@ Each time the scene runs, Stop Motion turns it into a reel, every frame of the f
 
 The studio holding a build is the main one: its build holds the sets, and its camera is the film's. A Brick Studio with no build of its own is another screen, showing the same set through the scene's next `view`: give the scene a plan view, and a second studio is the film's map. When two studios both hold a build, the film waits until one of them is emptied.
 
-The strip under the timeline is the film's picture track: a small picture of each frame, taken from the studio while the film is neither playing nor exporting, without moving the picture the studio shows.
+The strip under the timeline is the film's picture track: a small picture of each frame, taken from the studio while the film is neither playing nor exporting, without moving the picture the studio shows. **Storyboard** turns it into a cell per camera shot: the shot's middle frame, captioned with its name and span; a press seeks to the shot's start, and the shot the playhead is in stays marked while the film plays. With more shots than fit, the track scrolls. The choice is kept in your browser.
 
 **Export MP4** shows every frame in the studio at the scene's size, captures it with its fade and titles, and encodes the film as H.264 in an MP4 for the browser to save. Changing the scene during an export stops it.
 

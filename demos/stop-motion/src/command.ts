@@ -2,7 +2,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 
 import { DesignExists, displayName } from '../../brick-shared/designs';
 
-import { cameraShots, setAt, type CameraShot, type Film } from './film';
+import { cameraShots, setAt, shotAt, shotFrames, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
 import type { Player } from './player';
@@ -93,7 +93,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
         if(!Array.isArray(frames) || !frames.every(each => Number.isInteger(each) && (each >= 0) && (each <= last))) throw new Error(`frames are whole frames from 0 to ${last}.`);
         indices = frames as number[];
       } else {
-        indices = shots.map(shot => Math.min(last, Math.round(((shot.from + shot.to) / 2) * scene.fps)))/*the middle of each shot*/;
+        indices = shotFrames(film).map(each => each.middle);
       }
       if(indices.length < 1) throw new Error('Give at least one time or frame.');
       if(indices.length > MAX_BOARD) throw new Error(`A storyboard shows at most ${MAX_BOARD} frames.`);
@@ -187,7 +187,7 @@ const sizesOf = (stage: StageState): Readonly<Record<string, Size>> | undefined 
 
 /** a storyboard frame's caption: its time, its number and its shot's name */
 const captionOf = (time: number, index: number, shots: ReadonlyArray<CameraShot>): string => {
-  const shot = [...shots].reverse().find(each => each.from <= (time + 1e-9));
+  const shot = shotAt(shots, time);
   return [`${time.toFixed(2)} s`, `frame ${index}`, ...((shot?.name !== undefined) ? [shot.name] : [])].join(' · ');
 };
 

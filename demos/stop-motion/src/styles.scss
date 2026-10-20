@@ -159,6 +159,7 @@
 }
 
 #loopButton[aria-pressed='false'] { background: var(--bench); color: var(--ink-soft); }
+#storyboardButton[aria-pressed='true'] { background: var(--outline); color: #FFFDF2; }
 
 // the film's sound loading, waiting on a press, or unable to play (its title says why)
 .sound-chip {
@@ -883,6 +884,27 @@
   &.is-exposed { animation: develop 600ms ease-out; }
   &.is-current { outline: 2px solid var(--brick-yellow); outline-offset: 1px; }
   &:focus-visible { outline: 2px solid var(--brick-azure); outline-offset: 1px; }
+}
+
+// a storyboard: a cell per shot, never narrower than reads, the track scrolling when
+// they outrun it; its caption over the picture's foot, whole in the cell's title
+.strip.is-storyboard {
+  position: relative/*the cells' offsets measure from the track*/;
+  overflow-x: auto;
+  background-attachment: local;
+  .cell { flex: 1 0 160px; max-width: 240px; }
+}
+.cell-caption {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 10px 6px 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font: 500 10px/1.2 'JetBrains Mono', ui-monospace, monospace;
+  color: rgba(255, 253, 242, 0.92);
+  text-align: left;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
 }
 
 @keyframes develop { from { filter: sepia(1) brightness(0.4) contrast(1.4); } to { filter: none; } }

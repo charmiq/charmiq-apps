@@ -31,7 +31,7 @@
     "charmiq.command": [
       {
         "name": "describeFilm",
-        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, the sounds it plays, every two actors that come within 2 studs and where, and what it logged), or the scene's mistake and its line, and the sounds a scene can play",
+        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, the sounds it plays, every two actors that come within 2 studs and where: the moments to inspect for a possible collision, by their boxes, and what it logged), or the scene's mistake and its line, and the sounds a scene can play",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
