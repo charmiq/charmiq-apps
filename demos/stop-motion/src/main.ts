@@ -25,6 +25,7 @@ import { Strip } from './strip';
 import { Studios, type StageState } from './studios';
 import { Inspector } from './inspector';
 import { actorColor, Timeline, type TimelineSounds } from './timeline';
+import type { SoundReading } from './timeline-marks';
 
 // entry point: the film's timeline. It follows the scene's code in the code editor,
 // runs it into a film, stages it on the studios (the film's screens) and wires the
@@ -153,8 +154,8 @@ let film: Film | undefined;
 let error: SceneError | undefined;
 /** the editors found, and whether one holds the scene */
 let editors = 0, hasCode = false;
-/** the export running, while one is */
-let exporting: { cancelled: boolean; } | undefined;
+/** the export running, while one is: whether it was stopped, and its stop */
+let exporting: { cancelled: boolean; stop: () => void; } | undefined;
 
 // == Film ========================================================================
 const showFilm = (next: Film) => {
@@ -331,23 +332,32 @@ element('saveButton').addEventListener('click', () => void saveFilm());
 
 // == Sounds ======================================================================
 // what the timeline knows of the film's sounds: each read one's length and waveform,
-// each Platform file's name (a shipped sound is called by its own)
+// each Platform file's name (a shipped sound is called by its own), and each one's
+// file being read or found unreadable
 const soundLengths = new Map<string, number>();
 const soundPeaks = new Map<string, Float32Array>();
 const soundNames = new Map<string, string>();
+const soundReadings = new Map<string, SoundReading>();
 const soundsKnown: TimelineSounds = {
   duration: sound => soundLengths.get(sound),
   label: sound => soundNames.get(sound) ?? (isPlatformFile(sound) ? 'a sound' : sound),
   peaks: sound => soundPeaks.get(sound),
+  reading: sound => soundReadings.get(sound),
 };
 
-/** the film's sounds read and named for the timeline, which draws them again once
- *  they are */
+/** the film's sounds read and named for the timeline, which shows each being read and
+ *  draws it again as it is read or found unreadable */
 const learnSounds = (next: Film) => {
   const names = soundsOf(next);
   if(bank) {
-    void bank.load(names).then(buffers => {
-      for(const [name, buffer] of buffers) { soundLengths.set(name, buffer.duration); if(!soundPeaks.has(name)) soundPeaks.set(name, peaksOf(buffer, WAVE_SLICES)); }
+    for(const name of names) if(!soundLengths.has(name)) soundReadings.set(name, 'loading')/*read again, if unreadable before*/;
+    timeline.soundsChanged();
+    void bank.load(names, (name, buffer) => {
+      if(buffer) {
+        soundLengths.set(name, buffer.duration);
+        if(!soundPeaks.has(name)) soundPeaks.set(name, peaksOf(buffer, WAVE_SLICES));
+        soundReadings.delete(name);
+      } else soundReadings.set(name, 'unread');
       timeline.soundsChanged();
     });
   } /* else -- standalone: no sound is read */
@@ -441,15 +451,17 @@ element('nextButton').addEventListener('click', () => player.step(1));
 element('lastButton').addEventListener('click', () => { player.pause(); player.seek(Number.MAX_SAFE_INTEGER); });
 loopButton.addEventListener('click', () => player.setLoop(!player.current.loop));
 
-/** the sound chip: shown only when the film's sound is silent until a press (the
- *  press lets it in), plays without some of its sounds, or cannot play (its title
- *  says why, shown again as the sounds' names arrive) */
+/** the sound chip: shown only while the film's sounds load (the film plays silent
+ *  meanwhile), when its sound is silent until a press (the press lets it in), plays
+ *  without some of its sounds, or cannot play (its title says why, shown again as the
+ *  sounds' names arrive) */
 let soundState: SoundState = { kind: 'none' };
 const showSound = (state: SoundState) => {
   soundState = state;
   const missing = (('missing' in state) && (state.missing.length > 0)) ? unread(state.missing) : undefined;
   const [shown, text, title] =
-    (state.kind === 'silent') ? [true, 'Sound off · click to hear', `Let the film's sound play${missing ? ` (${missing})` : ''}`]
+    (state.kind === 'loading') ? [true, `Loading sounds · ${state.settled} of ${state.total}`, 'The film plays silent until its sounds arrive']
+    : (state.kind === 'silent') ? [true, 'Sound off · click to hear', `Let the film's sound play${missing ? ` (${missing})` : ''}`]
     : (state.kind === 'unavailable') ? [true, 'No sound', ('reason' in state) ? state.reason : (missing ?? '')]
     : ((state.kind === 'ready') && missing) ? [true, 'Sounds missing', missing]
     : [false, '', ''];
@@ -463,14 +475,20 @@ soundtrack.state$.subscribe(showSound);
 soundChip.addEventListener('click', () => void soundtrack.resume());
 
 exportButton.addEventListener('click', async () => {
-  if(exporting) { exporting.cancelled = true; return; }
+  if(exporting) { exporting.cancelled = true; exporting.stop(); return; }
   if(!film) return;
-  const filming = film, request = { cancelled: false };
+  // a stop ends the wait on the sounds at once: their read carries on for the film's
+  // playing, and an export stopped meanwhile never starts
+  let stop = () => {/*not yet waiting*/};
+  const stopped = new Promise<void>(resolve => { stop = resolve; });
+  const filming = film, request = { cancelled: false, stop: () => stop() };
   exporting = request;
   player.pause();
   exportButton.classList.add('is-busy');
   try {
-    const sounds = bank && await bank.load(soundsOf(filming));
+    exportButton.textContent = 'Loading sounds… · stop'/*until the sounds are in, then each frame encoded*/;
+    const sounds = bank && await Promise.race([bank.load(soundsOf(filming)), stopped.then(() => undefined/*stopped*/)]);
+    if(request.cancelled) return/*stopped while the sounds loaded*/;
     const exported = await exportFilm(filming, studios, sounds, (done, total) => { exportButton.textContent = `Exporting ${Math.round((done / total) * 100)}% · stop`; }, () => request.cancelled);
     if(exported) save(exported.file, fileName(filming.scene.title));
     if(exported?.withoutSound) exportedNote('Saved without sound', exported.withoutSound);

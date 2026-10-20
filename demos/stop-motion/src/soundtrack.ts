@@ -25,11 +25,11 @@ const DELAYS = 9;
 const MAX_DELAY = 250;
 
 // == Types =======================================================================
-/** where the film's sound stands: none to play, its sounds loading, ready, silent
- *  until a press (each but none and loading naming the sounds `missing`, those whose
- *  files could not be read), or unavailable (`reason` says why, or every sound is
- *  `missing`) */
-export type SoundState = Readonly<{ kind: 'none' | 'loading'; } | { kind: 'ready' | 'silent'; missing: ReadonlyArray<string>; } | { kind: 'unavailable'; reason: string; } | { kind: 'unavailable'; missing: ReadonlyArray<string>; }>;
+/** where the film's sound stands: none to play, its sounds loading (`settled` of
+ *  `total` read or found unreadable so far), ready, silent until a press (each naming
+ *  the sounds `missing`, those whose files could not be read), or unavailable
+ *  (`reason` says why, or every sound is `missing`) */
+export type SoundState = Readonly<{ kind: 'none'; } | { kind: 'loading'; settled: number; total: number; } | { kind: 'ready' | 'silent'; missing: ReadonlyArray<string>; } | { kind: 'unavailable'; reason: string; } | { kind: 'unavailable'; missing: ReadonlyArray<string>; }>;
 
 // == Class =======================================================================
 export class Soundtrack implements PlayerSoundtrack {
@@ -65,8 +65,12 @@ export class Soundtrack implements PlayerSoundtrack {
     [this.buffers, this.missing] = [new Map(), []];
     if(names.size < 1) { this.state.next({ kind: 'none' }); return; }
     if(!this.bank) { this.state.next({ kind: 'unavailable', reason: 'This Platform delivers no sound files' }); return; }
-    this.state.next({ kind: 'loading' });
-    void this.bank.load(names).then(buffers => {
+    let settled = 0;
+    this.state.next({ kind: 'loading', settled, total: names.size });
+    void this.bank.load(names, () => {
+      settled++;
+      if((film === this.film) && (settled < names.size)) this.state.next({ kind: 'loading', settled, total: names.size })/*the last settles into what the film hears*/;
+    }).then(buffers => {
       if(film !== this.film) return/*another film meanwhile*/;
       [this.buffers, this.missing] = [buffers, missingSounds(film!, buffers)];
       this.state.next((buffers.size < 1) ? { kind: 'unavailable', missing: this.missing } : this.heard());

@@ -17,18 +17,22 @@ const ACTOR_COLORS = ['--brick-red', '--brick-yellow', '--brick-green', '--brick
 /** what a mark says in the hover card: its title and its values, each a chip */
 export type Said = Readonly<{ title: string; chips: ReadonlyArray<string>; }>;
 
-/** a key at its time; a face key wears a face */
-export type RowKey = Said & Readonly<{ time: number; face?: true; }>;
+/** where a sound's file stands while it is not yet heard: being read, or unreadable */
+export type SoundReading = 'loading' | 'unread';
+/** a key at its time; a face key wears a face; a sound's says where its file stands */
+export type RowKey = Said & Readonly<{ time: number; face?: true; reading?: SoundReading; }>;
 /** a band over its span: a path, a wobble, a fade, a title, a camera's shot, a set or
  *  a sound played until a time */
 export type BandKind = 'path' | 'wobble' | 'fade' | 'title' | 'shot' | 'set' | 'sound';
-/** a band over its span; a sound's carries its cue, so the timeline can draw and move it */
-export type RowBand = Said & Readonly<{ from: number; to: number; label: string; kind: BandKind; strength?: number; alternate?: true; cue?: SoundCue; }>;
+/** a band over its span; a sound's carries its cue, so the timeline can draw and move
+ *  it, and says where its file stands */
+export type RowBand = Said & Readonly<{ from: number; to: number; label: string; kind: BandKind; strength?: number; alternate?: true; cue?: SoundCue; reading?: SoundReading; }>;
 
 /** what the timeline knows of the film's sounds once they are read: how long each
- *  plays once (seconds; undefined until it is decoded) and what to call it (a Platform
- *  file's name, a shipped sound's own) */
-export type SoundsKnown = Readonly<{ duration: (sound: string) => number | undefined; label: (sound: string) => string; }>;
+ *  plays once (seconds; undefined until it is decoded), what to call it (a Platform
+ *  file's name, a shipped sound's own) and where its file stands until it is heard
+ *  (undefined once read, or where no file is read) */
+export type SoundsKnown = Readonly<{ duration: (sound: string) => number | undefined; label: (sound: string) => string; reading: (sound: string) => SoundReading | undefined; }>;
 /** where two actors come closest */
 export type RowNotch = Said & Readonly<{ time: number; }>;
 
@@ -113,7 +117,8 @@ const setRow = (keys: ReadonlyArray<SetKey>, length: number): Row => ({
  *  saying its volume and the actor it follows; one whose length is not yet known a key
  *  at its time */
 const soundRow = (cues: ReadonlyArray<SoundCue>, length: number, known: SoundsKnown): Row => {
-  const said = (cue: SoundCue) => [...((cue.volume !== 1) ? [`volume ${Math.round(cue.volume * 100)}%`] : []), ...((cue.actor !== undefined) ? [`follows ${cue.actor}`] : [])];
+  const said = (cue: SoundCue) => [...((cue.volume !== 1) ? [`volume ${Math.round(cue.volume * 100)}%`] : []), ...((cue.actor !== undefined) ? [`follows ${cue.actor}`] : []), ...readingSaid(known.reading(cue.name))];
+  const reading = (cue: SoundCue) => { const where = known.reading(cue.name); return (where === undefined) ? {/*read*/} : { reading: where }; };
   const spanOf = (cue: SoundCue) => {
     const duration = known.duration(cue.name);
     const to = cue.until ?? ((duration !== undefined) ? (cue.time + duration) : undefined);
@@ -121,18 +126,22 @@ const soundRow = (cues: ReadonlyArray<SoundCue>, length: number, known: SoundsKn
   };
   return {
     name: 'Sound', color: '--brick-orange', track: { kind: 'sounds' },
-    keys: cues.filter(cue => spanOf(cue) === undefined).map(cue => ({ time: cue.time, title: `Sound "${known.label(cue.name)}" at ${seconds2(cue.time)}`, chips: said(cue) })),
+    keys: cues.filter(cue => spanOf(cue) === undefined).map(cue => ({ time: cue.time, title: `Sound "${known.label(cue.name)}" at ${seconds2(cue.time)}`, chips: said(cue), ...reading(cue) })),
     bands: cues.flatMap(cue => {
       const to = spanOf(cue);
       if(to === undefined) return [];
-      return [{ from: cue.time, to, label: known.label(cue.name), kind: 'sound' as const, cue, title: `Sound "${known.label(cue.name)}"`, chips: [`${seconds2(cue.time)} – ${seconds2(to)}`, ...((cue.until !== undefined) ? ['over and over'] : []), ...said(cue)] }];
+      return [{ from: cue.time, to, label: known.label(cue.name), kind: 'sound' as const, cue, title: `Sound "${known.label(cue.name)}"`, chips: [`${seconds2(cue.time)} – ${seconds2(to)}`, ...((cue.until !== undefined) ? ['over and over'] : []), ...said(cue)], ...reading(cue) }];
     }),
     notches: [],
   };
 };
 
-/** the sounds before any is read: no lengths, each called by its sound */
-const UNKNOWN_SOUNDS: SoundsKnown = { duration: () => undefined/*not read*/, label: sound => sound };
+/** what a sound's file standing says: being read, or why it is not heard */
+const readingSaid = (reading: SoundReading | undefined): ReadonlyArray<string> =>
+  (reading === 'loading') ? ['loading…'] : (reading === 'unread') ? ['could not be read'] : [];
+
+/** the sounds before any is read: no lengths, each called by its sound, none being read */
+const UNKNOWN_SOUNDS: SoundsKnown = { duration: () => undefined/*not read*/, label: sound => sound, reading: () => undefined/*no file read*/ };
 
 const fadeRow = (keys: ReadonlyArray<Key>): Row => ({
   name: 'Fade', color: '--ink', track: { kind: 'fade' },
@@ -169,6 +178,11 @@ export const keyGroups = (keys: ReadonlyArray<RowKey>, apart: number): ReadonlyA
   }
   return groups;
 };
+
+/** where the sound files of a group's keys stand, as the group shows it: unreadable
+ *  when any is, else being read when any is (undefined: nothing to say) */
+export const groupReading = (group: KeyGroup): SoundReading | undefined =>
+  group.keys.some(key => key.reading === 'unread') ? 'unread' : group.keys.some(key => key.reading === 'loading') ? 'loading' : undefined;
 
 /** each band's tier, in the order given, and how many tiers there are: a band takes
  *  the first tier whose bands all end by its start, so bands sharing a span stack */

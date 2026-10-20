@@ -253,9 +253,13 @@ export class SoundBank {
   public constructor(private readonly readShipped: (name: string) => Promise<ArrayBuffer>, private readonly readFile: (uri: string) => Promise<ArrayBuffer>) {}
 
   /** the named sounds, decoded; one that cannot be read is left out (and `failed`
-   *  says why) */
-  public async load(names: Iterable<string>): Promise<SoundBuffers> {
-    const loaded = await Promise.all([...names].map(async name => [name, await this.buffer(name)] as const));
+   *  says why). `settled` hears each as it is decoded or found unreadable */
+  public async load(names: Iterable<string>, settled?: (name: string, buffer: AudioBuffer | undefined/*unreadable*/) => void): Promise<SoundBuffers> {
+    const loaded = await Promise.all([...names].map(async name => {
+      const buffer = await this.buffer(name);
+      settled?.(name, buffer);
+      return [name, buffer] as const;
+    }));
     return new Map(loaded.filter((entry): entry is readonly [string, AudioBuffer] => entry[1] !== undefined));
   }
 

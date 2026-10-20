@@ -2,7 +2,7 @@ import { cameraShots, type Film } from './film';
 import type { Inspected, InspectedMark, Inspector } from './inspector';
 import type { ClosePair } from './measure';
 import type { SoundCue } from './recorder';
-import { bandTiers, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type Row, type RowBand, type SoundsKnown, type Under } from './timeline-marks';
+import { bandTiers, groupReading, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type Row, type RowBand, type SoundReading, type SoundsKnown, type Under } from './timeline-marks';
 
 // the timeline: one row per track (SEE: timeline-marks.ts), each key a diamond at its
 // time (keys too near to tell apart one diamond, counted) and each function of time a
@@ -19,7 +19,8 @@ import { bandTiers, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type 
 // keyboard steps frames (arrows), jumps to the ends (Home, End) and plays (Space).
 // each sound draws as its waveform over the span it plays; one whose time the scene
 // writes as a number drags along its row to a new time, which the scene then holds,
-// and one written otherwise says where its time is written
+// and one written otherwise says where its time is written. A sound whose file is
+// still being read pulses, saying so, and one whose file could not be read says that
 // ********************************************************************************
 // == Constants ===================================================================
 /** how near two keys draw (CSS pixels) before they draw as one diamond */
@@ -40,6 +41,8 @@ const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 /** the modifier's key and its name as the timeline's hint says it */
 const MODIFIER_KEY = MAC ? 'Meta' : 'Control';
 const MODIFIER_NAME = MAC ? '⌘' : 'Ctrl';
+/** what a sound's mark says while its file is not heard */
+const READING_TEXT: Readonly<Record<SoundReading, string>> = { loading: 'Loading…', unread: 'could not be read' };
 
 // == Types =======================================================================
 export type TimelineHost = Readonly<{
@@ -112,6 +115,8 @@ export class Timeline {
   private restTimer: number | undefined;
   /** a sound being dragged: its band, its element and where the press began */
   private dragging: Readonly<{ band: RowBand; mark: HTMLElement; startX: number; }> | undefined;
+  /** the sounds changed while a sound was held: drawn again once the gesture ends */
+  private soundsStale = false;
   private dragged = 0;
   /** the note about a sound, and its timer */
   private readonly note: HTMLElement;
@@ -182,9 +187,11 @@ export class Timeline {
     this.update();
   }
 
-  /** draws the film's sounds again: one read since, its length and waveform known */
+  /** draws the film's sounds again: one read since, its length and waveform known.
+   *  A sound held keeps the marks it holds, drawn again once it is let go */
   public soundsChanged(): void {
-    if(!this.dragging) this.layout()/*a drag keeps the marks it holds*/;
+    if(this.dragging) { this.soundsStale = true; return; }
+    this.layout();
   }
 
   /** moves the playhead to a frame */
@@ -195,6 +202,7 @@ export class Timeline {
 
   // == Layout ====================================================================
   private layout(): void {
+    this.soundsStale = false/*every sound drawn as it stands*/;
     const film = this.film;
     const document = this.root.ownerDocument;
     this.root.classList.toggle('is-empty', !film);
@@ -253,7 +261,7 @@ export class Timeline {
       mark.style.setProperty('--tier', String(tiers[index]));
       if(each.strength !== undefined) mark.style.setProperty('--strength', String(each.strength));
       if((each.kind === 'title') || (each.kind === 'shot') || (each.kind === 'set')) mark.textContent = each.label;
-      if(each.cue) this.soundBand(mark, each.cue, each.label);
+      if(each.cue) this.soundBand(mark, each.cue, each.label, each.reading);
       lane.append(mark);
       return mark;
     });
@@ -264,13 +272,20 @@ export class Timeline {
       return mark;
     });
     const keys = groups.map((group, index) => {
-      const diamond = element(document, 'button', group.keys.every(key => key.face) ? 'key key--face' : 'key');
+      const reading = groupReading(group);
+      const diamond = element(document, 'button', `${group.keys.every(key => key.face) ? 'key key--face' : 'key'}${reading ? ` is-${reading}` : ''}`);
       diamond.type = 'button';
       diamond.style.left = at(group.time);
       diamond.dataset.group = String(index);
       diamond.ariaLabel = group.keys.map(key => `${key.title}: ${key.chips.join(', ')}`).join('; ');
       if(group.keys.length > 1) diamond.append(Object.assign(element(document, 'span', 'key-count'), { textContent: `×${group.keys.length}`, ariaHidden: 'true' }));
       lane.append(diamond);
+      // a sound whose file is not yet heard says so beside its key
+      if(reading) {
+        const note = Object.assign(element(document, 'span', `key-reading is-${reading}`), { textContent: READING_TEXT[reading], ariaHidden: 'true' });
+        note.style.left = at(group.time);
+        lane.append(note);
+      } /* else -- nothing to say */
       return diamond;
     });
     line.append(name, lane);
@@ -278,13 +293,16 @@ export class Timeline {
   }
 
   // .. Sounds ....................................................................
-  // a sound's band: its waveform under its name, movable or saying why not
-  private soundBand(mark: HTMLElement, cue: SoundCue, label: string): void {
+  // a sound's band: its waveform under its name, movable or saying why not, and
+  // saying so while its file is being read or could not be
+  private soundBand(mark: HTMLElement, cue: SoundCue, label: string, reading: SoundReading | undefined): void {
     const document = this.root.ownerDocument;
     const why = this.host.fixed(cue);
     mark.classList.toggle('is-fixed', why !== undefined);
+    if(reading) mark.classList.add(`is-${reading}`);
     mark.title = why ?? `Drag to move "${label}"`;
-    mark.append(element(document, 'canvas', 'band-wave'), Object.assign(element(document, 'span', 'band-label'), { textContent: label }));
+    const shown = reading ? `${label} · ${READING_TEXT[reading]}` : label;
+    mark.append(element(document, 'canvas', 'band-wave'), Object.assign(element(document, 'span', 'band-label'), { textContent: shown }));
   }
 
   // a sound band's waveform, its sound's slices stretched over the band (repeated
@@ -393,10 +411,11 @@ export class Timeline {
     const moved = this.dragged;
     this.dragging = undefined;
     this.root.classList.remove('is-moving');
-    if(Math.abs(moved) < DRAG_SLOP) { mark.style.transform = ''; this.scrub(event); return; }
+    if(Math.abs(moved) < DRAG_SLOP) { mark.style.transform = ''; this.redrawStale(); this.scrub(event); return; }
     const time = Math.max(0, Math.round((band.cue!.time + ((moved / Math.max(1, this.laneWidth)) * film.scene.length)) * film.scene.fps) / film.scene.fps);
     const refused = await this.host.moveSound(band.cue!, time);
     if(refused !== undefined) { mark.style.transform = ''; this.showNote(refused); }
+    this.redrawStale()/*the move settled: a sound read meanwhile drawn*/;
   }
 
   // a drag the browser took away: the sound back where it was
@@ -405,6 +424,12 @@ export class Timeline {
     this.dragging.mark.style.transform = '';
     this.dragging = undefined;
     this.root.classList.remove('is-moving');
+    this.redrawStale();
+  }
+
+  // the sounds drawn again when they changed while one was held
+  private redrawStale(): void {
+    if(this.soundsStale && !this.dragging) this.layout();
   }
 
   // the band a sound's element draws

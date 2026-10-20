@@ -160,10 +160,10 @@
 
 #loopButton[aria-pressed='false'] { background: var(--bench); color: var(--ink-soft); }
 
-// the film's sound waiting on a press, or unable to play (its title says why)
+// the film's sound loading, waiting on a press, or unable to play (its title says why)
 .sound-chip {
   &[hidden] { display: none; }
-  &[data-state='silent'] { animation: pulse 1.6s ease-in-out infinite; }
+  &[data-state='silent'], &[data-state='loading'] { animation: pulse 1.6s ease-in-out infinite; }
   &:disabled { cursor: help; opacity: 0.8; background: var(--bench); color: var(--ink-soft); }
 }
 
@@ -543,6 +543,26 @@
   border-radius: 1px;
   pointer-events: none;
 }
+
+// a sound whose file is being read pulses, saying so beside its key or on its band;
+// one whose file could not be read stands dashed and faded, saying that
+.key.is-loading, .band.is-loading, .key-reading.is-loading { animation: pulse 1.2s ease-in-out infinite; }
+.key.is-unread, .band.is-unread { opacity: 0.55; border-style: dashed; }
+.key-reading {
+  @extend %mono-caps;
+  position: absolute;
+  top: 50%;
+  margin-left: 10px;
+  transform: translateY(-50%);
+  font-size: 7px;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  pointer-events: none;
+  z-index: 1;
+
+  &.is-unread { color: var(--brick-red); }
+}
+@media (prefers-reduced-motion: reduce) { .key.is-loading, .band.is-loading, .key-reading.is-loading { animation: none; } }
 
 // a sound moving: the grab held across the timeline
 .timeline.is-moving, .timeline.is-moving * { cursor: grabbing; }
