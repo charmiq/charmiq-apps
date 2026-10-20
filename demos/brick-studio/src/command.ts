@@ -3,7 +3,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import { DesignExists, displayName } from '../../brick-shared/designs';
 import type { Design } from '../../brick-shared/drive';
 
-import type { Build } from './build';
+import { linesOf, type Build } from './build';
 import type { Designs } from './designs';
 import { partsByKind, searchCatalog, type CatalogPart, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES } from './catalog';
 import { checkModel, reportCheck, MAX_LISTED, TRUNCATED } from './check';
@@ -305,8 +305,7 @@ const pageStart = (value: unknown): number => ((typeof value === 'number') && Nu
 /** whole lines of LDraw text from a line, up to a page's bytes (always at least one
  *  line), and the line the next page starts at while any remain */
 const textPage = (text: string, fromLine: number) => {
-  const lines = text.split('\n');
-  if(lines[lines.length - 1] === '') lines.pop()/*the final line break*/;
+  const lines = linesOf(text);
   const encoder = new TextEncoder();
   let bytes = 0, end = fromLine;
   while((end < lines.length) && ((end === fromLine) || ((bytes + encoder.encode(lines[end]).length + 1) <= TEXT_PAGE_BYTES))) bytes += encoder.encode(lines[end++]).length + 1;

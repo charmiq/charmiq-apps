@@ -462,10 +462,22 @@ export class Build {
  *  flat */
 const givenText = (text: string, model: Model): string => (writtenAsGiven(model) || model.unwritable) ? text : serializeModel(model);
 
-/** refuses a write naming the text it expects (as the build was given back) when the
- *  build is no longer that text */
+/** a text's lines, its final line break ending its last line rather than starting
+ *  another */
+export const linesOf = (text: string): string[] => {
+  const lines = text.split('\n');
+  if(lines[lines.length - 1] === '') lines.pop()/*the final line break*/;
+  return lines;
+};
+
+/** a build's text as a reader is given it (getModel, page by page): each line ending in
+ *  a line break, the last included, however the document stores it */
+const readText = (text: string): string => linesOf(text).map(line => `${line}\n`).join('');
+
+/** refuses a write naming the text it expects (as the build was read) when the build
+ *  is no longer that text */
 const refuseChanged = (text: string, expected: string | undefined): void => {
-  if((expected !== undefined) && (givenText(text, parseModel(text)) !== expected)) throw new BuildError('The build changed since it was read, so nothing was changed.');
+  if((expected !== undefined) && (readText(givenText(text, parseModel(text))) !== expected)) throw new BuildError('The build changed since it was read, so nothing was changed.');
 };
 
 /** the set of an app-content's text a call names (SEE: pickSet), as a model, and its

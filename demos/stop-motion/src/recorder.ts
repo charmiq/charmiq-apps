@@ -196,9 +196,11 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   };
 
   // .. Actors ....................................................................
-  /** values an actor's key or path gives, as channels */
-  const channelsOf = (values: unknown, what: string): Record<string, number> => {
-    if((typeof values !== 'object') || (values === null)) fail(`${what} gives values: { x, z, height, yaw, pitch, roll, visible, pose, face }`);
+  /** values an actor's key or path gives, as channels; a key's face is taken before
+   *  (`keyed`), and a path gives none: a face is worn from a key, until the next */
+  const channelsOf = (values: unknown, what: string, keyed: Readonly<{ name: string; } | { key: true; }>): Record<string, number> => {
+    const named = ('key' in keyed) ? 'x, z, height, yaw, pitch, roll, visible, pose, face' : 'x, z, height, yaw, pitch, roll, visible, pose';
+    if((typeof values !== 'object') || (values === null)) fail(`${what} gives values: { ${named} }`);
     const channels: Record<string, number> = {};
     for(const [name, value] of Object.entries(values as Record<string, unknown>)) {
       if(name === 'pose') {
@@ -211,7 +213,8 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         continue;
       } /* else -- a value of its own, not a limb */
       if(name === 'visible') { channels.visible = value ? 1 : 0; continue; }
-      if(!ACTOR_CHANNELS.includes(name)) fail(`${what}: no value '${name}' (x, z, height, yaw, pitch, roll, visible, pose, face)`);
+      if(('name' in keyed) && (name === 'face')) fail(`${what}: a path gives no face; a face is worn from a key: ${keyed.name}.at(time, { face })`);
+      if(!ACTOR_CHANNELS.includes(name)) fail(`${what}: no value '${name}' (${named})`);
       if(!isFiniteNumber(value)) fail(`${what}: ${name} must be a number`);
       channels[name] = value as number;
     }
@@ -240,7 +243,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
           if((typeof face !== 'string') || (face.trim().length < 1) || (face.length > 40)) fail(`${what}: face names a figure's face, such as grin or laugh`);
           entry.faces.push({ time: at, face: face as string, line: callerLine() });
         } /* else -- the face it wears goes on */
-        const channels = channelsOf(given ? Object.fromEntries(Object.entries(given).filter(([key]) => key !== 'face')) : values, what);
+        const channels = channelsOf(given ? Object.fromEntries(Object.entries(given).filter(([key]) => key !== 'face')) : values, what, { key: true });
         if((face === undefined) || (Object.keys(channels).length > 0)) entry.keys.push({ time: at, values: channels, ease: toEase(ease), line: callerLine() });
         return handle;
       },
@@ -251,7 +254,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         if(end <= start) fail(`${String(name)}.path ends after it starts`);
         if(typeof fn !== 'function') fail(`${String(name)}.path takes a function of (u, t) giving values`);
         const line = callerLine();
-        entry.spans.push(() => sampled(start, end, 'set', 'path', line, (u, t) => channelsOf((fn as (u: number, t: number) => unknown)(u, t), `${String(name)}.path at ${t.toFixed(3)} s`)));
+        entry.spans.push(() => sampled(start, end, 'set', 'path', line, (u, t) => channelsOf((fn as (u: number, t: number) => unknown)(u, t), `${String(name)}.path at ${t.toFixed(3)} s`, { name: String(name) })));
         return handle;
       },
       /** smooth noise added to one value, `amount` at most, `rate` swings a second */

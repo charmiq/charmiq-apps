@@ -184,7 +184,7 @@ A Charm drives the Studio through these:
 
 Every edit resolves once the parts have landed, so a screenshot taken next shows the result. `listPlacedParts`, `addParts`, `removeParts`, `setGround`, `check` and `lookAround` take `set`, and in a build of more than one set each answer names the set it acted on.
 
-A Charm can also call these from the Platform's Run Code: its script finds the Studio with `charmiq.discover('charmiq.command')` and calls each command as a method, checked as if called directly, so loops and functions build a whole scene in one action.
+A Charm can also call these from the Platform's Run Code: its script finds the Studio among `charmiq.discoverAll('charmiq.command')` (every Application with commands) as the one whose `listSets()` answers, and calls each command as a method, checked as if called directly, so loops and functions build a whole scene in one action.
 
 
 ## The Files
