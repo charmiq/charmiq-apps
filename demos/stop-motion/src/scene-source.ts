@@ -3,6 +3,7 @@ import { retry } from 'rxjs/operators';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { SceneEdit } from './scene-edit';
+import { messageOf } from './studios';
 
 // the scene's code: the `scene.js` tab of a code editor in the document (SEE:
 // apps/codemirror-editor), followed as it changes, whichever editor holds it: the
@@ -46,12 +47,14 @@ type Held = { names: Map<string, string>; readonly contents: Map<string, string>
  *  an edit measured on it is written to (SEE: SceneSource.edit) */
 export type MeasuredScene = Readonly<{ code: string; editor: unknown; tabId: string; }>;
 /** where the scene stands: the editors in the document, and the scene's code once
- *  one holds it */
-export type SceneText = Readonly<{ editors: number; code: string | null; }>;
+ *  one holds it; why the Platform refused looking for the editors, while it does */
+export type SceneText = Readonly<{ editors: number; code: string | null; refused?: string; }>;
 
 // == Class =======================================================================
 export class SceneSource {
   private readonly state = new BehaviorSubject<SceneText>({ editors: 0, code: null });
+  /** the bridge the editors are looked for over, and the looking */
+  private charmiq: CharmIQAPI | undefined;
   private discovery: Readonly<{ unsubscribe: () => void; }> | undefined;
   private changes: Array<Readonly<{ unsubscribe: () => void; }>> = [];
   /** the editors followed, in the order found, and what each holds */
@@ -72,8 +75,26 @@ export class SceneSource {
 
   /** follows every editor in the document; safe without the bridge (no editor) */
   public init(charmiq: CharmIQAPI | undefined): void {
+    this.charmiq = charmiq;
+    this.discover();
+  }
+
+  /** looks for the editors again once the Platform refused it (the person may since
+   *  have allowed it) */
+  public retry(): void {
+    if(this.state.value.refused !== undefined) this.discover();
+  }
+
+  // a refused look follows no editor and says why
+  private discover(): void {
+    const charmiq = this.charmiq;
     if(!charmiq?.discover$) return/*standalone: no editor*/;
-    this.discovery = charmiq.discover$<EditorCapability>(EDITOR_CAPABILITY).subscribe(editors => this.follow(editors));
+    this.discovery?.unsubscribe();
+    if(this.state.value.refused !== undefined) this.state.next({ editors: 0, code: null })/*no longer refused*/;
+    this.discovery = charmiq.discover$<EditorCapability>(EDITOR_CAPABILITY).subscribe({
+      next: editors => this.follow(editors),
+      error: (failure: unknown) => { this.follow([]); this.state.next({ editors: 0, code: null, refused: messageOf(failure) }); },
+    });
   }
 
   /** refuses, saying why, when no scene can be written: no code editor */

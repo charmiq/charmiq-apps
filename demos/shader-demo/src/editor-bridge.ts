@@ -79,8 +79,9 @@ export class EditorBridge {
 
   // == Public =====================================================================
   /** subscribe to the editor's advertiser set. Safe to call without a CharmIQ
-   *  bridge (standalone preview) — getShader() then always returns null */
-  public init(charmiq: CharmIQAPI | undefined): void {
+   *  bridge (standalone preview) — getShader() then always returns null. The Platform
+   *  refusing the look (`refused` hears why) follows no editor */
+  public init(charmiq: CharmIQAPI | undefined, refused: (reason: string) => void): void {
     if(!charmiq?.discover$) {
       dbg('editor', 'discover skipped (standalone — no charmiq bridge)');
       return;
@@ -88,8 +89,9 @@ export class EditorBridge {
 
     try {
       const providers$ = charmiq.discover$<EditorCapability>(EDITOR_CAPABILITY);
-      this.discoverySubscription = providers$.subscribe((providers: ReadonlyArray<EditorCapability>) => {
-        this.rewireProviders(providers);
+      this.discoverySubscription = providers$.subscribe({
+        next: (providers: ReadonlyArray<EditorCapability>) => this.rewireProviders(providers),
+        error: (error: unknown) => { this.rewireProviders([]); refused((error as Error)?.message ?? String(error)); },
       });
     } catch(error) {
       console.error('shader-demo: failed to subscribe to editor capability:', error);

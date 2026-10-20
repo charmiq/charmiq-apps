@@ -319,30 +319,38 @@ async function handleSet() {
 
 function initializeApp() {
   try {
-    window.charmiq.discover$('counter').subscribe(counters => {
-      counter = counters[0] || undefined;
+    // a refused look (this app not declaring application.discover, say) errors with
+    // the reason: say it, rather than wait for a counter that will never be found
+    window.charmiq.discover$('counter').subscribe({
+      next: counters => {
+        counter = counters[0] || undefined;
 
-      if(!counter) {
-        updateStatus('Counter disconnected');
-        updateButtons(false);
-      } else {
-        updateStatus('Counter connected');
-        updateButtons(true);
+        if(!counter) {
+          updateStatus('Counter disconnected');
+          updateButtons(false);
+        } else {
+          updateStatus('Counter connected');
+          updateButtons(true);
 
-        counter.lastValue().then(val => {
-          updateStatus(`Initial value: ${val}`);
-        });
-      }
+          counter.lastValue().then(val => {
+            updateStatus(`Initial value: ${val}`);
+          });
+        }
+      },
+      error: error => { updateStatus(`Can't look for the counter: ${error.message}`); updateButtons(false); },
     });
 
     updateStatus('Discovering "counter" capability...');
 
     // every app with commands provides `charmiq.command`; in this document only the
     // provider does, so the first is the provider's
-    window.charmiq.discover$('charmiq.command').subscribe(providers => {
-      commands = providers[0] || undefined;
-      document.getElementById('btnSet').disabled = !commands;
-      updateStatus(commands ? 'Commands connected' : 'Commands disconnected');
+    window.charmiq.discover$('charmiq.command').subscribe({
+      next: providers => {
+        commands = providers[0] || undefined;
+        document.getElementById('btnSet').disabled = !commands;
+        updateStatus(commands ? 'Commands connected' : 'Commands disconnected');
+      },
+      error: error => { document.getElementById('btnSet').disabled = true; updateStatus(`Can't look for the commands: ${error.message}`); },
     });
   } catch(error) {
     updateStatus(`Error: ${error.message}`);

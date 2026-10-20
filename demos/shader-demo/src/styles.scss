@@ -89,6 +89,20 @@ body {
 }
 
 // == Error strip =================================================================
+// why the player cannot look for its editor or gallery: it stays while the player
+// runs its fallback shader, apart from the compile status
+.refusal-strip {
+  border-top: 1px solid var(--rule-soft);
+  background: var(--error-bg);
+  padding: 8px 12px;
+}
+
+.refusal-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .error-strip {
   border-top: 1px solid var(--rule-soft);
   background: var(--error-bg);

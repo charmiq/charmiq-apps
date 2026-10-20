@@ -49,6 +49,8 @@ const errorStripEl = document.getElementById('errorStrip')!;
 const errorLogEl   = document.getElementById('errorLog')!;
 const statusEl     = document.getElementById('statusOverlay')!;
 const statusTextEl = document.getElementById('statusText')!;
+const refusalStripEl = document.getElementById('refusalStrip')!;
+const refusalTextEl  = document.getElementById('refusalText')!;
 const renderer     = new Renderer(canvas);
 const channelBinder = new ChannelBinder(renderer.getContext());
 const editorBridge  = new EditorBridge();
@@ -150,6 +152,11 @@ const showStatus = (message: string): void => {
 
 const hideStatus = (): void => {
   statusEl.hidden = true;
+};
+
+const showRefusal = (message: string): void => {
+  refusalTextEl.textContent = message;
+  refusalStripEl.hidden = false;
 };
 
 // == Samplers popover data source ================================================
@@ -285,8 +292,11 @@ const start = async (): Promise<void> => {
 
   // wire up sibling-App discovery — the editor bridge subscribes synchronously
   // (returns immediately), the channel binder is async because it touches GL
-  editorBridge.init(charmiqGlobal);
-  await channelBinder.init(charmiqGlobal);
+  // the Platform refusing a look for the editor or the gallery says why in its own strip,
+  // which compiling (the fallback shader included) never clears
+  const refused = (reason: string) => showRefusal(`The player can't look for its code editor and image gallery: ${reason}`);
+  editorBridge.init(charmiqGlobal, refused);
+  await channelBinder.init(charmiqGlobal, refused);
 
   // advertise the player's own command surface once peers are known
   advertiseCommands();

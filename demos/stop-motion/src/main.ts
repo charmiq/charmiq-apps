@@ -152,8 +152,10 @@ const soundDialog = soundStore && new SoundDialog(element('sounds'), soundStore,
  *  one */
 let film: Film | undefined;
 let error: SceneError | undefined;
-/** the editors found, and whether one holds the scene */
+/** the editors found, and whether one holds the scene; why the Platform refused
+ *  looking for them, while it does */
 let editors = 0, hasCode = false;
+let editorsRefused: string | undefined;
 /** the export running, while one is: whether it was stopped, and its stop */
 let exporting: { cancelled: boolean; stop: () => void; } | undefined;
 
@@ -225,6 +227,10 @@ const showStatus = () => {
     status.classList.toggle('is-measured', typeof working === 'number');
     if(typeof working === 'number') status.style.setProperty('--done', String(working));
   };
+  // Stop Motion finds the studio and the editor by looking for them in the document: a
+  // refused look stops everything, and the Platform's reason says what to change
+  const refused = studios.refusal ?? editorsRefused;
+  if(refused !== undefined) return say('Stop Motion can\'t look for the studio and the code editor.', refused, 'Try again');
   if(studios.count < 1) return say('No studio.', 'Stop Motion plays the film on Brick Studio: add Brick Studio to this document, above the film.');
   if(stage.kind === 'ambiguous') return say(`${stage.builds} studios hold a build.`, 'The set is the build of one studio: keep it in one, and the others empty.');
   if(editors < 1) return say('No scene.', `The scene is code in a code editor's ${SCENE_TAB} tab: add a code editor to this document.`);
@@ -237,9 +243,10 @@ const showStatus = () => {
   status.hidden = true;
 };
 
-// the shipped sounds listed again and the scene run again, or the latest scene staged
-// again as it is
+// the studio and the editor looked for again, the shipped sounds listed again and the
+// scene run again, or the latest scene staged again as it is
 statusAction.addEventListener('click', () => {
+  if((studios.refusal !== undefined) || (editorsRefused !== undefined)) { studios.retry(); source.retry(); return; }
   if((shippedFailure !== undefined) && (source.code !== null)) void director.take(source.code);
   else void director.restage();
 });
@@ -533,9 +540,10 @@ studios.state$.subscribe((stage: StageState) => {
 studios.studios$.subscribe(() => { showChip(); showStatus(); void director.restage(); })/*new studios: the scene staged again on them*/;
 
 // == Init ========================================================================
-source.text$.subscribe(({ editors: count, code }) => {
+source.text$.subscribe(({ editors: count, code, refused }) => {
   editors = count;
   hasCode = code !== null;
+  editorsRefused = refused;
   editorChip.dataset.state = error ? 'error' : hasCode ? 'ok' : (count > 0) ? 'waiting' : 'none';
   editorChip.textContent = (count > 0) ? SCENE_TAB : 'No editor';
   showStatus();

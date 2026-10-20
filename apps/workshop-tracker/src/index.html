@@ -182,7 +182,9 @@ let walkError = null;
 let assigned = new Set()/*persisted: template doc uris marked as Assignments*/;
 
 // session-only UI state — survives every roster emission by construction
-let connection = 'connecting'/*'connecting' | 'connected' | 'disconnected'*/;
+let connection = 'connecting'/*'connecting' | 'connected' | 'disconnected' | 'refused'*/;
+/** why the Platform refused looking for the roster, while it does */
+let refusal = '';
 let collapsedFolders = new Set()/*template folder uris (default: everything expanded)*/;
 let selectedUri = null/*the Material shown in the detail panel*/;
 let liveChecks = new Map()/*templateUri → { at, byStudentId: Map<studentId, 'work'|'clean'|'missing'|'unreachable'> }*/;
@@ -309,7 +311,8 @@ const subscribeRoster = () => {
         error: () => { connection = 'disconnected'; render(); },
       });
     },
-    error: () => { connection = 'disconnected'; render(); },
+    // the Platform refusing the look: the roster is never found, so say why
+    error: (failure) => { connection = 'refused'; refusal = failure?.message ?? String(failure); render(); },
   });
 };
 
@@ -512,6 +515,7 @@ const render = () => {
     connecting: `<span class="sub">Connecting to the roster…</span>`,
     connected: `<span class="sub">Roster: live</span>`,
     disconnected: `<span class="sub" style="color:var(--danger);">Roster app not found${roster ? ' — showing the last received data' : ''}</span>`,
+    refused: `<span class="sub" style="color:var(--danger);">The tracker can't look for the roster: ${esc(refusal)}</span>`,
   }[connection];
 
   let master;

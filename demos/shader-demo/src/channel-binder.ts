@@ -111,8 +111,9 @@ export class ChannelBinder {
   // ------------------------------------------------------------------------------
   /** discover the gallery capability + subscribe. Safe to call with no CharmIQ
    *  bridge (standalone preview) -- the binder just stays idle and publishes a
-   *  4-slot array of empties */
-  public async init(charmiq: CharmIQAPI | undefined): Promise<void> {
+   *  4-slot array of empties. The Platform refusing the look (`refused` hears why)
+   *  attaches to no gallery */
+  public async init(charmiq: CharmIQAPI | undefined, refused: (reason: string) => void): Promise<void> {
     if(!charmiq?.discover) {
       dbg('gallery', 'discover skipped (standalone — no charmiq bridge)');
       return;
@@ -136,7 +137,7 @@ export class ChannelBinder {
         this.reconcile(state);
       });
     } catch(error) {
-      console.error('shader-demo: failed to discover image gallery:', error);
+      refused((error as Error)?.message ?? String(error));
     }
   }
 

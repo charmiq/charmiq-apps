@@ -97,11 +97,21 @@ export class Studios {
   private readonly setChanges = new Subject<number>();
   /** the main screen's build changes last told: each frame drawn repeats them */
   private mainEdits: number | undefined;
+  /** the bridge the studios are looked for over, the looking, and why the Platform
+   *  refused it (none while it looks) */
+  private charmiq: CharmIQAPI | undefined;
+  private discovery: Readonly<{ unsubscribe: () => void; }> | undefined;
+  private lookRefused: string | undefined;
+  /** each list of providers asked about, counted across every look: only the latest
+   *  answers */
+  private round = 0;
 
   public get studios$(): Observable<ReadonlyArray<unknown>> { return this.found.asObservable(); }
   public get count(): number { return this.found.value.length; }
   public get state$(): Observable<StageState> { return this.state.asObservable(); }
   public get stageState(): StageState { return this.state.value; }
+  /** why the Platform refused looking for the studios, while it does */
+  public get refusal(): string | undefined { return this.lookRefused; }
   /** the film staged, made with the wheels the stage found */
   public get film(): Film | undefined { return this.staged?.film; }
   /** each change to the main studio's build (the film's set) */
@@ -113,15 +123,30 @@ export class Studios {
   // == Discovery =================================================================
   /** follows the studios in the document; safe without the bridge (none) */
   public init(charmiq: CharmIQAPI | undefined): void {
+    this.charmiq = charmiq;
+    this.discover();
+  }
+
+  /** looks for the studios again once the Platform refused it (the person may since
+   *  have allowed it) */
+  public retry(): void {
+    if(this.lookRefused !== undefined) this.discover();
+  }
+
+  // a refused look finds no studio and says why
+  private discover(): void {
+    const charmiq = this.charmiq;
     if(!charmiq?.discover$) return/*standalone*/;
-    let round = 0;
-    charmiq.discover$<StudioCommands>(COMMANDS).subscribe(providers => {
-      const asked = ++round;
+    this.discovery?.unsubscribe();
+    this.lookRefused = undefined;
+    this.found.next(this.found.value)/*no longer refused*/;
+    this.discovery = charmiq.discover$<StudioCommands>(COMMANDS).subscribe({ next: providers => {
+      const asked = ++this.round;
       const answered = new Map<StudioCommands, Found>();
       let waited = false;
       /** the studios that answered, in the order found */
       const take = () => {
-        if(asked !== round) return/*a newer round answers*/;
+        if(asked !== this.round) return/*a newer round answers*/;
         const found = providers.flatMap(provider => answered.get(provider) ?? []);
         this.arrange(found);
         this.found.next(found);
@@ -132,7 +157,12 @@ export class Studios {
         if(waited) take()/*a busy studio answering late joins*/;
       }));
       void Promise.race([Promise.all(probes), new Promise(resolve => setTimeout(resolve, PROBE_MILLIS))]).then(() => { waited = true; take(); });
-    });
+    }, error: (failure: unknown) => {
+      ++this.round/*no earlier round answers now*/;
+      this.lookRefused = messageOf(failure);
+      this.arrange([]);
+      this.found.next([]);
+    } });
   }
 
   // == Stage =====================================================================
@@ -359,4 +389,5 @@ const buildText = async (studio: StudioCommands): Promise<string> => {
 /** why a film not staged shows nothing */
 const notStaged = (state: StageState): string => `The film is not staged (${state.kind}): describeFilm says why.`;
 
-const messageOf = (error: unknown): string => (error instanceof Error) ? error.message : String((error as { message?: unknown; } | null)?.message ?? error);
+/** what a failure says, whatever was thrown */
+export const messageOf = (error: unknown): string => (error instanceof Error) ? error.message : String((error as { message?: unknown; } | null)?.message ?? error);
