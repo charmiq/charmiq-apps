@@ -52,6 +52,8 @@ const INSPECT_WIDTH = 480/*pixels*/;
 /** how a picture is kept: a small image */
 const PICTURE_TYPE = 'image/jpeg';
 const PICTURE_QUALITY = 0.8;
+/** where this browser keeps whether the picture track is a storyboard */
+const STORYBOARD_KEY = 'stop-motion:storyboard';
 /** how long after a film opens its bar says so while nothing stages: a film opened
  *  over the same set and scene stages nothing anew */
 const OPENING_MS = 2_000/*ms*/;
@@ -77,6 +79,7 @@ const timecode = element<HTMLSpanElement>('timecode');
 const frameCount = element<HTMLSpanElement>('frameCount');
 const playButton = element<HTMLButtonElement>('playButton');
 const loopButton = element<HTMLButtonElement>('loopButton');
+const storyboardButton = element<HTMLButtonElement>('storyboardButton');
 const exportButton = element<HTMLButtonElement>('exportButton');
 const soundChip = element<HTMLButtonElement>('soundChip');
 const soundButton = element<HTMLButtonElement>('soundButton');
@@ -85,6 +88,7 @@ const fileTitle = element<HTMLSpanElement>('fileTitle');
 const fileState = element<HTMLSpanElement>('fileState');
 
 // == Instances ===================================================================
+// -- Scene and Studios -----------------------------------------------------------
 /** a color the page's style names (a custom property), as a plan's marks take it */
 const styled = (property: string): string => getComputedStyle(document.documentElement).getPropertyValue(property).trim();
 /** a plan's marks in the timeline's colors: each actor's row, and the camera's */
@@ -92,6 +96,12 @@ const paint: Paint = { actor: index => styled(actorColor(index)), camera: styled
 
 const source = new SceneSource();
 const studios = new Studios(paint);
+
+// -- Drive -----------------------------------------------------------------------
+/** the Drive, through the Platform: the film's files and its sounds */
+const drive = charmiq && new Drive(charmiq.mcp);
+
+// -- Sounds ----------------------------------------------------------------------
 /** the sounds Stop Motion ships, listed from their folder until a listing succeeds:
  *  each by the name a scene plays it by, and the resource it is read as (none
  *  standalone) */
@@ -100,6 +110,24 @@ const shippedNames = async (): Promise<ReadonlyArray<string>> => [...(await ship
 /** why the shipped sounds could not be listed, while they cannot: the scene waits for
  *  them, and the status offers to try again */
 let shippedFailure: string | undefined/*listed, or not yet asked*/;
+
+/** the film's sounds, read once each: a Platform file through the Drive, a shipped
+ *  sound as the manifest declares it */
+const bank = drive && new SoundBank(
+  async name => {
+    const resource = (await shipped()).get(name);
+    if(!resource || !charmiq?.resources?.bytes) throw new Error(`Stop Motion ships no sound named ${name}`);
+    return charmiq.resources.bytes(resource);
+  },
+  uri => drive.bytes(uri));
+const soundtrack = new Soundtrack(bank);
+
+/** the audio files in the Drive a sound is added from: the folder films go to first */
+const soundStore = charmiq && drive && new DesignStore(drive, charmiq.appState, { noun: 'sound', listing: 'describeFilm', pick: 'Add' }, SOUND_FILES);
+const soundDialog = soundStore && new SoundDialog(element('sounds'), soundStore, file => addSoundAt(file));
+
+// -- Director --------------------------------------------------------------------
+/** runs the scene once its shipped sounds are listed, and shows the film it makes */
 const director = new Director(studios, async code => {
   let names: ReadonlyArray<string>;
   try {
@@ -112,18 +140,8 @@ const director = new Director(studios, async code => {
   shippedFailure = undefined;
   return runScene(code, names);
 }, { show: next => showFilm(next), error: next => showError(next) });
-/** the Drive, through the Platform: the film's files and its sounds */
-const drive = charmiq && new Drive(charmiq.mcp);
-/** the film's sounds, read once each: a Platform file through the Drive, a shipped
- *  sound as the manifest declares it */
-const bank = drive && new SoundBank(
-  async name => {
-    const resource = (await shipped()).get(name);
-    if(!resource || !charmiq?.resources?.bytes) throw new Error(`Stop Motion ships no sound named ${name}`);
-    return charmiq.resources.bytes(resource);
-  },
-  uri => drive.bytes(uri));
-const soundtrack = new Soundtrack(bank);
+
+// -- Playback --------------------------------------------------------------------
 const player = new Player(index => showFrame(index), soundtrack);
 const inspector = new Inspector(element('inspect'), element('sheetFilm'), () => timeline.unpin());
 const timeline = new Timeline(element('timeline'), {
@@ -132,16 +150,8 @@ const timeline = new Timeline(element('timeline'), {
   sounds: () => soundsKnown, fixed: cue => fixedWhy(cue), moveSound: (cue, time) => moveSound(cue, time),
 }, inspector);
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack());
-/** the picture track as a storyboard: this browser's own choice, kept across visits */
-const STORYBOARD_KEY = 'stop-motion:storyboard';
-const storyboardButton = element<HTMLButtonElement>('storyboardButton');
-const showStoryboard = (storyboard: boolean) => {
-  storyboardButton.setAttribute('aria-pressed', String(storyboard));
-  strip.setStoryboard(storyboard);
-  try { localStorage.setItem(STORYBOARD_KEY, String(storyboard)); } catch { /*a preference only*/ }
-};
-storyboardButton.addEventListener('click', () => showStoryboard(storyboardButton.getAttribute('aria-pressed') !== 'true'));
-try { if(localStorage.getItem(STORYBOARD_KEY) === 'true') showStoryboard(true); } catch { /*storage can be absent or refused*/ }
+
+// -- Film Files ------------------------------------------------------------------
 /** the film's files: Stop Motion reads and writes the main studio's build and the
  *  code block's scene for them, the set written staged anew */
 const films = charmiq && drive && new Films(drive, charmiq.appState, {
@@ -153,9 +163,6 @@ const films = charmiq && drive && new Films(drive, charmiq.appState, {
   setScene: code => source.write(code),
 });
 const filmDialog = films && new FilmDialog(element('films'), films, { onOpened: (name, scene) => opened(name, scene) });
-/** the audio files in the Drive a sound is added from: the folder films go to first */
-const soundStore = charmiq && drive && new DesignStore(drive, charmiq.appState, { noun: 'sound', listing: 'describeFilm', pick: 'Add' }, SOUND_FILES);
-const soundDialog = soundStore && new SoundDialog(element('sounds'), soundStore, file => addSoundAt(file));
 
 // == State =======================================================================
 /** the film the timeline shows, and the mistake of the last scene run, when it has
@@ -300,6 +307,17 @@ const developTrack = async () => {
     developing = false;
   }
 };
+
+// -- Storyboard ------------------------------------------------------------------
+/** shows the picture track a shot at a time, or a frame at a time: this browser's own
+ *  choice, kept across visits */
+const showStoryboard = (storyboard: boolean) => {
+  storyboardButton.setAttribute('aria-pressed', String(storyboard));
+  strip.setStoryboard(storyboard);
+  try { localStorage.setItem(STORYBOARD_KEY, String(storyboard)); } catch { /*a preference only*/ }
+};
+storyboardButton.addEventListener('click', () => showStoryboard(storyboardButton.getAttribute('aria-pressed') !== 'true'));
+try { if(localStorage.getItem(STORYBOARD_KEY) === 'true') showStoryboard(true); } catch { /*storage can be absent or refused*/ }
 
 // == File ========================================================================
 /** the film's file: its name, and whether it is saved; `note`, a word about the last
