@@ -219,9 +219,7 @@ const start = async () => {
   } catch(error) {
     console.error('brick-studio: the build could not be read:', error);
     loading.classList.add('is-error');
-    loadingText.textContent = (((error as { code?: unknown; } | null)?.code === 'functions/permission-denied')
-      ? 'This Application isn\'t allowed to read the build.'
-      : 'The build could not be read.') + ' Reload to try again.';
+    loadingText.textContent = 'The build could not be read. Reload to try again.';
     return;
   }
 

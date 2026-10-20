@@ -58,7 +58,7 @@ useEffect(() => {
 
 3. **The app-content** has the text (`content.text`, and `content.lines`), its `id`, and the writes Tutorial 3 uses. It is `null` while the document holds no app-content, and becomes `null` the moment the app-content is removed — the Platform knows exactly when that happens, so there is nothing to check.
 
-4. **`error`** — a read the Platform refuses (the Application did not declare `appContent.read`, say) arrives here, with a `code`; the Application says why instead of showing nothing.
+4. **`error`** — a read that fails arrives here, with a `code`; the Application says so instead of showing nothing. Reading its own app-content needs no declaration and no permission: the app-content is the Application's own.
 
 5. **`return () => sub.unsubscribe()`** — standard React cleanup. When the component unmounts, stop listening.
 

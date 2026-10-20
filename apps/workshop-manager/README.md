@@ -10,21 +10,22 @@ Unlike the other `apps/`, this is currently a single-file Source application wit
 
 ## Embedding
 
-<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22appState.read%22%2C%22appState.write%22%2C%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.richtext.metadata.set%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%2C%22application.advertise%22%5D">
+<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22authUser.state.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.richtext.metadata.set%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%2C%22application.advertise%22%5D">
 </iframe-app>
 
 The `requested-scopes` value is the percent-encoded JSON array:
 
 ```json
-["appState.read", "appState.write", "authUser.state.read", "userProfile.search",
- "mcp.platform.vfs", "command.richtext.copy", "command.richtext.metadata.set",
+["authUser.state.read", "userProfile.search", "mcp.platform.vfs",
+ "command.richtext.copy", "command.richtext.metadata.set",
  "command.folder.permission.set", "command.folder.delete",
  "command.folder.name.set", "command.admin.agent.create", "application.advertise"]
 ```
 
+Its app-state holds everything it keeps (folder config, name pattern, Owners, roster, per-student clone mappings); app-state is the Application's own, so it needs no declaration.
+
 | Scope | Used for |
 |---|---|
-| `appState.read` / `appState.write` | All state: folder config, name pattern, Owners, roster, per-student clone mappings |
 | `authUser.state.read` | Active Organization + Teams that scope the user-search sections |
 | `userProfile.search` | The user typeahead (add student / add Owner) |
 | `mcp.platform.vfs` | `list_dir` (walk, empty-folder checks), `describe_file` (names, versions, shares, copy liveness), `create_dir`, `move` (admin-move mirroring), `read_file`/`write_file` (edit sync), `delete_file` (removed documents) |

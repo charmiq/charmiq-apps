@@ -101,6 +101,8 @@ export type AppContent = Readonly<{
   remove: () => Promise<void>;
 }>;
 
+/** the Application's app-content: its own, so it needs no declaration and no
+ *  permission */
 export interface AppContentAPI {
   /** the Application's app-content, kept current: the app-content the selector
    *  names (no selector: the first), followed by its id, or `null` while there is
@@ -118,9 +120,8 @@ export interface AppContentAPI {
   contents$: (selector?: string) => Observable<AppContent[]>;
   /** the app-content named `name` (no name: the first; spaces around a name are
    *  dropped) when one exists, its text kept whatever it is, otherwise a new one
-   *  holding `text`. It gives the app-content back, so
-   *  it needs `appContent.read` as well as `appContent.write`. Two collaborators
-   *  creating one at the same moment each make one: `contents$` shows both */
+   *  holding `text`, given back. Two collaborators creating one at the same moment
+   *  each make one: `contents$` shows both */
   create: (text: string, name?: string) => Promise<AppContent>;
 
   /** Observable stream of content changes from the document: the source of truth
@@ -187,6 +188,8 @@ export interface AppContentAPI {
 }
 
 // == AppState ====================================================================
+/** the Application's app-state: its own, so it needs no declaration and no
+ *  permission */
 export interface AppStateAPI {
   /** Observable stream of state changes from the document. Emits whenever the
    *  state is updated (by you or other viewers)

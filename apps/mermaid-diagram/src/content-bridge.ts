@@ -61,7 +61,7 @@ export class ContentBridge {
     if(!this.appContent.content$) { this.showProblem('Reload this page to show the diagram.'); return/*a page opened before content$*/; }
 
     const content$ = this.appContent.content$();
-    content$.subscribe({ next: content => this.show(content), error: failure => this.showReadFailure(failure) });
+    content$.subscribe({ next: content => this.show(content), error: () => this.showReadFailure() });
     await firstValueFrom(content$).catch(() => undefined/*shown by the subscription*/);
   }
 
@@ -80,10 +80,9 @@ export class ContentBridge {
     this.render(source);
   }
 
-  /** a refused read says why instead of showing nothing */
-  private showReadFailure(failure: unknown): void {
-    const code = (failure as { code?: unknown; } | null)?.code;
-    this.showProblem((code === 'functions/permission-denied') ? 'This Application isn\'t allowed to read the diagram.' : 'The diagram could not be read. Reload to try again.');
+  /** a failed read says so instead of showing nothing */
+  private showReadFailure(): void {
+    this.showProblem('The diagram could not be read. Reload to try again.');
   }
   private showProblem(message: string): void {
     this.diagramEl.innerHTML = '';

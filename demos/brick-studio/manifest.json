@@ -3,10 +3,6 @@
   "name": "Brick Studio",
   "description": "A 3D toy-brick build a Charm makes from chat: place parts on a stud grid, check what holds, and look at the result. The build is LDraw text in the document",
   "requestedScopes": [
-    "appContent.read",
-    "appContent.write",
-    "appState.read",
-    "appState.write",
     "application.advertise",
     "command.editor.redo",
     "command.editor.undo",

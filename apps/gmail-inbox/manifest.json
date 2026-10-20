@@ -5,8 +5,6 @@
   "requestedScopes": [
     "oauth.token",
     "oauth.manage",
-    "appState.read",
-    "appState.write",
     "application.advertise"
   ],
   "bundle": {

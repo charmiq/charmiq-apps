@@ -5,8 +5,6 @@
   "requestedScopes": [
     "application.advertise",
     "application.call",
-    "appState.read",
-    "appState.write",
     "mcp.platform.vfs"
   ],
   "bundle": {

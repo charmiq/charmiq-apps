@@ -20,7 +20,7 @@ export const App = () => {
   return (
     <div className="app">
       <h1>Reading Data</h1>
-      {failure && <p className="content" role="alert">{(failure.code === 'unsupported') ? 'Reload this page to read the message.' : (failure.code === 'functions/permission-denied') ? 'This Application isn\'t allowed to read the message.' : 'The message could not be read.'}</p>}
+      {failure && <p className="content" role="alert">{(failure.code === 'unsupported') ? 'Reload this page to read the message.' : 'The message could not be read.'}</p>}
       {!failure && (content === null) && <p className="content">There is no message in the document.</p>}
       {!failure && content && <p className="content">{content.text || 'No content yet — edit the app-content in the document.'}</p>}
     </div>

@@ -3,10 +3,6 @@
   "name": "CodeMirror Editor",
   "description": "A multi-tab code editor with collaborative editing, OT content sync, and configurable language modes",
   "requestedScopes": [
-    "appContent.read",
-    "appContent.write",
-    "appState.read",
-    "appState.write",
     "application.advertise",
     "fetch.platform"
   ],

@@ -61,7 +61,7 @@ export const App = () => {
         <button type="submit" disabled={!editable}>Add</button>
       </form>
       {!supported && <p className="notice">This page can't make safe edits. Reload it to edit the list.</p>}
-      {failure && <p className="notice" role="alert">{(failure.code === 'functions/permission-denied') ? 'This Application isn\'t allowed to read the list.' : 'The list could not be read.'}</p>}
+      {failure && <p className="notice" role="alert">The list could not be read.</p>}
       {!failure && (content === null) && <p className="notice">The list isn't in the document.</p>}
       {error && content && <p className="error" role="alert">{error}</p>}
       {!failure && content && (

@@ -2,10 +2,7 @@
   "id": "ai.charmiq.tutorials.writing-data",
   "name": "Writing Data",
   "description": "A shared list: writing lines to the document through its app-content, as one writer among many",
-  "requestedScopes": [
-    "appContent.read",
-    "appContent.write"
-  ],
+  "requestedScopes": [],
   "bundle": {
     "entry": {
       "html": "/index.html",

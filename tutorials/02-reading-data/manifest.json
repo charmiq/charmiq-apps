@@ -2,9 +2,7 @@
   "id": "ai.charmiq.tutorials.reading-data",
   "name": "Reading Data",
   "description": "Reading document content with appContent.content$()",
-  "requestedScopes": [
-    "appContent.read"
-  ],
+  "requestedScopes": [],
   "bundle": {
     "entry": {
       "html": "/index.html",

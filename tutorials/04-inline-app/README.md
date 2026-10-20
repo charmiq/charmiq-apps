@@ -79,7 +79,7 @@ The Application declares that capability on its container:
 
 The value is the percent-encoded JSON array `["command.notification.toast.emit"]`. It bounds what this inline Application may ask for: the declared command is eligible for consent when the button invokes it, while every gated capability outside the declaration is denied without another prompt. Omitting `requested-scopes` means an authoritative empty declaration, so an ordinary inline Application loads silently and cannot invoke gated capabilities.
 
-Folder-based Applications put the same declaration in [`requestedScopes`](charmiq://../02-reading-data/manifest.json). The manifest also enables multi-file builds and [signing](charmiq://../../demos/shader-demo/README.md); moving to a folder is about structure and provenance, not gaining a permission declaration.
+Folder-based Applications put the same declaration in [`requestedScopes`](charmiq://../../demos/shader-demo/manifest.json). The manifest also enables multi-file builds and [signing](charmiq://../../demos/shader-demo/README.md); moving to a folder is about structure and provenance, not gaining a permission declaration.
 
 ## What to pay attention to
 

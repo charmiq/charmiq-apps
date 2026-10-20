@@ -19,9 +19,7 @@ const commandSurface = new CommandSurface(contentBridge, configStore);
 /** shows why the drawing could not be saved or read */
 const showFailure = (failure: unknown) => {
   const notice = document.getElementById('notice')!;
-  const code = (failure as { code?: unknown; } | null)?.code;
-  notice.textContent = (code === 'functions/permission-denied') ? 'This Application isn\'t allowed to read the drawing.'
-                     : (failure instanceof Error) && failure.message ? failure.message
+  notice.textContent = (failure instanceof Error) && failure.message ? failure.message
                      : 'The drawing could not be read. Reload to try again.';
   notice.hidden = false;
 };

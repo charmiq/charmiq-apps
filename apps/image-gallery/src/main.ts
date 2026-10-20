@@ -263,10 +263,7 @@ const start = async (): Promise<void> => {
   try {
     await contentBridge.follow();
   } catch(failure) {
-    const code = (failure as { code?: unknown; } | null)?.code;
-    gridView.setNotice((failure instanceof GalleryWriteError) ? failure.message
-                     : (code === 'functions/permission-denied') ? 'This Application isn\'t allowed to read the gallery.'
-                     : 'The gallery could not be read. Reload to try again.');
+    gridView.setNotice((failure instanceof GalleryWriteError) ? failure.message : 'The gallery could not be read. Reload to try again.');
   }
   gridView.render(model.getItems());
   syncSlotStrip();
