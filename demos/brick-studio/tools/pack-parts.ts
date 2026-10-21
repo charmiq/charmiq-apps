@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { familyOf, familyResource, gearKey, hasOpenUnderside, type CatalogPart, type Face, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES } from '../src/catalog.ts';
+import { familyOf, familyResource, gearKey, hasOpenUnderside, type CatalogPart, type Face, ACCESSORIES, ALL_FACES, CATALOG, COLORS } from '../src/catalog.ts';
 import { maxOf, minOf } from '../src/numbers.ts';
 import { accessoryLine, hingePieces, limbLines, pieceLines, posedPieces, LIMBS, POSE_ANGLES, SLOT_LIMB, SLOTS_IN_ORDER, type PieceLine } from '../src/pose.ts';
 
@@ -257,7 +257,7 @@ const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Me
 const pieceFiles = (part: CatalogPart): string[] => [
   ...(part.pieces ?? []).map(line => referenceName(line.trim().split(/\s+/).slice(14).join(' '))),
   ...(part.slots ? ACCESSORIES.map(accessory => `${accessory.ldraw}.dat`.toLowerCase()) : []),
-  ...((part.facePiece !== undefined) ? FIGURE_FACES.map(face => `${face.ldraw}.dat`.toLowerCase()) : []),
+  ...((part.facePiece !== undefined) ? [...new Set(ALL_FACES.map(face => `${face.ldraw}.dat`.toLowerCase()))] : []),
 ];
 
 // --------------------------------------------------------------------------------
@@ -361,7 +361,10 @@ const fillInFrame = (body: Measure, frame: StandingFrame, openUnderside: boolean
 /** a posable part's fill in its standing frame (SEE: fillInFrame), and how high its
  *  lowest point lies above the standing bottom (plates): its own body and every piece
  *  no limb moves (`core`), and each limb's at every angle. A pose fills their union and
- *  stands on its lowest point, so a limb's cells never depend on another's angle */
+ *  stands on its lowest point, so a limb's cells never depend on another's angle. Its
+ *  `body` is what it measures standing, every piece in place and nothing worn: studs
+ *  across (x) and along (z), to the hundredth, where its cells' footprint counts whole
+ *  cells (a figure's hands reach into cells its body barely enters) */
 const measurePose = (library: string, part: CatalogPart, standing: Standing) => {
   const frame = standingFrame(standing);
   const open = hasOpenUnderside(part.kind);
@@ -372,6 +375,8 @@ const measurePose = (library: string, part: CatalogPart, standing: Standing) => 
   const moved = new Set(LIMBS.flatMap(limb => part.limbs![limb].pieces));
   const fixed = pieceLines(part).filter((_, index) => !moved.has(index));
   const core = measured([`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(fixed)].join('\n'));
+  const whole = bodyOfText(library, [`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(pieceLines(part))].join('\n'));
+  const body = { width: Math.round(((whole.maxX - whole.minX) / LDU_PER_STUD) * 100) / 100, depth: Math.round(((whole.maxZ - whole.minZ) / LDU_PER_STUD) * 100) / 100 };
   const limbs = Object.fromEntries(LIMBS.map(limb => [limb, Object.fromEntries(POSE_ANGLES.map(angle => [angle, measured(lineText(limbLines(part, limb, angle)))]))]));
   // each accessory a slot takes, by each of its grips, at every angle of the limb it
   // turns with (SEE: gearKey)
@@ -380,7 +385,7 @@ const measurePose = (library: string, part: CatalogPart, standing: Standing) => 
       const carrier = posedPieces(part, { [SLOT_LIMB[slot]]: angle })[part.slots![slot].piece];
       return [angle, measured(lineText([accessoryLine(part, slot, carrier, accessory, grip, 16)]))];
     }))])))]));
-  return { core, limbs, gear };
+  return { core, limbs, gear, body };
 };
 
 /** a hinge's fill in its standing frame (SEE: fillInFrame): its base's (its own body
@@ -652,8 +657,10 @@ const facts = [
   ' *  and every piece no limb moves fill (`core`), and each limb\'s at every angle, each with',
   ' *  how high its lowest point lies above the standing bottom (plates), and each accessory\'s',
   ' *  by slot at every angle of the limb it turns with (`gear`), keyed by LDraw file stem. A',
-  ' *  pose fills their union and stands on its lowest point (SEE: grid.ts posed) */',
-  `export const POSE_GEOMETRY: Readonly<Record<string, Readonly<{ core: PosedBody; limbs: Readonly<Record<string, Readonly<Record<string, PosedBody>>>>; gear: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, PosedBody>>>>>>; }>>> = ${JSON.stringify(poses)};`,
+  ' *  pose fills their union and stands on its lowest point (SEE: grid.ts posed). Its `body`',
+  ' *  is what it measures standing, nothing worn: studs across (x) and along (z)',
+  ' *  (SEE: stage.ts partActor) */',
+  `export const POSE_GEOMETRY: Readonly<Record<string, Readonly<{ core: PosedBody; limbs: Readonly<Record<string, Readonly<Record<string, PosedBody>>>>; gear: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, PosedBody>>>>>>; body: Readonly<{ width: number; depth: number; }>; }>>> = ${JSON.stringify(poses)};`,
   '/** a body\'s fill in its part\'s standing frame and its lowest point (SEE: POSE_GEOMETRY) */',
   'type PosedBody = Readonly<{ fill: ReadonlyArray<readonly [number, number, number, number]>; bottom: number; }>;',
   '',

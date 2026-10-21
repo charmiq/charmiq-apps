@@ -54,9 +54,10 @@
             "grid":   { "type": "string" },
             "parts":  { "type": "array", "items": { "type": "string" }, "description": "One line per kind: the kind, then its part names" },
             "colors": { "type": "array", "items": { "type": "string" } },
-            "faces":  { "type": "array", "items": { "type": "string" }, "description": "The faces a figure wears" }
+            "faces":  { "type": "array", "items": { "type": "string" }, "description": "The faces a figure wears" },
+            "frameFaces": { "type": "array", "items": { "type": "string" }, "description": "The faces a figure wears on a stage's frame alone (a film's, never a build's): each a two-sided head's back" }
           },
-          "required": ["grid", "parts", "colors", "faces"]
+          "required": ["grid", "parts", "colors", "faces", "frameFaces"]
         }
       },
       {
@@ -455,7 +456,7 @@
       },
       {
         "name": "probeStage",
-        "description": "What stands where on a stage of these sets and actors (staged or not; the pieces cast left out, nothing shown): the part filling each point, and the first part each segment crosses from its start (glass, a trans- color, window and door frames and fences hide nothing; the part holding a segment's end does not count; a part a hinge or face carries is judged by itself and named by its carrier). Points are the film's: x and z in studs within 400 of the origin, height in plates within 2000 of the baseplate; at most 20000 points and segments a call. Only parts on the grid fill cells, as collisions count them. A film's camera is checked with it: inside a part, or a part between it and its target",
+        "description": "What stands where on a stage of these sets and actors (staged or not; the pieces cast left out, nothing shown): the part filling each point, and the first part each segment crosses from its start (glass, a trans- color, window and door frames and fences hide nothing; the part holding a segment's end does not count; a part a hinge or face carries is judged by itself and named by its carrier). Points are the film's: x and z in studs within 400 of the origin, height in plates within 2000 of the baseplate; at most 20000 points, segments and grounds a call; the ground under a footprint answered as every surface an actor there could stand on. Only parts on the grid fill cells, as collisions count them. A film's camera is checked with it: inside a part, or a part between it and its target",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -464,16 +465,18 @@
             "actors":   { "type": "array", "items": { "type": "object" }, "description": "The stage's actors, as stage takes them: the pieces cast are left out of their set" },
             "set":      { "type": "string", "description": "The set probed, one of sets (the first when left out)" },
             "points":   { "type": "array", "items": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] } },
-            "segments": { "type": "array", "items": { "type": "array", "items": { "type": "object" }, "minItems": 2, "maxItems": 2 }, "description": "Each [from, to], two points" }
+            "segments": { "type": "array", "items": { "type": "array", "items": { "type": "object" }, "minItems": 2, "maxItems": 2 }, "description": "Each [from, to], two points" },
+            "grounds":  { "type": "array", "items": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "width": { "type": "number" }, "depth": { "type": "number" }, "yaw": { "type": "number" } }, "required": ["x", "z", "width", "depth", "yaw"] }, "description": "Footprints to read the ground under: each its middle and size in studs (at most 64 each way), turned by its yaw" }
           }
         },
         "outputSchema": {
           "type": "object",
           "properties": {
             "points":   { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each point's part, named, or null" },
-            "segments": { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each segment's first part, named, or null" }
+            "segments": { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each segment's first part, named, or null" },
+            "grounds":  { "type": "array", "items": { "type": "array", "items": { "type": "number" } }, "description": "The surfaces under each footprint in plates, lowest first: each top of a part's cells nothing stands on (seen through or not), and 0 where the baseplate is bare under it" }
           },
-          "required": ["points", "segments"]
+          "required": ["points", "segments", "grounds"]
         }
       },
       {
@@ -537,7 +540,7 @@
             "actors":  { "type": "array", "items": { "type": "string" } },
             "wheeled": { "type": "array", "description": "The actors with wheels, which frame's rolled turns", "items": { "type": "string" } },
             "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
-            "sizes":   { "type": "object", "description": "Each actor's box, unturned and unposed: studs across (x), studs along (z), plates up", "additionalProperties": { "type": "object", "properties": { "width": { "type": "number" }, "depth": { "type": "number" }, "height": { "type": "number" } }, "required": ["width", "depth", "height"] } },
+            "sizes":   { "type": "object", "description": "Each actor's box, unturned and unposed: studs across (x), studs along (z), plates up; a figure's as it measures, hands included (3.12 by 1.85 studs), never the whole cells it reaches into", "additionalProperties": { "type": "object", "properties": { "width": { "type": "number" }, "depth": { "type": "number" }, "height": { "type": "number" } }, "required": ["width", "depth", "height"] } },
             "placed":  { "type": "object", "description": "Each placed actor's rest: the position and turn a frame gives it to stand where its piece stood (a posed figure's position is its unposed frame's: a seated one's 2 plates below its seat)", "additionalProperties": { "type": "object", "properties": { "position": { "type": "object" }, "turn": { "type": "object" } }, "required": ["position", "turn"] } },
             "reel":    { "type": "integer", "description": "The reel's number, when one is staged" }
           },
@@ -617,8 +620,10 @@
                   "name":     { "type": "string" },
                   "position": { "type": "object", "description": "Where the middle of the bottom of its footprint stands", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
                   "turn":     { "type": "object", "description": "Degrees", "properties": { "yaw": { "type": "number" }, "pitch": { "type": "number" }, "roll": { "type": "number" } } },
-                  "pose":     { "type": "object", "description": "A figure's limbs in degrees: head, leftArm, rightArm, leftLeg, rightLeg" },
+                  "pose":     { "type": "object", "description": "A figure's limbs in degrees: head, leftArm, rightArm, leftLeg, rightLeg; and joints a frame alone turns: twist (its upper body clockwise seen from above), lean (its upper body forward over its hips), rightWrist and leftWrist (each hand on its forearm, the left mirroring the right)" },
                   "face":     { "type": "string", "description": "A figure's face in this frame alone (its own when left out), as addParts takes it" },
+                  "rightHand": { "type": ["object", "null"], "description": "What a figure's right hand holds in this frame alone, { part, color, grip? } as addParts takes it, or null for nothing (what it holds as dressed when left out)" },
+                  "leftHand":  { "type": ["object", "null"], "description": "What a figure's left hand holds in this frame alone, as rightHand" },
                   "rolled":   { "type": "number", "description": "Studs the actor has rolled along its own north: each wheel set turns by its share (backward when turned round, not at all when turned across)" }
                 },
                 "required": ["name", "position"]

@@ -1,6 +1,6 @@
 import { cameraShots, type Film, type FilmFrame } from './film';
 import type { ClosePair } from './measure';
-import { castAs, type CameraKey, type Key, type RecordedCamera, type SetKey, type SoundCue, type Span, type Title } from './recorder';
+import { castAs, type CameraKey, type Key, type RecordedCamera, type SetKey, type SoundCue, type Span, type Target, type Title } from './recorder';
 
 // the timeline's marks as data: a row per track (the camera, each view, each actor,
 // the sets, the sounds, the fade and the titles), each with its keys, its bands over their spans and
@@ -74,8 +74,13 @@ export const rowsOf = (film: Film, close: ReadonlyArray<ClosePair>, known: Sound
         keys: [
           ...actor.keys.map(key => ({ time: key.time, title: `Key at ${seconds2(key.time)}`, chips: keyChips(key) })),
           ...(actor.faces ?? []).map(key => ({ time: key.time, title: `Face at ${seconds2(key.time)}`, chips: [key.face], face: true as const })),
+          ...(actor.hands ?? []).map(key => ({ time: key.time, title: `${(key.hand === 'rightHand') ? 'Right' : 'Left'} hand at ${seconds2(key.time)}`, chips: [key.item ? [key.item.color, key.item.part].join(' ') : 'empty'], face: true as const })),
         ].sort((a, b) => a.time - b.time),
-        bands: actor.spans.map(span => band(span, scene.fps)),
+        bands: [
+          ...actor.spans.map(span => band(span, scene.fps)),
+          ...(actor.reactions ?? []).map(reaction => ({ from: reaction.from, to: reaction.to, label: reaction.face, kind: 'wobble' as const, title: `Reacts "${reaction.face}"`, chips: [`${seconds2(reaction.from)} – ${seconds2(reaction.to)}`] })),
+          ...(actor.looks ?? []).map(look => ({ from: look.from, to: look.to, label: `looks at ${lookTarget(look.target)}`, kind: 'wobble' as const, title: `Looks at ${lookTarget(look.target)}`, chips: [`${seconds2(look.from)} – ${seconds2(look.to)}`, `within ${round(look.within)} studs`, `up to ${round(look.max)}°`] })),
+        ],
         notches: close.filter(pair => pair.actors.includes(actor.name)).map(pair => ({ time: pair.time, ...closeness(pair) })),
       };
     }),
@@ -163,8 +168,12 @@ const titleRow = (titles: ReadonlyArray<Title>): Row => ({
 const band = (span: Span, fps: number): RowBand => {
   const [from, to] = [span.from / fps, span.to / fps];
   const path = (span.mode === 'set');
-  return { from, to, label: span.label, kind: path ? 'path' : 'wobble', title: path ? `Path "${span.label}"` : `Wobble "${span.label}"`, chips: [`${seconds2(from)} – ${seconds2(to)}`, ...span.channels] };
+  return { from, to, label: span.label, kind: path ? 'path' : 'wobble', title: BEHAVIOR_TITLES[span.label] ?? (path ? `Path "${span.label}"` : `Wobble "${span.label}"`), chips: [`${seconds2(from)} – ${seconds2(to)}`, ...span.channels] };
 };
+/** what a behavior's span is called (SEE: recorder.ts walk, idle, crowd) */
+const BEHAVIOR_TITLES: Readonly<Record<string, string>> = { walk: 'Walk', idle: 'Idle', crowd: 'Crowd', 'crowd walk': 'Crowd walk' };
+/** what a look aims at, in a few words */
+const lookTarget = (target: Target): string => ('actor' in target) ? target.actor : `x ${round(target.point.x)}, z ${round(target.point.z)}`;
 
 // == Overlap =====================================================================
 /** a row's keys as the lane draws them: each key within `apart` seconds of the

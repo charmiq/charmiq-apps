@@ -643,6 +643,20 @@ const toHinging = (part: CatalogPart, angle: unknown, carry: unknown): Pick<Plac
   return { ...((turned !== 0) ? { angle: turned } : {}), ...(copy ? { carry: copy } : {}) };
 };
 
+/** what a slot wears as an input gives it (`{ part, color, grip? }`: an accessory its
+ *  slot takes, a color, and one of its grips), or why it is none */
+export const toGear = (slot: Slot, input: unknown): Gear | string => {
+  const { part: key, color, grip } = (input ?? {}) as Record<string, unknown>;
+  const on = (slot === 'hat') ? 'head' : 'hand';
+  const accessory = ACCESSORIES.find(each => (each.key === key) && (each.on === on));
+  if(!accessory) return `${slot}.part must be one of ${ACCESSORIES.filter(each => each.on === on).map(each => each.key).join(', ')}`;
+  if((typeof color !== 'string') || !getColor(color)) return `unknown ${slot}.color '${String(color)}' (listParts names the colors)`;
+  const grips = accessory.grips ?? [];
+  const held = (grip === undefined) ? undefined : grips.findIndex(each => each.name === grip);
+  if(held === -1) return (grips.length > 0) ? `${slot}.grip of a ${accessory.key} must be one of ${grips.map(each => each.name).join(', ')}` : `a ${accessory.key} takes no grip`;
+  return { part: accessory.key, color, ...((held !== undefined) ? { grip: grip as string } : {}) };
+};
+
 /** a posable part's pose, legs color, face and what it wears an input describes, or
  *  why they are not: each limb's angle a whole number of POSE_STEPs (wrapped, SEE:
  *  toPoseAngle), the legs a catalog color, the face one of the figure faces, a hat
@@ -657,15 +671,9 @@ export const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, fa
   if(typeof faced === 'string') return faced;
   const gear: Partial<Record<Slot, Gear>> = {};
   for(const slot of wearing) {
-    const { part: key, color, grip } = (worn[slot] ?? {}) as Record<string, unknown>;
-    const on = (slot === 'hat') ? 'head' : 'hand';
-    const accessory = ACCESSORIES.find(each => (each.key === key) && (each.on === on));
-    if(!accessory) return `${slot}.part must be one of ${ACCESSORIES.filter(each => each.on === on).map(each => each.key).join(', ')}`;
-    if((typeof color !== 'string') || !getColor(color)) return `unknown ${slot}.color '${String(color)}' (listParts names the colors)`;
-    const grips = accessory.grips ?? [];
-    const held = (grip === undefined) ? undefined : grips.findIndex(each => each.name === grip);
-    if(held === -1) return (grips.length > 0) ? `${slot}.grip of a ${accessory.key} must be one of ${grips.map(each => each.name).join(', ')}` : `a ${accessory.key} takes no grip`;
-    gear[slot] = { part: accessory.key, color, ...((held !== undefined) ? { grip: grip as string } : {}) };
+    const read = toGear(slot, worn[slot]);
+    if(typeof read === 'string') return read;
+    gear[slot] = read;
   }
   const angles: Partial<Record<Limb, number>> = {};
   if(pose !== undefined) {

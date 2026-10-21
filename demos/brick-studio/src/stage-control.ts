@@ -128,11 +128,11 @@ export class StageControl {
   /** what stands at points and across segments of a set as a stage of those sets and
    *  actors shows it (the pieces cast left out), staged or not: nothing is shown (SEE:
    *  probe.ts) */
-  public async probe(ldraw: unknown, sets: unknown, actors: unknown, set: unknown, points: unknown, segments: unknown): Promise<Probed> {
+  public async probe(ldraw: unknown, sets: unknown, actors: unknown, set: unknown, points: unknown, segments: unknown, grounds: unknown): Promise<Probed> {
     await this.build.whenReady();
-    const asked = probeInput(points, segments);
+    const asked = probeInput(points, segments, grounds);
     const { cast } = castOf(setsOf(ldraw, sets, () => this.build.allSets()), actors ?? []);
-    return probe(cast.sets[stagedSetOf(cast, set)].shown, asked.points, asked.segments);
+    return probe(cast.sets[stagedSetOf(cast, set)].shown, asked.points, asked.segments, asked.grounds);
   }
 
   /** shows the build again */

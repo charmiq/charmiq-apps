@@ -5,7 +5,7 @@ import type { Design } from '../../brick-shared/drive';
 
 import { linesOf, type Build } from './build';
 import type { Designs } from './designs';
-import { partsByKind, searchCatalog, type CatalogPart, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES } from './catalog';
+import { partsByKind, searchCatalog, type CatalogPart, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES, FRAME_FACES } from './catalog';
 import { checkModel, reportCheck, MAX_LISTED, TRUNCATED } from './check';
 import type { FidelityControl } from './fidelity-control';
 import { filledCells, footprintSize, getColorByCode, getPart, getShape, type PartShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE } from './grid';
@@ -90,6 +90,7 @@ export class CommandSurface {
         parts: partsByKind().map(({ kind, names }) => `${kind}: ${names.join(', ')}`),
         colors: COLORS.map(color => color.key),
         faces: FIGURE_FACES.map(face => face.key),
+        frameFaces: FRAME_FACES.map(face => face.key),
       }),
       findParts: ({ query, limit }: { query?: unknown; limit?: unknown; }) => {
         if((typeof query !== 'string') || (query.trim().length < 1)) throw new Error('query names the parts to find: a part\'s name, a size such as 2x4, a kind or a word such as roof');
@@ -289,7 +290,7 @@ export class CommandSurface {
         return framed;
       },
       unstage: () => this.stage.unstage(),
-      probeStage: async ({ ldraw, sets, actors, set, points, segments }: { ldraw?: unknown; sets?: unknown; actors?: unknown; set?: unknown; points?: unknown; segments?: unknown; }) => this.stage.probe(ldraw, sets, actors, set, points, segments),
+      probeStage: async ({ ldraw, sets, actors, set, points, segments, grounds }: { ldraw?: unknown; sets?: unknown; actors?: unknown; set?: unknown; points?: unknown; segments?: unknown; grounds?: unknown; }) => this.stage.probe(ldraw, sets, actors, set, points, segments, grounds),
     });
   }
 }

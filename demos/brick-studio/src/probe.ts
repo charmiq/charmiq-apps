@@ -1,34 +1,53 @@
 import { isSeenThrough } from './catalog';
 import { describeIn, occupiedPartCells } from './check';
-import { getPart, type Placement } from './grid';
+import { getPart, MAX_COORDINATE, type Placement } from './grid';
 import type { Model } from './model';
 import { toPoint } from './stage';
 
-// what stands where on a stage: the part filling a point, and the first part a
-// segment crosses, against the cells each part (and what its hinges and faces carry)
-// fills, the cells collisions are checked in (SEE: check.ts occupiedCells). A point and
-// a segment are in the film's units: x and z in studs, height in plates, each within a
-// stage's reach (SEE: stage.ts toPoint). A part seen through (a trans- color, or a kind
-// with an opening: a window or door frame, a fence; its cells are its whole block,
-// opening and all) fills its cells but hides nothing behind it, each part a hinge or a
-// face carries judged by its own color and kind, and named by its carrier. A segment
-// never counts the part holding its own end (a target inside a building's doorway is
-// not hidden by it): that part alone, never the other parts its carrier carries. A segment is followed exactly, column by column across the set's
+// what stands where on a stage: the part filling a point, the first part a segment
+// crosses, and the ground under a footprint, against the cells each part (and what its
+// hinges and faces carry) fills, the cells collisions are checked in (SEE: check.ts
+// occupiedCells). Points are in the film's units: x and z in studs, height in plates,
+// each within a stage's reach (SEE: stage.ts toPoint). A part seen through (a trans-
+// color, or a kind with an opening: a window or door frame, a fence; its cells are its
+// whole block, opening and all) fills its cells but hides nothing behind it, each part
+// a hinge or a face carries judged by its own color and kind, and named by its
+// carrier. A segment never counts the part holding its own end (a target inside a
+// building's doorway is not hidden by it): that part alone, never the other parts its
+// carrier carries. A segment is followed exactly, column by column across the set's
 // extent alone, so a corner it clips counts and its work is bounded by the set's size.
-// A part off the grid fills no cells, as collisions count it
+// The ground under a footprint is every surface an actor there could stand on: each
+// top of the cells under it that no cell stands on, any part counted, seen through or
+// not, and the baseplate (0) where a column under it is bare; an actor following the
+// ground chooses among them as it goes (SEE: Stop Motion's ground). A column is under
+// a footprint where they overlap over some area, and a call's footprints together
+// read a bounded number of columns. A part off the grid fills no cells, as collisions
+// count it
 // ********************************************************************************
 // == Constants ===================================================================
-/** the most points and segments one probe answers */
+/** the most points, segments and grounds one probe answers */
 export const MAX_PROBES = 20_000;
+/** the largest footprint a ground is asked under, each way (studs) */
+const MAX_FOOTPRINT = 64;
+/** the most columns one probe's grounds read, all its footprints' bounds together:
+ *  a figure's reach a few columns, a bus's some hundred */
+export const MAX_GROUND_COLUMNS = 200_000;
+/** how far into a column a footprint must reach to stand over it (studs): less is
+ *  touching it */
+const TOUCHING = 1e-9;
 /** a column's key: its x and z on one number (a stage's columns lie well within) */
 const COLUMN_SPAN = 1 << 16;
 
 // == Types =======================================================================
 /** a point in the film's units */
 export type ProbePoint = Readonly<{ x: number; z: number; height: number; }>;
+/** a footprint the ground is asked under: where its middle stands and its size
+ *  (studs), turned by its yaw (clockwise seen from above) */
+export type ProbeGround = Readonly<{ x: number; z: number; width: number; depth: number; yaw: number; }>;
 /** what a probe answers: each point's part, and each segment's first part, named (SEE:
- *  check.ts describeIn); null where none */
-export type Probed = Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; }>;
+ *  check.ts describeIn), null where none; and the surfaces under each footprint
+ *  (plates, lowest first) */
+export type Probed = Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds: ReadonlyArray<ReadonlyArray<number>>; }>;
 
 /** a part's span of levels in a column: the placement it is named by (itself, or its
  *  carrier), the part itself (each of a set's own and carried parts numbered once),
@@ -40,28 +59,46 @@ type Columns = Readonly<{ spans: ReadonlyMap<number, ReadonlyArray<Span>>; exten
 
 // == Probe =======================================================================
 /** the parts at points and across segments of a set as a stage shows it */
-export const probe = (model: Model, points: ReadonlyArray<ProbePoint>, segments: ReadonlyArray<readonly [ProbePoint, ProbePoint]>): Probed => {
-  const columns = columnsOf(model);
+export const probe = (model: Model, points: ReadonlyArray<ProbePoint>, segments: ReadonlyArray<readonly [ProbePoint, ProbePoint]>, grounds: ReadonlyArray<ProbeGround> = []): Probed => {
+  const columns = columnsOf(model), surfaces = surfacesBy(columns);
   const name = (part: number | undefined) => (part === undefined) ? null : describeIn(model, part);
   return {
     points: points.map(point => name(partsAt(columns, point)[0]?.part)),
     segments: segments.map(([from, to]) => name(firstAcross(columns, from, to))),
+    grounds: grounds.map(ground => surfacesUnder(columns, surfaces, ground)),
   };
 };
 
 /** the points and segments a probe call gives, or a refusal naming the first that is
  *  none */
-export const probeInput = (points: unknown, segments: unknown): Readonly<{ points: ReadonlyArray<ProbePoint>; segments: ReadonlyArray<readonly [ProbePoint, ProbePoint]>; }> => {
-  const pointsGiven = (points === undefined) ? [] : points, segmentsGiven = (segments === undefined) ? [] : segments;
-  if(!Array.isArray(pointsGiven) || !Array.isArray(segmentsGiven)) throw new Error('points lists points and segments lists segments: each point { x, z, height }, each segment [from, to]');
-  if((pointsGiven.length + segmentsGiven.length) > MAX_PROBES) throw new Error(`A probe answers at most ${MAX_PROBES} points and segments.`);
+export const probeInput = (points: unknown, segments: unknown, grounds?: unknown): Readonly<{ points: ReadonlyArray<ProbePoint>; segments: ReadonlyArray<readonly [ProbePoint, ProbePoint]>; grounds: ReadonlyArray<ProbeGround>; }> => {
+  const pointsGiven = (points === undefined) ? [] : points, segmentsGiven = (segments === undefined) ? [] : segments, groundsGiven = (grounds === undefined) ? [] : grounds;
+  if(!Array.isArray(pointsGiven) || !Array.isArray(segmentsGiven) || !Array.isArray(groundsGiven)) throw new Error('points lists points, segments lists segments and grounds lists footprints: each point { x, z, height }, each segment [from, to], each footprint { x, z, width, depth, yaw }');
+  if((pointsGiven.length + segmentsGiven.length + groundsGiven.length) > MAX_PROBES) throw new Error(`A probe answers at most ${MAX_PROBES} points, segments and grounds.`);
   return {
     points: pointsGiven.map((each, index) => toPoint(each, `points[${index}]`)),
     segments: segmentsGiven.map((each, index) => {
       if(!Array.isArray(each) || (each.length !== 2)) throw new Error(`segments[${index}] is [from, to]`);
       return [toPoint(each[0], `segments[${index}][0]`), toPoint(each[1], `segments[${index}][1]`)] as const;
     }),
+    grounds: boundedGrounds(groundsGiven.map((each, index) => {
+      const where = `grounds[${index}]`;
+      const { x, z, width, depth, yaw } = (each ?? {}) as Record<string, unknown>;
+      const finite = (value: unknown): value is number => (typeof value === 'number') && Number.isFinite(value);
+      const placed = finite(x) && finite(z) && (Math.abs(x) <= MAX_COORDINATE) && (Math.abs(z) <= MAX_COORDINATE);
+      const sized = [width, depth].every(value => finite(value) && (value > 0) && (value <= MAX_FOOTPRINT));
+      if(!placed || !sized || !finite(yaw)) throw new Error(`${where} is { x, z, width, depth, yaw }: its middle (studs within ${MAX_COORDINATE} of the origin), its size (studs, up to ${MAX_FOOTPRINT} each way) and its yaw (degrees)`);
+      return { x, z, width: width as number, depth: depth as number, yaw };
+    })),
   };
+};
+
+/** the grounds a probe call gives, refused whole when together they read more than
+ *  MAX_GROUND_COLUMNS columns */
+const boundedGrounds = (grounds: ReadonlyArray<ProbeGround>): ReadonlyArray<ProbeGround> => {
+  const reached = grounds.reduce((total, ground) => total + columnsReached(ground), 0);
+  if(reached > MAX_GROUND_COLUMNS) throw new Error(`A probe's grounds read at most ${MAX_GROUND_COLUMNS} columns together (these reach ${reached}): ask fewer or smaller footprints a call.`);
+  return grounds;
 };
 
 // == Internal ====================================================================
@@ -95,6 +132,72 @@ const isSeenThroughPart = (placement: Placement): boolean => placement.color.sta
 /** the parts whose cells hold a point */
 const partsAt = (columns: Columns, { x, z, height }: ProbePoint): ReadonlyArray<Span> =>
   (columns.spans.get(columnKey(Math.floor(x), Math.floor(z))) ?? []).filter(cell => (height >= cell.bottom) && (height < cell.top));
+
+/** the surfaces under a footprint, lowest first: each top of a cell under it no cell
+ *  stands on, and the baseplate (0) where a column under it is bare. A column is under
+ *  it where the two overlap over some area: a corner across counts, an edge touching
+ *  does not */
+const surfacesUnder = (columns: Columns, surfacesOf: (key: number) => ReadonlyArray<number>, ground: ProbeGround): ReadonlyArray<number> => {
+  const surfaces = new Set<number>();
+  for(const [x, z] of columnsUnder(ground)) for(const surface of surfacesOf(columnKey(x, z))) surfaces.add(surface);
+  return [...surfaces].sort((a, b) => a - b);
+};
+
+/** a column's surfaces, once a probe asks for them, each column's read once a call:
+ *  the top of each run of its spans above the baseplate merged (what nothing stands
+ *  on), and 0 unless a run holds the baseplate's level (spans wholly below it lie
+ *  under the baseplate) */
+const surfacesBy = (columns: Columns): ((key: number) => ReadonlyArray<number>) => {
+  const read = new Map<number, ReadonlyArray<number>>();
+  return key => {
+    const known = read.get(key);
+    if(known) return known;
+    const spans = (columns.spans.get(key) ?? []).filter(span => span.top > 0).sort((a, b) => a.bottom - b.bottom);
+    const surfaces: number[] = ((spans.length < 1) || (spans[0].bottom > 0)) ? [0] : [];
+    let top = -Infinity;
+    for(const span of spans) {
+      if((span.bottom > top) && (top > -Infinity)) surfaces.push(top)/*a gap above the run before*/;
+      top = Math.max(top, span.top);
+    }
+    if(top > -Infinity) surfaces.push(top);
+    read.set(key, surfaces);
+    return surfaces;
+  };
+};
+
+/** a footprint's corners on the ground, and the columns its bounds reach (x from
+ *  `minX` up to `maxX`, z likewise): every column it can be over */
+const footprintOf = ({ x, z, width, depth, yaw }: ProbeGround) => {
+  const angle = yaw * (Math.PI / 180);
+  const [east, north] = [[Math.cos(angle), -Math.sin(angle)], [Math.sin(angle), Math.cos(angle)]]/*its own x and z on the ground*/;
+  const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([u, v]) => [x + ((u * width / 2) * east[0]) + ((v * depth / 2) * north[0]), z + ((u * width / 2) * east[1]) + ((v * depth / 2) * north[1])] as const);
+  const [xs, zs] = [corners.map(corner => corner[0]), corners.map(corner => corner[1])];
+  return { corners, axes: [east, north], minX: Math.floor(Math.min(...xs)), maxX: Math.ceil(Math.max(...xs)), minZ: Math.floor(Math.min(...zs)), maxZ: Math.ceil(Math.max(...zs)) };
+};
+
+/** how many columns a footprint's bounds reach: the work its ground takes */
+const columnsReached = (ground: ProbeGround): number => {
+  const { minX, maxX, minZ, maxZ } = footprintOf(ground);
+  return (maxX - minX) * (maxZ - minZ);
+};
+
+/** the columns under a footprint: those its bounds reach that it overlaps over some
+ *  area, by the separating axes of the column's square and the footprint's turned
+ *  rectangle */
+const columnsUnder = (ground: ProbeGround): ReadonlyArray<readonly [number, number]> => {
+  const { corners, axes, minX, maxX, minZ, maxZ } = footprintOf(ground);
+  const under: Array<readonly [number, number]> = [];
+  for(let x=minX; x<maxX; x++) for(let z=minZ; z<maxZ; z++) {
+    const square = [[x, z], [x + 1, z], [x + 1, z + 1], [x, z + 1]] as const;
+    const apart = [[1, 0], [0, 1], ...axes].some(([ax, az]) => {
+      const project = (points: ReadonlyArray<readonly [number, number]>) => points.map(([px, pz]) => (px * ax) + (pz * az));
+      const [a, b] = [project(square), project(corners)];
+      return (Math.min(...a) >= (Math.max(...b) - TOUCHING)) || (Math.min(...b) >= (Math.max(...a) - TOUCHING));
+    });
+    if(!apart) under.push([x, z]);
+  }
+  return under;
+};
 
 /** the first part not seen through a segment crosses from its start, none that holds
  *  its end: the segment clipped to the set's extent, then followed from column to

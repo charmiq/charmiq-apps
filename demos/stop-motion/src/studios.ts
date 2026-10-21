@@ -3,6 +3,7 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import { clearanceOf, type Avoided, type Probe } from './clearance';
 import { planMarksOf, reelFrameOf, stagedSets, type Film, type Paint, type Rest } from './film';
+import { groundsOf, type GroundProbe } from './ground';
 import type { Size } from './measure';
 import type { Recorded } from './recorder';
 import type { PartFinding } from './review';
@@ -14,7 +15,8 @@ import type { PartFinding } from './review';
 // screens, each showing the scene through the scene's views in the order found. More
 // than one holding a build stops the film rather than choosing by which loaded first.
 // A film is staged once per scene: the cast and the reel's header (with a plan's
-// marks when the scene has a plan view), then the film made with the wheels the stage
+// marks when the scene has a plan view, and each actor following the ground stood on
+// it; SEE: ground.ts), then the film made with the wheels the stage
 // found, its camera held against the set's parts (drawn in where it avoids them; SEE:
 // clearance.ts), loaded on every screen a page at a time; the stage's sizes of the
 // actors and the parts each frame's camera meets are kept for measuring and review. A
@@ -32,16 +34,17 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 5;
+const STAGE_VERSION = 6;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
 const SHOWN_MILLIS = 10_000/*ms*/;
 
 // == Types =======================================================================
-/** makes a scene's film once staged: with the wheels the stage found and the rests of
- *  the actors cast from the set (SEE: film.ts filmOf) */
-export type FilmFor = (wheeled: ReadonlySet<string>, rests: ReadonlyMap<string, Rest>) => Film;
+/** makes a scene's film once staged: with the wheels the stage found, the rests of
+ *  the actors cast from the set and the ground under each actor following it (SEE:
+ *  film.ts filmOf) */
+export type FilmFor = (wheeled: ReadonlySet<string>, rests: ReadonlyMap<string, Rest>, grounds: ReadonlyMap<string, ReadonlyArray<number>>) => Film;
 /** a studio's state as its stream tells it: its stage's, whether it holds a build, its
  *  build's sets, and how many times its build has changed */
 type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; frame?: number; build?: boolean; sets?: ReadonlyArray<string>; edits?: number; }>;
@@ -49,7 +52,7 @@ type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; f
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
-  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; }>>;
+  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; }>>;
   stage$(): Observable<ScreenState>;
   stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
@@ -216,12 +219,17 @@ export class Studios {
       const sets = scene.sets ? stagedSets(scene, (await main.describeStage({})).sets[0]) : undefined;
       const standing = sets ? { sets } : {};
       const probe: Probe = (set, points, segments) => main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), points, segments });
+      const groundProbe: GroundProbe = async (set, grounds) => (await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), grounds })).grounds ?? [];
       const reel = { fps: scene.fps, length: scene.frames, width: scene.width, height: scene.height };
       // a plan's marks are where its actors go: an actor cast from the set starts where
-      // its piece stands, which a still staged first tells
+      // its piece stands, which a still staged first tells; an actor following the
+      // ground stands on what is under it, which the still's sizes measure
       const plan = scene.views.some(view => view.plan);
-      const rested = (plan && actors.some(actor => 'placed' in actor)) ? restsOf(await main.stage({ ...standing, actors, ...floor })) : new Map<string, Rest>();
-      const preview = plan ? await clearanceOf(filmFor(new Set()/*its wheels move nothing*/, rested), probe) : undefined;
+      const grounded = scene.actors.some(actor => actor.ground);
+      const still = ((plan && actors.some(actor => 'placed' in actor)) || grounded) ? await main.stage({ ...standing, actors, ...floor }) : undefined;
+      const rested = still ? restsOf(still) : new Map<string, Rest>();
+      const grounds = still && grounded ? await groundsOf(filmFor(new Set(), rested, new Map()/*where it goes, before the ground lifts it*/), still.sizes ?? {}, groundProbe) : new Map<string, ReadonlyArray<number>>();
+      const preview = plan ? await clearanceOf(filmFor(new Set()/*its wheels move nothing*/, rested, grounds), probe) : undefined;
       const marks = preview ? { marks: planMarksOf(preview.film, this.paint, preview.parts.map(found => found.inside !== undefined)) } : {};
       const answer = await main.stage({ ...standing, actors, ...floor, reel, ...marks });
       const ldraw = (others.length > 0) ? await buildText(main) : undefined;
@@ -234,7 +242,7 @@ export class Studios {
 
       // the film with its wheels, its camera cleared, loaded on every screen; an actor
       // the stage refused is left out of every frame (the sheet says why)
-      const { film, parts, avoided } = await clearanceOf(filmFor(new Set(answer.wheeled ?? []), restsOf(answer)), probe);
+      const { film, parts, avoided } = await clearanceOf(filmFor(new Set(answer.wheeled ?? []), restsOf(answer), grounds), probe);
       const cast = new Set(answer.actors);
       const frames = film.frames.map(frame => reelFrameOf({ ...frame, actors: frame.actors.filter(shot => cast.has(shot.name)) }));
       for(let from=0; from<frames.length; from+=REEL_PAGE) {

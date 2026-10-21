@@ -15,14 +15,23 @@ import type { Accessory, CatalogPart, FigureFace, Grip, Slot } from './catalog';
 export const LIMBS = ['head', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'] as const;
 export type Limb = typeof LIMBS[number];
 
+/** a figure's further joints, which a stage's frame alone turns, at any angle: its
+ *  upper body's twist (clockwise seen from above) and lean (forward), and each hand's
+ *  turn on its forearm (the right clockwise as the figure looks down its arm, the left
+ *  mirroring it). A build's figure stands with them at 0, and its cells are measured
+ *  without them */
+export const FRAME_LIMBS = ['twist', 'lean', 'rightWrist', 'leftWrist'] as const;
+export type FrameLimb = typeof FRAME_LIMBS[number];
+
 /** the step a limb's angle takes (degrees) */
 export const POSE_STEP = 15;
 /** every angle a limb takes: whole steps from -180 up to (not including) 180 */
 export const POSE_ANGLES: ReadonlyArray<number> = Array.from({ length: 360 / POSE_STEP }, (_, index) => -180 + (index * POSE_STEP));
 
 // == Types =======================================================================
-/** a limb's angle by limb; a limb not named is at 0 */
-export type Pose = Readonly<Partial<Record<Limb, number>>>;
+/** a limb's angle by limb (a stage's frame's further joints too); a limb not named is
+ *  at 0 */
+export type Pose = Readonly<Partial<Record<Limb | FrameLimb, number>>>;
 
 /** one of a part's pieces as a line: its file (stem), color and transform (LDU, in
  *  the part's own frame) */
@@ -46,7 +55,8 @@ export const normalizePose = (pose: Pose | undefined): Pose | undefined => {
 
 // == Pieces ======================================================================
 /** a part's pieces as lines, as its catalog entry writes them, its face piece printed
- *  with `face` when one is given (SEE: catalog.ts FIGURE_FACES) */
+ *  with `face` when one is given (SEE: catalog.ts FIGURE_FACES; a print's back is
+ *  turned to the front in posedPieces alone) */
 export const pieceLines = (part: CatalogPart, face?: FigureFace): PieceLine[] => (part.pieces ?? []).map((line, index) => {
   const fields = line.trim().split(/\s+/);
   const values = fields.slice(1, 14).map(Number);
@@ -70,7 +80,9 @@ export const limbLines = (part: CatalogPart, limb: Limb, angle: number, face?: F
 };
 
 /** every piece of a part at a pose, in its catalog order, wearing `face`, its legs
- *  pieces in `legsColor` when given, then the accessories it wears, in slot order */
+ *  pieces in `legsColor` when given, then the accessories it wears, in slot order.
+ *  Each limb turns first, then each hand on its forearm, then the upper body (SEE:
+ *  upperTurn), what is held turning with what holds it */
 export const posedPieces = (part: CatalogPart, pose: Pose | undefined, legsColor?: number, worn?: Worn, face?: FigureFace): PieceLine[] => {
   const lines = pieceLines(part, face);
   for(const limb of LIMBS) {
@@ -79,9 +91,30 @@ export const posedPieces = (part: CatalogPart, pose: Pose | undefined, legsColor
     const moved = limbLines(part, limb, angle, face);
     part.limbs[limb].pieces.forEach((index, order) => { lines[index] = moved[order]; });
   }
+  for(const [wrist, slot, side] of [['rightWrist', 'rightHand', 1], ['leftWrist', 'leftHand', -1]] as const) {
+    const angle = pose?.[wrist] ?? 0, hand = part.slots?.[slot]?.piece;
+    if((angle === 0) || (hand === undefined)) continue;
+    lines[hand] = { ...lines[hand], matrix: multiply(lines[hand].matrix, bankOf(side * angle)) }/*about its own z, along its forearm*/;
+  }
+  const upper = upperTurn(part, pose);
+  if(upper) for(const index of part.waist!.upper) lines[index] = turned(lines[index], upper);
   if(legsColor !== undefined) for(const index of part.legs ?? []) lines[index] = { ...lines[index], colorCode: legsColor };
   const gear = SLOTS_IN_ORDER.flatMap(slot => worn?.[slot] ? [accessoryLine(part, slot, lines[part.slots![slot].piece], worn[slot]!.accessory, worn[slot]!.grip, worn[slot]!.colorCode)] : []);
+  // a print's back turned to the front on the head alone, after what the head wears
+  // has taken its place from it
+  if(face && ('back' in face) && (part.facePiece !== undefined)) lines[part.facePiece] = { ...lines[part.facePiece], matrix: multiply(lines[part.facePiece].matrix, HALF_TURN_ABOUT_Y) };
   return [...lines, ...gear];
+};
+
+/** how a part's upper body turns at a pose: its twist about the vertical through its
+ *  origin, then its lean forward about its hip; undefined when it does neither (SEE:
+ *  CatalogPart#waist) */
+export const upperTurn = (part: CatalogPart, pose: Pose | undefined): Turn | undefined => {
+  const [twist, lean] = [pose?.twist ?? 0, pose?.lean ?? 0];
+  if(!part.waist || ((twist === 0) && (lean === 0))) return undefined;
+  const turning = turnAbout('y', [0, 0, 0], twist), leaning = turnAbout('x', part.waist.hip, -lean)/*its top toward its front*/;
+  const moved = multiplyVector(leaning.matrix, turning.position);
+  return { matrix: multiply(leaning.matrix, turning.matrix), position: [moved[0] + leaning.position[0], moved[1] + leaning.position[1], moved[2] + leaning.position[2]] };
 };
 
 // == Accessories =================================================================

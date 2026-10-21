@@ -1,4 +1,4 @@
-import type { Area, CameraPlace, Ease, FaceKey, Key, Point, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title } from './recorder';
+import type { Area, CameraPlace, Ease, FaceKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title } from './recorder';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -37,7 +37,7 @@ const MAX_MARK_PATHS = 256;
 // == Types =======================================================================
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 /** an actor in one frame, as the stage's frame takes it */
-export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; face?: string; rolled?: number; }>;
+export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; face?: string; rightHand?: HandKey['item']; leftHand?: HandKey['item']; rolled?: number; }>;
 export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; }>;
 /** a plan: straight down over an area, north up */
 export type PlanCamera = Readonly<{ plan: Area; }>;
@@ -98,18 +98,27 @@ type Placed = Readonly<{ position: Point; matrix: ReadonlyArray<number>; visible
 // == Film ========================================================================
 /** the film a recorded scene makes: every frame, each wheeled actor's wheels rolled,
  *  each actor cast from a piece of the set starting from its rest (`rests`: each value
- *  it keys from its keys, the rest from where the piece stood). Throws, naming the
- *  scene's line, when an actor rides in a circle or leaves the stage's reach */
-export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set(), rests: ReadonlyMap<string, Rest> = new Map()): Film => {
+ *  it keys from its keys, the rest from where the piece stood), each actor following
+ *  the ground standing on it (`grounds`: the surface under it at each frame, plates,
+ *  its keyed height above that; SEE: groundsOf), each head turned to what it looks at
+ *  (SEE: looking). Throws, naming the scene's line, when an actor rides in a circle or
+ *  leaves the stage's reach */
+export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set(), rests: ReadonlyMap<string, Rest> = new Map(), grounds: ReadonlyMap<string, ReadonlyArray<number>> = new Map()): Film => {
   const order = rideOrder(scene.actors);
   const frames: FilmFrame[] = [];
   const rolled = new Map<string, number>();
+  const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();
   let previous: ReadonlyMap<string, Placed> | undefined;
   for(let index=0; index<scene.frames; index++) {
     const time = index / scene.fps;
     const placed = new Map<string, Placed>(), headings = new Map<string, number>();
     for(const actor of order) {
-      const local = localAt(actor, index, time, actor.ride ? undefined : rests.get(actor.name)/*a rider stands where it rides*/);
+      const rest = actor.ride ? undefined : rests.get(actor.name)/*a rider stands where it rides*/;
+      const ground = grounds.get(actor.name)?.[index];
+      // following the ground, its own height counts from the ground (its piece's place
+      // and turn kept): what its keys and paths give it, over the ground under it
+      const keyed = localAt(actor, index, time, (rest && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest);
+      const local = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
       const own = placedOf(local);
       const parent = actor.ride && placed.get(actor.ride.parent);
       const standing = parent ? riding(parent, actor.ride!.offset, own) : own;
@@ -128,12 +137,14 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
       rolled.set(name, (rolled.get(name) ?? 0) + moved);
     }
     previous = placed;
+    for(const actor of scene.actors) if(actor.looks) looking(actor, time, 1 / scene.fps, placed, headings, looked);
 
-    const actors = scene.actors.flatMap(({ name, faces }) => {
+    const actors = scene.actors.flatMap(({ name, faces, reactions, hands }) => {
       const standing = placed.get(name)!;
       if(!standing.visible) return [];
-      const face = faceAt(faces, time);
-      return [{ name, position: standing.position, turn: turnOf(standing.matrix), ...(standing.pose ? { pose: standing.pose } : {}), ...(face ? { face } : {}), ...(wheeled.has(name) ? { rolled: rolled.get(name)! } : {}) }];
+      const face = reactionAt(reactions, time) ?? faceAt(faces, time);
+      const holding = (['rightHand', 'leftHand'] as const).flatMap(hand => { const key = heldAt(hands?.filter(each => each.hand === hand), time); return key ? [[hand, key.item] as const] : []; });
+      return [{ name, position: standing.position, turn: turnOf(standing.matrix), ...(standing.pose ? { pose: standing.pose } : {}), ...(face ? { face } : {}), ...Object.fromEntries(holding), ...(wheeled.has(name) ? { rolled: rolled.get(name)! } : {}) }];
     });
     const fade = channelAt(scene.fade, 'fade', time) ?? 0;
     const title = scene.titles.find(each => (time >= each.from) && (time < each.to));
@@ -372,6 +383,40 @@ export const stagedSets = (scene: Recorded, first: string): ReadonlyArray<string
   if(!keys || (keys.length < 1)) return undefined;
   const names = [...((keys[0].time > TIME_EPSILON) ? [first] : []), ...keys.map(key => key.set)];
   return names.filter((name, index) => names.findIndex(other => other.toLowerCase() === name.toLowerCase()) === index);
+};
+
+/** the face a reaction gives at a time, the last declared of those then: none outside
+ *  every reaction */
+export const reactionAt = (reactions: ReadonlyArray<Reaction> | undefined, time: number): string | undefined =>
+  reactions?.filter(reaction => (time >= (reaction.from - TIME_EPSILON)) && (time < (reaction.to - TIME_EPSILON))).pop()?.face;
+
+/** how fast a head turns to what it looks at, and back (degrees a second), and how
+ *  fast it takes to looking and leaves it (shares a second) */
+const LOOK_RATE = 240;
+const ENGAGE_RATE = 4;
+/** an actor's head turned toward what it looks at in a frame: of its looks then whose
+ *  target stands within its reach, the one begun latest (a reaction's over a lasting
+ *  look, which takes back over once the reaction ends), as far as its `max` either way
+ *  of where its torso faces (its heading, and its twist); the turn eased from the last frame's at LOOK_RATE, its own head's keyed
+ *  turn giving way to it as it engages, and back as it lets go (SEE: Look) */
+const looking = (actor: RecordedActor, time: number, step: number, placed: Map<string, Placed>, headings: ReadonlyMap<string, number>, looked: Map<string, Readonly<{ angle: number; engaged: number; }>>) => {
+  const standing = placed.get(actor.name)!;
+  const target = (look: Look): Point | undefined => ('point' in look.target) ? look.target.point : placed.get(look.target.actor)?.position;
+  const begun = actor.looks!.map((look, order) => ({ look, order })).filter(({ look }) => (time >= (look.from - TIME_EPSILON)) && (time < (look.to - TIME_EPSILON)));
+  const active = begun.sort((a, b) => (b.look.from - a.look.from) || (b.order - a.order)).map(({ look }) => look).find(look => {
+    const at = target(look);
+    return at && (Math.hypot(at.x - standing.position.x, at.z - standing.position.z) <= look.within);
+  });
+  const at = active && target(active)!;
+  const facing = headings.get(actor.name)! + (standing.pose?.twist ?? 0)/*the head turns over its twisted torso*/;
+  const wanted = (active && at) ? Math.max(-active.max, Math.min(active.max, wrapped((Math.atan2(at.x - standing.position.x, at.z - standing.position.z) * (180 / Math.PI)) - facing))) : 0;
+  const before = looked.get(actor.name) ?? { angle: 0, engaged: 0 };
+  const angle = before.angle + Math.max(-LOOK_RATE * step, Math.min(LOOK_RATE * step, wanted - before.angle));
+  const engaged = Math.max(0, Math.min(1, before.engaged + ((active ? 1 : -1) * ENGAGE_RATE * step)));
+  looked.set(actor.name, { angle, engaged });
+  if((engaged <= 0) && (Math.abs(angle) < 1e-6)) return/*not looking*/;
+  const own = standing.pose?.head ?? 0;
+  placed.set(actor.name, { ...standing, pose: { ...standing.pose, head: (own * (1 - engaged)) + angle } });
 };
 
 /** the key in force at a time: the last at or before it, held to the next (none

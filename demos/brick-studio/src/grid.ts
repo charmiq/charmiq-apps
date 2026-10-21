@@ -1,7 +1,7 @@
-import { gearKey, getFigureFace, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
+import { gearKey, getStageFace, ACCESSORIES, ALL_FACES, CATALOG, COLORS, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
 import { maxOf, minOf } from './numbers';
 import { COLOR_VALUES, FACE_GEOMETRY, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { hingePieces, hingeTurn, pieceLines, posedPieces, wheelPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
+import { hingePieces, hingeTurn, pieceLines, posedPieces, upperTurn, wheelPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
 // level is one plate height (a brick is three). A placement names the minimum
@@ -338,11 +338,13 @@ export const placedLines = (shape: PartShape, placement: Placement, colorCode: n
 export const partLines = (shape: PartShape, placement: Placement, colorCode: number, position: readonly [number, number, number], rolled = 0): PartLine[] => {
   const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position, matrix: rotationMatrix(placement.rotation) };
   const legs = (placement.legColor === undefined) ? undefined : getColor(placement.legColor)?.code;
-  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement), getFigureFace(placement.face)) :
+  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement), getStageFace(placement.face)) :
     shape.part.hinge ? hingePieces(shape.part, placement.angle ?? 0) :
     (shape.part.wheels && (rolled !== 0)) ? wheelPieces(shape.part, rolledAngle(shape.part, rolled)) :
     piecesOf(shape.part);
-  return [own, ...pieces.map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
+  const upper = shape.part.limbs ? upperTurn(shape.part, placement.pose) : undefined;
+  const body = upper ? { ...own, ...compose(own, upper) }/*its torso twisted and leaning with what it carries*/ : own;
+  return [body, ...pieces.map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
 };
 
 /** the angle (degrees) a wheel set's wheels turn rolling `rolled` studs: the arc
@@ -384,7 +386,7 @@ export const compose = (parent: Transform, child: Transform): Transform => {
 export const partFiles = (part: CatalogPart): string[] => [
   part.ldraw, ...piecesOf(part).map(piece => piece.ldraw),
   ...(part.slots ? ACCESSORIES.map(accessory => accessory.ldraw) : []),
-  ...((part.facePiece !== undefined) ? FIGURE_FACES.map(face => face.ldraw) : []),
+  ...((part.facePiece !== undefined) ? [...new Set(ALL_FACES.map(face => face.ldraw))] : []),
 ];
 
 // --------------------------------------------------------------------------------

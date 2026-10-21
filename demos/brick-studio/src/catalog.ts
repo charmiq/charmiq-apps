@@ -30,6 +30,11 @@ export type CatalogPart = Readonly<{
    *  the first its pivot) about that piece's origin, on its own x axis (a swing) or y
    *  axis (a turn) (SEE: grid.ts posedPieces) */
   limbs?: Readonly<Record<Limb, Readonly<{ pieces: ReadonlyArray<number>; axis: 'x' | 'y'; }>>>;
+  /** what turns above a posable part's waist on a stage's frame (SEE: pose.ts
+   *  FRAME_LIMBS): its own line and these pieces (indices into `pieces`: a figure's
+   *  head, arms and hands), twisting about the vertical through its origin and leaning
+   *  about the east-west axis through `hip` (LDU, in the part's frame) */
+  waist?: Readonly<{ upper: ReadonlyArray<number>; hip: readonly [number, number, number]; }>;
   /** the pieces (indices into `pieces`) a posable part's legs color paints: a figure's
    *  hips and legs */
   legs?: ReadonlyArray<number>;
@@ -307,7 +312,9 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   // (973c01) and hips and legs (21019bpde7) put them together. It poses: each arm
   // (with its hand) swings about its shoulder, each leg about its hip pin, and the
   // head turns on its neck, each pivot at its piece's origin as the library models
-  // it; its hips and legs take the legs color
+  // it; its hips and legs take the legs color. On a stage's frame its torso also
+  // twists and leans over its hips (their joint 32 LDU below the neck) and each hand
+  // turns on its forearm
   { key: 'figure', ldraw: '973', kind: 'figure', pieces: [
     '1 14 0 -24 0 1 0 0 0 1 0 0 0 1 3626bp01.dat',
     '1 16 -15.552 9 0 0.985 -0.17 0 0.17 0.985 0 0 0 1 3818.dat',
@@ -323,7 +330,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
     leftArm: { pieces: [2, 4], axis: 'x' },
     rightLeg: { pieces: [6], axis: 'x' },
     leftLeg: { pieces: [7], axis: 'x' },
-  }, legs: [5, 6, 7], facePiece: 0, slots: { hat: { piece: 0 }, rightHand: { piece: 3, grip: HAND_GRIP }, leftHand: { piece: 4, grip: HAND_GRIP } } },
+  }, legs: [5, 6, 7], waist: { upper: [0, 1, 2, 3, 4], hip: [0, 32, 0] }, facePiece: 0, slots: { hat: { piece: 0 }, rightHand: { piece: 3, grip: HAND_GRIP }, leftHand: { piece: 4, grip: HAND_GRIP } } },
   // the stand and its black wheel, as the library's complete steering wheel (3829c01)
   { key: 'steering-wheel',  ldraw: '3829a', kind: 'vehicle', pieces: [
     '1 0 0 -26.32 -0.24 0 0 1 -0.8 0.6 0 -0.6 -0.8 0 3828.dat',
@@ -386,14 +393,19 @@ export const ACCESSORIES: ReadonlyArray<Accessory> = [
   { key: 'pickaxe',             ldraw: '3841',  on: 'hand', grips: [{ name: 'handle', axis: 'y', at: 24 }] },
   { key: 'lance',               ldraw: '3849',  on: 'hand', grips: [{ name: 'shaft', axis: 'z', at: 9 }/*behind its guard*/, { name: 'stub', axis: 'y', at: 8, flip: true }/*carried upright from a hanging arm*/] },
   { key: 'flashlight',          ldraw: '3959',  on: 'hand', grips: [{ name: 'handle', axis: 'y', at: 10 }/*the lamp points down a hanging arm*/, { name: 'body', axis: 'z', at: 8 }/*between its handle and its lamp, the lamp ahead*/] },
+  { key: 'radio',               ldraw: '19220', on: 'hand', grips: [{ name: 'body', axis: 'y', at: 0 }/*its body's bar, the antenna up a raised hand*/] },
+  { key: 'ice-cream',           ldraw: '33120', on: 'hand', grips: [{ name: 'cone', axis: 'y', at: 0 }] },
 ];
 
 // == Faces =======================================================================
 // a figure's face: its head printed with an expression or a character, each a head
 // from the library put in place of the head the figure's entry writes (the classic
-// smile, the default). Each is single-sided and from no franchise
-export type FigureFace = typeof FIGURE_FACES[number];
-export type FigureFaceKey = FigureFace['key'];
+// smile, the default), and from no franchise. A two-sided head's `back` is worn on a
+// stage's frame alone (FRAME_FACES), its print turned a half turn on the head and
+// nothing it wears turned with it: in a build's lines the back worn is the front with
+// the head turned round, so a build never wears one
+export type FigureFace = typeof FIGURE_FACES[number] | typeof FRAME_FACES[number];
+export type FigureFaceKey = typeof FIGURE_FACES[number]['key'];
 export const FIGURE_FACES = [
   { key: 'smile',      ldraw: '3626bp01' },
   { key: 'grin',       ldraw: '3626cp73' },
@@ -407,12 +419,22 @@ export const FIGURE_FACES = [
   { key: 'freckles',   ldraw: '3626bp07' },
   { key: 'beard',      ldraw: '3626bp39' },
   { key: 'glasses',    ldraw: '3626bp0i' },
+  { key: 'stern',      ldraw: '3626cp80' },
+] as const;
+/** the faces a stage's frame alone wears: each a two-sided head's back */
+export const FRAME_FACES = [
+  { key: 'scared',     ldraw: '3626cp80', back: true },
+  { key: 'asleep',     ldraw: '3626cp8r', back: true },
 ] as const;
 /** the face a figure wears unless it names another: the head its entry writes */
 export const DEFAULT_FIGURE_FACE: FigureFaceKey = 'smile';
 
 /** the face a name gives, or undefined for none */
-export const getFigureFace = (key: unknown): FigureFace | undefined => FIGURE_FACES.find(face => face.key === key);
+export const getFigureFace = (key: unknown): typeof FIGURE_FACES[number] | undefined => FIGURE_FACES.find(face => face.key === key);
+/** the face a stage's frame names (a build's, or a frame's own), or undefined for none */
+export const getStageFace = (key: unknown): FigureFace | undefined => getFigureFace(key) ?? FRAME_FACES.find(face => face.key === key);
+/** every face a figure is drawn wearing, a build's and a frame's */
+export const ALL_FACES: ReadonlyArray<FigureFace> = [...FIGURE_FACES, ...FRAME_FACES];
 
 // == Colors ======================================================================
 export type CatalogColor = Readonly<{

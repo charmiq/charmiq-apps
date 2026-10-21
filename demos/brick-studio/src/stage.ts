@@ -1,9 +1,10 @@
-import { toPosing } from './build';
-import { getFigureFace, FIGURE_FACES, type CatalogPart } from './catalog';
+import { toGear, toPosing } from './build';
+import { getStageFace, ALL_FACES, type CatalogPart } from './catalog';
 import { occupiedCells } from './check';
-import { cellsFootprint, compose, footprint, footprintSize, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Footprint, type PartLine, type Placement, type Rotation, type Transform } from './grid';
+import { cellsFootprint, compose, footprint, footprintSize, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseSets, placedPartCount, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
-import { bankOf, swingOf, turnOf, type Limb, type Pose, LIMBS } from './pose';
+import { POSE_GEOMETRY } from './parts.generated';
+import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS } from './pose';
 
 // a stage: a scene the studio shows in place of its build while another Application
 // (a film) drives it. Its sets are a build's, each shown as it is: LDraw text's, or
@@ -23,7 +24,7 @@ import { bankOf, swingOf, turnOf, type Limb, type Pose, LIMBS } from './pose';
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 5;
+export const STAGE_VERSION = 6;
 
 /** the most sets a stage stands */
 export const MAX_STAGED_SETS = 8;
@@ -79,7 +80,10 @@ export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
  *  wears in this frame (its own when none is named); its wheel sets' wheels turned as
  *  the actor having rolled `rolled` studs along its own north, each wheel set by its
  *  share (backward turned round, none turned across) */
-export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Pose; face?: string; rolled: number; }>;
+export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Pose; face?: string; hands?: Hands; rolled: number; }>;
+/** what a frame puts in a figure's hands in place of what it holds as dressed: an
+ *  accessory, or nothing (`null`); a hand not named holds what it holds */
+export type Hands = Readonly<Partial<Record<'rightHand' | 'leftHand', Gear | null>>>;
 
 /** the camera of one frame: where it stands, the point it looks at (and focuses on)
  *  and its vertical field of view (degrees) */
@@ -138,7 +142,9 @@ type Actor = Readonly<{
   rolls: boolean;
   /** how many parts it is, as a set counts them */
   parts: number;
-  lines: (pose: Pose | undefined, rolled: number, face?: string) => PartLine[];
+  /** it holds things in its hands, which a frame may change: a figure */
+  holds: boolean;
+  lines: (pose: Pose | undefined, rolled: number, face?: string, hands?: Hands) => PartLine[];
 }>;
 
 /** where a placed actor's piece stands in the set: a shot of it there draws the piece
@@ -346,6 +352,7 @@ const copyActor = (set: Model, rotation: Rotation, parts: ReadonlyArray<Placemen
     anchor: [0, 0, 0],
     size,
     poses: false,
+    holds: false,
     faces: false,
     rolls: parts.some(placement => !!getPart(placement.part)!.wheels),
     parts: placedPartCount(set, parts) + others.length/*those the set shown leaves out, what they carry included*/,
@@ -365,6 +372,7 @@ const componentActor = (set: Model, component: Component): Actor => {
     anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
     size: { width: maxX - minX, depth: maxZ - minZ, height },
     poses: false,
+    holds: false,
     faces: false,
     rolls: parts.some(each => !!each.wheels),
     parts: placedPartCount(set, component.placements) + component.others.length/*what its carriers carry included*/,
@@ -392,13 +400,22 @@ const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
   const colorCode = getColor(standing.color)!.code;
   return {
     anchor: [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
-    size: { width: shape.width, depth: shape.depth, height: shape.height },
+    size: { ...(POSE_GEOMETRY[catalogPart.ldraw]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height },
     poses: !!catalogPart.limbs,
     faces: catalogPart.facePiece !== undefined,
     rolls: !!catalogPart.wheels,
     parts: 1,
-    lines: (pose, rolled, worn) => partLines(shape, { ...standing, ...(pose ? { pose: { ...standing.pose, ...pose } } : {}), ...((worn !== undefined) ? { face: worn } : {}) }, colorCode, origin, rolled),
+    holds: !!catalogPart.slots?.rightHand,
+    lines: (pose, rolled, worn, hands) => partLines(shape, holding({ ...standing, ...(pose ? { pose: { ...standing.pose, ...pose } } : {}), ...((worn !== undefined) ? { face: worn } : {}) }, hands), colorCode, origin, rolled),
   };
+};
+
+/** a placement holding what a frame's hands name in place of what it holds */
+const holding = (placement: Placement, hands: Hands | undefined): Placement => {
+  if(!hands) return placement;
+  const { rightHand, leftHand, ...rest } = placement;
+  const [right, left] = [('rightHand' in hands) ? hands.rightHand : rightHand, ('leftHand' in hands) ? hands.leftHand : leftHand];
+  return { ...rest, ...(right ? { rightHand: right } : {}), ...(left ? { leftHand: left } : {}) };
 };
 
 /** the refusal of a part that carries components */
@@ -413,10 +430,10 @@ export const sizesOf = (cast: Cast): Readonly<Record<string, Size>> => Object.fr
 /** the shots a frame call gives, each of a cast actor; an actor given none is
  *  hidden */
 export const shotsOf = (cast: Cast, input: unknown): ReadonlyArray<Shot> => {
-  if(!Array.isArray(input)) throw new Error('actors lists the actors shown: each { name, position, turn?, pose?, face?, rolled? }');
+  if(!Array.isArray(input)) throw new Error('actors lists the actors shown: each { name, position, turn?, pose?, face?, rightHand?, leftHand?, rolled? }');
   const named = new Set<string>();
   return input.map((item, index) => {
-    const { name, position, turn, pose, face, rolled } = (item ?? {}) as Record<string, unknown>;
+    const { name, position, turn, pose, face, rolled, rightHand, leftHand } = (item ?? {}) as Record<string, unknown>;
     const at = `actors[${index}]`;
     if((typeof name !== 'string') || !cast.actors.has(name)) throw new Error(`${at}: no actor named '${String(name)}' is cast (stage casts them)`);
     if(named.has(name)) throw new Error(`${at}: ${name} is shown twice`);
@@ -426,10 +443,12 @@ export const shotsOf = (cast: Cast, input: unknown): ReadonlyArray<Shot> => {
     const turned = toTurn(turn, `${at}.turn`);
     if((pose !== undefined) && !actor.poses) throw new Error(`${at}: ${name} takes no pose (a figure does)`);
     if((face !== undefined) && !actor.faces) throw new Error(`${at}: ${name} wears no face (a figure does)`);
-    if((face !== undefined) && !getFigureFace(face)) throw new Error(`${at}.face: unknown face '${String(face)}' (one of ${FIGURE_FACES.map(each => each.key).join(', ')})`);
+    if((face !== undefined) && !getStageFace(face)) throw new Error(`${at}.face: unknown face '${String(face)}' (one of ${ALL_FACES.map(each => each.key).join(', ')})`);
+    if(((rightHand !== undefined) || (leftHand !== undefined)) && !actor.holds) throw new Error(`${at}: ${name} has no hands to hold things (a figure does)`);
+    const hands = handsOf({ rightHand, leftHand }, at);
     if((rolled !== undefined) && !actor.rolls) throw new Error(`${at}: ${name} has no wheels to roll`);
     if((rolled !== undefined) && !isFiniteNumber(rolled)) throw new Error(`${at}.rolled must be a finite number of studs`);
-    return { name, position: where, turn: turned, ...((pose !== undefined) ? { pose: toFreePose(pose, `${at}.pose`) } : {}), ...((face !== undefined) ? { face: face as string } : {}), rolled: (rolled as number | undefined) ?? 0 };
+    return { name, position: where, turn: turned, ...((pose !== undefined) ? { pose: toFreePose(pose, `${at}.pose`) } : {}), ...((face !== undefined) ? { face: face as string } : {}), ...(hands ? { hands } : {}), rolled: (rolled as number | undefined) ?? 0 };
   });
 };
 
@@ -437,7 +456,7 @@ export const shotsOf = (cast: Cast, input: unknown): ReadonlyArray<Shot> => {
 export const shotLines = (cast: Cast, shots: ReadonlyArray<Shot>): PartLine[] => shots.flatMap(shot => {
   const actor = cast.actors.get(shot.name)!/*by contract: shotsOf*/;
   const placed = actorTransform(actor, shot);
-  return actor.lines(shot.pose, shot.rolled, shot.face).map(line => ({ ...line, ...compose(placed, line) }));
+  return actor.lines(shot.pose, shot.rolled, shot.face, shot.hands).map(line => ({ ...line, ...compose(placed, line) }));
 });
 
 /** a frame's actors as drawn: their lines (SEE: shotLines), and how many parts they
@@ -645,14 +664,28 @@ const toTurn = (input: unknown, field: string): Turn => {
 
 /** a pose an input gives: any finite angle per limb */
 const toFreePose = (input: unknown, field: string): Pose => {
-  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error(`${field} names limbs and their angles (${LIMBS.join(', ')})`);
-  const pose: Partial<Record<Limb, number>> = {};
+  const limbs: ReadonlyArray<string> = [...LIMBS, ...FRAME_LIMBS];
+  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error(`${field} names limbs and their angles (${limbs.join(', ')})`);
+  const pose: Partial<Record<Limb | FrameLimb, number>> = {};
   for(const [limb, angle] of Object.entries(input)) {
-    if(!(LIMBS as readonly string[]).includes(limb)) throw new Error(`${field} names no limb '${limb}' (${LIMBS.join(', ')})`);
+    if(!limbs.includes(limb)) throw new Error(`${field} names no limb '${limb}' (${limbs.join(', ')})`);
     if(!isFiniteNumber(angle)) throw new Error(`${field}.${limb} must be a finite number of degrees`);
-    pose[limb as Limb] = angle;
+    pose[limb as Limb | FrameLimb] = angle;
   }
   return pose;
+};
+
+/** what a shot puts in a figure's hands (each `{ part, color, grip? }` a hand item,
+ *  or `null` for none), or undefined when it names neither */
+const handsOf = (input: Readonly<Record<'rightHand' | 'leftHand', unknown>>, field: string): Hands | undefined => {
+  const named = (['rightHand', 'leftHand'] as const).filter(slot => input[slot] !== undefined);
+  if(named.length < 1) return undefined;
+  return Object.fromEntries(named.map(slot => {
+    if(input[slot] === null) return [slot, null];
+    const gear = toGear(slot, input[slot]);
+    if(typeof gear === 'string') throw new Error(`${field}: ${gear}`);
+    return [slot, gear];
+  }));
 };
 
 const isFiniteNumber = (value: unknown): value is number => (typeof value === 'number') && Number.isFinite(value);
