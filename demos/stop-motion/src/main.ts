@@ -245,6 +245,7 @@ const showStatus = () => {
   // refused look stops everything, and the Platform's reason says what to change
   const refused = studios.refusal ?? editorsRefused;
   if(refused !== undefined) return say('Stop Motion can\'t look for the studio and the code editor.', refused, 'Try again');
+  if((studios.count < 1) && (studios.otherVersions > 0)) return say('Reload the page.', 'This document\'s Brick Studio is another version than Stop Motion: reloading the page loads the same version of both.');
   if(studios.count < 1) return say('No studio.', 'Stop Motion plays the film on Brick Studio: add Brick Studio to this document, above the film.');
   if(stage.kind === 'ambiguous') return say(`${stage.builds} studios hold a build.`, 'The set is the build of one studio: keep it in one, and the others empty.');
   if(editors < 1) return say('No scene.', `The scene is code in a code editor's ${SCENE_TAB} tab: add a code editor to this document.`);
@@ -553,7 +554,7 @@ const exportedNote = (label: string, reason: string) => {
 /** the studio chip: how many studios, and where the film stands on them */
 const showChip = () => {
   studioChip.dataset.state = studios.stageState.kind;
-  studioChip.textContent = (studios.count > 1) ? `${studios.count} studios` : (studios.count === 1) ? 'Brick Studio' : 'No studio';
+  studioChip.textContent = (studios.count > 1) ? `${studios.count} studios` : (studios.count === 1) ? 'Brick Studio' : (studios.otherVersions > 0) ? 'Reload' : 'No studio';
 };
 
 studios.state$.subscribe((stage: StageState) => {
@@ -589,9 +590,7 @@ if(films) {
   films.state$.subscribe(() => showFile());
   merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
 } /* else -- standalone: no Drive */
-if(charmiq) {
-  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, restage: () => director.restage(), player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
-} /* else -- standalone: no Charm reaches the film */
+if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
 showSheet();
 showStatus();
 showFile();

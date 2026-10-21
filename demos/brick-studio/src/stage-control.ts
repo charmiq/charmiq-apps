@@ -1,6 +1,7 @@
 import { BehaviorSubject, type Observable } from 'rxjs';
 
 import type { Build } from './build';
+import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
 import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
 import type { Viewer } from './viewer';
@@ -122,6 +123,16 @@ export class StageControl {
     this.publish({ kind: 'staged', ...(this.reel ? { reel: this.reel.id } : {}) });
     const wheeled = [...cast.actors].filter(([, actor]) => actor.rolls).map(([name]) => name);
     return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
+  }
+
+  /** what stands at points and across segments of a set as a stage of those sets and
+   *  actors shows it (the pieces cast left out), staged or not: nothing is shown (SEE:
+   *  probe.ts) */
+  public async probe(ldraw: unknown, sets: unknown, actors: unknown, set: unknown, points: unknown, segments: unknown): Promise<Probed> {
+    await this.build.whenReady();
+    const asked = probeInput(points, segments);
+    const { cast } = castOf(setsOf(ldraw, sets, () => this.build.allSets()), actors ?? []);
+    return probe(cast.sets[stagedSetOf(cast, set)].shown, asked.points, asked.segments);
   }
 
   /** shows the build again */

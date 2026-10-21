@@ -2,11 +2,14 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 
 import { DesignExists, displayName } from '../../brick-shared/designs';
 
+import type { Avoided } from './clearance';
 import { cameraShots, setAt, shotAt, shotFrames, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
 import type { Player } from './player';
 import type { Point, SceneError } from './recorder';
+import { cameraProblems, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type PartFinding } from './review';
+import type { ScreenBox } from './screen';
 import type { Board, StageState } from './studios';
 
 // the Charm command surface (SEE: manifest.json `advertise`): what the film is, the
@@ -14,8 +17,10 @@ import type { Board, StageState } from './studios';
 // editor's scene.js tab; these say how the film stands, show any moment of it on the
 // studios so a screenshot sees it, show a storyboard of its moments on the main
 // studio's sheet for one screenshot to read, tell where its actors and camera stand
-// and how close actors come, and keep the film in the Drive: its set and its scene
-// saved as one film, opened back, or cleared for a new one
+// and how close actors come, read it as it looks (each actor on the screen, where the
+// camera goes wrong, each cut as an editor reads it; SEE: review.ts), and keep the
+// film in the Drive: its set and its scene saved as one film, opened back, or cleared
+// for a new one
 // ********************************************************************************
 // == Constants ===================================================================
 /** the most frames a storyboard shows (SEE: Brick Studio's storyboard) */
@@ -29,6 +34,8 @@ export type FilmHost = Readonly<{
   studios: () => number;
   editors: () => number;
   stage: () => StageState;
+  /** the film the studios staged: the stage's sizes and parts are its own */
+  staged: () => Film | undefined;
   /** stages the latest scene's film again: cast and shown on the studios */
   restage: () => Promise<void>;
   player: Player;
@@ -47,7 +54,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
   charmiq.exportCommands({
     describeFilm: async () => {
       const film = host.film(), error = host.error(), stage = host.stage();
-      const sizes = sizesOf(stage);
+      const sizes = sizesOf(stage), staged = stagedOf(host);
       return {
         studios: host.studios(), editors: host.editors(), ...stageReport(stage),
         ...(film ? {
@@ -57,6 +64,8 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
           ...(film.scene.sets ? { sets: film.scene.sets.map(({ time, set }) => ({ time: thousandths(time), set })) } : {}),
           ...(film.scene.sounds ? { sounds: film.scene.sounds.map(({ time, name, volume, until, actor }) => ({ time: thousandths(time), name, volume, ...((until !== undefined) ? { until: thousandths(until) } : {}), ...((actor !== undefined) ? { actor } : {}) })) } : {}),
           ...(sizes ? { close: closePairs(film, sizes).map(pair => ({ actors: pair.actors, frame: pair.frame, time: thousandths(pair.time), gap: hundredths(pair.gap) })) } : {}),
+          ...(staged ? { camera: cameraProblems(staged.film, staged.sizes, staged.parts).map(problemReport) } : {}),
+          ...((staged && (staged.avoided.length > 0)) ? { avoided: staged.avoided.map(({ from, to, kept, view }) => ({ from: thousandths(from), to: thousandths(to), kept: hundredths(kept), ...((view !== undefined) ? { view } : {}) })) } : {}),
           ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
         } : {}),
         ...(error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {}),
@@ -120,6 +129,21 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
         actors: [a, b], frame: found.frame, time: thousandths(found.time), gap: hundredths(found.gap), touching: found.gap === 0,
         positions: Object.fromEntries([a, b].map(name => [name, rounded(at.find(actor => actor.name === name)!.position)])),
       };
+    },
+
+    screenOf: ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
+      const { film, sizes, parts } = reviewed(host);
+      const index = frameAt(film, time, frame), at = film.frames[index];
+      const problem = problemAtTime(cameraProblems(film, sizes, parts), at.time);
+      return {
+        frame: index, time: thousandths(at.time),
+        actors: Object.fromEntries(Object.entries(screenAt(film, sizes, index)).map(([name, box]) => [name, screenReport(box)])),
+        ...(problem ? { camera: problemReport(problem) } : {}),
+      };
+    },
+    reviewCuts: () => {
+      const { film, sizes, parts } = reviewed(host);
+      return { cuts: reviewCuts(film, sizes, cameraProblems(film, sizes, parts)).map(cut => ({ time: thousandths(cut.time), frame: cut.frame, before: sideReport(cut.before), after: sideReport(cut.after), angle: hundredths(cut.angle), shots: { before: thousandths(cut.shots.before), after: thousandths(cut.shots.after) }, flags: cut.flags })) };
     },
 
     listFilms: async () => {
@@ -194,6 +218,34 @@ const stageReport = (stage: StageState) => ({
 
 /** each actor's box, once the stage has said */
 const sizesOf = (stage: StageState): Readonly<Record<string, Size>> | undefined => (stage.kind === 'staged') ? stage.sizes : undefined;
+
+/** the film shown as the studios staged it: its actors' boxes and the parts each
+ *  frame's camera meets; none while the film shown is not the one staged */
+const stagedOf = (host: FilmHost): Readonly<{ film: Film; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }> | undefined => {
+  const film = host.film(), stage = host.stage();
+  return (film && (stage.kind === 'staged') && (host.staged() === film)) ? { film, sizes: stage.sizes, parts: stage.parts, avoided: stage.avoided } : undefined;
+};
+
+/** the film as staged, or why it is not */
+const reviewed = (host: FilmHost) => {
+  filmOf(host)/*a film, or why there is none*/;
+  const staged = stagedOf(host);
+  if(!staged) throw new Error('The film is read as it looks once the studios stage it: stage it (describeFilm says why it is not).');
+  return staged;
+};
+
+/** a camera problem, model-facing */
+const problemReport = ({ from, to, kind, by }: CameraProblem) => ({ from: thousandths(from), to: thousandths(to), kind, by });
+/** a box on the screen, model-facing: only that it is behind the camera when it is */
+const screenReport = (box: ScreenBox) => box.behind ? { behind: true } : {
+  left: thousandths(box.left), top: thousandths(box.top), right: thousandths(box.right), bottom: thousandths(box.bottom),
+  center: { x: thousandths(box.center.x), y: thousandths(box.center.y) }, depth: hundredths(box.depth), inFrame: box.inFrame,
+};
+/** a side of a cut, model-facing */
+const sideReport = ({ frame, time, shot, subject, screen, moving }: CutSide) => ({
+  frame, time: thousandths(time), ...((shot !== undefined) ? { shot } : {}), ...((subject !== undefined) ? { subject } : {}),
+  ...(screen ? { screen: screenReport(screen) } : {}), ...((moving !== undefined) ? { moving } : {}),
+});
 
 /** a storyboard frame's caption: its time, its number and its shot's name */
 const captionOf = (time: number, index: number, shots: ReadonlyArray<CameraShot>): string => {

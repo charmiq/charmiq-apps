@@ -1,6 +1,7 @@
 import { SOUND_FILES } from '../../brick-shared/drive';
 import type { Film, StageCamera } from './film';
 import type { Point, SoundCue } from './recorder';
+import { inView } from './screen';
 
 // the film's sound: each sound a film plays read and decoded once, and the mix its
 // cues make. a sound is any audio file in the Platform, named by its
@@ -29,8 +30,6 @@ export const PLATFORM_FILE = 'charmiq://file/';
 const NEAR = 20;
 /** how loud an actor behind the camera sounds, of what it would in front */
 const BEHIND = 0.5;
-/** studs a plate stands (8 LDU of a stud's 20) */
-const STUDS_PER_PLATE = 0.4;
 /** a time past a frame's that rounding alone puts there (seconds) */
 const TIME_EPSILON = 1e-9;
 
@@ -95,18 +94,12 @@ export const missingSounds = (film: Film, buffers: SoundBuffers | undefined): Re
 /** where a point sounds from through a camera: `pan` from -1 (the picture's left
  *  edge and beyond) to 1 (its right), and `gain`, 1 within NEAR studs and quieter
  *  past it, halved behind the camera. `aspect` is the picture's width over its
- *  height (the camera's lens is its height's angle); the camera's right is its
- *  forward crossed with up, as the studio aims it (+y up, -z north): looking straight
- *  down, east is right and north up */
+ *  height (the camera's lens is its height's angle); its right is the screen's (SEE:
+ *  screen.ts) */
 export const placement = (camera: StageCamera, at: Point, aspect: number): Readonly<{ pan: number; gain: number; }> => {
-  const [eye, target, point] = [sceneOf(camera.position), sceneOf(camera.target), sceneOf(at)];
-  const forward = unit(minus(target, eye)) ?? [0, 0, -1];
-  const right = unit([-forward[2], 0, forward[0]]/*forward × up*/) ?? [1, 0, 0]/*straight down*/;
-  const toward = minus(point, eye);
-  const [ahead, across] = [dot(toward, forward), dot(toward, right)];
+  const { ahead, across, distance } = inView(camera, at);
   const halfWidth = Math.tan((camera.fov * Math.PI) / 360) * aspect;
   const pan = Math.max(-1, Math.min(1, across / Math.max(Math.abs(ahead) * halfWidth, 1e-9)));
-  const distance = Math.hypot(...toward);
   const gain = Math.min(1, NEAR / Math.max(distance, 1e-9)) * ((ahead < 0) ? BEHIND : 1);
   return { pan, gain };
 };
@@ -211,17 +204,6 @@ const follow = (param: AudioParam, curve: FrameCurve, fps: number, from: number,
   const start = at + Math.max(0, ((curve.first + into) / fps) - from);
   param.setValueCurveAtTime(values, start, (values.length - 1) / fps);
 };
-
-// == Geometry ====================================================================
-// a direction or a point in the studio's space (studs)
-type Vector = [number, number, number];
-// a scene point (studs east and north, plates up) in the studio's space: +y up, -z
-// north, in studs
-const sceneOf = ({ x, z, height }: Point): Vector => [x, height * STUDS_PER_PLATE, -z];
-const minus = (a: Vector, b: Vector): Vector => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const dot = (a: Vector, b: Vector): number => (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
-// a vector a unit long, or undefined for none
-const unit = (a: Vector): Vector | undefined => { const length = Math.hypot(...a); return (length > 1e-9) ? [a[0] / length, a[1] / length, a[2] / length] : undefined/*no direction*/; };
 
 // == Waveform ====================================================================
 /** a sound's loudest sample in each of `count` equal slices of it, from 0 to 1,

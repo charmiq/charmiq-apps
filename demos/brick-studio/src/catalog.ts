@@ -71,6 +71,9 @@ const HAND_GRIP: GripFrame = { position: [0, -0.8229, -9.8948], matrix: [1, 0, 0
  *  plant's foliage over its base): its fill is measured from below there, never
  *  assumed to reach its bottom */
 export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'plant') || (kind === 'creature') || (kind === 'figure');
+/** whether a kind of part is seen through: a window or door frame (its cells are its
+ *  whole block, opening and all), its glass, a fence */
+export const isSeenThrough = (kind: PartKind): boolean => (kind === 'window') || (kind === 'glass') || (kind === 'fence');
 
 // ................................................................................
 /** the family a part's geometry is packed in and loaded with on first use, or

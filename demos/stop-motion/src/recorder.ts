@@ -33,11 +33,15 @@ export type Span = Readonly<{ from: number; to: number; mode: 'set' | 'add'; cha
 
 /** where the camera looks: a point, or an actor's position raised by `height` plates */
 export type Target = Readonly<{ point: Point; } | { actor: string; height: number; }>;
-/** where the camera stands: a point, or around its target at `angle` degrees (0
- *  south of it, 90 east), `distance` studs out and `height` plates above it */
-export type CameraPlace = Readonly<{ point: Point; } | { orbit: Readonly<{ angle: number; distance: number; height: number; }>; }>;
-/** a camera's key; a cut is a held key, and `name` names the shot it starts */
-export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; ease: Ease; name?: string; line?: number; }>;
+/** where the camera stands: a point, or around its target at `angle` degrees,
+ *  `distance` studs out and `height` plates above it. The angle is fixed to the world
+ *  (0 south of the target, 90 east) or, `relativeTo: 'heading'`, turns with the target
+ *  actor's heading (0 behind it, 90 its right, 180 before it) */
+export type CameraPlace = Readonly<{ point: Point; } | { orbit: Readonly<{ angle: number; distance: number; height: number; relativeTo?: 'heading'; }>; }>;
+/** a camera's key; a cut is a held key, and `name` names the shot it starts.
+ *  `avoid: 'parts'` keeps the camera out of the set's parts from it to the next key
+ *  placing it (SEE: studios.ts avoided) */
+export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; avoid?: 'parts'; ease: Ease; name?: string; line?: number; }>;
 
 export type Title = Readonly<{ from: number; to: number; text: string; style: 'card' | 'caption'; line?: number; }>;
 
@@ -298,20 +302,23 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       counted();
       const at = toTime(time, `${label}.${verb}`);
       const what = `${label}.${verb}(${at})`;
-      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov }`);
-      const { position, orbit, target, fov, ...rest } = values as Record<string, unknown>;
-      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov)`);
+      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov, avoid }`);
+      const { position, orbit, target, fov, avoid, ...rest } = values as Record<string, unknown>;
+      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov, avoid)`);
+      if((avoid !== undefined) && (avoid !== 'parts')) fail(`${what}.avoid is 'parts': the camera kept out of the set's parts`);
       if((position !== undefined) && (orbit !== undefined)) fail(`${what}: a position or an orbit, not both`);
       let place: CameraPlace | undefined;
       if(position !== undefined) place = { point: toPoint(position, `${what}.position`) };
       if(orbit !== undefined) {
-        const { angle, distance, height } = (orbit ?? {}) as Record<string, unknown>;
-        if(![angle, distance, height].every(isFiniteNumber) || ((distance as number) <= 0)) fail(`${what}.orbit is { angle, distance, height }: degrees (0 south of the target, 90 east), studs out and plates up`);
-        place = { orbit: { angle: angle as number, distance: distance as number, height: height as number } };
+        const { angle, distance, height, relativeTo } = (orbit ?? {}) as Record<string, unknown>;
+        if(![angle, distance, height].every(isFiniteNumber) || ((distance as number) <= 0)) fail(`${what}.orbit is { angle, distance, height, relativeTo }: degrees (0 south of the target, 90 east), studs out and plates up`);
+        if((relativeTo !== undefined) && (relativeTo !== 'world') && (relativeTo !== 'heading')) fail(`${what}.orbit.relativeTo is 'world' (its angle fixed to the world: 0 south of the target) or 'heading' (turning with the target actor: 0 behind it)`);
+        place = { orbit: { angle: angle as number, distance: distance as number, height: height as number, ...((relativeTo === 'heading') ? { relativeTo: 'heading' as const } : {}) } };
       } /* else -- a position, or where the key before left it */
       const aim = toTarget(target, `${what}.target`);
       if((fov !== undefined) && (!isFiniteNumber(fov) || ((fov as number) < 5) || ((fov as number) > 120))) fail(`${what}.fov is degrees from 5 to 120`);
-      cameraKeys.push({ time: at, ...(place ? { place } : {}), ...(aim ? { target: aim } : {}), ...((fov !== undefined) ? { fov: fov as number } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), line: callerLine() });
+      if((avoid !== undefined) && !place) fail(`${what}.avoid keeps the camera a key places out of parts: give it a position or an orbit`);
+      cameraKeys.push({ time: at, ...(place ? { place } : {}), ...(aim ? { target: aim } : {}), ...((fov !== undefined) ? { fov: fov as number } : {}), ...((avoid === 'parts') ? { avoid: 'parts' as const } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), line: callerLine() });
     };
     const camera = {
       /** a key: where the camera stands (a point or an orbit round its target), what

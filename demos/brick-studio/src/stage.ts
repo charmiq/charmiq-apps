@@ -23,7 +23,7 @@ import { bankOf, swingOf, turnOf, type Limb, type Pose, LIMBS } from './pose';
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 4;
+export const STAGE_VERSION = 5;
 
 /** the most sets a stage stands */
 export const MAX_STAGED_SETS = 8;
@@ -97,8 +97,9 @@ export type ViewCamera = StageCamera | PlanCamera;
 
 /** a point on the ground: x east and z north in studs */
 export type GroundPoint = Readonly<{ x: number; z: number; }>;
-/** what a plan draws over the set: each path labeled and colored (#rrggbb) */
-export type Marks = Readonly<{ paths: ReadonlyArray<Readonly<{ label: string; color: string; points: ReadonlyArray<GroundPoint>; }>>; }>;
+/** what a plan draws over the set: each path labeled and colored (#rrggbb), dashed
+ *  where it stands for something hidden */
+export type Marks = Readonly<{ paths: ReadonlyArray<Readonly<{ label: string; color: string; dashed?: boolean; points: ReadonlyArray<GroundPoint>; }>>; }>;
 /** what a frame seen through a plan draws over its picture: the marks' paths, each
  *  actor's name where it stands, and the film's camera, whose picture is `aspect`
  *  wide for each unit high */
@@ -575,14 +576,15 @@ export const pictureOf = (frame: ReelFrame, view: string | undefined, marks: Mar
 export const marksOf = (input: unknown): Marks | undefined => {
   if(input === undefined) return undefined/*a plan draws the set alone*/;
   const { paths } = (input ?? {}) as Record<string, unknown>;
-  if(!Array.isArray(paths)) throw new Error('marks is { paths }: each { label, color, points }');
+  if(!Array.isArray(paths)) throw new Error('marks is { paths }: each { label, color, dashed, points }');
   const read = paths.map((path, index) => {
-    const { label, color, points } = (path ?? {}) as Record<string, unknown>;
+    const { label, color, dashed, points } = (path ?? {}) as Record<string, unknown>;
     if(!isName(label) || (label.length > MAX_LABEL)) throw new Error(`marks.paths[${index}].label is 1 to ${MAX_LABEL} characters`);
     if((typeof color !== 'string') || !/^#[0-9a-fA-F]{6}$/.test(color)) throw new Error(`marks.paths[${index}].color is #rrggbb`);
+    if((dashed !== undefined) && (typeof dashed !== 'boolean')) throw new Error(`marks.paths[${index}].dashed is true or false`);
     const ground = Array.isArray(points) && (points.length >= 1) && (points.length <= MAX_PATH_POINTS) && points.every(point => [(point as GroundPoint | null)?.x, (point as GroundPoint | null)?.z].every(isFiniteNumber));
     if(!ground) throw new Error(`marks.paths[${index}].points is 1 to ${MAX_PATH_POINTS} points { x, z }`);
-    return { label, color, points: (points as GroundPoint[]).map(({ x, z }) => ({ x, z })) };
+    return { label, color, ...(dashed ? { dashed } : {}), points: (points as GroundPoint[]).map(({ x, z }) => ({ x, z })) };
   });
   if((read.length > MAX_PATHS) || (read.reduce((sum, path) => sum + path.points.length, 0) > MAX_MARK_POINTS)) throw new Error(`marks holds at most ${MAX_PATHS} paths and ${MAX_MARK_POINTS} points`);
   return { paths: read };
@@ -625,7 +627,7 @@ export const thumbnailOf = (width: unknown, height: unknown): Readonly<{ width: 
 // the values a call gives, each read or refused naming its field
 
 /** a point an input gives, or why it is not one */
-const toPoint = (input: unknown, field: string): Point => {
+export const toPoint = (input: unknown, field: string): Point => {
   const { x, z, height } = (input ?? {}) as Record<string, unknown>;
   if(![x, z, height].every(isFiniteNumber)) throw new Error(`${field} is { x, z, height }: finite numbers (studs, studs, plates)`);
   if((Math.abs(x as number) > MAX_COORDINATE) || (Math.abs(z as number) > MAX_COORDINATE)) throw new Error(`${field}: x and z must lie within ${MAX_COORDINATE} of the origin`);

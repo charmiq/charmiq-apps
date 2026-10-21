@@ -31,6 +31,8 @@ const TITLE_EASE = 0.25/*seconds*/;
 const PLAN_MARGIN = 4/*studs*/;
 /** what a plan's marks name the camera's path */
 const CAMERA_LABEL = 'camera';
+/** the most paths a studio's marks hold (Brick Studio's MAX_PATHS) */
+const MAX_MARK_PATHS = 256;
 
 // == Types =======================================================================
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
@@ -73,12 +75,14 @@ export type ReelFrame = Readonly<{
 /** a camera's shot: from its cut (or the film's start) to the next cut (or the
  *  film's end), in seconds, named by its cut */
 export type CameraShot = Readonly<{ from: number; to: number; name?: string; }>;
-/** a shot's frames: its first, and its middle (the frame a storyboard pictures) */
-export type ShotFrames = Readonly<{ shot: CameraShot; first: number; middle: number; }>;
+/** a shot's frames: its first, its last, and its middle (the frame a storyboard
+ *  pictures) */
+export type ShotFrames = Readonly<{ shot: CameraShot; first: number; last: number; middle: number; }>;
 
-/** what a plan draws over the set: each path labeled and colored, its points on the
- *  ground (SEE: Brick Studio's stage marks) */
-export type Marks = Readonly<{ paths: ReadonlyArray<Readonly<{ label: string; color: string; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; }>>; }>;
+/** what a plan draws over the set: each path labeled and colored, dashed where it
+ *  stands for something hidden, its points on the ground (SEE: Brick Studio's stage
+ *  marks) */
+export type Marks = Readonly<{ paths: ReadonlyArray<Readonly<{ label: string; color: string; dashed?: boolean; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; }>>; }>;
 /** the colors marks are drawn in: an actor's by its place in the scene (its
  *  timeline row's), and the camera's */
 export type Paint = Readonly<{ actor: (index: number) => string; camera: string; }>;
@@ -103,7 +107,7 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
   let previous: ReadonlyMap<string, Placed> | undefined;
   for(let index=0; index<scene.frames; index++) {
     const time = index / scene.fps;
-    const placed = new Map<string, Placed>();
+    const placed = new Map<string, Placed>(), headings = new Map<string, number>();
     for(const actor of order) {
       const local = localAt(actor, index, time, actor.ride ? undefined : rests.get(actor.name)/*a rider stands where it rides*/);
       const own = placedOf(local);
@@ -111,6 +115,10 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
       const standing = parent ? riding(parent, actor.ride!.offset, own) : own;
       within(actor, standing.position, time);
       placed.set(actor.name, standing);
+      // its heading as written: what it rides's, and its own yaw, unwrapped (a turn
+      // through 180 carries on round), what its ride's tilt adds taken from its turn
+      const written = (parent ? headings.get(actor.ride!.parent)! : 0) + (local.channels.yaw ?? 0);
+      headings.set(actor.name, written + wrapped(turnOf(standing.matrix).yaw - written));
     }
     for(const name of wheeled) {
       const now = placed.get(name), before = previous?.get(name);
@@ -129,9 +137,9 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
     });
     const fade = channelAt(scene.fade, 'fade', time) ?? 0;
     const title = scene.titles.find(each => (time >= each.from) && (time < each.to));
-    const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, cameraAt(view, index, time, placed)]));
+    const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, cameraAt(view, index, time, placed, headings)]));
     const set = setAt(scene.sets, time);
-    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: cameraAt(scene.camera, index, time, placed), views, fade, ...(title ? { title } : {}) });
+    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: cameraAt(scene.camera, index, time, placed, headings), views, fade, ...(title ? { title } : {}) });
   }
   if(!scene.views.some(view => view.plan)) return { scene, frames };
 
@@ -153,15 +161,15 @@ export const cameraShots = (camera: RecordedCamera, length: number): ReadonlyArr
 /** the shot showing at `time`: the last whose cut it has reached */
 export const shotAt = (shots: ReadonlyArray<CameraShot>, time: number): CameraShot | undefined => shots.filter(shot => isReached(shot.from, time)).pop();
 
-/** each of a film's shots that a frame shows, with its first frame and the one nearest
- *  its middle: a shot holds the frames that reach its cut and not the next, so one
+/** each of a film's shots that a frame shows, with its first and last frames and the
+ *  one nearest its middle: a shot holds the frames that reach its cut and not the next, so one
  *  holding no frame has none */
 export const shotFrames = ({ scene, frames }: Film): ReadonlyArray<ShotFrames> => cameraShots(scene.camera, scene.length).flatMap(shot => {
   const first = frames.findIndex(frame => isReached(shot.from, frame.time));
   const next = frames.findIndex(frame => isReached(shot.to, frame.time));
   const last = ((next < 0) ? frames.length : next) - 1;
   if((first < 0) || (first > last)) return []/*no frame shows it*/;
-  return [{ shot, first, middle: Math.min(last, Math.max(first, Math.round(((shot.from + shot.to) / 2) * scene.fps))) }];
+  return [{ shot, first, last, middle: Math.min(last, Math.max(first, Math.round(((shot.from + shot.to) / 2) * scene.fps))) }];
 });
 
 // == Plan ========================================================================
@@ -187,8 +195,10 @@ const planArea = (scene: Recorded, frames: ReadonlyArray<FilmFrame>): Area => {
 
 /** a plan's marks: each actor's path over the frames it shows (a frame it is hidden
  *  breaks it), none for a rider, whose path is what it rides; then the camera's path,
- *  broken at each cut. A point repeating the one before is left out */
-export const planMarksOf = (film: Film, paint: Paint): Marks => {
+ *  broken at each cut and dashed over the frames `inside` says it stands inside a part
+ *  (each dashed stretch joined to its neighbors). A point repeating the one before is
+ *  left out. Dashes too many for a studio's marks leave the camera's path whole */
+export const planMarksOf = (film: Film, paint: Paint, inside: ReadonlyArray<boolean> = []): Marks => {
   const { scene, frames } = film;
   const paths: Array<Marks['paths'][number]> = [];
   const shown = frames.map(frame => new Map(frame.actors.map(actor => [actor.name, actor.position])))/*each frame's actors, by name*/;
@@ -204,15 +214,27 @@ export const planMarksOf = (film: Film, paint: Paint): Marks => {
     if(points.length > 0) paths.push({ label: actor.name, color, points });
   });
 
+  const camera = cameraPaths(film, paint, inside);
+  return { paths: [...paths, ...(((paths.length + camera.length) > MAX_MARK_PATHS) ? cameraPaths(film, paint, []) : camera)] };
+};
+
+/** the camera's path, broken at each cut and at each change in whether it stands
+ *  inside a part */
+const cameraPaths = ({ scene, frames }: Film, paint: Paint, inside: ReadonlyArray<boolean>): Marks['paths'] => {
+  const paths: Array<Marks['paths'][number]> = [];
   const cuts = cameraShots(scene.camera, scene.length).slice(1).map(shot => shot.from);
-  let points: Array<{ x: number; z: number; }> = [];
+  let points: Array<{ x: number; z: number; }> = [], dashed = false;
+  const end = () => { if(points.length > 0) paths.push({ label: CAMERA_LABEL, color: paint.camera, ...(dashed ? { dashed } : {}), points }); };
   frames.forEach((frame, index) => {
     const cut = (index > 0) && cuts.some(time => !isReached(time, frames[index - 1].time) && isReached(time, frame.time));
-    if(cut && (points.length > 0)) { paths.push({ label: CAMERA_LABEL, color: paint.camera, points }); points = []; }
+    const hidden = inside[index] === true;
+    if(cut) { end(); points = []; }
+    else if((hidden !== dashed) && (points.length > 0)) { end(); points = [points[points.length - 1]]/*joined to the stretch before*/; }
+    dashed = hidden;
     pushPoint(points, frame.camera.position);
   });
-  if(points.length > 0) paths.push({ label: CAMERA_LABEL, color: paint.camera, points });
-  return { paths };
+  end();
+  return paths;
 };
 
 /** adds a point on the ground, to the hundredth of a stud, to a path unless it
@@ -299,16 +321,23 @@ const within = (actor: RecordedActor, { x, z, height }: Point, time: number) => 
 
 // == Camera ======================================================================
 /** the camera at a frame: its target, then where it stands (around the target, or
- *  at a point), its lens, then any shake */
-const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: ReadonlyMap<string, Placed>): StageCamera => {
+ *  at a point), its lens, then any shake. An orbit relative to the target's heading
+ *  turns with the actor the target key in force names (0 behind it; SEE: keyInForce):
+ *  its angle on the world is its own less that actor's heading (`headings`, its yaw as
+ *  written, unwrapped; an orbit's angle runs counterclockwise seen from above, a yaw
+ *  clockwise). Round a point, an orbit has no heading: its angle is the world's */
+const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: ReadonlyMap<string, Placed>, headings: ReadonlyMap<string, number>): StageCamera => {
   const keys = camera.keys;
   const resolve = (target: Target): Point => ('point' in target) ? target.point : lifted(placed.get(target.actor)!.position, target.height);
   const target = eased(keys.filter(key => key.target), time, key => resolve(key.target!), lerpPoint) ?? DEFAULT_TARGET;
+  const aimed = keyInForce(keys.filter(key => key.target), time)?.target;
+  const heading = (aimed && ('actor' in aimed)) ? headings.get(aimed.actor)! : 0;
+  const onWorld = (orbit: Readonly<{ angle: number; relativeTo?: 'heading'; }>): number => orbit.angle - ((orbit.relativeTo === 'heading') ? heading : 0);
 
   const places = keys.filter(key => key.place);
-  const pointOf = (place: CameraPlace): Point => ('point' in place) ? place.point : orbitPoint(target, place.orbit);
-  const position = eased(places, time, key => key.place!, (from, to, u) => {
-    if(('orbit' in from) && ('orbit' in to)) return { orbit: { angle: lerp(from.orbit.angle, to.orbit.angle, u), distance: lerp(from.orbit.distance, to.orbit.distance, u), height: lerp(from.orbit.height, to.orbit.height, u) } }/*round on its circle*/;
+  const pointOf = (place: CameraPlace): Point => ('point' in place) ? place.point : orbitPoint(target, { ...place.orbit, angle: onWorld(place.orbit) });
+  const position = eased(places, time, key => key.place!, (from, to, u): CameraPlace => {
+    if(('orbit' in from) && ('orbit' in to)) return { orbit: { angle: lerp(onWorld(from.orbit), onWorld(to.orbit), u), distance: lerp(from.orbit.distance, to.orbit.distance, u), height: lerp(from.orbit.height, to.orbit.height, u) } }/*round on its circle, its angles on the world*/;
     return { point: lerpPoint(pointOf(from), pointOf(to), u) };
   });
   const channels: Record<string, number> = {};
@@ -367,6 +396,11 @@ export const channelAt = (keys: ReadonlyArray<Key>, channel: string, time: numbe
 /** whether `time` has reached a key at `at`: a key holds from its own time on,
  *  compared exactly, so a cut's shot and the frames that show it agree */
 export const isReached = (at: number, time: number): boolean => at <= time;
+
+/** the camera key in force at a time, of keys sorted by time: the last it has reached,
+ *  else the first, held before it as its values are (SEE: eased) */
+export const keyInForce = <K extends Readonly<{ time: number; }>>(keys: ReadonlyArray<K>, time: number): K | undefined =>
+  keys.filter(key => isReached(key.time, time)).pop() ?? keys[0];
 
 /** a value at a time over keys sorted by time: each key's value eased into from the
  *  key before by the later key's ease */
@@ -432,6 +466,8 @@ const multiplyVector = (m: ReadonlyArray<number>, v: ReadonlyArray<number>): num
 // == Util ========================================================================
 const lerp = (a: number, b: number, u: number): number => a + ((b - a) * u);
 const lerpPoint = (a: Point, b: Point, u: number): Point => ({ x: lerp(a.x, b.x, u), z: lerp(a.z, b.z, u), height: lerp(a.height, b.height, u) });
+/** an angle (degrees) brought within a half turn of 0: -180 up to 180 */
+const wrapped = (degrees: number): number => ((((degrees % 360) + 540) % 360)) - 180;
 
 /** a failure naming the scene's line */
 const sceneError = (message: string, line: number | undefined) => Object.assign(new Error(message), { sceneLine: line });

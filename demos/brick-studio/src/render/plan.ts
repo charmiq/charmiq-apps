@@ -41,18 +41,21 @@ export const drawPlan = (context: CanvasRenderingContext2D | OffscreenCanvasRend
   context.save();
   context.lineCap = context.lineJoin = 'round';
 
-  // each path, on a halo of light
+  // each path, on a halo of light; a dashed one's dashes over an unbroken halo
   for(const path of plan.paths) {
     const points = path.points.map(place);
     for(const [color, thickness] of [[HALO, line + 2], [path.color, line]] as const) {
       context.strokeStyle = context.fillStyle = color;
       context.lineWidth = thickness;
+      context.setLineDash((path.dashed && (color !== HALO)) ? [line * 2, line * 2] : []);
       if(points.length < 2) { context.beginPath(); context.arc(points[0][0], points[0][1], thickness, 0, Math.PI * 2); context.fill(); continue; }
       context.beginPath();
       points.forEach(([x, y], index) => { if(index < 1) context.moveTo(x, y); else context.lineTo(x, y); });
       context.stroke();
     }
   }
+
+  context.setLineDash([]);
 
   // the film's camera: a wedge as wide as its picture's field of view, out to where
   // it looks

@@ -169,8 +169,9 @@ A Charm drives the Studio through these:
 | `setView` | turns the camera and frames the build |
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
 | `setFidelity` | sets the look, from Draft to Path traced, as the Look slider does |
+| `probeStage` | what stands at `points` and across `segments` of a set as a stage shows it (staged or not, its cast pieces left out): the part filling each point, and the first part each segment crosses, none holding its end, against the cells collisions are checked in; glass, a `trans-` color, window and door frames and fences hide nothing; a part a hinge or face carries is judged by itself and named by its carrier |
 | `describeStage` | whether a scene is staged, whether the person went back to the build since, whether the studio holds a build, and its sets |
-| `stage` | shows a scene in place of the build: its sets (`sets`, of the build or of LDraw text given as `ldraw`) and its actors, each a component, a dressed part, or a piece of a set by where it stands (`placed`, naming its set: lifted out of that set while staged, its rest answered so a frame there draws it where it stood); answers each actor's box (`sizes`). A film's `marks` are what a plan view draws over the set |
+| `stage` | shows a scene in place of the build: its sets (`sets`, of the build or of LDraw text given as `ldraw`) and its actors, each a component, a dressed part, or a piece of a set by where it stands (`placed`, naming its set: lifted out of that set while staged, its rest answered so a frame there draws it where it stood); answers each actor's box (`sizes`). A film's `marks` are what a plan view draws over the set, a path `dashed` where it stands for something hidden |
 | `frame` | shows one moment of the staged scene on one of its sets (`set`): each actor where its shot puts it, through a camera; `capture` answers it as an image, for Applications |
 | `loadReel` | loads a page of a film's frames into the stage, for Applications (`stage` with a `reel` first); each frame names the staged set it stands on (`set`), and its views are cameras, or plans looking straight down over an area, north up, the film's paths, names and camera drawn over it |
 | `show` | shows a frame of the film: at once, the newest asked; with `capture`, that exact frame as an image, its fade and title drawn |
@@ -203,6 +204,7 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/build.ts`](charmiq://./src/build.ts) | the current build and its edits |
 | [`src/stage.ts`](charmiq://./src/stage.ts) | a stage's sets, its actors and each frame's shots, as part lines |
 | [`src/set-control.ts`](charmiq://./src/set-control.ts) | the set menu: the set shown, and the build's sets to show |
+| [`src/probe.ts`](charmiq://./src/probe.ts) | what stands at a point and across a segment of a set, followed exactly cell by cell |
 | [`src/stage-control.ts`](charmiq://./src/stage-control.ts) | the Studio on stage: its strip, its way back and its frames in order |
 | [`src/numbers.ts`](charmiq://./src/numbers.ts) | the least and greatest of a build-sized list of numbers |
 | [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` app-content, edited with guarded edits |

@@ -573,6 +573,13 @@ const ON_SOUTH_FACE = [1, 0, 0, 0, 0, -1, 0, 1, 0];
 /** each face's map taken as a top (SEE: ON_SOUTH_FACE), the south's turned to it */
 const ON_FACE = Object.fromEntries(FACES.map(face => [face, compose({ matrix: rotationMatrix(FACE_TURNS[face]), position: [0, 0, 0] }, { matrix: ON_SOUTH_FACE, position: [0, 0, 0] }).matrix])) as Readonly<Record<Face, ReadonlyArray<number>>>;
 
+/** the cells each part of a mount's component fills, moved to where the mount stands
+ *  (SEE: carriedCells): theirs together are the mount's */
+export const carriedPartCells = (shape: PartShape, placement: Placement, mount: Mount, component: Readonly<{ placements: ReadonlyArray<Placement>; footprint: Footprint; }>): ReadonlyArray<Readonly<{ part: Placement; cells: FilledCell[]; }>> => {
+  const moved = mountTransform(shape, placement, mount, component.footprint);
+  return component.placements.map(part => ({ part, cells: turnedCells(filledCells(getShape(getPart(part.part)!/*by contract*/), part), moved) }));
+};
+
 /** every grid cell, one level each, that one of `cells` (in their own grid) moved by
  *  `transform` (their LDU frame to the build's) overlaps with positive volume, tested
  *  by the separating axes of two boxes: each cell is tested against the grid cells

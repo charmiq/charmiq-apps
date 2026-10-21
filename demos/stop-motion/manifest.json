@@ -31,7 +31,7 @@
     "charmiq.command": [
       {
         "name": "describeFilm",
-        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, the sounds it plays, every two actors that come within 2 studs and where, once staged: the moments to inspect for a possible collision, by their boxes, and what it logged), or the scene's mistake and its line, and the sounds a scene can play",
+        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, the sounds it plays, every two actors that come within 2 studs and where, once staged: the moments to inspect for a possible collision, by their boxes; where the camera stands inside a part or an actor or has its target hidden, and where a camera keeping out of parts was drawn in, once staged; and what it logged), or the scene's mistake and its line, and the sounds a scene can play",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
@@ -52,6 +52,8 @@
             "sounds":     { "type": "array", "description": "Each sound the scene plays (sound.at, or an actor's .sound to follow it): from when (seconds), the sound (a Platform file's charmiq://file/<assetId> URI, or a shipped sound's name), its volume (1 as recorded), until when it plays over and over (absent: once) and the actor it follows", "items": { "type": "object", "properties": { "time": { "type": "number" }, "name": { "type": "string" }, "volume": { "type": "number" }, "until": { "type": "number" }, "actor": { "type": "string" } }, "required": ["time", "name", "volume"] } },
             "shippedSounds": { "type": "array", "description": "The few sounds Stop Motion ships for its example films, playable by name (sound.at(1, 'engine')). A film's own sounds are files in the Platform, played by URI", "items": { "type": "string" } },
             "shippedSoundsError": { "type": "string", "description": "Why the shipped sounds could not be listed (shippedSounds is then empty): describe the film again to retry" },
+            "camera":     { "type": "array", "description": "Where the camera goes wrong, as spans of seconds: standing inside a part of the set or an actor, or one standing between it and its target (an actor riding with its target never counts). Present only once staged", "items": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "kind": { "type": "string", "description": "inside: the camera stands inside it; hidden: it stands between the camera and its target" }, "by": { "type": "string", "description": "The part (as Brick Studio names it) or the actor" } }, "required": ["from", "to", "kind", "by"] } },
+            "avoided":    { "type": "array", "description": "Where a camera keyed avoid: 'parts' was drawn in toward its target to keep clear of the set's parts, as spans of seconds, each with the least share of its keyed distance it kept and the view it is (absent for the film's camera)", "items": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "kept": { "type": "number" }, "view": { "type": "string" } }, "required": ["from", "to", "kept"] } },
             "close":      { "type": "array", "description": "Every two actors that come within 2 studs, each where they come closest: the gap between their boxes in studs, 0 touching. Present only once staged: stage the film when it is absent", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
             "logs":       { "type": "array", "items": { "type": "string" } },
             "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] },
@@ -201,6 +203,41 @@
           "properties": { "discard": { "type": "boolean", "description": "Lose the film's unsaved changes" } }
         },
         "outputSchema": { "type": "object", "properties": { "cleared": { "type": "boolean" } }, "required": ["cleared"] }
+      },
+      {
+        "name": "screenOf",
+        "description": "Where every actor stands on the screen at a moment, by time (seconds) or frame (from 0), as the main studio's camera draws it, and the camera's problem then, if any (describeFilm camera). Read the film as it looks without a screenshot: whether an actor is in frame, how much of the frame it fills, which side it stands on. Once the film is staged",
+        "inputSchema": { "type": "object", "properties": { "time": { "type": "number" }, "frame": { "type": "integer" } } },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "frame":  { "type": "integer" },
+            "time":   { "type": "number" },
+            "actors": { "type": "object", "description": "Each actor the studio cast and the frame shows, by name", "additionalProperties": { "type": "object", "description": "Its box on the screen: left, top, right and bottom as shares of the frame (0 to 1 across and down, past them where it runs off), its middle, how far ahead its nearest corner stands (studs) and whether any of it is in frame; only behind: true when it stands wholly behind the camera", "properties": { "left": { "type": "number" }, "top": { "type": "number" }, "right": { "type": "number" }, "bottom": { "type": "number" }, "center": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } }, "required": ["x", "y"] }, "depth": { "type": "number" }, "inFrame": { "type": "boolean" }, "behind": { "type": "boolean" } } } },
+            "camera": { "type": "object", "properties": { "from": { "type": "number" }, "to": { "type": "number" }, "kind": { "type": "string", "description": "inside: the camera stands inside it; hidden: it stands between the camera and its target" }, "by": { "type": "string", "description": "The part (as Brick Studio names it) or the actor" } }, "required": ["from", "to", "kind", "by"] }
+          },
+          "required": ["frame", "time", "actors"]
+        }
+      },
+      {
+        "name": "reviewCuts",
+        "description": "Every cut of the film read as an editor reads it: the last frame of the shot before and the first after, each side's subject, where it stands on the screen and which way it moves, how far the camera turns (degrees), how long each shot runs, and what an editor would flag: a subject crossing the line (moving one way before the cut and the other after), jumping across the screen, a cut turning the camera under 30 degrees on one subject, a shot under a second, a subject out of frame, the camera inside something or its target hidden. A shot no frame shows is passed over. Once the film is staged",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "cuts": { "type": "array", "items": { "type": "object", "properties": {
+              "time":   { "type": "number" },
+              "frame":  { "type": "integer", "description": "The first frame after the cut" },
+              "before": { "type": "object", "properties": { "frame": { "type": "integer" }, "time": { "type": "number" }, "shot": { "type": "string" }, "subject": { "type": "string", "description": "The actor the camera aims at, else the one filling most of the frame" }, "screen": { "type": "object", "description": "Its box on the screen: left, top, right and bottom as shares of the frame (0 to 1 across and down, past them where it runs off), its middle, how far ahead its nearest corner stands (studs) and whether any of it is in frame; only behind: true when it stands wholly behind the camera", "properties": { "left": { "type": "number" }, "top": { "type": "number" }, "right": { "type": "number" }, "bottom": { "type": "number" }, "center": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } }, "required": ["x", "y"] }, "depth": { "type": "number" }, "inFrame": { "type": "boolean" }, "behind": { "type": "boolean" } } }, "moving": { "type": "string", "description": "Which way the subject moves across the frame over its shot's few frames that side, as this frame's camera sees it (left, right, up, down or still); absent for a shot of one frame" } }, "required": ["frame", "time"] },
+              "after":  { "type": "object", "properties": { "frame": { "type": "integer" }, "time": { "type": "number" }, "shot": { "type": "string" }, "subject": { "type": "string", "description": "The actor the camera aims at, else the one filling most of the frame" }, "screen": { "type": "object", "description": "Its box on the screen: left, top, right and bottom as shares of the frame (0 to 1 across and down, past them where it runs off), its middle, how far ahead its nearest corner stands (studs) and whether any of it is in frame; only behind: true when it stands wholly behind the camera", "properties": { "left": { "type": "number" }, "top": { "type": "number" }, "right": { "type": "number" }, "bottom": { "type": "number" }, "center": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" } }, "required": ["x", "y"] }, "depth": { "type": "number" }, "inFrame": { "type": "boolean" }, "behind": { "type": "boolean" } } }, "moving": { "type": "string", "description": "Which way the subject moves across the frame over its shot's few frames that side, as this frame's camera sees it (left, right, up, down or still); absent for a shot of one frame" } }, "required": ["frame", "time"] },
+              "angle":  { "type": "number" },
+              "shots":  { "type": "object", "properties": { "before": { "type": "number" }, "after": { "type": "number" } }, "required": ["before", "after"] },
+              "flags":  { "type": "array", "items": { "type": "string" } }
+            }, "required": ["time", "frame", "before", "after", "angle", "shots", "flags"] } }
+          },
+          "required": ["cuts"]
+        }
       },
       {
         "name": "where",

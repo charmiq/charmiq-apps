@@ -141,7 +141,7 @@ export const isSized = (sizes: Readonly<Record<string, Size>>, name: string): bo
 
 // == Util ========================================================================
 /** what an actor rides at the bottom of its rides, itself when it rides nothing */
-const rideRoot = (actors: ReadonlyArray<RecordedActor>, actor: RecordedActor): string => {
+export const rideRoot = (actors: ReadonlyArray<RecordedActor>, actor: RecordedActor): string => {
   const seen = new Set<string>();
   let current = actor;
   while(current.ride && !seen.has(current.name)) {
@@ -149,6 +149,44 @@ const rideRoot = (actors: ReadonlyArray<RecordedActor>, actor: RecordedActor): s
     current = actors.find(each => each.name === current.ride!.parent) ?? current;
   }
   return current.name;
+};
+
+/** a box's eight corners: its footprint's at its bottom, then at its top */
+export const boxCorners = (box: Box): ReadonlyArray<Point> => {
+  const footprint = corners(box);
+  return [box.position.height, box.position.height + box.size.height].flatMap(height => footprint.map(([x, z]) => ({ x, z, height })));
+};
+
+/** whether a point lies within a box: inside its turned footprint, between its bottom
+ *  and its top */
+export const inBox = (box: Box, point: Point): boolean => {
+  const [across, up, along] = boxFrameOf(box, point);
+  return (Math.abs(across) <= (box.size.width / 2)) && (up >= 0) && (up <= (box.size.height * STUDS_PER_PLATE)) && (Math.abs(along) <= (box.size.depth / 2));
+};
+
+/** where a segment first enters a box, as a share of its length from its start; none
+ *  when it misses it */
+export const segmentEnters = (box: Box, from: Point, to: Point): number | undefined => {
+  const [a, b] = [boxFrameOf(box, from), boxFrameOf(box, to)];
+  const low = [-box.size.width / 2, 0, -box.size.depth / 2], high = [box.size.width / 2, box.size.height * STUDS_PER_PLATE, box.size.depth / 2];
+  let [enter, leave] = [0, 1];
+  for(let axis=0; axis<3; axis++) {
+    const delta = b[axis] - a[axis];
+    if(Math.abs(delta) < 1e-12) { if((a[axis] < low[axis]) || (a[axis] > high[axis])) return undefined; continue; }
+    const [t1, t2] = [(low[axis] - a[axis]) / delta, (high[axis] - a[axis]) / delta];
+    enter = Math.max(enter, Math.min(t1, t2));
+    leave = Math.min(leave, Math.max(t1, t2));
+    if(enter > leave) return undefined;
+  }
+  return enter;
+};
+
+/** a point in a box's own frame (studs): across its east, up from its bottom, along its
+ *  north, its footprint's middle at the origin (SEE: corners) */
+const boxFrameOf = (box: Box, point: Point): readonly [number, number, number] => {
+  const angle = box.yaw * (Math.PI / 180);
+  const [dx, dz] = [point.x - box.position.x, point.z - box.position.z];
+  return [(dx * Math.cos(angle)) - (dz * Math.sin(angle)), (point.height - box.position.height) * STUDS_PER_PLATE, (dx * Math.sin(angle)) + (dz * Math.cos(angle))];
 };
 
 /** a box's footprint corners, in order round it (x east, z north) */

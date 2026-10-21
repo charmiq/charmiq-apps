@@ -454,6 +454,29 @@
         }
       },
       {
+        "name": "probeStage",
+        "description": "What stands where on a stage of these sets and actors (staged or not; the pieces cast left out, nothing shown): the part filling each point, and the first part each segment crosses from its start (glass, a trans- color, window and door frames and fences hide nothing; the part holding a segment's end does not count; a part a hinge or face carries is judged by itself and named by its carrier). Points are the film's: x and z in studs within 400 of the origin, height in plates within 2000 of the baseplate; at most 20000 points and segments a call. Only parts on the grid fill cells, as collisions count them. A film's camera is checked with it: inside a part, or a part between it and its target",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "ldraw":    { "type": "string", "description": "LDraw text standing for the build, as stage takes it (leave it out for the build)" },
+            "sets":     { "type": "array", "items": { "type": "string" }, "description": "The sets of the stage, as stage takes them" },
+            "actors":   { "type": "array", "items": { "type": "object" }, "description": "The stage's actors, as stage takes them: the pieces cast are left out of their set" },
+            "set":      { "type": "string", "description": "The set probed, one of sets (the first when left out)" },
+            "points":   { "type": "array", "items": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] } },
+            "segments": { "type": "array", "items": { "type": "array", "items": { "type": "object" }, "minItems": 2, "maxItems": 2 }, "description": "Each [from, to], two points" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "points":   { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each point's part, named, or null" },
+            "segments": { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each segment's first part, named, or null" }
+          },
+          "required": ["points", "segments"]
+        }
+      },
+      {
         "name": "describeStage",
         "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, whether the studio holds a build of its own, and its build's sets",
         "inputSchema": { "type": "object", "properties": {} },
@@ -501,7 +524,7 @@
             "view": { "type": "string", "description": "The view of the reel's frames this studio shows (the main camera when left out)" },
             "marks": {
               "type": "object",
-              "description": "What a plan view draws over the set, for Applications: paths along the ground, each { label, color: #rrggbb, points: [{ x, z }] } (at most 256 paths, 7200 points each, 50000 in all)",
+              "description": "What a plan view draws over the set, for Applications: paths along the ground, each { label, color: #rrggbb, dashed (where it stands for something hidden), points: [{ x, z }] } (at most 256 paths, 7200 points each, 50000 in all)",
               "properties": { "paths": { "type": "array", "items": { "type": "object" } } },
               "required": ["paths"]
             }

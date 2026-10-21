@@ -1,4 +1,4 @@
-import { carriedCells, cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, mountsOf, studCells, type Copy, type FilledCell, type Mount, type Placement } from './grid';
+import { carriedCells, carriedPartCells, cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, mountsOf, studCells, type Copy, type FilledCell, type Mount, type Placement } from './grid';
 import { mountedComponent, READ_IN_PART, type Model } from './model';
 
 // checks a build on the grid. A part fills the cells and levels its shape measures
@@ -176,6 +176,13 @@ const framed = (placements: ReadonlyArray<Placement>): Readonly<{ panes: Map<num
 export const occupiedCells = (model: Model, placement: Placement): FilledCell[] => {
   const shape = getShape(getPart(placement.part)!/*by contract*/);
   return [...filledCells(shape, placement), ...mountsOf(placement).flatMap(mount => carriedCells(shape, placement, mount, mountedComponent(model, mount)))];
+};
+
+/** the cells a placement takes in a build (SEE: occupiedCells), by the part filling
+ *  them: its own, then each part its mounts carry */
+export const occupiedPartCells = (model: Model, placement: Placement): ReadonlyArray<Readonly<{ part: Placement; cells: FilledCell[]; }>> => {
+  const shape = getShape(getPart(placement.part)!/*by contract*/);
+  return [{ part: placement, cells: filledCells(shape, placement) }, ...mountsOf(placement).flatMap(mount => carriedPartCells(shape, placement, mount, mountedComponent(model, mount)))];
 };
 
 // == Summary =====================================================================

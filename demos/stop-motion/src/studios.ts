@@ -1,9 +1,11 @@
 import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rxjs';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
+import { clearanceOf, type Avoided, type Probe } from './clearance';
 import { planMarksOf, reelFrameOf, stagedSets, type Film, type Paint, type Rest } from './film';
 import type { Size } from './measure';
 import type { Recorded } from './recorder';
+import type { PartFinding } from './review';
 
 // the studios a film is seen on: the Applications in the document that export
 // commands and describe a stage (SEE: Brick Studio's stage). Each studio is a screen.
@@ -13,8 +15,10 @@ import type { Recorded } from './recorder';
 // than one holding a build stops the film rather than choosing by which loaded first.
 // A film is staged once per scene: the cast and the reel's header (with a plan's
 // marks when the scene has a plan view), then the film made with the wheels the stage
-// found, loaded on every screen a page at a time; the stage's sizes of the actors are
-// kept for measuring. A frame is then a number sent to each screen, and each studio's
+// found, its camera held against the set's parts (drawn in where it avoids them; SEE:
+// clearance.ts), loaded on every screen a page at a time; the stage's sizes of the
+// actors and the parts each frame's camera meets are kept for measuring and review. A
+// plan's camera path is dashed where its camera stands inside a part. A frame is then a number sent to each screen, and each studio's
 // state streams back: the person going back to a build pauses the film at once, a
 // build appearing in a studio or emptied out chooses the screens again, and each
 // change to the main studio's build is told on (the film's file looks again). The
@@ -28,7 +32,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 4;
+const STAGE_VERSION = 5;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -45,6 +49,7 @@ type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; f
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
+  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; }>>;
   stage$(): Observable<ScreenState>;
   stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
@@ -58,15 +63,19 @@ export interface StudioCommands {
 
 /** a studio found: its commands, and whether it holds a build */
 type Found = Readonly<{ commands: StudioCommands; build: boolean; }>;
+/** what a provider asked about its stage is: a studio, a studio speaking another
+ *  version of the stage commands, or no studio */
+type Probed = Readonly<{ kind: 'studio'; found: Found; } | { kind: 'other'; }> | undefined;
 
 /** where the film stands on the studios: none found, more than one holding a build,
- *  staging, staged (with the actors cast that have wheels, those refused, and each
- *  actor's box), the person gone back to a studio's build, or a studio failed */
+ *  staging, staged (with the actors cast that have wheels, those refused, each actor's
+ *  box, the parts each frame's camera meets and the spans it is drawn in to avoid
+ *  them), the person gone back to a studio's build, or a studio failed */
 export type StageState = Readonly<
   | { kind: 'none'; }
   | { kind: 'ambiguous'; builds: number; }
   | { kind: 'staging'; loaded?: number; frames?: number; }/*the reel's frames loaded on every screen, once it loads*/
-  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes: Readonly<Record<string, Size>>; }
+  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }
   | { kind: 'left'; }
   | { kind: 'failed'; message: string; }
 >;
@@ -100,6 +109,9 @@ export class Studios {
   /** the main build's changes since the screens were arranged: a film staged on an
    *  older build casts again from the build as it stands */
   private buildEdits = 0;
+  /** the studios found speaking another version of the stage commands than this one
+   *  (an older or newer Brick Studio: reloading the page loads the same version) */
+  private others = 0;
   /** the bridge the studios are looked for over, the looking, and why the Platform
    *  refused it (none while it looks) */
   private charmiq: CharmIQAPI | undefined;
@@ -111,6 +123,8 @@ export class Studios {
 
   public get studios$(): Observable<ReadonlyArray<unknown>> { return this.found.asObservable(); }
   public get count(): number { return this.found.value.length; }
+  /** how many studios found speak another version of the stage commands */
+  public get otherVersions(): number { return this.others; }
   public get state$(): Observable<StageState> { return this.state.asObservable(); }
   public get stageState(): StageState { return this.state.value; }
   /** why the Platform refused looking for the studios, while it does */
@@ -145,24 +159,27 @@ export class Studios {
     this.found.next(this.found.value)/*no longer refused*/;
     this.discovery = charmiq.discover$<StudioCommands>(COMMANDS).subscribe({ next: providers => {
       const asked = ++this.round;
-      const answered = new Map<StudioCommands, Found>();
+      const answered = new Map<StudioCommands, Found>(), others = new Set<StudioCommands>();
       let waited = false;
       /** the studios that answered, in the order found */
       const take = () => {
         if(asked !== this.round) return/*a newer round answers*/;
         const found = providers.flatMap(provider => answered.get(provider) ?? []);
+        this.others = others.size;
         this.arrange(found);
         this.found.next(found);
       };
-      const probes = providers.map(provider => probe(provider).then(found => {
-        if(!found) return/*not a studio*/;
-        answered.set(provider, found);
+      const probes = providers.map(provider => probe(provider).then(probed => {
+        if(!probed) return/*not a studio*/;
+        if(probed.kind === 'other') others.add(provider);
+        else answered.set(provider, probed.found);
         if(waited) take()/*a busy studio answering late joins*/;
       }));
       void Promise.race([Promise.all(probes), new Promise(resolve => setTimeout(resolve, PROBE_MILLIS))]).then(() => { waited = true; take(); });
     }, error: (failure: unknown) => {
       ++this.round/*no earlier round answers now*/;
       this.lookRefused = messageOf(failure);
+      this.others = 0;
       this.arrange([]);
       this.found.next([]);
     } });
@@ -198,12 +215,14 @@ export class Studios {
       // stands before the first key
       const sets = scene.sets ? stagedSets(scene, (await main.describeStage({})).sets[0]) : undefined;
       const standing = sets ? { sets } : {};
+      const probe: Probe = (set, points, segments) => main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), points, segments });
       const reel = { fps: scene.fps, length: scene.frames, width: scene.width, height: scene.height };
       // a plan's marks are where its actors go: an actor cast from the set starts where
       // its piece stands, which a still staged first tells
       const plan = scene.views.some(view => view.plan);
       const rested = (plan && actors.some(actor => 'placed' in actor)) ? restsOf(await main.stage({ ...standing, actors, ...floor })) : new Map<string, Rest>();
-      const marks = plan ? { marks: planMarksOf(filmFor(new Set()/*its wheels move nothing*/, rested), this.paint) } : {};
+      const preview = plan ? await clearanceOf(filmFor(new Set()/*its wheels move nothing*/, rested), probe) : undefined;
+      const marks = preview ? { marks: planMarksOf(preview.film, this.paint, preview.parts.map(found => found.inside !== undefined)) } : {};
       const answer = await main.stage({ ...standing, actors, ...floor, reel, ...marks });
       const ldraw = (others.length > 0) ? await buildText(main) : undefined;
       const answers = await Promise.all(others.map((studio, index) => {
@@ -213,9 +232,9 @@ export class Studios {
       const reels = [answer, ...answers].map(each => each.reel);
       if(reels.some(each => each === undefined)) throw new Error('A studio took the scene but no reel: it may need updating.');
 
-      // the film with its wheels, loaded on every screen; an actor the stage refused
-      // is left out of every frame (the sheet says why)
-      const film = filmFor(new Set(answer.wheeled ?? []), restsOf(answer));
+      // the film with its wheels, its camera cleared, loaded on every screen; an actor
+      // the stage refused is left out of every frame (the sheet says why)
+      const { film, parts, avoided } = await clearanceOf(filmFor(new Set(answer.wheeled ?? []), restsOf(answer)), probe);
       const cast = new Set(answer.actors);
       const frames = film.frames.map(frame => reelFrameOf({ ...frame, actors: frame.actors.filter(shot => cast.has(shot.name)) }));
       for(let from=0; from<frames.length; from+=REEL_PAGE) {
@@ -225,7 +244,7 @@ export class Studios {
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
       this.staged = { scene, film, screens, reels: reels as number[], edits };
-      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {} });
+      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {}, parts, avoided });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
     }
@@ -377,10 +396,14 @@ export class Studios {
 /** the rests a stage answers, by actor */
 const restsOf = (answer: Readonly<{ placed?: Readonly<Record<string, Rest>>; }>): ReadonlyMap<string, Rest> => new Map(Object.entries(answer.placed ?? {}));
 
-/** a provider as a studio found, once it describes its stage; undefined for an
- *  Application that refuses (no studio) or speaks other stage commands */
-const probe = (provider: StudioCommands): Promise<Found | undefined> =>
-  provider.describeStage({}).then(answer => (answer?.stage === STAGE_VERSION) ? { commands: provider, build: answer.build === true } : undefined, () => undefined);
+/** a provider as a studio found, once it describes its stage: one speaking another
+ *  version of the stage commands is named so; undefined for an Application that
+ *  refuses (no studio) */
+const probe = (provider: StudioCommands): Promise<Probed> =>
+  provider.describeStage({}).then(answer => {
+    if(typeof answer?.stage !== 'number') return undefined/*no stage*/;
+    return (answer.stage === STAGE_VERSION) ? { kind: 'studio', found: { commands: provider, build: answer.build === true } } : { kind: 'other' };
+  }, () => undefined);
 
 /** a studio's build as LDraw text, read a page at a time */
 const buildText = async (studio: StudioCommands): Promise<string> => {

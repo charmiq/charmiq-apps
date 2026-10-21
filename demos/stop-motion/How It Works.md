@@ -17,7 +17,7 @@ Positions are Brick Studio's: `x` east and `z` north in studs, `height` up in pl
 | `a.path(from, to, (u, t) => values)` | values from a function over a span (`u` from 0 to 1 across it, `t` in seconds), in place of the keys there |
 | `a.wobble(value, amount, { rate, from, to })` | smooth noise added to one value: `amount` at most, `rate` swings a second |
 | `a.ride(other, { x, z, height })` | stands at an offset in another actor's frame and turns with it; its own position and turn add to the ride |
-| `camera.at(time, { position \| orbit, target, fov }, ease)` | the camera: standing at a point, or orbiting its target (`{ angle, distance, height }`: angle 0 south of it, 90 east), looking at a point or an actor (`target: car`, or `{ actor: car, height }` to look higher), through a lens of `fov` degrees (32) |
+| `camera.at(time, { position \| orbit, target, fov, avoid }, ease)` | the camera: standing at a point, or orbiting its target (`{ angle, distance, height }`: angle 0 south of it, 90 east, round counterclockwise seen from above; with `relativeTo: 'heading'`, round the actor it looks at as it turns: 0 behind it, 90 its right, 180 before it), looking at a point or an actor (`target: car`, or `{ actor: car, height }` to look higher), through a lens of `fov` degrees (32); `avoid: 'parts'` keeps it out of the set's parts, drawn in toward its target until it stands clear and sees it, from this key to the next placing it (a view's camera too) |
 | `camera.cut(time, { position \| orbit, target, fov }, name)` | a cut: the camera jumps to these values at `time`, starting a new shot, named for the timeline and storyboards |
 | `camera.shake(from, to, amount, rate)` | a handheld shake |
 | `view(name)` | another camera, used the same way: a second Brick Studio in the document shows the scene through it |
@@ -92,12 +92,14 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 
 | Command | Does |
 |---|---|
-| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, its sounds, every two actors that come within 2 studs, and its log, or the scene's mistake and its line; and the sounds Stop Motion ships |
+| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, its sounds, every two actors that come within 2 studs, where the camera stands inside a part or an actor or has its target hidden, where an avoiding camera was drawn in, and its log, or the scene's mistake and its line; and the sounds Stop Motion ships |
 | `seek` | shows a moment (`time` in seconds, or `frame` from 0) in the studios, answering once the studio has drawn it, so a screenshot sees it |
 | `play`, `pause` | the transport |
 | `storyboard` | shows up to 12 moments at once on a sheet over the main studio, each captioned with its time and shot (the middle of each shot when no `times` or `frames` are given), through a `view` when named: a screenshot of the studio reads them all. The film's next move closes it |
 | `measure` | where two actors come closest, over the film or `from` and `to`: the gap between their boxes in studs (each its footprint turned by its yaw and its height; 0 when they touch) and where each stood |
 | `where` | every actor's position and turn, the camera and the set standing, at a `time` or `frame` |
+| `screenOf` | every actor on the screen at a `time` or `frame`, as the studio's camera draws it: its box across and down as shares of the frame, how far ahead, whether it is in frame; and the camera's problem then |
+| `reviewCuts` | every cut as an editor reads it: the frames either side, each side's subject, where it stands on the screen and which way it moves, the camera's turn and each shot's length, and what an editor would flag (crossing the line, a jump across the screen, a jump cut under 30°, a shot under a second, a subject out of frame, the camera inside something or its target hidden) |
 | `listFilms` | the films (and designs) in the films folder, each by name and uri |
 | `saveFilm` | saves the set and the scene as one film: under `name` in the films folder, or over the film's own file wherever it is; another film of that name needs `replace` |
 | `openFilm` | opens a film by `uri` or `name`: its set into the studio, its scene into the code block (a plain design, its set alone) |
@@ -106,6 +108,8 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 `openFilm` and `newFilm` refuse while the film has unsaved changes unless given `discard: true`; save the film first to keep it.
 
 A Charm can also stage a still without a film: Brick Studio's own `stage` and `frame` commands put actors anywhere.
+
+A Charm sees stills, never playback, so the film is also read as it looks. Staging asks Brick Studio's `probeStage` what each frame's camera stands inside and what stands between it and its target, against the cells the set's parts fill (glass, window and door frames and fences hide nothing). `describeFilm` lists where the camera goes wrong, `screenOf` places the actors on the screen, and `reviewCuts` reads each cut. A plan draws the camera's path dashed where it stands inside a part.
 
 
 ## The Files
@@ -122,6 +126,9 @@ A Charm can also stage a still without a film: Brick Studio's own `stage` and `f
 | [`src/scene-edit.ts`](charmiq://./src/scene-edit.ts) | the timeline's edits of the scene: a sound added, a sound moved |
 | [`src/film.ts`](charmiq://./src/film.ts) | a recorded scene as a frame per frame (keys, rides, orbits, rolling wheels, shots, plans), each frame as the studio's reel takes it, and a plan's marks |
 | [`src/measure.ts`](charmiq://./src/measure.ts) | how far apart actors come |
+| [`src/screen.ts`](charmiq://./src/screen.ts) | what a frame's camera sees: a point's and an actor's place on the screen, as the studio draws it |
+| [`src/clearance.ts`](charmiq://./src/clearance.ts) | the film's camera against the set's parts: what each frame's camera meets, and an avoiding camera drawn in |
+| [`src/review.ts`](charmiq://./src/review.ts) | the film read as it looks: where the camera goes wrong, and each cut as an editor reads it |
 | [`src/studios.ts`](charmiq://./src/studios.ts) | the Brick Studios found, the main one chosen, the reel staged, each frame shown, each studio's state followed |
 | [`src/player.ts`](charmiq://./src/player.ts) | the playhead and its clock |
 | [`src/sound.ts`](charmiq://./src/sound.ts) | the film's sounds, read (Platform files through the Drive, shipped sounds as resources) and decoded once, their waveforms, and the mix a film's cues make, for playing and exporting alike |
