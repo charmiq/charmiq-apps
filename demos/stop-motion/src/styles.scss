@@ -226,6 +226,7 @@
   min-height: 0;
   min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr)/*its width the floor's: a zoomed timeline scrolls within it, never widens it*/;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
 }
@@ -380,7 +381,7 @@
   --row: var(--ink);
   --tiers: 1;
   display: grid;
-  grid-template-columns: var(--names) minmax(0, 1fr);
+  grid-template-columns: var(--names) var(--lane-span, minmax(0, 1fr))/*zoomed: the lanes as wide as the zoom*/;
   min-height: calc(28px + ((var(--tiers) - 1) * 14px));
   border-bottom: 1px solid var(--lane-line);
 
@@ -398,8 +399,13 @@
   border-bottom: 1px solid var(--edge);
 }
 
+// the names stay at the left while zoomed lanes scroll sideways under them
 .row-name {
   @extend %mono-caps;
+  position: sticky;
+  left: 0;
+  z-index: 3/*over the lanes' marks*/;
+  background: var(--bench);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -429,6 +435,28 @@
   color: var(--ink-soft);
   font-size: 8px;
   letter-spacing: 0.08em;
+}
+
+// the ruler's corner: zoom out, fit the whole film, zoom in
+.zoom-controls { gap: 4px; justify-content: flex-end; }
+.zoom-button {
+  @extend %mono-caps;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 4px;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  background: var(--bench);
+  color: var(--ink);
+  font-size: 8px;
+  cursor: pointer;
+
+  svg { width: 12px; height: 12px; }
+  &:disabled { opacity: 0.35; cursor: default; }
+  &:focus-visible { outline: 2px solid var(--brick-azure); outline-offset: 1px; }
 }
 
 // a lane and the ruler stand 14px in from their cell's ends, a mark placed on them by
@@ -532,7 +560,7 @@
 }
 
 // a sound's waveform, under its name
-.band-wave { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.band-wave { position: absolute; top: 0; left: 0; height: 100%; pointer-events: none; }/*its left and width the span in view (SEE: timeline.ts drawWave)*/
 .band-label {
   position: relative;
   min-width: 0;
@@ -847,6 +875,7 @@
 // per cell, unexposed until its picture comes from the studio
 .strip {
   --hole: 6px;
+  position: relative/*the navigator's bracket stands over its cells*/;
   display: flex;
   gap: 6px;
   padding: 14px 10px;
@@ -885,6 +914,53 @@
   &.is-current { outline: 2px solid var(--brick-yellow); outline-offset: 1px; }
   &:focus-visible { outline: 2px solid var(--brick-azure); outline-offset: 1px; }
 }
+
+// the navigator: a bracket over the cells framing the span the timeline shows, its
+// ends grips; the whole film framed, it rests faint until a zoom
+.strip-window {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  border: 2px solid var(--brick-yellow);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--brick-yellow) 10%, transparent);
+  pointer-events: none/*the cells under it pressed as ever: its grip and ends take the drags*/;
+  touch-action: none;
+
+  &.is-whole { border-color: color-mix(in srgb, var(--brick-yellow) 40%, transparent); background: transparent; }
+}
+// the grip along the bracket's top, over the sprocket holes: drag to pan. Centered
+// over the bracket and never narrower than a grip, so a bracket a few pixels wide (a
+// long film zoomed deep) is still grabbed; the bracket itself spans the time shown
+.strip-window-grip {
+  position: absolute;
+  left: 50%;
+  width: max(24px, calc(100% - 12px));
+  transform: translateX(-50%);
+  top: -9px;
+  height: 9px;
+  border-radius: 2px 2px 0 0;
+  background: var(--brick-yellow);
+  pointer-events: auto;
+  cursor: grab;
+
+  &:active { cursor: grabbing; }
+}
+.strip-window-end {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 22px;
+  margin-top: -11px;
+  border-radius: 2px;
+  background: var(--brick-yellow);
+  pointer-events: auto;
+  cursor: ew-resize;
+
+  &.is-from { left: -4px; }
+  &.is-to { right: -4px; }
+}
+.strip.is-storyboard .cell.is-in-view { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brick-yellow) 60%, transparent); }
 
 // a storyboard: a cell per shot, never narrower than reads, the track scrolling when
 // they outrun it; its caption over the picture's foot, whole in the cell's title

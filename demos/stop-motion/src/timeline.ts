@@ -3,6 +3,7 @@ import type { Inspected, InspectedMark, Inspector } from './inspector';
 import type { ClosePair } from './measure';
 import type { SoundCue } from './recorder';
 import { bandTiers, groupReading, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type Row, type RowBand, type SoundReading, type SoundsKnown, type Under } from './timeline-marks';
+import { clampZoom, labelOf, labelStep, maxZoom, spanInView, ZOOM_STEP } from './timeline-view';
 
 // the timeline: one row per track (SEE: timeline-marks.ts), each key a diamond at its
 // time (keys too near to tell apart one diamond, counted) and each function of time a
@@ -17,6 +18,13 @@ import { bandTiers, groupReading, keyGroups, rowsOf, standingAt, underAt, type K
 // move at once, in the move's own handler, never waiting on an animation frame; the
 // inspector's heavier work gathers into one update after the moves of a task. The
 // keyboard steps frames (arrows), jumps to the ends (Home, End) and plays (Space).
+// The whole film stands across the lanes first; zoomed in (SEE: timeline-view.ts),
+// the lanes widen and scroll sideways under the names: a pinch, or ⌥ (Alt) with the
+// wheel, zooms about the pointer, = and - about the playhead, \ fits the whole film
+// (again, the zoom before it), and the ruler's corner holds the same as buttons. The
+// span in view is told to the host, which frames it on the picture track; while the
+// film plays, a playhead leaving the view turns it a page, and a scrub or a sound
+// dragged past an end of the view scrolls it.
 // each sound draws as its waveform over the span it plays; one whose time the scene
 // writes as a number drags along its row to a new time, which the scene then holds,
 // and one written otherwise says where its time is written. A sound whose file is
@@ -41,6 +49,11 @@ const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 /** the modifier's key and its name as the timeline's hint says it */
 const MODIFIER_KEY = MAC ? 'Meta' : 'Control';
 const MODIFIER_NAME = MAC ? '⌘' : 'Ctrl';
+/** how much a wheel's or a pinch's delta zooms, and the most one event zooms */
+const WHEEL_ZOOM = 0.01;
+const MAX_WHEEL_DELTA = 50;
+/** how far a lane stands in from its cell's ends (CSS pixels: SEE: styles.scss .lane) */
+const LANE_INSET = 14;
 /** what a sound's mark says while its file is not heard */
 const READING_TEXT: Readonly<Record<SoundReading, string>> = { loading: 'Loading…', unread: 'could not be read' };
 
@@ -63,6 +76,8 @@ export type TimelineHost = Readonly<{
   /** moves a sound to a time of the film: undefined once the scene holds it, else why
    *  it could not */
   moveSound: (cue: SoundCue, time: number) => Promise<string | undefined>;
+  /** the span of the film in view (shares of it, 0 to 1), each time it changes */
+  viewed: (span: Readonly<{ from: number; to: number; }>) => void;
 }>;
 
 /** the film's sounds as the timeline draws them: their lengths and names, and each
@@ -113,8 +128,25 @@ export class Timeline {
   private asking: number | undefined;
   private waiting: number | undefined;
   private restTimer: number | undefined;
-  /** a sound being dragged: its band, its element and where the press began */
-  private dragging: Readonly<{ band: RowBand; mark: HTMLElement; startX: number; }> | undefined;
+  /** a sound being dragged: its band, its element, where the press began and the
+   *  lanes' scroll then */
+  private dragging: Readonly<{ band: RowBand; mark: HTMLElement; startX: number; startScroll: number; }> | undefined;
+  /** the lanes' zoom (1: the whole film across them), the zoom a fit left (a second fit
+   *  returns to it, where it stood), and a zoom waiting for the next animation frame (a
+   *  pinch's moves gather into one) with what it holds still: a share of the film at a
+   *  view x */
+  private zoom = 1;
+  private beforeFit: Readonly<{ zoom: number; from: number; }> | undefined;
+  private zooming: Readonly<{ zoom: number; share: number; x: number; }> | undefined;
+  private zoomFrame: number | undefined;
+  /** the zoom a Safari pinch began at */
+  private gestureZoom = 1;
+  /** a scroll's waveform redraw waiting for the next animation frame */
+  private wavesFrame: number | undefined;
+  /** the lanes' view width (CSS pixels) as last laid out: a resize changing it lays out
+   *  again, on the next animation frame */
+  private shownWidth = 0;
+  private resizeFrame: number | undefined;
   /** the sounds changed while a sound was held: drawn again once the gesture ends */
   private soundsStale = false;
   private dragged = 0;
@@ -155,10 +187,17 @@ export class Timeline {
     const end = () => { this.scrubbing = false; root.classList.remove('is-scrubbing'); };
     this.scroller.addEventListener('pointerup', event => { if(this.dragging) void this.drop(event); else end(); });
     this.scroller.addEventListener('pointercancel', () => { this.cancelDrag(); end(); });
-    this.scroller.addEventListener('scroll', () => {
-      const pointer = this.pointer/*the rows moved under it*/;
-      this.hover(pointer && this.momentUnder(pointer.x, document.elementFromPoint(pointer.x, pointer.y)));
-    });
+    this.scroller.addEventListener('scroll', () => this.refresh(false/*its waveforms on the next frame*/));
+    // a pinch arrives as the wheel with Ctrl (Safari's as its own gesture); ⌥ (Alt) with
+    // the wheel zooms too. ⌘ stays the inspector's, and a plain wheel scrolls
+    this.scroller.addEventListener('wheel', event => {
+      if(!event.ctrlKey && !event.altKey) return/*a scroll*/;
+      event.preventDefault();
+      const delta = Math.min(Math.max(event.deltaY, -MAX_WHEEL_DELTA), MAX_WHEEL_DELTA);
+      this.zoomAt(this.aimedZoom() * Math.exp(-delta * WHEEL_ZOOM), event.clientX);
+    }, { passive: false });
+    root.addEventListener('gesturestart', event => { event.preventDefault(); this.gestureZoom = this.zoom; });
+    root.addEventListener('gesturechange', event => { event.preventDefault(); const gesture = event as Gesture; this.zoomAt(this.gestureZoom * gesture.scale, gesture.clientX); });
     root.addEventListener('keydown', event => this.key(event));
     root.addEventListener('focusin', event => { this.focusedKey = (event.target as HTMLElement).closest<HTMLElement>('.key') ?? undefined; this.update(); });
     root.addEventListener('focusout', () => { this.focusedKey = undefined; this.update(); });
@@ -166,7 +205,12 @@ export class Timeline {
     view.addEventListener('keydown', event => { if(event.key === MODIFIER_KEY) { this.modifier = true; this.follow(); this.update(); } });
     view.addEventListener('keyup', event => { if(event.key === MODIFIER_KEY) { this.modifier = false; this.follow(); this.update(); } });
     view.addEventListener('blur', () => { this.modifier = false; this.follow(); this.update(); });
-    new ResizeObserver(() => this.resized()).observe(root);
+    // answered on the next frame: laying out again resizes the timeline itself (a sideways
+    // scrollbar coming or going), never within the observer's own delivery
+    new ResizeObserver(() => {
+      if(this.resizeFrame !== undefined) return/*one waits*/;
+      this.resizeFrame = view.requestAnimationFrame(() => { this.resizeFrame = undefined; this.resized(); });
+    }).observe(root);
   }
 
   // == Film ======================================================================
@@ -194,10 +238,23 @@ export class Timeline {
     this.layout();
   }
 
-  /** moves the playhead to a frame */
+  /** moves the playhead to a frame. Zoomed, a playhead leaving the view (the film
+   *  playing, a seek elsewhere) turns it a page on, the playhead at its left; a scrub
+   *  scrolls it itself (SEE: scrub) */
   public setFrame(index: number): void {
     this.frame = index;
+    const film = this.film;
+    const box = this.lanes();
+    const share = (film && (film.frames.length > 1)) ? (index / film.frames.length) : 0;
+    if(film && box && (this.zoom > 1) && !this.scrubbing && !this.inView(box.left + (share * box.width))) this.scroller.scrollLeft = share * this.laneWidth;
     this.place();
+  }
+
+  /** shows a span of the film (shares of it, 0 to 1): zoomed so it fills the lanes'
+   *  view, its start at their left, within the zoom's bounds */
+  public showSpan(from: number, to: number): void {
+    if(!this.film) return;
+    this.zoomTo({ zoom: 1 / Math.max(to - from, 1e-6), share: from, x: this.viewBounds().left + LANE_INSET });
   }
 
   // == Layout ====================================================================
@@ -212,18 +269,27 @@ export class Timeline {
     const length = scene.length;
     const at = (time: number) => `${(Math.min(Math.max(time / length, 0), 1) * 100).toFixed(3)}%`;
 
-    // the ruler: a tick each second, finer ticks each frame when they fit
+    // the lanes widened by the zoom, within its bounds at the view's width: the lane
+    // itself exactly its shown width times the zoom, its insets as they are
+    const shown = this.lanesShown();
+    this.zoom = clampZoom(this.zoom, film.frames.length, shown);
+    if(this.zoom > 1) this.scroller.style.setProperty('--lane-span', `${((shown * this.zoom) + (2 * LANE_INSET)).toFixed(2)}px`);
+    else this.scroller.style.removeProperty('--lane-span');
+    this.root.classList.toggle('is-zoomed', this.zoom > 1);
+
+    // the ruler: a label at a step that keeps labels apart at the zoom, finer ticks each
+    // frame when they fit
     const ruler = element(document, 'div', 'ruler');
-    const step = (length > 30) ? 5 : (length > 12) ? 2 : 1;
-    for(let second=0; second<=Math.floor(length); second+=step) {
+    const step = labelStep((shown * this.zoom) / length, scene.fps);
+    for(let index=0; (index * step) <= (length + 1e-9); index++) {
       const tick = element(document, 'span', 'ruler-tick');
-      tick.style.left = at(second);
-      tick.textContent = `${second}s`;
+      tick.style.left = at(index * step);
+      tick.textContent = labelOf(index * step);
       ruler.append(tick);
     }
     ruler.style.setProperty('--frame', at(1 / scene.fps));
     const head = element(document, 'div', 'row row--ruler');
-    head.append(element(document, 'span', 'row-name'), ruler);
+    head.append(this.zoomControls(film), ruler);
     this.scroller.replaceChildren(head);
 
     // keys grouped at the lanes' width: those nearer than KEY_APART draw as one
@@ -238,8 +304,122 @@ export class Timeline {
       return laid.laid;
     });
     this.scroller.append(body);
-    for(const laid of this.laid) laid.row.bands.forEach((band, index) => { if(band.cue) this.drawWave(laid.bands[index], band, sounds); });
+    this.shownWidth = this.lanesShown();
+    this.refresh();
+  }
+
+  /** everything drawn at a place on the lanes, after their geometry changed (laid out,
+   *  zoomed, scrolled, resized): the playhead, the line following the pointer (the
+   *  moment now under it: a pin keeps its moment, hover follows the pointer), the pin,
+   *  the waveforms (at once, or on the next frame) and the span told to the host */
+  private refresh(waves = true): void {
     this.place();
+    const pointer = this.pointer;
+    this.hovered = pointer && this.momentUnder(pointer.x, this.root.ownerDocument.elementFromPoint(pointer.x, pointer.y));
+    this.follow();
+    this.update()/*the pin, and the inspector's moment*/;
+    if(waves) this.drawWaves(); else this.drawWavesSoon();
+    this.tellView();
+  }
+
+  // .. Zoom ......................................................................
+  // the ruler's corner: zoom out, fit the whole film, zoom in, each about the playhead
+  private zoomControls(film: Film): HTMLElement {
+    const document = this.root.ownerDocument;
+    const corner = element(document, 'span', 'row-name zoom-controls');
+    const deepest = maxZoom(film.frames.length, this.lanesShown());
+    const control = (name: string, label: string, enabled: boolean, act: () => void, path?: string) => {
+      const button = Object.assign(element(document, 'button', `zoom-button zoom-button--${name}`), { type: 'button', title: label, ariaLabel: label, disabled: !enabled });
+      if(path) button.innerHTML = `<svg viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="${path}"/></svg>`;
+      else button.textContent = 'Fit';
+      button.addEventListener('click', act);
+      return button;
+    };
+    corner.append(
+      control('out', 'Zoom out (-)', this.zoom > 1, () => this.zoomBy(1 / ZOOM_STEP), REMOVE_ICON),
+      control('fit', 'Fit the whole film (\\)', (this.zoom > 1) || !!this.beforeFit, () => this.fit()),
+      control('in', 'Zoom in (=)', this.zoom < deepest, () => this.zoomBy(ZOOM_STEP), ADD_ICON),
+    );
+    return corner;
+  }
+
+  /** zooms by a factor about the playhead: where it stands in view stays put, or the
+   *  view's middle when it stands outside it */
+  private zoomBy(factor: number): void {
+    const film = this.film;
+    if(!film) return;
+    const share = (film.frames.length > 1) ? (this.frame / film.frames.length) : 0;
+    const { left, right } = this.viewBounds();
+    const x = left + LANE_INSET + (share * this.laneWidth) - this.scroller.scrollLeft;
+    this.zoomTo({ zoom: this.aimedZoom() * factor, share, x: ((x >= left) && (x <= right)) ? x : ((left + right) / 2) });
+  }
+
+  /** the zoom a zoom builds on: one waiting for its frame, else the lanes' (several
+   *  presses or a pinch's moves within a frame each count) */
+  private aimedZoom(): number {
+    const film = this.film;
+    const aimed = this.zooming?.zoom ?? this.zoom;
+    return film ? clampZoom(aimed, film.frames.length, this.lanesShown()) : aimed;
+  }
+
+  /** zooms about a page x: the moment under it stays under it */
+  private zoomAt(zoom: number, clientX: number): void {
+    const at = this.momentAt(clientX);
+    if(!at) return;
+    this.zoomTo({ zoom, share: at.share, x: clientX - this.scroller.getBoundingClientRect().left });
+  }
+
+  /** fits the whole film; fitted, returns to the zoom a fit left, where it stood */
+  private fit(): void {
+    if(this.zoom > 1) {
+      this.beforeFit = { zoom: this.zoom, from: spanInView(this.laneWidth, this.scroller.scrollLeft, this.lanesShown()).from };
+      this.zoomTo({ zoom: 1, share: 0, x: this.viewBounds().left + LANE_INSET });
+      return;
+    } /* else -- the whole film already: back to the zoom before it */
+    const before = this.beforeFit;
+    this.beforeFit = undefined;
+    if(before) this.showSpan(before.from, before.from + (1 / before.zoom));
+    else this.layout()/*its fit button off*/;
+  }
+
+  /** a zoom with the share it holds at a view x, applied on the next animation frame:
+   *  moves between gather into one */
+  private zoomTo(zooming: Readonly<{ zoom: number; share: number; x: number; }>): void {
+    this.zooming = zooming;
+    if(this.zoomFrame !== undefined) return/*one waits*/;
+    this.zoomFrame = this.root.ownerDocument.defaultView!.requestAnimationFrame(() => {
+      this.zoomFrame = undefined;
+      const next = this.zooming!;
+      this.zooming = undefined;
+      const film = this.film;
+      if(!film) return;
+      const zoom = clampZoom(next.zoom, film.frames.length, this.lanesShown());
+      if(Math.abs(zoom - this.zoom) > 1e-9) { this.zoom = zoom; this.layout(); } /* else -- a pan: the lanes as they are */
+      this.scroller.scrollLeft = (this.viewBounds().left + LANE_INSET + (next.share * this.laneWidth)) - next.x;
+      this.refresh();
+    });
+  }
+
+  /** the lanes' cell width in view: the scroll's width past the names */
+  private viewWidth(): number {
+    const names = parseFloat(getComputedStyle(this.root).getPropertyValue('--names')) || 0;
+    return Math.max(0, this.scroller.clientWidth - names);
+  }
+
+  /** where the lanes' view lies across the scroll (CSS pixels from its left): past the
+   *  names to the scroll's edge */
+  private viewBounds(): Readonly<{ left: number; right: number; }> {
+    const width = this.viewWidth();
+    return { left: this.scroller.clientWidth - width, right: this.scroller.clientWidth };
+  }
+
+  /** how much of the lanes is in view (CSS pixels) */
+  private lanesShown(): number { return Math.max(0, this.viewWidth() - (2 * LANE_INSET)); }
+
+  /** tells the host the span in view */
+  private tellView(): void {
+    if(!this.film) return;
+    this.host.viewed(spanInView(this.laneWidth, this.scroller.scrollLeft, this.lanesShown()));
   }
 
   private row(row: Row, groups: ReadonlyArray<KeyGroup>, at: (time: number) => string): Readonly<{ element: HTMLElement; laid: Laid; }> {
@@ -305,22 +485,42 @@ export class Timeline {
     mark.append(element(document, 'canvas', 'band-wave'), Object.assign(element(document, 'span', 'band-label'), { textContent: shown }));
   }
 
+  // every sound band's waveform, the span in view alone; again on the next animation
+  // frame after a scroll (never while a sound is held: it moves as drawn)
+  private drawWaves(): void {
+    const sounds = this.host.sounds();
+    for(const laid of this.laid) laid.row.bands.forEach((band, index) => { if(band.cue) this.drawWave(laid.bands[index], band, sounds); });
+  }
+  private drawWavesSoon(): void {
+    if((this.wavesFrame !== undefined) || this.dragging) return;
+    this.wavesFrame = this.root.ownerDocument.defaultView!.requestAnimationFrame(() => { this.wavesFrame = undefined; this.drawWaves(); });
+  }
+
   // a sound band's waveform, its sound's slices stretched over the band (repeated
-  // over and over where it plays until a time); none until the sound is read
+  // over and over where it plays until a time); none until the sound is read. Only the
+  // band's span in the lanes' view is drawn, so no canvas outgrows what a browser
+  // draws at any zoom
   private drawWave(mark: HTMLElement, band: RowBand, sounds: TimelineSounds): void {
     const canvas = mark.querySelector<HTMLCanvasElement>('.band-wave');
     const peaks = sounds.peaks(band.cue!.name);
     const duration = sounds.duration(band.cue!.name);
     const [width, height] = [mark.clientWidth, mark.clientHeight];
     if(!canvas || !peaks || !duration || (width < 1) || (height < 1)) return/*not read, or not laid out*/;
+    const [inner, scroll] = [mark.getBoundingClientRect().left + mark.clientLeft/*inside its border, where the canvas stands*/, this.scroller.getBoundingClientRect()];
+    const { left: viewLeft, right: viewRight } = this.viewBounds();
+    const from = Math.max(0, (scroll.left + viewLeft) - inner), to = Math.min(width, (scroll.left + viewRight) - inner);
+    const shown = Math.max(0, to - from);
+    canvas.style.left = `${from}px`;
+    canvas.style.width = `${shown}px`;
     const scale = this.root.ownerDocument.defaultView?.devicePixelRatio ?? 1;
-    [canvas.width, canvas.height] = [Math.round(width * scale), Math.round(height * scale)];
+    [canvas.width, canvas.height] = [Math.round(shown * scale), Math.round(height * scale)];
+    if(canvas.width < 1) return/*out of view*/;
     const context = canvas.getContext('2d');
     if(!context) return/*no 2D drawing here*/;
     context.fillStyle = getComputedStyle(mark).getPropertyValue('--wave').trim() || 'currentColor';
     const span = band.to - band.from;
     for(let x=0; x<canvas.width; x++) {
-      const played = ((x / canvas.width) * span) % duration;
+      const played = (((from + (x / scale)) / width) * span) % duration;
       const peak = peaks[Math.min(peaks.length - 1, Math.floor((played / duration) * peaks.length))];
       const tall = Math.max(1, peak * canvas.height);
       context.fillRect(x, (canvas.height - tall) / 2, 1, tall);
@@ -335,14 +535,32 @@ export class Timeline {
     this.noteTimer = window.setTimeout(() => { this.note.hidden = true; }, NOTE_MS);
   }
 
-  /** the playhead on the ruler at the frame, whatever the rows' scroll */
+  /** the playhead on the ruler at the frame, whatever the rows' scroll, hidden while
+   *  its moment is scrolled out of view */
   private place(): void {
     const film = this.film;
     const box = this.lanes();
-    this.playhead.hidden = !film || !box;
-    if(!film || !box) return;
+    if(!film || !box) { this.playhead.hidden = true; return; }
     const share = (film.frames.length > 1) ? (this.frame / film.frames.length) : 0;
-    this.playhead.style.transform = `translateX(${(box.left + (share * box.width)).toFixed(2)}px)`;
+    const x = box.left + (share * box.width);
+    this.playhead.hidden = !this.inView(x);
+    this.playhead.style.transform = `translateX(${x.toFixed(2)}px)`;
+  }
+
+  /** whether a timeline x (CSS pixels from its left) lies in the lanes' view */
+  private inView(x: number): boolean {
+    const { left, right } = this.viewBounds();
+    return (x >= (left + this.root.clientLeft - 0.5)) && (x <= (right + this.root.clientLeft + 0.5));
+  }
+
+  /** scrolls the lanes by how far a page x lies past an end of their view: a scrub or
+   *  a drag carried past it */
+  private carry(clientX: number): void {
+    if(this.zoom <= 1) return/*the whole film in view*/;
+    const scroll = this.scroller.getBoundingClientRect();
+    const { left, right } = this.viewBounds();
+    const past = (clientX < (scroll.left + left)) ? (clientX - (scroll.left + left)) : (clientX > (scroll.left + right)) ? (clientX - (scroll.left + right)) : 0;
+    if(past !== 0) this.scroller.scrollLeft += past;
   }
 
   /** the lanes' span within the timeline (its left and width, CSS pixels), read off
@@ -354,11 +572,18 @@ export class Timeline {
     return (lane.width > 0) ? { left: lane.left - root.left - this.root.clientLeft, width: lane.width } : undefined;
   }
 
-  /** the timeline resized: keys grouped again at the new width, the playhead placed */
+  /** the timeline resized: laid out again when the lanes' view changed width (keys
+   *  grouped anew, the zoom's bounds and the span in view kept by its start), else
+   *  everything placed again */
   private resized(): void {
-    const ruler = this.scroller.querySelector<HTMLElement>('.ruler');
-    if(ruler && (Math.abs(ruler.getBoundingClientRect().width - this.laneWidth) >= 1)) this.layout();
-    else this.place();
+    if(this.film && (Math.abs(this.lanesShown() - this.shownWidth) >= 1)) {
+      const from = spanInView(this.laneWidth, this.scroller.scrollLeft, this.shownWidth).from;
+      this.layout();
+      this.scroller.scrollLeft = from * this.laneWidth;
+      this.refresh();
+      return;
+    } /* else -- the lanes' view as it was */
+    this.refresh();
   }
 
   // == Scrubbing =================================================================
@@ -381,7 +606,7 @@ export class Timeline {
     const band = sound && this.bandOf(sound);
     if(sound && band?.cue) {
       event.preventDefault();
-      this.dragging = { band, mark: sound, startX: event.clientX };
+      this.dragging = { band, mark: sound, startX: event.clientX, startScroll: this.scroller.scrollLeft };
       this.dragged = 0;
       this.scroller.setPointerCapture(event.pointerId);
       return;
@@ -397,7 +622,8 @@ export class Timeline {
   // the dragged sound follows the pointer along its row
   private drag(event: PointerEvent): void {
     const dragging = this.dragging!;
-    this.dragged = event.clientX - dragging.startX;
+    this.carry(event.clientX);
+    this.dragged = (event.clientX - dragging.startX) + (this.scroller.scrollLeft - dragging.startScroll)/*the lanes scrolled under it*/;
     if(Math.abs(this.dragged) < DRAG_SLOP) return/*still a press*/;
     this.root.classList.add('is-moving');
     dragging.mark.style.transform = `translateX(${this.dragged}px)`;
@@ -442,6 +668,7 @@ export class Timeline {
   }
 
   private scrub(event: PointerEvent): void {
+    this.carry(event.clientX);
     const at = this.momentAt(event.clientX);
     if(at) this.host.seek(at.frame);
   }
@@ -468,6 +695,9 @@ export class Timeline {
       End: () => this.host.seek(film.frames.length - 1),
       ' ': () => this.host.toggle(),
       Escape: () => this.unpin(),
+      '=': () => this.zoomBy(ZOOM_STEP), '+': () => this.zoomBy(ZOOM_STEP),
+      '-': () => this.zoomBy(1 / ZOOM_STEP), '_': () => this.zoomBy(1 / ZOOM_STEP),
+      '\\': () => this.fit(),
     };
     const act = handled[event.key];
     if(!act) return;
@@ -491,7 +721,9 @@ export class Timeline {
     const box = (film && moment) ? this.lanes() : undefined;
     this.hoverLine.hidden = !box;
     if(!film || !moment || !box) return;
-    this.hoverLine.style.transform = `translateX(${(box.left + (moment.share * box.width)).toFixed(2)}px)`;
+    const x = box.left + (moment.share * box.width);
+    this.hoverLine.hidden = !this.inView(x);
+    this.hoverLine.style.transform = `translateX(${x.toFixed(2)}px)`;
     if(moment.frame !== this.lineFrame) { this.lineFrame = moment.frame; this.hoverTime.textContent = `${film.frames[moment.frame].time.toFixed(2)} s`; }
     const hint = this.modifier ? '' : `${MODIFIER_NAME} for details`;
     if(hint !== this.lineHint) { this.lineHint = hint; this.hoverTime.dataset.hint = hint; }
@@ -510,8 +742,9 @@ export class Timeline {
   private redraw(): void {
     const film = this.film;
     const box = (film && this.pinned) ? this.lanes() : undefined;
-    this.pinLine.hidden = !box;
-    if(this.pinned && box) this.pinLine.style.transform = `translateX(${(box.left + (this.pinned.share * box.width)).toFixed(2)}px)`;
+    const pinX = (this.pinned && box) ? (box.left + (this.pinned.share * box.width)) : undefined;
+    this.pinLine.hidden = (pinX === undefined) || !this.inView(pinX);
+    if(pinX !== undefined) this.pinLine.style.transform = `translateX(${pinX.toFixed(2)}px)`;
 
     const hovered = this.hovered;
     const shown = (this.modifier && hovered) ? { moment: hovered, pinned: false } : this.focusedKey ? this.keyMoment(this.focusedKey) : this.pinned ? { moment: this.pinned, pinned: true } : undefined;
@@ -620,6 +853,13 @@ export class Timeline {
 }
 
 // == Util ========================================================================
+/** Safari's pinch: how far it has scaled since it began, and where */
+type Gesture = UIEvent & Readonly<{ scale: number; clientX: number; }>;
+
+/** Material Symbols' add and remove, for the zoom buttons */
+const ADD_ICON = 'M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z';
+const REMOVE_ICON = 'M200-440v-80h560v80H200Z';
+
 /** whether an event comes with the modifier held */
 const held = (event: MouseEvent): boolean => MAC ? event.metaKey : event.ctrlKey;
 

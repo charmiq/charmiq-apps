@@ -151,8 +151,9 @@ const timeline = new Timeline(element('timeline'), {
   seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle(),
   picture: index => picture(index, INSPECT_WIDTH), nearPicture: index => strip.nearest(index),
   sounds: () => soundsKnown, fixed: cue => fixedWhy(cue), moveSound: (cue, time) => moveSound(cue, time),
+  viewed: span => strip.setSpan(span)/*the picture track frames it*/,
 }, inspector);
-const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack());
+const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack(), (from, to) => timeline.showSpan(from, to));
 
 // -- Film Files ------------------------------------------------------------------
 /** the film's files: Stop Motion reads and writes the main studio's build and the
