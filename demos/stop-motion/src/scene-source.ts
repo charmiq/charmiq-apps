@@ -19,6 +19,8 @@ import { messageOf } from './studios';
 export const SCENE_TAB = 'scene.js';
 /** the language a new scene tab is edited in */
 const SCENE_MODE = 'javascript';
+/** the refusal of a write or an edit measured on the scene as it no longer stands */
+const SCENE_CHANGED = 'The scene has changed since: try again.';
 const EDITOR_CAPABILITY = 'ai.charmiq.shared.codemirror-editor';
 
 /** an editor answers its change stream once it has advertised: a sibling starting up
@@ -104,10 +106,19 @@ export class SceneSource {
 
   /** puts code in the scene's tab as an edit of the person's own, resolving once the
    *  document holds it: the first editor's tab named scene.js as it reads now, or a
-   *  new one in the first editor */
-  public async write(code: string): Promise<void> {
+   *  new one in the first editor; only while the scene is `expected` when given (null:
+   *  while no editor holds one), refused otherwise, nothing written */
+  public async write(code: string, expected?: string | null): Promise<void> {
+    if(expected !== undefined) {
+      // only while the scene is as it was read: the editor replaces the tab's text only
+      // while it holds that text, so an edit landing meanwhile refuses it there
+      const holder = this.holder;
+      if((this.code !== expected) || ((expected === null) !== !holder)) throw new Error(SCENE_CHANGED);
+      if(holder && (expected !== null)) { await holder.editor.editText(0, expected.length, code, expected, holder.tabId); return; }
+    } /* else -- as the scene stands */
     for(const editor of this.editors) {
       const tab = (await editor.listTabs()).find(each => each.name === SCENE_TAB);
+      if(tab && (expected === null)) throw new Error(SCENE_CHANGED)/*a scene made meanwhile: never written over*/;
       if(tab) { await editor.setText(code, tab.id); return; }
     }
     await this.check();
@@ -121,7 +132,7 @@ export class SceneSource {
   public async edit(scene: MeasuredScene, edit: SceneEdit): Promise<void> {
     const holder = this.holder;
     if(!holder) throw new Error(`No code editor holds a ${SCENE_TAB} tab.`);
-    if((holder.editor !== scene.editor) || (holder.tabId !== scene.tabId) || (scene.code !== edit.measured) || (this.code !== edit.measured)) throw new Error('The scene has changed since: try again.');
+    if((holder.editor !== scene.editor) || (holder.tabId !== scene.tabId) || (scene.code !== edit.measured) || (this.code !== edit.measured)) throw new Error(SCENE_CHANGED);
     await holder.editor.editText(edit.from, edit.to, edit.text, edit.measured, holder.tabId);
   }
 

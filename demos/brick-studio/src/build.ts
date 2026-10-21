@@ -3,7 +3,7 @@ import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_FACES, type Cat
 import { checkModel, describeCopy, describePlaced, describePlacement, occupiedCells, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
-import { addSetEdits, appendLines, applyChanges, clearEdits, clearSetEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, parseSets, partCount, placementLines, removeSetEdits, renameSetEdits, sameSetName, serializeModel, setLines, stepCount, type Model, type ModelLayout, type SetSection, EMPTY_MODEL, MAIN_SET, MAX_PARTS, MAX_SET_NAME, MAX_SETS, READ_IN_PART } from './model';
+import { addSetEdits, appendLines, applyChanges, carriesComponents, clearEdits, clearSetEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, parseSets, partCount, placedPartCount, placementLines, removeSetEdits, renameSetEdits, sameSetName, serializeModel, setLines, stepCount, type Model, type ModelLayout, type SetSection, EMPTY_MODEL, MAIN_SET, MAX_PARTS, MAX_SET_NAME, MAX_SETS, READ_IN_PART } from './model';
 import { maxOf, minOf } from './numbers';
 import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
 
@@ -160,12 +160,9 @@ export class Build {
       const named = (item: Placement | Copy) => ('component' in item) ? [item.component] : mountsOf(item).map(mount => mount.copy.component);
       const missing = [...new Set(items.flatMap(item => named(item).filter(name => !componentOf(model, name)?.footprint)))];
       if(missing.length > 0) throw new BuildError(`Nothing was added. No component named ${missing.join(', ')} holds parts on the grid (defineComponent defines one; listComponents names them).`);
-      const unrested = items.flatMap((item, index) => ('component' in item) ? [] : mountsOf(item).filter(mount => !mountRests(model, item, mount)).map(mount => `parts[${index}]: ${whyUnrested(mount)}`));
-      if(unrested.length > 0) throw new BuildError(['Nothing was added.', ...unrested].join('\n'));
-      const lines = items.flatMap(item => {
-        if(!('component' in item)) return [...placementLines(item), ...mountsOf(item).map(mount => mountLine(withFootprint(componentOf(model, mount.copy.component)!/*by contract*/), item, mount))];
-        return [copyLine(withFootprint(componentOf(model, item.component)!/*by contract*/), item)];
-      });
+      const unmounted = items.flatMap((item, index) => ('component' in item) ? [] : mountRefusals(model, item, index));
+      if(unmounted.length > 0) throw new BuildError(['Nothing was added.', ...unmounted].join('\n'));
+      const lines = items.flatMap(item => ('component' in item) ? [copyLine(withFootprint(componentOf(model, item.component)!/*by contract*/), item)] : carrierLines(model, item));
       const change = appendLines(layout, lines, newStep);
       const next = readWhole(applyChanges(text, [change]), name);
 
@@ -561,24 +558,17 @@ const tooManyParts = (sets: number, model: Model): string => (sets > 1)
   : `A build holds at most ${MAX_PARTS} parts: this would make it ${partCount(model)}.`;
 
 /** the parts a component of that name holds: a name free for one, and parts that
- *  neither repeat nor collide; refuses the whole component otherwise */
+ *  repeat none; refuses the whole component otherwise (whether they collide is checked
+ *  on the build, with what they carry: SEE: defineChecked) */
 const componentParts = (name: unknown, input: ReadonlyArray<unknown>): Placement[] => {
   if((typeof name !== 'string') || !COMPONENT_NAME.test(name)) throw new BuildError('name must be lower case letters, digits and dashes, starting with a letter, at most 40 characters.');
   if(isReservedName(name)) throw new BuildError(`'${name}' is taken (a catalog part or the main model); choose another name.`);
   if(input.length < 1) throw new BuildError('No parts given.');
   if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per component.`);
-  const placements = validItems(input, 'parts', false) as Placement[]/*parts alone*/;
-  const carrying = placements.flatMap((placement, index) => (mountsOf(placement).length < 1) ? [] : [placement.carry
-    ? `parts[${index}]: a component's hinge carries nothing (components hold no components): place the hinge and what it carries in the build itself`
-    : `parts[${index}]: a component's side faces carry nothing (components hold no components): place the part and what its faces carry in the build itself`]);
-  if(carrying.length > 0) throw new BuildError(['Nothing was defined.', ...carrying].join('\n'));
+  const placements = validItems(input, 'parts', false) as Placement[]/*parts alone: its carriers' mounts are checked on the build (SEE: defineChecked)*/;
   const names = placements.map(describePlacement);
   const repeated = names.filter((name, index) => names.indexOf(name) !== index);
-  const inside = checkModel({ header: [], placements, others: [] }).collisions.filter(pair => pair.a !== pair.b/*a repeat, named below*/);
-  if((repeated.length + inside.length) > 0) throw new BuildError(['Nothing was defined.',
-    ...refusal('Listed twice in this call:', repeated),
-    ...refusal('These parts of the component collide:', inside.map(pair => `${pair.b} overlaps ${pair.a}`)),
-  ].join('\n'));
+  if(repeated.length > 0) throw new BuildError(['Nothing was defined.', ...refusal('Listed twice in this call:', repeated)].join('\n'));
   return placements;
 };
 
@@ -714,39 +704,60 @@ const toPosition = (x: unknown, z: unknown, level: unknown, rotation: unknown): 
 };
 
 // == Components ==================================================================
-/** the edits that define (or redefine) a component on a text, refused whole when
- *  the build would hold too many parts, a copy would collide, or a hinge carrying it
- *  would carry it no longer (its copy no longer on the hinge's top) */
+/** the edits that define (or redefine) a component on a text, its hinges and faces
+ *  carrying components that carry none (SEE: mountRefusals), refused whole when the
+ *  build would hold too many parts, a copy would collide, a component carried would
+ *  carry components, or a hinge or face carrying it would carry it no longer (its copy
+ *  no longer on their studs) */
 const defineChecked = (text: string, name: string, placements: ReadonlyArray<Placement>): Readonly<{ changes: ReadonlyArray<ContentChange>; outcome: Defined; }> => {
-  const { layout } = editable(text, mainName(text));
-  const changes = defineEdits(layout.file, name, placements.flatMap(placementLines));
+  const { model, layout } = editable(text, mainName(text));
+  const unmounted = placements.flatMap((placement, index) => mountRefusals(model, placement, index, name));
+  if(unmounted.length > 0) throw new BuildError(['Nothing was defined.', ...unmounted].join('\n'));
+  // counted before anything it carries is expanded: a component past a build's parts
+  // could never be placed
+  const parts = placedPartCount(model, placements);
+  if(parts > MAX_PARTS) throw new BuildError(`Nothing was defined. A component holds at most ${MAX_PARTS} parts with what its hinges and faces carry: this would make it ${parts}.`);
+  const inside = checkModel({ header: [], placements, others: [], ...(model.components ? { components: model.components } : {}) }).collisions;
+  if(inside.length > 0) throw new BuildError(['Nothing was defined.', ...refusal('These parts of the component collide:', inside.map(pair => `${pair.b} overlaps ${pair.a}`))].join('\n'));
+  const before = parseSets(text);
+  const carrying = before.flatMap((set, index) => carriersIn(set, name, (index === 0)/*the build's components once*/, before.length > 1));
+  if((carrying.length > 0) && placements.some(placement => mountsOf(placement).length > 0)) throw new BuildError([`Nothing was defined. ${name} is carried, and a component carried carries none:`, ...refusal('', carrying).slice(1)].join('\n'));
+  const changes = defineEdits(layout.file, name, placements.flatMap(placement => carrierLines(model, placement)));
   const definedText = applyChanges(text, changes);
-  const [before, after] = [parseSets(text), parseSets(definedText)];
-  after.forEach(model => readWhole(definedText, model.set));
+  const after = parseSets(definedText);
+  after.forEach(set => readWhole(definedText, set.set));
   // every set's copies change with it: each set is checked, named when there are more
   const where = (model: Model) => (after.length > 1) ? ` (in ${model.set})` : '';
-  const carriers = (of: Model) => of.placements.filter(placement => mountsOf(placement).some(mount => mount.copy.component === name)).map(placement => describePlacement(placement) + where(of));
-  const dropped = before.flatMap((model, index) => { const kept = carriers(after[index]); return carriers(model).filter(carrier => !kept.includes(carrier)); });
+  const carriers = (of: Model, index: number) => carriersIn(of, name, (index === 0), after.length > 1);
+  const dropped = before.flatMap((model, index) => { const kept = carriers(after[index], index); return carriers(model, index).filter(carrier => !kept.includes(carrier)); });
   if(dropped.length > 0) throw new BuildError(['Nothing was defined. It would no longer stand on the studs of the hinges and faces carrying it:', ...refusal('', dropped).slice(1)].join('\n'));
   const introduced = before.flatMap((model, index) => {
     const known = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
     return checkModel(after[index]).collisions.filter(pair => !known.has(`${pair.a}|${pair.b}`)).map(pair => `${pair.b} overlaps ${pair.a}${where(after[index])}`);
   });
-  if(introduced.length > 0) throw new BuildError(['Nothing was defined. Its copies would collide:', ...refusal('', introduced).slice(1)].join('\n'));
+  // the components carrying it change with it too, placed or not
+  const knownInside = new Set(insideCarriers(before[0], name));
+  const colliding = insideCarriers(after[0], name).filter(collision => !knownInside.has(collision));
+  if((introduced.length + colliding.length) > 0) throw new BuildError([
+    ...((introduced.length > 0) ? ['Nothing was defined. Its copies would collide:', ...refusal('', introduced).slice(1)] : ['Nothing was defined.']),
+    ...refusal('The components carrying it would collide inside:', colliding),
+  ].join('\n'));
 
-  const footprint = componentOf(after[0], name)!.footprint!/*its parts are on the grid*/;
+  const defined = componentOf(after[0], name)!;
+  const footprint = defined.footprint!/*its parts are on the grid*/;
   const [width, depth] = footprintSize(footprint, 0);
-  return { changes, outcome: { name, size: `${width}x${depth}x${footprint.height}`, parts: placements.length, copies: copiesIn(definedText, name) } };
+  return { changes, outcome: { name, size: `${width}x${depth}x${footprint.height}`, parts: placedPartCount(after[0], defined.placements)/*what its carriers carry included*/, copies: copiesIn(definedText, name) } };
 };
 
 /** a saved design's parts on the grid, moved so its footprint starts at x 0, z 0
  *  and its lowest part stands at level 0, and how many of its parts are off the grid.
- *  Refused for a design whose hinges carry components: a component holds none */
+ *  Refused for a design whose hinges or faces carry components: the components they
+ *  carry are the design's, not the build's */
 const designParts = (ldraw: string): Readonly<{ parts: ReadonlyArray<Placement>; leftOut: number; otherSets: number; }> => {
   const design = parseModel(ldraw);
   if(design.truncated) throw new BuildError(`That design is too large to take: ${READ_IN_PART}`);
   if(design.untold) throw new BuildError(`That design cannot be taken: ${design.untold}.`);
-  if(design.placements.some(placement => mountsOf(placement).length > 0)) throw new BuildError('That design\'s hinges or side faces carry components, and a component holds none: open it as the build instead (loadDesign).');
+  if(design.placements.some(placement => mountsOf(placement).length > 0)) throw new BuildError('That design\'s hinges or side faces carry its own components, which a component of this build cannot take: open it as the build instead (loadDesign).');
   const footprint = footprintOf(design.placements);
   if(!footprint) throw new BuildError('That design holds no parts on the grid.');
   const lowest = minOf(design.placements.map(placement => placement.level));
@@ -769,6 +780,38 @@ const besideBuild = (model: Model, component: string, footprint: Footprint): Cop
   const spot = spots.find(([x, z]) => reach(x, width) && reach(z, depth));
   return spot && { component, x: spot[0], z: spot[1], level: 0, rotation: 0 };
 };
+
+/** the carriers of a component in a set, described: its own parts', and the build's
+ *  components' when `components` says (they are every set's), each named by where it is */
+const carriersIn = (model: Model, name: string, components: boolean, several: boolean): string[] => {
+  const carrying = (placement: Placement) => mountsOf(placement).some(mount => mount.copy.component === name);
+  return [
+    ...model.placements.filter(carrying).map(placement => describePlacement(placement) + (several ? ` (in ${model.set})` : '')),
+    ...(components ? (model.components ?? []).flatMap(component => component.placements.filter(carrying).map(placement => `${describePlacement(placement)} in ${component.name}`)) : []),
+  ];
+};
+
+/** the collisions inside each component carrying a component (its definition's own
+ *  parts and what they carry), described, each named by its component */
+const insideCarriers = (model: Model, name: string): string[] => (model.components ?? [])
+  .filter(component => component.placements.some(placement => mountsOf(placement).some(mount => mount.copy.component === name)))
+  .flatMap(component => checkModel({ header: [], placements: component.placements, others: [], components: model.components }).collisions.map(pair => `${pair.b} overlaps ${pair.a} in ${component.name}`));
+
+/** why each of a placement's mounts is refused, model-facing: the component it carries
+ *  is the one being defined, has no parts on the grid, carries components itself (a
+ *  component carried carries none), or does not stand on its slot's studs */
+const mountRefusals = (model: Model, placement: Placement, index: number, defining?: string): string[] => mountsOf(placement).flatMap(mount => {
+  const name = mount.copy.component;
+  if(name === defining) return [`parts[${index}]: ${name} cannot carry itself`];
+  const component = componentOf(model, name);
+  if(!component?.footprint) return [`parts[${index}]: no component named ${name} holds parts on the grid (defineComponent defines one; listComponents names them)`];
+  if(carriesComponents(component)) return [`parts[${index}]: ${name} carries components itself, and a component carried carries none`];
+  return mountRests(model, placement, mount) ? [] : [`parts[${index}]: ${whyUnrested(mount)}`];
+});
+
+/** a placement's lines and its mounts', its mounts' components the model's */
+const carrierLines = (model: Model, placement: Placement): string[] =>
+  [...placementLines(placement), ...mountsOf(placement).map(mount => mountLine(withFootprint(componentOf(model, mount.copy.component)!/*by contract*/), placement, mount))];
 
 /** whether a mount stands on its slot's studs (SEE: grid.ts restsIn), its component
  *  one the model defines with parts on the grid */

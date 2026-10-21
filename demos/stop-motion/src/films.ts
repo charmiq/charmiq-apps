@@ -20,7 +20,8 @@ import { messageOf, type Studios } from './studios';
 // cannot be written. Saving, opening and starting a film run one at a time, each after
 // the last settles, so none takes the film as another leaves it part-way. The file and a
 // fingerprint of the film as kept live in the document's app state, so a reload, or
-// another viewer of the document, knows the film's file and whether it changed since;
+// another viewer of the document, knows the film's file and whether it changed since
+// (the file is the document's, shared: a plain save in any viewer writes over it);
 // each operation keeps them there before the next runs, the first reads them, and a
 // state naming no film's file forgets it
 // ********************************************************************************
@@ -55,8 +56,9 @@ export type FilmParts = Readonly<{
   scene: () => string | null;
   /** refuses, saying why, when the scene cannot be written (no code editor) */
   checkScene: () => Promise<void>;
-  /** puts code in the code block's scene tab */
-  setScene: (code: string) => Promise<void>;
+  /** puts code in the code block's scene tab, only while it holds `expected` when
+   *  given (null: while the code block holds no scene) */
+  setScene: (code: string, expected?: string | null) => Promise<void>;
 }>;
 
 /** the film's parts over the main studio and the code block's scene: the set written
@@ -67,7 +69,7 @@ export const filmPartsOf = (studios: Pick<Studios, 'readSet' | 'writeSet' | 'cle
   clearSet: async expected => { await studios.clearSet(expected); void director.restage(); },
   scene: () => source.code,
   checkScene: () => source.check(),
-  setScene: code => source.write(code),
+  setScene: (code, expected) => source.write(code, expected),
 });
 
 /** the film's file: its name once saved or opened, and whether the film changed since */
@@ -75,6 +77,9 @@ export type FileState = Readonly<{ name?: string; changed: boolean; }>;
 
 /** what the film was when last saved or opened */
 type Kept = Readonly<{ set: string; scene: string | null; }>;
+/** the film as read last before it changes: its set (none when it cannot be read) and
+ *  its scene, each replaced only while it still holds what was read */
+type Read = Readonly<{ set?: string; scene: string | null; }>;
 /** the file the film was last saved as or opened from: its document, and its folder
  *  when known */
 type Own = Readonly<{ design: Design; folder?: Folder; }>;
@@ -152,7 +157,7 @@ export class Films {
     const read = await this.refuseUnsaved(discard)/*last: the film changes next*/;
     const name = displayName(found);
     const scene = film.scene;
-    const { failure, unkept } = await this.change(() => this.parts.setSet(film.set, read), (scene !== undefined) ? () => this.parts.setScene(scene) : undefined,
+    const { failure, unkept } = await this.change(() => this.parts.setSet(film.set, read.set), (scene !== undefined) ? () => this.parts.setScene(scene, read.scene) : undefined,
       { design: found, ...(folder ? { folder } : {}) }, { set: film.set, scene: scene ?? this.parts.scene() ?? '' });
     if(failure) throw new DesignError(`The set of "${name}" is open, but its scene could not be written: ${failure.message}`);
     if(unkept !== undefined) throw new DesignError(`"${name}" is open, but the document could not keep it as the film's file: ${unkept}`);
@@ -165,7 +170,7 @@ export class Films {
   private async clearNow(discard: boolean): Promise<void> {
     await this.parts.checkScene().catch(refused);
     const read = await this.refuseUnsaved(discard)/*last: the film changes next*/;
-    const { failure, unkept } = await this.change(() => this.parts.clearSet(read), () => this.parts.setScene(STARTER_SCENE), undefined, { set: '', scene: STARTER_SCENE });
+    const { failure, unkept } = await this.change(() => this.parts.clearSet(read.set), () => this.parts.setScene(STARTER_SCENE, read.scene), undefined, { set: '', scene: STARTER_SCENE });
     if(failure) throw new DesignError(`The set is cleared, but the new scene could not be written: ${failure.message}`);
     if(unkept !== undefined) throw new DesignError(`The new film is started, but the document could not forget the last film's file: ${unkept} Name the film when you save it.`);
   }
@@ -180,8 +185,8 @@ export class Films {
   private async unsaved(): Promise<boolean> { return (await this.look()).changed; }
 
   /** whether the film has changed (SEE: unsaved), told as unsaved tells it, and the
-   *  set as it was read */
-  private async look(): Promise<Readonly<{ changed: boolean; set?: string; }>> {
+   *  film as it was read */
+  private async look(): Promise<Readonly<{ changed: boolean; } & Read>> {
     const look = ++this.looks;
     const kept = this.kept;
     const seen = await this.differs(kept);
@@ -236,26 +241,30 @@ export class Films {
     void this.recheck();
   }
 
-  /** whether the film differs from `kept` (a film never kept does), and its set as
+  /** whether the film differs from `kept` (a film never kept does), and the film as
    *  read: the set, then the scene, read with no wait after it (an editor's change
    *  arrives as a message, never between it and the change that follows) */
-  private async differs(kept: string | undefined): Promise<Readonly<{ changed: boolean; set?: string; }>> {
+  private async differs(kept: string | undefined): Promise<Readonly<{ changed: boolean; } & Read>> {
     let set: string;
     try { set = await this.parts.set(); }
-    catch { return { changed: true }/*the set cannot be read: nothing is lost unasked*/; }
+    catch { return { changed: true, scene: this.parts.scene() }/*the set cannot be read: nothing is lost unasked*/; }
     const scene = this.parts.scene();
     const fingerprint = await fingerprintOf({ set, scene });
-    if(this.parts.scene() !== scene) return { changed: true, set }/*edited while its fingerprint was taken*/;
-    return { changed: !kept || (fingerprint !== kept), set };
+    const now = this.parts.scene();
+    if(now !== scene) return { changed: true, set, scene: now }/*edited while its fingerprint was taken*/;
+    return { changed: !kept || (fingerprint !== kept), set, scene };
   }
 
-  /** refuses to lose unsaved changes unless told to; answers the set as it was read,
-   *  which the change then replaces only while the studio still holds it (an edit
-   *  landing in between refuses the change, nothing replaced) */
-  private async refuseUnsaved(discard: boolean): Promise<string | undefined> {
-    if(discard) return this.parts.set().catch(() => undefined/*no set to read: its write refuses on its own*/);
-    const { changed, set } = await this.look();
-    if(!changed) return set;
+  /** refuses to lose unsaved changes unless told to; answers the film as it was read,
+   *  its set replaced only while the studio still holds it and its scene only while
+   *  the code block does (an edit landing in between refuses the change there, kept) */
+  private async refuseUnsaved(discard: boolean): Promise<Read> {
+    if(discard) {
+      const set = await this.parts.set().catch(() => undefined/*no set to read: its write refuses on its own*/);
+      return { ...((set !== undefined) ? { set } : {}), scene: this.parts.scene()/*with the set, before any wait*/ };
+    } /* else -- asked: nothing changed since the film was kept */
+    const { changed, set, scene } = await this.look();
+    if(!changed) return { ...((set !== undefined) ? { set } : {}), scene };
     const name = this.file.value.name;
     throw new UnsavedChanges(`${(name !== undefined) ? `"${name}"` : 'The film'} has unsaved changes: save it first, or discard them.`);
   }

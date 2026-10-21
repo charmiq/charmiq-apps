@@ -1,7 +1,8 @@
 import { toPosing } from './build';
 import { getFigureFace, FIGURE_FACES, type CatalogPart } from './catalog';
-import { compose, footprint, footprintOf, footprintSize, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type PartLine, type Placement, type Rotation, type Transform } from './grid';
-import { drawnLines, parseSets, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
+import { occupiedCells } from './check';
+import { cellsFootprint, compose, footprint, footprintSize, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Footprint, type PartLine, type Placement, type Rotation, type Transform } from './grid';
+import { drawnLines, parseSets, placedPartCount, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
 import { bankOf, swingOf, turnOf, type Limb, type Pose, LIMBS } from './pose';
 
 // a stage: a scene the studio shows in place of its build while another Application
@@ -178,7 +179,7 @@ export const setsOf = (ldraw: unknown, names: unknown, build: () => ReadonlyArra
  *  shows another set */
 export const stageFloor = (floor: Floor | undefined, sets: ReadonlyArray<Model>): Floor | undefined => {
   if(sets.length < 2) return floor;
-  const areas = [...(floor ? [floor] : []), ...sets.flatMap(set => { const cells = footprintOf(set.placements); return cells ? [{ x: cells.minX, z: cells.minZ, width: cells.maxX - cells.minX, depth: cells.maxZ - cells.minZ }] : []; })];
+  const areas = [...(floor ? [floor] : []), ...sets.flatMap(set => { const cells = cellsFootprint(set.placements.flatMap(placement => occupiedCells(set, placement))); return cells ? [{ x: cells.minX, z: cells.minZ, width: cells.maxX - cells.minX, depth: cells.maxZ - cells.minZ }] : []; })]/*what each set's carriers carry included*/;
   if(areas.length < 1) return undefined;
   const [minX, minZ] = [Math.min(...areas.map(area => area.x)), Math.min(...areas.map(area => area.z))];
   const [maxX, maxZ] = [Math.max(...areas.map(area => area.x + area.width)), Math.max(...areas.map(area => area.z + area.depth))];
@@ -326,13 +327,14 @@ const pieceAt = (set: Model, item: Record<string, unknown>): Piece | string => {
   const lines = new Set((set.placed ?? []).flatMap((line, index) => (line.copy === copy) ? [index] : []));
   const owned = (owners: ReadonlyArray<number | undefined> | undefined) => (owners ?? []).flatMap((owner, index) => ((owner !== undefined) && lines.has(owner)) ? [index] : []);
   const [placements, others] = [owned(set.placementPlaced), owned(set.otherPlaced)];
-  // measured from its parts as the set holds them, each inherited color's part among
-  // them (its component's own footprint leaves those out)
+  // measured from its parts as the set holds them and what their hinges and faces
+  // carry (SEE: filledBy), each inherited color's part among them (its component's own
+  // footprint leaves those out)
   const parts = placements.map(index => set.placements[index]);
-  const measured = footprintOf(parts)!/*a copy has parts*/;
+  const measured = filledBy(set, parts);
   const [width, depth] = footprintSize(measured, rotation)/*turned back*/;
   const rest: Rest = { position: { x: (measured.minX + measured.maxX) / 2, z: (measured.minZ + measured.maxZ) / 2, height: level as number }, turn: { yaw: rotation, pitch: 0, roll: 0 } };
-  return { key: `copy ${copy}`, at, actor: copyActor(set, rotation, parts, others, rest, { width, depth, height: tallestTop(parts) - (level as number) }), rest, placements, others };
+  return { key: `copy ${copy}`, at, actor: copyActor(set, rotation, parts, others, rest, { width, depth, height: measured.height - (level as number) }), rest, placements, others };
 };
 
 /** a copy's actor: its own parts as the set draws them (each inherited color its
@@ -345,7 +347,7 @@ const copyActor = (set: Model, rotation: Rotation, parts: ReadonlyArray<Placemen
     poses: false,
     faces: false,
     rolls: parts.some(placement => !!getPart(placement.part)!.wheels),
-    parts: parts.length + others.length/*those the set shown leaves out*/,
+    parts: placedPartCount(set, parts) + others.length/*those the set shown leaves out, what they carry included*/,
     lines: (_, rolled) => [
       ...parts.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(((placement.rotation - rotation + 360) % 360) as Rotation/*turned within the copy*/))),
       ...others.map(index => set.others[index]),
@@ -353,26 +355,28 @@ const copyActor = (set: Model, rotation: Rotation, parts: ReadonlyArray<Placemen
   };
 };
 
-/** a component's actor: a copy of it, its footprint's middle its anchor */
+/** a component's actor: a copy of it, the middle of the cells it fills (SEE:
+ *  filledBy) its anchor */
 const componentActor = (set: Model, component: Component): Actor => {
-  const { minX, minZ, maxX, maxZ } = component.footprint!/*by contract*/;
+  const { minX, minZ, maxX, maxZ, height } = filledBy(set, component.placements);
   const parts = component.placements.map(placement => getPart(placement.part)!/*by contract*/);
   return {
     anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
-    size: componentSize(component),
+    size: { width: maxX - minX, depth: maxZ - minZ, height },
     poses: false,
     faces: false,
     rolls: parts.some(each => !!each.wheels),
-    parts: component.placements.length + component.others.length,
+    parts: placedPartCount(set, component.placements) + component.others.length/*what its carriers carry included*/,
     lines: (_, rolled) => [...component.placements.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(placement.rotation))), ...component.others],
   };
 };
 
-/** a component's box: its footprint, and its tallest part's top (tires above the studs
- *  included) */
-const componentSize = (component: Component): Size => {
-  const { minX, minZ, maxX, maxZ } = component.footprint!/*by contract*/;
-  return { width: maxX - minX, depth: maxZ - minZ, height: tallestTop(component.placements) };
+/** the cells some parts and what their hinges and faces carry fill (their footprint,
+ *  when they carry none), as high as their tallest top (tires above the studs
+ *  included): an actor's box, however it is cast */
+const filledBy = (set: Model, parts: ReadonlyArray<Placement>): Footprint => {
+  const cells = cellsFootprint(parts.flatMap(placement => occupiedCells(set, placement)))!/*an actor has parts*/;
+  return { ...cells, height: Math.max(cells.height, tallestTop(parts)) };
 };
 
 /** the level the tallest of some parts reaches (tires above the studs included) */

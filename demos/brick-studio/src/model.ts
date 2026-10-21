@@ -1,6 +1,6 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { type CatalogPart, type FigureFace, ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_FACES } from './catalog';
-import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
+import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, isInheritedColor, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, type Pose, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER } from './pose';
 
@@ -9,7 +9,8 @@ import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posed
 // into its placed parts. A build with components is an MPD file: the main model
 // first, then each component's section; a copy is one line of the main model naming
 // its component's file (SEE: grid.ts Components). Such a file is edited line by line
-// as a flat one is, as long as no component holds another. A line whose part is in the catalog and lies on the grid
+// as a flat one is, as long as a component holds another only as a mount of its own
+// hinges and faces, one deep (SEE: withMounts). A line whose part is in the catalog and lies on the grid
 // is a Placement; any other part line is kept and counted, never dropped. A flat
 // file's parts also carry where their lines lie, so an edit changes those lines
 // alone. A part assembled from pieces (a wheel set) is its own line and its
@@ -65,7 +66,7 @@ export type FileLayout = Readonly<{
 }>;
 
 /** where an editable model's parts lie in its text: a flat file, or an MPD file whose
- *  components hold no other component */
+ *  components hold others only as their carriers' mounts (SEE: withMounts) */
 export type ModelLayout = Readonly<{
   /** the line of each of `placements` and of `others`, in order (a part in a copy
    *  lies in its component's section) */
@@ -143,6 +144,9 @@ export type Model = Readonly<{
   /** the components the file defines, and the copies its main model places; each
    *  placement's copy (an index into `copies`), or undefined for a part of its own */
   components?: ReadonlyArray<Component>;
+  /** the components copies' carriers carry in a copy's color: each read with its parts
+   *  in LDraw's inherited color in that color (SEE: mountedComponent) */
+  carried?: ReadonlyArray<Component & Readonly<{ colorCode: number; }>>;
   copies?: ReadonlyArray<Copy>;
   placementCopies?: ReadonlyArray<number | undefined>;
   /** every line of the main model placing a component, and each placement's (an
@@ -176,7 +180,7 @@ const MAX_EXPANDED_LINES = 100_000;
 const UNEDITABLE = {
   mainTwice: 'its main model is named twice (two people gave a flat build its first component at once), so which is the build is not told. Its text is kept as written: replace it with corrected LDraw that names the main model once (setModel)',
   unsectioned: 'lines come before its first `0 FILE` section. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
-  nested: 'its submodels place other submodels. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
+  nested: 'its submodels place other submodels other than as components carried by a component\'s hinges or faces (a carried component carries none). If a newer Brick Studio made it, reload this one first; otherwise replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
   repeated: 'two of its sections share a name. Replace it with a flat model to edit it: call setModel with the text getModel returns (comments inside its submodels are not kept)',
   undecided: 'more lines lie where an assembled part\'s pieces go than are compared, so which lines are its pieces is not told. Remove the extra lines from the text getModel returns and give it to setModel to edit it',
   setPlaced: 'one of its sets is placed in another file as a submodel, so it is no longer an arrangement of its own. Replace it with a flat model to edit it: call setModel with the text getModel returns',
@@ -291,7 +295,7 @@ type Files = Readonly<{
   lines: ReadonlyMap<string, ReadonlyArray<Line>>;
   main: string | undefined;
   /** the components, read; none past the submodel budget (`tooManyDefinitionLines`) */
-  components: ReadonlyArray<Component & Readonly<{ nested: boolean; undecided: boolean; }>>;
+  components: ReadonlyArray<ReadComponent>;
   tooManyDefinitionLines: boolean;
   /** the files that are sets, the main model's first (at most MAX_SETS: a set past
    *  them is never read) */
@@ -310,6 +314,14 @@ type Files = Readonly<{
   data: ReadonlyArray<string>;
   layout: FileLayout;
 }>;
+
+/** a component as read: `nested` when it places another file other than as a mount
+ *  of its own carriers, `undecided` when its pieces are not told, and each line its
+ *  carriers take as a mount (by where it starts): its carrier's line (by where it
+ *  starts), the carrier's hinge angle and the file the line names. The mount itself
+ *  is found again where each copy stands: a hinge's carry stands in the build's grid,
+ *  never its carrier's */
+type ReadComponent = Component & Readonly<{ nested: boolean; undecided: boolean; mountLines?: ReadonlyMap<number, Readonly<{ carrier: number; angle?: number; file: string; }>>; }>;
 
 /** splits a text into its files: a plain LDR is one unnamed file. Blank lines before
  *  the first file belong to none. A name used twice is read from its first section;
@@ -385,13 +397,17 @@ const readFiles = (text: string): Files => {
 
   // the main model is a set, and so is each file naming itself one; every other file
   // is a component: its parts in its own grid. Past the submodel budget none is read:
-  // the model is then read only in part
+  // the model is then read only in part. A component's mounts cost their components'
+  // lines against that budget, as a set's copies cost theirs (SEE: readSet), so a
+  // definition carrying more than is read is never expanded, cast or checked
   const named = [...files.keys()].filter(name => (name === main) || nameLines.has(name));
   const setFiles = new Set(named.slice(0, MAX_SETS))/*the sets read*/;
   const setLines = new Set(named.map(name => files.get(name)!));
   const definitionLines = [...counted].reduce((total, [run, count]) => setLines.has(run) ? total : (total + count), 0);
-  const tooManyDefinitionLines = definitionLines > MAX_EXPANDED_LINES;
-  const components = tooManyDefinitionLines ? [] : [...files].filter(([name]) => !setLines.has(files.get(name)!)).map(([name, componentLines]) => readComponent(name, componentLines, files));
+  const definitions = (definitionLines > MAX_EXPANDED_LINES) ? [] : withMounts([...files].filter(([name]) => !setLines.has(files.get(name)!)).map(([name, componentLines]) => readComponent(name, componentLines, files)));
+  const carriedLines = definitions.reduce((total, component) => total + [...(component.mountLines?.values() ?? [])].reduce((sum, { file }) => sum + (counted.get(files.get(file)!) ?? 0), 0), 0);
+  const tooManyDefinitionLines = (definitionLines + carriedLines) > MAX_EXPANDED_LINES;
+  const components = tooManyDefinitionLines ? [] : definitions;
   // a name two files share (`bare` and `bare.ldr`) names neither for an edit; a file
   // defined twice (one name defined by two people at once) is read from its first
   // definition and named
@@ -474,11 +490,37 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
   // bounded as they are read (the main file's own lines are read once)
   let references = 0;
   let expandedLines = 0;
+  let mountedPartLines = 0/*the part lines of the mounts a copy's carriers take, never walked*/;
   let truncated = false;
-  const exceeded = () => truncated ||= (((placements.length + others.length) > MAX_PART_LINES) || (references > MAX_PARTS) || (expandedLines > MAX_EXPANDED_LINES));
+  const exceeded = () => truncated ||= (((placements.length + others.length + mountedPartLines) > MAX_PART_LINES) || (references > MAX_PARTS) || (expandedLines > MAX_EXPANDED_LINES));
 
+  // inside a copy, a component's carrier carries what it carries where the component
+  // is defined (SEE: withMounts): each mount line is its carrier's mount, found where
+  // the copy stands as a set's carrier finds its own (a hinge's carry in the build's
+  // grid, a face's on its map; the hinge at its angle where defined, its pieces not
+  // yet told), its line the carrier's, unless the carrier or the mount is off the grid
+  // where the copy stands (its parts are then walked as written)
+  const mountSpans = new Map<number/*an index into placements*/, Span[]>();
+  // a copy's carrier carries its component in the copy's color: one with parts in
+  // LDraw's inherited color is read again with them in it, in the frame its lines
+  // were written in (its footprint as defined), once for each color
+  const colored = new Map<string, Component & Readonly<{ colorCode: number; }>>();
+  let coloredUntold = false/*a component read in a copy's color whose pieces are not told*/;
+  const coloredMount = (mount: Mount, file: string, colorCode: number): Mount => {
+    const lines = files.get(file) ?? [];
+    if((colorCode === INHERITED_COLOR) || !lines.some(({ text: line }) => { const fields = line.trim().split(/\s+/); return (fields[0] === '1') && isInheritedColor(Number(fields[1])); })) return mount/*as defined*/;
+    const key = `${file}|${colorCode}`;
+    if(!colored.has(key)) {
+      const { name, placements: parts, others: loose, undecided: untoldThere } = readComponent(file, lines, files, colorCode).component;
+      coloredUntold ||= untoldThere/*refused as the component's own reading is*/;
+      colored.set(key, { name, file, placements: parts, others: loose, footprint: componentsByFile.get(file)!.footprint!/*by contract: a mount's*/, colorCode });
+    }
+    return { ...mount, copy: { ...mount.copy, colorCode } };
+  };
   const walk = (name: string, transform: Transform, inheritedColor: number, depth: number, owner: number | undefined/*an index into placed*/): void => {
     const isMain = (depth === 0);
+    const mountLines = isMain ? undefined : componentsByFile.get(name)?.mountLines;
+    const placedAt = new Map<number/*a line's start*/, number/*an index into placements*/>();
     for(const { text: line, from, to } of files.get(name) ?? []) {
       if(!isMain) expandedLines++;
       if(exceeded()) return;
@@ -497,11 +539,28 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
       const values = fields.slice(1, 14).map(Number);
       if(values.some(value => !Number.isFinite(value))) continue/*malformed*/;
       if(isMain) parts.push({ from, to });
-      const colorCode = ((values[0] === 16) || (values[0] === 24)) ? inheritedColor : values[0];
+      const colorCode = isInheritedColor(values[0]) ? inheritedColor : values[0];
       const reference = normalizeName(fields.slice(14).join(' '));
       const local: Transform = { position: [values[1], values[2], values[3]], matrix: values.slice(4, 13) };
       const world = compose(transform, local);
 
+      const mounted = mountLines?.get(from);
+      const carrier = mounted && placedAt.get(mounted.carrier);
+      const mount = (mounted && (carrier !== undefined)) ? mountOf({ ...placements[carrier], ...((mounted.angle !== undefined) ? { angle: mounted.angle } : {}) }, componentsByFile.get(reference), world) : undefined;
+      if(mount && (carrier !== undefined)) {
+        // charged as its lines would be were they walked, before it is taken: a copy's
+        // mounts count toward what is read like every other submodel's parts, and one
+        // past it is never taken
+        const mountedLines = files.get(reference) ?? [];
+        const partLines = mountedLines.filter(({ text: each }) => each.trim().startsWith('1 ')).length;
+        if(((placements.length + others.length + mountedPartLines + partLines) > MAX_PART_LINES) || ((references + 1) > MAX_PARTS) || ((expandedLines + mountedLines.length) > MAX_EXPANDED_LINES)) { truncated = true; return; }
+        references++;
+        expandedLines += mountedLines.length;
+        mountedPartLines += partLines;
+        placements[carrier] = withMount(placements[carrier], coloredMount(mount, reference, inheritedColor));
+        mountSpans.set(carrier, [...(mountSpans.get(carrier) ?? []), { from, to }]);
+        continue;
+      } /* else -- no mount, or its carrier off the grid */
       if(files.has(reference) && (depth < 16/*guards a cyclic MPD*/)) {
         references++;
         if(reference === main) nested = true/*the set placed in itself*/;
@@ -514,24 +573,25 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
         continue;
       } /* else -- a part */
       const placement = toPlacement(reference, colorCode, world);
-      if(placement) { placements.push(placement); placementCopies.push((owner === undefined) ? undefined : placed[owner].copy); placementPlaced.push(owner); placementSpans.push({ from, to }); placementSteps.push(step); }
+      if(placement) { placements.push(placement); placementCopies.push((owner === undefined) ? undefined : placed[owner].copy); placementPlaced.push(owner); placementSpans.push({ from, to }); placementSteps.push(step); placedAt.set(from, placements.length - 1); }
       else { others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode, position: world.position, matrix: world.matrix }); otherSpans.push({ from, to }); otherSteps.push(step); otherPlaced.push(owner); }
     }
   };
   walk(main, IDENTITY, 16, 0, undefined);
   const { pieceSpans, undecided } = absorbPieces(placements, others, otherSpans, otherSteps, { placements: placementPlaced, others: otherPlaced });
+  for(const [index, spans] of mountSpans) pieceSpans[index] = [...pieceSpans[index], ...spans]/*the carrier's lines*/;
 
   // each carrier of the main model's own (a hinge, a part with side faces) takes as its
   // mounts the main model's part lines right after its own lines, in its own line's
   // building step, at most one for each of its slots: each a component line whose
-  // parts are drawn from its component as the line places them (a component placing
-  // no other file, its pieces told, the line in LDraw's inherited color) and that
+  // parts are drawn from its component as the line places them (a component carrying
+  // none and nested in no other way, its pieces told, the line in LDraw's inherited color) and that
   // stands on the studs of a slot not yet taken (SEE: grid.ts mountedCopy), in any
   // order. The first line that is none ends the look. The carrier owns the lines it
   // takes, and the parts they place leave the build's own and its copies; any other
   // line keeps its parts as read
   const placedAt = new Map(placedSpans.map((span, index) => [span.from, index]));
-  const componentsByName = new Map(components.map(component => [component.name, component]));
+  const componentsByName = mountable(components)/*a name two files share carries nothing (SEE: mountable)*/;
   const carried = new Set<number/*an index into placed*/>();
   placements.forEach((placement, index) => {
     const part = getPart(placement.part)!/*by contract*/;
@@ -545,8 +605,8 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
       const line = (span === undefined) ? undefined : placedAt.get(span.from);
       if((line === undefined) || carried.has(line) || (span.from > stepEnd)) break/*no component line, or a step apart*/;
       const component = componentsByName.get(placed[line].component);
-      if(!component?.footprint || component.nested || component.undecided || (placed[line].colorCode !== INHERITED_COLOR)) break/*not drawn from its component as placed*/;
-      const mount = [...open].flatMap(slot => { const copy = mountedCopy(shape, placement, slot, { name: component.name, footprint: component.footprint! }, placedTransforms[line]); return copy ? [{ slot, copy }] : []; })[0];
+      if(!component?.footprint || component.nested || component.undecided || carriesComponents(component) || (placed[line].colorCode !== INHERITED_COLOR)) break/*not drawn from its component as placed, or carrying one*/;
+      const mount = mountOf(carrier, component, placedTransforms[line]);
       if(!mount) break;
       carrier = withMount(carrier, mount);
       open.delete(mount.slot);
@@ -572,7 +632,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
   exceeded();
   truncated ||= read.tooManyDefinitionLines/*the main model read, its components not*/;
   // why line edits cannot apply, when they cannot: the first reason found
-  const untold = undecided || components.some(component => component.undecided);
+  const untold = undecided || coloredUntold || components.some(component => component.undecided);
   const overflows = others.some(other => ![...other.position, ...other.matrix].every(Number.isFinite))/*placed through submodels whose transforms overflow*/;
   const { mainTwice } = read;
   const uneditable = mainTwice ? UNEDITABLE.mainTwice : read.unsectioned ? UNEDITABLE.unsectioned : nested ? UNEDITABLE.nested : read.repeated ? UNEDITABLE.repeated
@@ -588,7 +648,8 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
     header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others,
     ...(truncated ? { truncated } : {}),
     ...(ground ? { ground: ground.color } : {}),
-    ...((components.length > 0) ? { components: components.map(({ nested: _, undecided: __, ...component }) => component) } : {}),
+    ...((components.length > 0) ? { components: components.map(({ nested: _, undecided: __, mountLines: ___, ...component }) => component) } : {}),
+    ...((colored.size > 0) ? { carried: [...colored.values()] } : {}),
     ...((copies.length > 0) ? { copies, placementCopies } : {}),
     ...((placed.length > 0) ? { placed, placementPlaced, otherPlaced } : {}),
     ...(untold ? { untold: UNEDITABLE.undecided } : {}),
@@ -605,28 +666,74 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
 };
 
 // ................................................................................
-/** a component's parts in its own grid, from its file's lines; `nested` when it
- *  places another file */
-const readComponent = (file: string, componentLines: ReadonlyArray<Line>, files: ReadonlyMap<string, ReadonlyArray<Line>>): Component & Readonly<{ nested: boolean; undecided: boolean; }> => {
+/** a component's parts in its own grid, from its file's lines, and the lines in it
+ *  placing another file (SEE: withMounts) */
+type ComponentLines = Readonly<{
+  component: ReadComponent;
+  /** each placement's line and its pieces' lines, and every part line in order */
+  placementSpans: ReadonlyArray<Span>;
+  pieceSpans: ReadonlyArray<ReadonlyArray<Span>>;
+  parts: ReadonlyArray<Span>;
+  /** each line placing another file, by where it starts */
+  references: ReadonlyMap<number, Readonly<{ file: string; colorCode: number; transform: Transform; }>>;
+}>;
+const readComponent = (file: string, componentLines: ReadonlyArray<Line>, files: ReadonlyMap<string, ReadonlyArray<Line>>, inheritedColor: number = INHERITED_COLOR/*a copy's, for a component its carrier carries*/): ComponentLines => {
   const placements: Placement[] = [];
   const others: OtherPart[] = [];
   const spans: Span[] = [], steps: number[] = [];
-  let nested = false;
+  const placementSpans: Span[] = [], parts: Span[] = [];
+  const references = new Map<number, Readonly<{ file: string; colorCode: number; transform: Transform; }>>();
   for(const { text: line, from, to } of componentLines) {
     const fields = line.trim().split(/\s+/);
     if((fields[0] !== '1') || (fields.length < 15)) continue/*a comment, or malformed*/;
     const values = fields.slice(1, 14).map(Number);
     if(values.some(value => !Number.isFinite(value))) continue/*malformed*/;
+    parts.push({ from, to });
     const reference = normalizeName(fields.slice(14).join(' '));
-    if(files.has(reference)) { nested = true; continue; }
     const transform: Transform = { position: [values[1], values[2], values[3]], matrix: values.slice(4, 13) };
-    const placement = toPlacement(reference, values[0], transform);
-    if(placement) placements.push(placement);
-    else { others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode: values[0], position: transform.position, matrix: transform.matrix }); spans.push({ from, to }); steps.push(0); }
+    if(files.has(reference)) { references.set(from, { file: reference, colorCode: values[0], transform }); continue; }
+    const colorCode = isInheritedColor(values[0]) ? inheritedColor : values[0];
+    const placement = toPlacement(reference, colorCode, transform);
+    if(placement) { placements.push(placement); placementSpans.push({ from, to }); }
+    else { others.push({ ldraw: reference.replace(/\.dat$/, ''), colorCode, position: transform.position, matrix: transform.matrix }); spans.push({ from, to }); steps.push(0); }
   }
-  const { undecided } = absorbPieces(placements, others, spans, steps);
+  const { pieceSpans, undecided } = absorbPieces(placements, others, spans, steps);
   const footprint = footprintOf(placements);
-  return { name: file.replace(/\.ldr$/, ''), file, placements, others, ...(footprint ? { footprint } : {}), nested, undecided };
+  return {
+    component: { name: file.replace(/\.ldr$/, ''), file, placements, others, ...(footprint ? { footprint } : {}), nested: references.size > 0, undecided },
+    placementSpans, pieceSpans, parts, references,
+  };
+};
+
+/** the components with their carriers' mounts: as a set's carrier does (SEE: readSet),
+ *  each of a component's carriers takes as its mounts the component's part lines right
+ *  after its own lines, at most one for each of its slots: each a line placing a
+ *  component that places no other file, its pieces told, in LDraw's inherited color,
+ *  standing on the studs of a slot not yet taken. A component whose every line placing
+ *  another file is so taken carries them and is not nested; the components it carries
+ *  carry none, so a component nests one deep at most */
+const withMounts = (read: ReadonlyArray<ComponentLines>): ReadonlyArray<ReadComponent> => {
+  const names = mountable(read.map(({ component }) => component));
+  const flat = new Map(read.filter(({ component }) => !component.nested && !component.undecided && component.footprint && (names.get(component.name) === component)).map(({ component }) => [component.file, component]));
+  return read.map(({ component, placementSpans, pieceSpans, parts, references }) => {
+    if(!component.nested || component.undecided) return component;
+    const taken = new Map<number, Readonly<{ carrier: number; angle?: number; file: string; }>>();
+    const placements = component.placements.map((placement, index) => {
+      if(mountSlots(getPart(placement.part)!/*by contract*/).length < 1) return placement;
+      let carrier = placement;
+      for(let next = firstFrom(parts, maxOf([placementSpans[index], ...pieceSpans[index]].map(span => span.to))); ; next++) {
+        const span = parts[next];
+        const line = (span === undefined) ? undefined : references.get(span.from);
+        if(!line || taken.has(span.from) || (line.colorCode !== INHERITED_COLOR)) break/*no component line, or none drawn as placed*/;
+        const mount = mountOf(carrier, flat.get(line.file), line.transform);
+        if(!mount) break/*no component carrying none, or no slot left it stands in*/;
+        carrier = withMount(carrier, mount);
+        taken.set(span.from, { carrier: placementSpans[index].from, ...((placement.angle !== undefined) ? { angle: placement.angle } : {}), file: line.file });
+      }
+      return carrier;
+    });
+    return (taken.size < references.size) ? component/*a line placing another file otherwise*/ : { ...component, placements, nested: false, mountLines: taken };
+  });
 };
 
 /** each named file's lines, in one pass, in order: from a `0 FILE` line up to the
@@ -917,8 +1024,11 @@ const numberSteps = (placements: ReadonlyArray<number>, others: ReadonlyArray<nu
 // ................................................................................
 /** how many parts a build holds: its own, its copies' and its carriers' mounts', on
  *  the grid or off */
-export const partCount = (model: Model): number => model.placements.length + model.others.length +
-  model.placements.flatMap(mountsOf).reduce((total, mount) => total + carriedPartCount(mountedComponent(model, mount)), 0);
+export const partCount = (model: Model): number => placedPartCount(model, model.placements) + model.others.length;
+/** how many parts some of a model's placements are: each, and the parts its hinges and
+ *  faces carry */
+export const placedPartCount = (model: Model, placements: ReadonlyArray<Placement>): number =>
+  placements.length + placements.flatMap(mountsOf).reduce((total, mount) => total + carriedPartCount(mountedComponent(model, mount)), 0);
 const carriedPartCount = (component: Component): number => component.placements.length + component.others.length;
 
 /** how many copies of a component a build places: on the grid, and carried by its
@@ -926,16 +1036,40 @@ const carriedPartCount = (component: Component): number => component.placements.
 export const copiesOf = (model: Model, name: string): number =>
   (model.copies ?? []).filter(copy => copy.component === name).length + model.placements.flatMap(mountsOf).filter(mount => mount.copy.component === name).length;
 
+/** whether a component's hinges or faces carry components */
+export const carriesComponents = (component: Component): boolean => component.placements.some(placement => mountsOf(placement).length > 0);
+
 /** the component a mount carries: defined, with parts on the grid (a reader takes no
  *  other line as a mount) */
-export const mountedComponent = (model: Model, mount: Mount): Component & Readonly<{ footprint: Footprint; }> =>
-  model.components!.find(component => component.name === mount.copy.component) as Component & Readonly<{ footprint: Footprint; }>/*by contract*/;
+export const mountedComponent = (model: Model, mount: Mount): Component & Readonly<{ footprint: Footprint; }> => ((mount.copy.colorCode === undefined)
+  ? model.components!.find(component => component.name === mount.copy.component)
+  : model.carried!.find(component => (component.name === mount.copy.component) && (component.colorCode === mount.copy.colorCode))) as Component & Readonly<{ footprint: Footprint; }>/*by contract: in a copy's color, as the copy's carrier carries it*/;
+
+/** the components a mount may carry, by name: every one but those whose name another
+ *  file shares (`bare` and `bare.ldr`). A mount names its component, and every reader
+ *  of one finds it by that name (SEE: mountedComponent), so a name meaning two files is
+ *  never carried: what is charged for a mount and what is drawn for it are one file */
+const mountable = <T extends Component>(components: ReadonlyArray<T>): ReadonlyMap<string, T> => {
+  const named = new Map<string, number>();
+  for(const { name } of components) named.set(name, (named.get(name) ?? 0) + 1);
+  return new Map(components.filter(component => named.get(component.name) === 1).map(component => [component.name, component]));
+};
+
+/** the mount a line at `transform` is on a carrier: the copy of its component standing
+ *  on the studs of a slot the carrier has not filled (SEE: grid.ts mountedCopy) */
+const mountOf = (carrier: Placement, component: Component | undefined, transform: Transform): Mount | undefined => {
+  if(!component?.footprint) return undefined;
+  const part = getPart(carrier.part)!/*by contract*/;
+  const shape = getShape(part);
+  const filled = new Set(mountsOf(carrier).map(mount => mount.slot));
+  return mountSlots(part).filter(slot => !filled.has(slot)).flatMap(slot => { const copy = mountedCopy(shape, carrier, slot, { name: component.name, footprint: component.footprint! }, transform); return copy ? [{ slot, copy }] : []; })[0];
+};
 
 /** a placement carrying one more mount: a hinge's carry, or a face's */
 const withMount = (placement: Placement, { slot, copy }: Mount): Placement => {
   if(slot === 'top') return { ...placement, carry: copy };
-  const { component, x, z, rotation } = copy;
-  return { ...placement, sides: { ...placement.sides, [slot]: { component, x, z, rotation } } };
+  const { component, x, z, rotation, colorCode } = copy;
+  return { ...placement, sides: { ...placement.sides, [slot]: { component, x, z, rotation, ...((colorCode !== undefined) ? { colorCode } : {}) } } };
 };
 
 /** the lines a placement is drawn as: its own and its pieces' (SEE: grid.ts

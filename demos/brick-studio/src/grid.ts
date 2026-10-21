@@ -367,6 +367,9 @@ const heldOf = (gear: Gear): Readonly<{ accessory: Accessory; grip?: Grip; }> | 
 
 /** LDraw's inherited color: a piece written in it takes its part's color */
 export const INHERITED_COLOR = 16;
+/** whether an LDraw color is one a line takes from what places it: LDraw's inherited
+ *  color, or its edge color (24) */
+export const isInheritedColor = (colorCode: number): boolean => (colorCode === INHERITED_COLOR) || (colorCode === 24);
 
 /** composes a child transform into its parent's */
 export const compose = (parent: Transform, child: Transform): Transform => {
@@ -406,12 +409,17 @@ const piecesOf = (part: CatalogPart): ReadonlyArray<PartLine> => {
  *  the maximum, at rotation 0 in the group's own grid */
 export type Footprint = Readonly<{ minX: number; minZ: number; maxX: number; maxZ: number; height: number/*levels from 0*/; }>;
 
-/** where a copy of a component stands */
-export type Copy = Readonly<{ component: string; x: number; z: number; level: number; rotation: Rotation; }>;
+/** where a copy of a component stands; a copy a copy's carrier carries also takes the
+ *  copy's LDraw color for its parts in LDraw's inherited color (`colorCode`, none when
+ *  they keep the build's) */
+export type Copy = Readonly<{ component: string; x: number; z: number; level: number; rotation: Rotation; colorCode?: number; }>;
 
 /** the footprint of a group of parts, or undefined for none */
-export const footprintOf = (placements: ReadonlyArray<Placement>): Footprint | undefined => {
-  const cells = placements.flatMap(placement => filledCells(getShape(getPart(placement.part)!/*by contract*/), placement));
+export const footprintOf = (placements: ReadonlyArray<Placement>): Footprint | undefined =>
+  cellsFootprint(placements.flatMap(placement => filledCells(getShape(getPart(placement.part)!/*by contract*/), placement)));
+
+/** the footprint of some filled cells, or undefined for none */
+export const cellsFootprint = (cells: ReadonlyArray<FilledCell>): Footprint | undefined => {
   if(cells.length < 1) return undefined;
   return {
     minX: minOf(cells.map(cell => cell.x)), minZ: minOf(cells.map(cell => cell.z)),
@@ -477,7 +485,7 @@ export type MountSlot = 'top' | Face;
 export const FACES: ReadonlyArray<Face> = ['north', 'east', 'south', 'west'];
 /** a copy carried on a side face: its component, and where it stands on the face's
  *  map (SEE: Side faces) */
-export type FaceCarry = Readonly<{ component: string; x: number; z: number; rotation: Rotation; }>;
+export type FaceCarry = Readonly<{ component: string; x: number; z: number; rotation: Rotation; colorCode?: number/*SEE: Copy*/; }>;
 /** a copy a carrier carries in one of its slots, standing in that slot's frame (SEE:
  *  mountFrame): a face's copies at level 0, against the face */
 export type Mount = Readonly<{ slot: MountSlot; copy: Copy; }>;

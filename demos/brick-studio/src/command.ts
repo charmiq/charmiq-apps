@@ -10,7 +10,7 @@ import { checkModel, reportCheck, MAX_LISTED, TRUNCATED } from './check';
 import type { FidelityControl } from './fidelity-control';
 import { filledCells, footprintSize, getColorByCode, getPart, getShape, type PartShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE } from './grid';
 import type { LookAround } from './look-around';
-import type { Model } from './model';
+import { placedPartCount, type Model } from './model';
 import { fidelityLabel, toFidelity, untracedReason } from './render/fidelity';
 import type { StageControl } from './stage-control';
 import type { Viewer } from './viewer';
@@ -145,7 +145,7 @@ export class CommandSurface {
           const size = component.footprint ? footprintSize(component.footprint, 0) : [0, 0];
           const bySet = this.build.copiesBySet(component.name);
           return {
-            name: component.name, size: `${size[0]}x${size[1]}x${component.footprint?.height ?? 0}`, parts: component.placements.length, copies: bySet.reduce((total, [, copies]) => total + copies, 0),
+            name: component.name, size: `${size[0]}x${size[1]}x${component.footprint?.height ?? 0}`, parts: placedPartCount(model, component.placements)/*what its carriers carry included*/, copies: bySet.reduce((total, [, copies]) => total + copies, 0),
             ...((bySet.length > 1) ? { copiesBySet: Object.fromEntries(bySet) } : {}),
           };
         }) };

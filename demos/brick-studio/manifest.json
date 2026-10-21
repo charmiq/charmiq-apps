@@ -162,7 +162,7 @@
       },
       {
         "name": "defineComponent",
-        "description": "Define a component: a group of parts in its own grid (x, z and level from 0), placed many times with addParts. Defining a name again replaces it and changes every copy; refused whole if a copy would then collide. Returns its size and the build's check",
+        "description": "Define a component: a group of parts in its own grid (x, z and level from 0), placed many times with addParts. Its hinges and side faces carry other components (carry, sides) that carry none themselves: a store's sign band carrying its signs. Defining a name again replaces it and changes every copy; refused whole if a copy would then collide, or if a component carried would come to carry. Returns its size and the build's check",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -186,7 +186,9 @@
                   "hat":       { "type": "object", "description": "What a figure wears on its head, as addParts takes it" },
                   "rightHand": { "type": "object", "description": "What a figure holds in its right hand, as addParts takes it" },
                   "leftHand":  { "type": "object", "description": "What a figure holds in its left hand, as addParts takes it" },
-                  "angle":     { "type": "integer", "multipleOf": 15, "description": "A hinge's angle, as addParts takes it (a component's hinge carries nothing)" }
+                  "angle":     { "type": "integer", "multipleOf": 15, "description": "A hinge's angle, as addParts takes it" },
+                  "carry":     { "type": "object", "description": "The copy of a component a hinge carries, as addParts takes it: a component that carries none itself (a component nests one deep)" },
+                  "sides":     { "type": "object", "description": "The copies of components a part's side faces carry, as addParts takes them: each a component that carries none itself (a component nests one deep)" }
                 },
                 "required": ["part", "color", "x", "z", "level"]
               }
@@ -263,7 +265,7 @@
       },
       {
         "name": "listComponents",
-        "description": "The components the build defines, which every set may place: name, size (width x depth x height at rotation 0), parts and copies placed (and copiesBySet, by set, when the build has more than one)",
+        "description": "The components the build defines, which every set may place: name, size (width x depth x height at rotation 0, its own parts: what its hinges and faces carry may reach past it), parts (what its hinges and faces carry included) and copies placed (and copiesBySet, by set, when the build has more than one)",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
