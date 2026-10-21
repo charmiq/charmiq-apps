@@ -1,4 +1,4 @@
-import { cameraShots, shotAt, type Film } from './film';
+import { cameraShots, filmLengthOf, filmTimeOf, frameAtTime, sceneTimeOf, shotAt, type Film } from './film';
 import type { Inspected, InspectedMark, Inspector } from './inspector';
 import type { ClosePair } from './measure';
 import type { SoundCue } from './recorder';
@@ -266,8 +266,10 @@ export class Timeline {
     this.laid = [];
     if(!film) { this.scroller.replaceChildren(); this.place(); return; }
     const { scene } = film;
-    const length = scene.length;
-    const at = (time: number) => `${(Math.min(Math.max(time / length, 0), 1) * 100).toFixed(3)}%`;
+    // the lanes run in the film's own time; a mark stands where its scene time shows
+    const length = filmLengthOf(film);
+    const atFilm = (time: number) => `${(Math.min(Math.max(time / length, 0), 1) * 100).toFixed(3)}%`;
+    const at = (time: number) => atFilm(filmTimeOf(film, time));
 
     // the lanes widened by the zoom, within its bounds at the view's width: the lane
     // itself exactly its shown width times the zoom, its insets as they are
@@ -283,18 +285,18 @@ export class Timeline {
     const step = labelStep((shown * this.zoom) / length, scene.fps);
     for(let index=0; (index * step) <= (length + 1e-9); index++) {
       const tick = element(document, 'span', 'ruler-tick');
-      tick.style.left = at(index * step);
+      tick.style.left = atFilm(index * step);
       tick.textContent = labelOf(index * step);
       ruler.append(tick);
     }
-    ruler.style.setProperty('--frame', at(1 / scene.fps));
+    ruler.style.setProperty('--frame', atFilm(1 / scene.fps));
     const head = element(document, 'div', 'row row--ruler');
     head.append(this.zoomControls(film), ruler);
     this.scroller.replaceChildren(head);
 
     // keys grouped at the lanes' width: those nearer than KEY_APART draw as one
     this.laneWidth = ruler.getBoundingClientRect().width;
-    const apart = (this.laneWidth > 0) ? ((KEY_APART * length) / this.laneWidth) : 0;
+    const apart = (this.laneWidth > 0) ? ((KEY_APART * scene.length) / this.laneWidth) : 0/*the scene's seconds, as its keys are timed*/;
     const body = element(document, 'div', 'rows');
     const sounds = this.host.sounds();
     this.laid = rowsOf(film, this.close, sounds).map((row, index) => {
@@ -599,7 +601,7 @@ export class Timeline {
     const key = (event.target as HTMLElement).closest<HTMLElement>('.key');
     if(key) {
       const group = this.groupOf(key);
-      if(group) this.host.seek(Math.round(group.time * film.scene.fps));
+      if(group) this.host.seek(frameAtTime(film, group.time));
       return;
     } /* else -- not on a key: a sound, or the lane */
     const sound = (event.target as HTMLElement).closest<HTMLElement>('.band--sound:not(.is-fixed)');
@@ -638,7 +640,8 @@ export class Timeline {
     this.dragging = undefined;
     this.root.classList.remove('is-moving');
     if(Math.abs(moved) < DRAG_SLOP) { mark.style.transform = ''; this.redrawStale(); this.scrub(event); return; }
-    const time = Math.max(0, Math.round((band.cue!.time + ((moved / Math.max(1, this.laneWidth)) * film.scene.length)) * film.scene.fps) / film.scene.fps);
+    const fell = Math.max(0, Math.round((filmTimeOf(film, band.cue!.time) + ((moved / Math.max(1, this.laneWidth)) * filmLengthOf(film))) * film.scene.fps) / film.scene.fps)/*the film's frame it fell on*/;
+    const time = Math.round(sceneTimeOf(film, fell) * 1000) / 1000;
     const refused = await this.host.moveSound(band.cue!, time);
     if(refused !== undefined) { mark.style.transform = ''; this.showNote(refused); }
     this.redrawStale()/*the move settled: a sound read meanwhile drawn*/;
@@ -682,7 +685,7 @@ export class Timeline {
     const box = ruler.getBoundingClientRect();
     if(box.width <= 0) return undefined;
     const share = Math.min(Math.max((x - box.left) / box.width, 0), 1);
-    return { share, time: share * film.scene.length, frame: Math.min(film.frames.length - 1, Math.floor(share * film.frames.length)) };
+    return { share, time: sceneTimeOf(film, share * filmLengthOf(film)), frame: Math.min(film.frames.length - 1, Math.floor(share * film.frames.length)) };
   }
 
   private key(event: KeyboardEvent): void {
@@ -763,7 +766,7 @@ export class Timeline {
     const row = (index === undefined) ? undefined : Number(index);
     const laid = (row === undefined) ? undefined : this.laid[row];
     const near = (NEAR * film.scene.length) / Math.max(1, this.laneWidth);
-    const frame = Math.min(film.frames.length - 1, Math.round(at.time * film.scene.fps))/*the frame nearest the pointer*/;
+    const frame = frameAtTime(film, at.time)/*the frame nearest the pointer*/;
     return { frame, share: at.share, time: at.time, row, ...(laid ? { under: underAt(laid.groups, laid.row, at.time, near) } : {}) };
   }
 
@@ -774,7 +777,7 @@ export class Timeline {
     if(!film || !group) return undefined;
     const row = Number(key.closest<HTMLElement>('.row[data-row]')!.dataset.row);
     key.setAttribute('aria-describedby', 'inspect');
-    return { moment: { frame: Math.min(film.frames.length - 1, Math.round(group.time * film.scene.fps)), share: group.time / film.scene.length, time: group.time, row, under: { groups: [group], bands: [], notches: [] } }, pinned: false };
+    return { moment: { frame: frameAtTime(film, group.time), share: filmTimeOf(film, group.time) / filmLengthOf(film), time: group.time, row, under: { groups: [group], bands: [], notches: [] } }, pinned: false };
   }
 
   /** a moment in the inspector, its marks lit on the lane */

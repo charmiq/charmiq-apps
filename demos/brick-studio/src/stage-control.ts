@@ -3,7 +3,7 @@ import { BehaviorSubject, type Observable } from 'rxjs';
 import type { Build } from './build';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
+import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -135,7 +135,13 @@ export class StageControl {
     return probe(cast.sets[stagedSetOf(cast, set)].shown, asked.points, asked.segments, asked.grounds);
   }
 
-  /** shows the build again */
+  /** the shot a transition leaves as the viewer draws it: its actors' lines, when it
+   *  names its own */
+  private leavingShot(cast: Cast, leaving: Leaving | undefined) {
+    return leaving && { camera: leaving.camera, set: leaving.set, ...(leaving.shots ? { actors: shownActors(cast, leaving.shots) } : {}) };
+  }
+
+    /** shows the build again */
   public unstage(): Readonly<{ staged: false; }> {
     this.end();
     return { staged: false };
@@ -172,7 +178,7 @@ export class StageControl {
       const cast = this.ensure(loaded);
       this.applied++;
       const picture = this.pictureOf(loaded, shot, undefined);
-      this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set);
+      this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving));
       const image = await this.viewer.capture(size.width, size.height);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
       this.publish({ kind: 'staged', reel: loaded.id, frame: frame as number });
@@ -189,7 +195,7 @@ export class StageControl {
     const picture = this.pictureOf(loaded, shot, viewOf(view));
     return this.after(async () => {
       const cast = this.ensure(loaded);
-      const image = await this.viewer.thumbnail(shownActors(cast, shot.shots), picture.camera, picture.overlay, size.width, size.height, shot.set);
+      const image = await this.viewer.thumbnail(shownActors(cast, shot.shots), picture.camera, picture.overlay, size.width, size.height, shot.set, this.leavingShot(cast, picture.leaving));
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while its parts were built*/; }
       return image;
     });
@@ -215,7 +221,7 @@ export class StageControl {
         for(const [index, board] of boards.entries()) {
           const cast = this.ensure(loaded);
           const shot = loaded.frames[board.frame];
-          images.push(await this.after(() => this.viewer.thumbnail(shownActors(cast, shot.shots), pictures[index].camera, pictures[index].overlay, size.width, size.height, shot.set)));
+          images.push(await this.after(() => this.viewer.thumbnail(shownActors(cast, shot.shots), pictures[index].camera, pictures[index].overlay, size.width, size.height, shot.set, this.leavingShot(cast, pictures[index].leaving))));
           this.ensure(loaded)/*ended while it was drawn*/;
         }
       } catch(error) {
@@ -276,7 +282,7 @@ export class StageControl {
     const shot = loaded.frames[frame];
     const applied = ++this.applied;
     const picture = this.pictureOf(loaded, shot, undefined);
-    this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set);
+    this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving));
     void this.viewer.whenSettled().then(() => { if((this.reel === loaded) && (this.applied === applied)) this.publish({ kind: 'staged', reel, frame }); });
   }
 

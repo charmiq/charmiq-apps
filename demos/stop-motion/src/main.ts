@@ -10,7 +10,7 @@ import { Drive, type DriveFile, SOUND_FILES } from '../../brick-shared/drive';
 import { exportFilmCommands } from './command';
 import { Director } from './director';
 import { exportFilm, fileName, save } from './export';
-import type { Film, Paint } from './film';
+import { filmLengthOf, type Film, type Paint } from './film';
 import { FilmDialog } from './film-dialog';
 import { filmPartsOf, Films } from './films';
 import { closePairs } from './measure';
@@ -208,7 +208,7 @@ const showSheet = () => {
   if(!film) { filmTitle.textContent = 'No film yet'; filmFacts.textContent = ''; cast.replaceChildren(); logs.hidden = true; return; }
   const { scene } = film;
   filmTitle.textContent = scene.title;
-  filmFacts.textContent = `${scene.length.toFixed(1)} s · ${scene.fps} fps · ${film.frames.length} frames · ${scene.width}×${scene.height}`;
+  filmFacts.textContent = `${filmLengthOf(film).toFixed(1)} s · ${scene.fps} fps · ${film.frames.length} frames · ${scene.width}×${scene.height}`;
   const stage = studios.stageState;
   const refused = new Map((stage.kind === 'staged') ? stage.refused.map(each => [each.name, each.reason]) : []);
   cast.replaceChildren(...scene.actors.map((actor, index) => {
@@ -428,7 +428,7 @@ const editScene = async (scene: MeasuredScene, edit: SceneEdit, expected: (sound
 const addSoundAt = async (file: DriveFile) => {
   const scene = source.scene;
   if(!scene) throw new Error(`No code editor holds the scene: add one with a ${SCENE_TAB} tab.`);
-  const time = film ? (player.current.index / film.scene.fps) : 0;
+  const time = film ? film.frames[player.current.index].time : 0/*the scene's time the playhead shows*/;
   soundNames.set(file.uri, file.fileName);
   const refused = await editScene(scene, addSound(scene.code, time, file.uri, file.fileName), sounds => soundsAdded(sounds, time, file.uri));
   if(refused !== undefined) throw new Error(refused);

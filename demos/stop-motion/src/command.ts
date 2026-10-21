@@ -3,7 +3,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import { DesignExists, displayName } from '../../brick-shared/designs';
 
 import type { Avoided } from './clearance';
-import { cameraShots, setAt, shotAt, shotFrames, type CameraShot, type Film } from './film';
+import { cameraShots, filmLengthOf, frameAtTime, setAt, shotAt, shotFrames, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
 import type { Player } from './player';
@@ -58,11 +58,14 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       return {
         studios: host.studios(), editors: host.editors(), ...stageReport(stage),
         ...(film ? {
-          title: film.scene.title, seconds: film.scene.length, fps: film.scene.fps, frames: film.frames.length,
+          title: film.scene.title, seconds: film.scene.length, ...(film.scene.speed ? { filmSeconds: thousandths(filmLengthOf(film)) } : {}), fps: film.scene.fps, frames: film.frames.length,
           actors: film.scene.actors.map(actor => actor.name), views: film.scene.views.map(view => view.name),
           shots: cameraShots(film.scene.camera, film.scene.length).map(shot => { const set = setAt(film.scene.sets, shot.from); return (set !== undefined) ? { ...shot, set } : shot; }),
           ...(film.scene.sets ? { sets: film.scene.sets.map(({ time, set }) => ({ time: thousandths(time), set })) } : {}),
-          ...(film.scene.sounds ? { sounds: film.scene.sounds.map(({ time, name, volume, until, actor }) => ({ time: thousandths(time), name, volume, ...((until !== undefined) ? { until: thousandths(until) } : {}), ...((actor !== undefined) ? { actor } : {}) })) } : {}),
+          ...(film.scene.sounds ? { sounds: film.scene.sounds.map(({ time, name, volume, until, actor, fadeIn, fadeOut }) => ({
+            time: thousandths(time), name, volume, ...((until !== undefined) ? { until: thousandths(until) } : {}), ...((actor !== undefined) ? { actor } : {}),
+            ...((fadeIn !== undefined) ? { fadeIn: thousandths(fadeIn) } : {}), ...((fadeOut !== undefined) ? { fadeOut: thousandths(fadeOut) } : {}),
+          })) } : {}),
           ...(sizes ? { close: closePairs(film, sizes).map(pair => ({ actors: pair.actors, frame: pair.frame, time: thousandths(pair.time), gap: hundredths(pair.gap) })) } : {}),
           ...(staged ? { camera: cameraProblems(staged.film, staged.sizes, staged.parts).map(problemReport) } : {}),
           ...((staged && (staged.avoided.length > 0)) ? { avoided: staged.avoided.map(({ from, to, kept, view }) => ({ from: thousandths(from), to: thousandths(to), kept: hundredths(kept), ...((view !== undefined) ? { view } : {}) })) } : {}),
@@ -81,7 +84,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       const drawn = host.shown(shown);
       host.player.redraw()/*shown again, whether or not the playhead moved*/;
       await drawn;
-      return { frame: shown, time: shown / film.scene.fps };
+      return { frame: shown, time: thousandths(film.frames[shown].time) };
     },
     stage: async () => { await host.restage(); return stageReport(host.stage()); },
 
@@ -98,7 +101,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       let indices: number[];
       if(times !== undefined) {
         if(!Array.isArray(times) || !times.every(each => (typeof each === 'number') && (each >= 0) && (each <= scene.length))) throw new Error(`times are seconds from 0 to ${scene.length}.`);
-        indices = times.map(each => Math.min(last, Math.round(each * scene.fps)));
+        indices = times.map(each => frameAtTime(film, each));
       } else if(frames !== undefined) {
         if(!Array.isArray(frames) || !frames.every(each => Number.isInteger(each) && (each >= 0) && (each <= last))) throw new Error(`frames are whole frames from 0 to ${last}.`);
         indices = frames as number[];
@@ -107,9 +110,9 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       }
       if(indices.length < 1) throw new Error('Give at least one time or frame.');
       if(indices.length > MAX_BOARD) throw new Error(`A storyboard shows at most ${MAX_BOARD} frames.`);
-      const boards = indices.map(index => ({ frame: index, caption: captionOf(index / scene.fps, index, shots) }));
+      const boards = indices.map(index => ({ frame: index, caption: captionOf(film.frames[index].time, index, shots) }));
       const shown = await host.storyboard(boards, view as string | undefined);
-      return { shown, frames: boards.map(board => ({ frame: board.frame, time: thousandths(board.frame / scene.fps), caption: board.caption })) };
+      return { shown, frames: boards.map(board => ({ frame: board.frame, time: thousandths(film.frames[board.frame].time), caption: board.caption })) };
     },
 
     measure: ({ actors, from, to }: { actors?: unknown; from?: unknown; to?: unknown; }) => {
@@ -200,11 +203,11 @@ const filmOf = (host: FilmHost): Film => {
   return film;
 };
 
-/** the frame a time (seconds) or a frame (from 0) names, within the film */
+/** the frame a time (the scene's seconds) or a frame (from 0) names, within the film */
 const frameAt = (film: Film, time: unknown, frame: unknown): number => {
-  const index = (typeof frame === 'number') ? frame : (typeof time === 'number') ? Math.round(time * film.scene.fps) : NaN;
-  if(!Number.isFinite(index)) throw new Error('Give the time (seconds) or the frame (from 0).');
-  return Math.max(0, Math.min(film.frames.length - 1, Math.round(index)));
+  if(typeof frame === 'number') { if(Number.isFinite(frame)) return Math.max(0, Math.min(film.frames.length - 1, Math.round(frame))); }
+  else if((typeof time === 'number') && Number.isFinite(time)) return frameAtTime(film, time);
+  throw new Error('Give the time (seconds) or the frame (from 0).');
 };
 
 /** how the stage stands, model-facing: its kind, the actors it refused, and why it

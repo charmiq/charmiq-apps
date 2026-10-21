@@ -1,6 +1,6 @@
-import { cameraShots, type Film, type FilmFrame } from './film';
+import { cameraShots, filmTimeOf, sceneTimeOf, type Film, type FilmFrame } from './film';
 import type { ClosePair } from './measure';
-import { castAs, type CameraKey, type Key, type RecordedCamera, type SetKey, type SoundCue, type Span, type Target, type Title } from './recorder';
+import { castAs, type CameraKey, type FadeKey, type Key, type RecordedCamera, type SetKey, type SoundCue, type Span, type Target, type Title } from './recorder';
 
 // the timeline's marks as data: a row per track (the camera, each view, each actor,
 // the sets, the sounds, the fade and the titles), each with its keys, its bands over their spans and
@@ -38,7 +38,7 @@ export type RowNotch = Said & Readonly<{ time: number; }>;
 
 /** whose track a row is: the camera or a view, an actor, the sets, the sounds, the
  *  fade or the titles */
-export type Track = Readonly<{ kind: 'camera'; view?: string; } | { kind: 'actor'; name: string; } | { kind: 'sets'; } | { kind: 'sounds'; } | { kind: 'fade'; } | { kind: 'titles'; }>;
+export type Track = Readonly<{ kind: 'camera'; view?: string; } | { kind: 'actor'; name: string; } | { kind: 'sets'; } | { kind: 'sounds'; } | { kind: 'fade'; } | { kind: 'speed'; } | { kind: 'titles'; }>;
 
 /** a row: its name, a note under it, its color (a CSS custom property), whose track
  *  it is and its marks */
@@ -85,8 +85,9 @@ export const rowsOf = (film: Film, close: ReadonlyArray<ClosePair>, known: Sound
       };
     }),
     ...(scene.sets ? [setRow(scene.sets, length)] : []),
-    ...(scene.sounds ? [soundRow(scene.sounds, length, known)] : []),
+    ...(scene.sounds ? [soundRow(film, scene.sounds, length, known)] : []),
     fadeRow(scene.fade),
+    ...(scene.speed ? [speedRow(scene.speed)] : []),
     ...((scene.titles.length > 0) ? [titleRow(scene.titles)] : []),
   ];
 };
@@ -121,12 +122,12 @@ const setRow = (keys: ReadonlyArray<SetKey>, length: number): Row => ({
  *  over its own length, once read; one played until a time over that span), named and
  *  saying its volume and the actor it follows; one whose length is not yet known a key
  *  at its time */
-const soundRow = (cues: ReadonlyArray<SoundCue>, length: number, known: SoundsKnown): Row => {
+const soundRow = (film: Film, cues: ReadonlyArray<SoundCue>, length: number, known: SoundsKnown): Row => {
   const said = (cue: SoundCue) => [...((cue.volume !== 1) ? [`volume ${Math.round(cue.volume * 100)}%`] : []), ...((cue.actor !== undefined) ? [`follows ${cue.actor}`] : []), ...readingSaid(known.reading(cue.name))];
   const reading = (cue: SoundCue) => { const where = known.reading(cue.name); return (where === undefined) ? {/*read*/} : { reading: where }; };
   const spanOf = (cue: SoundCue) => {
     const duration = known.duration(cue.name);
-    const to = cue.until ?? ((duration !== undefined) ? (cue.time + duration) : undefined);
+    const to = cue.until ?? ((duration !== undefined) ? sceneTimeOf(film, filmTimeOf(film, cue.time) + duration)/*its own length, at the film's pace*/ : undefined);
     return (to === undefined) ? undefined/*its length not yet known*/ : Math.min(to, length);
   };
   return {
@@ -148,13 +149,23 @@ const readingSaid = (reading: SoundReading | undefined): ReadonlyArray<string> =
 /** the sounds before any is read: no lengths, each called by its sound, none being read */
 const UNKNOWN_SOUNDS: SoundsKnown = { duration: () => undefined/*not read*/, label: sound => sound, reading: () => undefined/*no file read*/ };
 
-const fadeRow = (keys: ReadonlyArray<Key>): Row => ({
+const fadeRow = (keys: ReadonlyArray<FadeKey>): Row => ({
   name: 'Fade', color: '--ink', track: { kind: 'fade' },
-  keys: keys.map(key => ({ time: key.time, title: `Fade at ${seconds2(key.time)}`, chips: [`${Math.round(key.values.fade * 100)}% black`, key.ease] })),
+  keys: keys.map(key => ({ time: key.time, title: `Fade at ${seconds2(key.time)}`, chips: [fadeWords(key.values.fade, key.color, key.shape), key.ease] })),
   bands: keys.slice(1).map((key, index) => ({
-    from: keys[index].time, to: key.time, label: `to ${Math.round(key.values.fade * 100)}% black`, kind: 'fade' as const, strength: key.values.fade,
-    title: `Fade to ${Math.round(key.values.fade * 100)}% black`, chips: [`${seconds2(keys[index].time)} – ${seconds2(key.time)}`, key.ease],
+    from: keys[index].time, to: key.time, label: `to ${fadeWords(key.values.fade, key.color, key.shape)}`, kind: 'fade' as const, strength: key.values.fade,
+    title: `Fade to ${fadeWords(key.values.fade, key.color, key.shape)}`, chips: [`${seconds2(keys[index].time)} – ${seconds2(key.time)}`, key.ease],
   })),
+  notches: [],
+});
+/** a fade in a few words: how far, to what color, and as an iris */
+const fadeWords = (amount: number, color: string | undefined, shape: 'iris' | undefined): string => `${Math.round(amount * 100)}% ${color ?? 'black'}${(shape === 'iris') ? ', an iris' : ''}`;
+
+/** the scene's speed against the film from each key: 1 as it runs, below slower */
+const speedRow = (keys: ReadonlyArray<Key>): Row => ({
+  name: 'Speed', color: '--ink', track: { kind: 'speed' },
+  keys: keys.map(key => ({ time: key.time, title: `Speed at ${seconds2(key.time)}`, chips: [`×${round(key.values.speed)}`, key.ease] })),
+  bands: [],
   notches: [],
 });
 
@@ -233,14 +244,15 @@ export const standingAt = (row: Row, frame: FilmFrame): ReadonlyArray<string> =>
       const camera = (track.view === undefined) ? frame.camera : frame.views[track.view];
       if(!camera) return [];
       if('plan' in camera) return [`plan ${camera.plan.width} × ${camera.plan.depth} studs`];
-      return [`at ${point(camera.position)}`, `looks at ${point(camera.target)}`, `${round(camera.fov)}° lens`];
+      return [`at ${point(camera.position)}`, `looks at ${point(camera.target)}`, `${round(camera.fov)}° lens`, ...(camera.roll ? [`rolled ${round(camera.roll)}°`] : [])];
     }
     case 'sets': return [frame.set ?? 'the build\'s first set'];
     case 'sounds': {
       const playing = row.bands.filter(each => (each.from <= frame.time) && (frame.time < each.to)).map(each => each.label);
       return (playing.length > 0) ? playing : ['quiet'];
     }
-    case 'fade': return [`${Math.round(frame.fade * 100)}% black`];
+    case 'fade': return [fadeWords(frame.fade, frame.fadeColor, frame.fadeShape)];
+    case 'speed': return [`the scene at ${seconds2(frame.time)}`];
     case 'titles': return frame.title ? [frame.title.text] : ['no title'];
   }
 };
@@ -263,7 +275,9 @@ const cameraChips = (key: CameraKey): ReadonlyArray<string> => {
   const chips: string[] = (key.ease === 'hold') ? [(key.name !== undefined) ? `"${key.name}"` : 'a cut'] : [];
   if(key.place) chips.push(('orbit' in key.place) ? `orbits at ${round(key.place.orbit.angle)}°, ${round(key.place.orbit.distance)} out` : `at ${point(key.place.point)}`);
   if(key.target) chips.push(('actor' in key.target) ? `looks at ${key.target.actor}` : `looks at ${point(key.target.point)}`);
-  if(key.fov !== undefined) chips.push(`${round(key.fov)}° lens`);
+  if(key.fov !== undefined) chips.push(`${round(key.fov)}° lens${key.dollyZoom ? ', a dolly zoom' : ''}`);
+  if(key.roll !== undefined) chips.push(`rolled ${round(key.roll)}°`);
+  if(key.transition) chips.push(`${key.transition.shape} over ${round(key.transition.seconds)} s`);
   return (key.ease === 'hold') ? chips : [...chips, key.ease];
 };
 

@@ -34,7 +34,7 @@ export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
 /** one of the studio's sounds played from `time`: once, or over and over `until` a
  *  time; at a volume (1 as recorded); from where an actor stands in the picture
  *  when it follows one (SEE: sound.ts) */
-export type SoundCue = Readonly<{ time: number; name: string; volume: number; until?: number; actor?: string; line?: number; }>;
+export type SoundCue = Readonly<{ time: number; name: string; volume: number; until?: number; actor?: string; fadeIn?: number; fadeOut?: number; line?: number; }>;
 
 /** a function of time over a span, sampled at each frame from `from` up to `to`
  *  (frame numbers, inclusive): `set` replaces its channels there, `add` adds to them */
@@ -47,10 +47,22 @@ export type Target = Readonly<{ point: Point; } | { actor: string; height: numbe
  *  (0 south of the target, 90 east) or, `relativeTo: 'heading'`, turns with the target
  *  actor's heading (0 behind it, 90 its right, 180 before it) */
 export type CameraPlace = Readonly<{ point: Point; } | { orbit: Readonly<{ angle: number; distance: number; height: number; relativeTo?: 'heading'; }>; }>;
-/** a camera's key; a cut is a held key, and `name` names the shot it starts.
- *  `avoid: 'parts'` keeps the camera out of the set's parts from it to the next key
- *  placing it (SEE: studios.ts avoided) */
-export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; avoid?: 'parts'; ease: Ease; name?: string; line?: number; }>;
+/** a camera's key; a cut is a held key, and `name` names the shot it starts, which
+ *  enters by its `transition` over the shot it leaves. `avoid: 'parts'` keeps the
+ *  camera out of the set's parts from it to the next key placing it (SEE: studios.ts
+ *  avoided). `roll` turns the camera about where it looks (degrees, clockwise as seen
+ *  from behind it); `dollyZoom` keeps its target the size it is on the screen while the
+ *  lens eases into the key (the camera drawn in or out against the lens) */
+export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; roll?: number; dollyZoom?: true; avoid?: 'parts'; ease: Ease; name?: string; transition?: Transition; line?: number; }>;
+/** how a shot enters over the one it leaves, over `seconds` from its cut: dissolving,
+ *  wiping it away toward a side, or opening on it as an iris (SEE: Brick Studio's
+ *  transitions) */
+export type Transition = Readonly<{ shape: TransitionShape; seconds: number; }>;
+export type TransitionShape = 'dissolve' | 'wipe-left' | 'wipe-right' | 'wipe-up' | 'wipe-down' | 'iris';
+/** a key of the fade: its amount (0 shows the frame, 1 its color), and, from it on,
+ *  its color (#rrggbb, black unless named) and its shape (the whole picture, or an iris
+ *  closing in from the frame's edge) */
+export type FadeKey = Key & Readonly<{ color?: string; shape?: 'iris'; }>;
 
 export type Title = Readonly<{ from: number; to: number; text: string; style: 'card' | 'caption'; line?: number; }>;
 
@@ -98,13 +110,17 @@ export type Recorded = Readonly<{
   /** more cameras, by name: each a second studio's view of the scene. A plan looks
    *  straight down over `area`, or over everything the film shows when it names none */
   views: ReadonlyArray<RecordedCamera & Readonly<{ name: string; plan?: Readonly<{ area?: Area; }>; }>>;
-  fade: ReadonlyArray<Key>;
+  fade: ReadonlyArray<FadeKey>;
   titles: ReadonlyArray<Title>;
   /** which of the build's sets stands from each key on, in time order, when the scene
    *  keys any (its first set stands before the first) */
   sets?: ReadonlyArray<SetKey>;
   /** the sounds it plays, in time order, when it plays any */
   sounds?: ReadonlyArray<SoundCue>;
+  /** how fast the scene runs against the film from each key on (`speed`: 1 as it is,
+   *  0.25 a quarter as fast), eased between keys, in time order, when it keys any
+   *  (SEE: film.ts Clock) */
+  speed?: ReadonlyArray<Key>;
   /** what the scene logged (console.log) */
   logs: ReadonlyArray<string>;
 }>;
@@ -200,7 +216,8 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; }>();
   /** the views that are plans, each with the area it names, if any */
   const plans = new Map<string, { area?: Area; }>();
-  const fadeKeys: Key[] = [];
+  const fadeKeys: FadeKey[] = [];
+  const speedKeys: Key[] = [];
   const setKeys: SetKey[] = [];
   const soundCues: SoundCue[] = [];
   const titles: Title[] = [];
@@ -411,14 +428,17 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
     /** refuses a key on a plan, which looks down over the whole scene */
     const unplanned = () => { if(plans.has(name)) fail(`${label} is a plan: it takes no keys`); };
     /** a key's values at a time, eased into, starting a named shot when it cuts */
-    const key = (verb: string, time: unknown, values: unknown, ease: Ease, shot?: string) => {
+    const key = (verb: string, time: unknown, values: unknown, ease: Ease, shot?: string, transition?: Transition) => {
       unplanned();
       counted();
       const at = toTime(time, `${label}.${verb}`);
       const what = `${label}.${verb}(${at})`;
-      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov, avoid }`);
-      const { position, orbit, target, fov, avoid, ...rest } = values as Record<string, unknown>;
-      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov, avoid)`);
+      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov, roll, dollyZoom, avoid }`);
+      const { position, orbit, target, fov, roll, dollyZoom, avoid, ...rest } = values as Record<string, unknown>;
+      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov, roll, dollyZoom, avoid)`);
+      if((roll !== undefined) && !isFiniteNumber(roll)) fail(`${what}.roll is degrees: the camera turned clockwise about where it looks, as seen from behind it`);
+      if((dollyZoom !== undefined) && (dollyZoom !== true)) fail(`${what}.dollyZoom is true: the target kept its size on the screen while the lens eases into the key`);
+      if(dollyZoom && (fov === undefined)) fail(`${what}.dollyZoom eases the lens into the key: give it a fov`);
       if((avoid !== undefined) && (avoid !== 'parts')) fail(`${what}.avoid is 'parts': the camera kept out of the set's parts`);
       if((position !== undefined) && (orbit !== undefined)) fail(`${what}: a position or an orbit, not both`);
       let place: CameraPlace | undefined;
@@ -432,17 +452,25 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       const aim = toTarget(target, `${what}.target`);
       if((fov !== undefined) && (!isFiniteNumber(fov) || ((fov as number) < 5) || ((fov as number) > 120))) fail(`${what}.fov is degrees from 5 to 120`);
       if((avoid !== undefined) && !place) fail(`${what}.avoid keeps the camera a key places out of parts: give it a position or an orbit`);
-      cameraKeys.push({ time: at, ...(place ? { place } : {}), ...(aim ? { target: aim } : {}), ...((fov !== undefined) ? { fov: fov as number } : {}), ...((avoid === 'parts') ? { avoid: 'parts' as const } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), line: callerLine() });
+      cameraKeys.push({
+        time: at, ...(place ? { place } : {}), ...(aim ? { target: aim } : {}), ...((fov !== undefined) ? { fov: fov as number } : {}), ...((roll !== undefined) ? { roll: roll as number } : {}),
+        ...(dollyZoom ? { dollyZoom: true as const } : {}), ...((avoid === 'parts') ? { avoid: 'parts' as const } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), ...(transition ? { transition } : {}), line: callerLine(),
+      });
     };
     const camera = {
       /** a key: where the camera stands (a point or an orbit round its target), what
        *  it looks at and its lens at `time`, each left to the key before when left out */
       at: (time: unknown, values: unknown, ease?: unknown) => { key('at', time, values, toEase(ease)); return camera; },
       /** a cut: the camera jumps to these values at `time`, held there from the key
-       *  before; `name` names the shot it starts */
-      cut: (time: unknown, values: unknown, name?: unknown) => {
-        if((name !== undefined) && ((typeof name !== 'string') || (name.trim().length < 1) || (name.length > MAX_NAME))) fail(`${label}.cut(${String(time)}): a shot's name is 1 to ${MAX_NAME} characters`);
-        key('cut', time, values, 'hold', name as string | undefined);
+       *  before; `name` names the shot it starts, which enters by `transition` (a
+       *  dissolve, a wipe toward a side or an iris, over `seconds`: 0.5) over the shot it
+       *  leaves, the camera's alone */
+      cut: (time: unknown, values: unknown, name?: unknown, options: unknown = {}) => {
+        if((name !== undefined) && (name !== null) && ((typeof name !== 'string') || (name.trim().length < 1) || (name.length > MAX_NAME))) fail(`${label}.cut(${String(time)}): a shot's name is 1 to ${MAX_NAME} characters`);
+        const given = optionsOf(options, `${label}.cut(${String(time)})`);
+        if((given.transition !== undefined) && (label !== 'camera')) fail(`${label}.cut(${String(time)}): a transition is the film's camera's; a view cuts`);
+        const transition = (given.transition === undefined) ? undefined : transitionOf(given, `${label}.cut(${String(time)})`);
+        key('cut', time, values, 'hold', (name ?? undefined) as string | undefined, transition);
         return camera;
       },
       /** a handheld shake: noise added to where it stands, `amount` studs at most */
@@ -477,18 +505,55 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   };
 
   // .. Fade and Titles ...........................................................
-  /** the fade to black: 0 shows the frame, 1 is black */
+  /** the fade: 0 shows the frame, 1 is its color (black unless a key names one), over
+   *  the whole picture or closing in from the frame's edge as an iris */
   const fade = {
-    at: (time: unknown, value: unknown, ease?: unknown) => {
+    at: (time: unknown, value: unknown, ease?: unknown, options: unknown = {}) => {
       counted();
-      if(!isFiniteNumber(value) || (value < 0) || (value > 1)) fail('fade.at takes a value from 0 (the frame) to 1 (black)');
-      fadeKeys.push({ time: toTime(time, 'fade.at'), values: { fade: value as number }, ease: toEase(ease), line: callerLine() });
+      if(!isFiniteNumber(value) || (value < 0) || (value > 1)) fail('fade.at takes a value from 0 (the frame) to 1 (its color)');
+      const given = optionsOf(options, 'fade.at');
+      if((given.color !== undefined) && ((typeof given.color !== 'string') || !/^#[0-9a-fA-F]{6}$/.test(given.color))) fail('fade.at\'s color is #rrggbb (black when left out)');
+      if((given.shape !== undefined) && (given.shape !== 'iris')) fail('fade.at\'s shape is iris (the whole picture when left out)');
+      fadeKeys.push({ time: toTime(time, 'fade.at'), values: { fade: value as number }, ease: toEase(ease), ...((given.color !== undefined) ? { color: given.color as string } : {}), ...((given.shape !== undefined) ? { shape: 'iris' as const } : {}), line: callerLine() });
       return fade;
     },
-    /** from the frame to black over a span */
-    out: (from: unknown, to: unknown) => fade.at(from, 0, 'hold').at(to, 1, 'ease-in'),
-    /** from black to the frame over a span */
-    in: (from: unknown, to: unknown) => fade.at(from, 1, 'hold').at(to, 0, 'ease-out'),
+    /** from the frame to its color over a span (black, or `color`) */
+    out: (from: unknown, to: unknown, options: unknown = {}) => fade.at(from, 0, 'hold', options).at(to, 1, 'ease-in', options),
+    /** from its color to the frame over a span */
+    in: (from: unknown, to: unknown, options: unknown = {}) => fade.at(from, 1, 'hold', options).at(to, 0, 'ease-out', options),
+    /** a flash: the whole frame `color` (white) at `time`, held `hold` seconds (a
+     *  frame or two), then back to the frame over `out` seconds */
+    flash: (time: unknown, options: unknown = {}) => {
+      const given = optionsOf(options, 'fade.flash');
+      const [at, hold, out] = [toTime(time, 'fade.flash'), given.hold ?? 0.04, given.out ?? 0.3];
+      if(!isFiniteNumber(hold) || (hold < 0) || !isFiniteNumber(out) || (out <= 0)) fail('fade.flash\'s hold and out are seconds, out more than 0');
+      const color = { color: given.color ?? '#ffffff' };
+      return fade.at(at, 0, 'hold', color).at(at, 1, 'hold', color).at(at + (hold as number), 1, 'hold', color).at(at + (hold as number) + (out as number), 0, 'ease-out', color);
+    },
+    /** an iris closing on the frame over a span, to black (or `color`) */
+    irisOut: (from: unknown, to: unknown, options: unknown = {}) => fade.out(from, to, { ...optionsOf(options, 'fade.irisOut'), shape: 'iris' }),
+    /** an iris opening on the frame over a span */
+    irisIn: (from: unknown, to: unknown, options: unknown = {}) => fade.in(from, to, { ...optionsOf(options, 'fade.irisIn'), shape: 'iris' }),
+  };
+
+  /** how fast the scene runs against the film from `time` (`rate`: 1 as it is, 0.25 a
+   *  quarter as fast for slow motion, 2 twice), eased into from the key before */
+  const speed = {
+    at: (time: unknown, rate: unknown, ease?: unknown) => {
+      counted();
+      if(!isFiniteNumber(rate) || (rate < 0.05) || (rate > 8)) fail('speed.at takes a rate from 0.05 (a twentieth as fast) to 8 (eight times): 1 as the scene runs');
+      speedKeys.push({ time: toTime(time, 'speed.at'), values: { speed: rate as number }, ease: toEase(ease), line: callerLine() });
+      return speed;
+    },
+    /** the scene a `rate` as fast from `from` to `to`, at its own speed either side,
+     *  easing in and out over `ease` seconds (0.2) */
+    slow: (from: unknown, to: unknown, rate: unknown = 0.25, options: unknown = {}) => {
+      const [start, end] = [toTime(from, 'speed.slow'), toTime(to, 'speed.slow')];
+      const into = optionsOf(options, 'speed.slow').ease ?? 0.2;
+      if(!isFiniteNumber(into) || (into < 0) || ((2 * (into as number)) > (end - start)) || ((start - (into as number)) < 0)) fail('speed.slow\'s ease is seconds, at most half its span and no earlier than the film\'s start');
+      if(into === 0) return speed.at(start, 1, 'hold').at(start, rate, 'hold').at(end, 1, 'hold')/*at once, its own speed held before*/;
+      return speed.at(start - (into as number), 1, 'hold').at(start, rate, 'ease-in-out').at(end, rate, 'linear').at(end + (into as number), 1, 'ease-in-out');
+    },
   };
 
   /** the build's set standing from a time on: a cut to another set */
@@ -511,11 +576,15 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
     const call = `${what}(${at})`;
     const file = (typeof name === 'string') && /^charmiq:\/\/file\/[^/?#\s]+$/.test(name);
     if(!file && !shipped.includes(name as string)) fail(`${call} plays a Platform file by its URI (charmiq://file/<assetId>)${(shipped.length > 0) ? ` or a sound Stop Motion ships: ${shipped.join(', ')}` : ''}`);
-    const { volume = 1, until } = ((typeof options === 'object') && (options !== null)) ? options as Record<string, unknown> : {};
+    const { volume = 1, until, fadeIn, fadeOut } = ((typeof options === 'object') && (options !== null)) ? options as Record<string, unknown> : {};
     if(!isFiniteNumber(volume) || (volume < 0) || (volume > MAX_VOLUME)) fail(`${call}'s volume is a number from 0 to ${MAX_VOLUME}`);
     const end = (until === undefined) ? undefined : toTime(until, what);
     if((end !== undefined) && (end <= at)) fail(`${call} plays until after it starts`);
-    soundCues.push({ time: at, name: name as string, volume: volume as number, ...((end !== undefined) ? { until: end } : {}), ...((actor !== undefined) ? { actor } : {}), line: callerLine() });
+    for(const [key, value] of [['fadeIn', fadeIn], ['fadeOut', fadeOut]] as const) if((value !== undefined) && (!isFiniteNumber(value) || (value < 0))) fail(`${call}'s ${key} is seconds, 0 or more`);
+    soundCues.push({
+      time: at, name: name as string, volume: volume as number, ...((end !== undefined) ? { until: end } : {}), ...((actor !== undefined) ? { actor } : {}),
+      ...(fadeIn ? { fadeIn: fadeIn as number } : {}), ...(fadeOut ? { fadeOut: fadeOut as number } : {}), line: callerLine(),
+    });
   };
   /** the studio's sounds at their times, following no actor */
   const sound = { at: (time: unknown, name: unknown, options?: unknown) => { cue('sound.at', time, name, options); return sound; } };
@@ -539,6 +608,15 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   const unitOf = (value: unknown, what: string): number => {
     if(!isFiniteNumber(value) || (value < 0) || (value > 1)) fail(`${what} is 0 to 1`);
     return value as number;
+  };
+  /** a cut's transition: its `transition` (dissolve, a wipe toward a side, iris) over
+   *  `seconds` (0.5) */
+  const transitionOf = (given: Record<string, unknown>, what: string): Transition => {
+    const shapes: ReadonlyArray<TransitionShape> = ['dissolve', 'wipe-left', 'wipe-right', 'wipe-up', 'wipe-down', 'iris'];
+    if(!shapes.includes(given.transition as TransitionShape)) fail(`${what}'s transition is one of ${shapes.join(', ')}`);
+    const seconds = given.seconds ?? 0.5;
+    if(!isFiniteNumber(seconds) || (seconds <= 0) || (seconds > 10)) fail(`${what}'s transition takes seconds, more than 0 and up to 10`);
+    return { shape: given.transition as TransitionShape, seconds: seconds as number };
   };
   /** a hand item: `{ part, color, grip? }`, or null for nothing */
   const handItem = (value: unknown, what: string): HandKey['item'] => {
@@ -902,7 +980,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   // .. Run .......................................................................
   // the scene's code, given the API alone
   const api: Record<string, unknown> = {
-    scene, actor, crowd, camera, view, set, fade, title, sound, noise, random,
+    scene, actor, crowd, camera, view, set, fade, speed, title, sound, noise, random,
     /** the language's Math, its random seeded by the scene: the same film every run */
     Math: Object.assign(Object.create(Math) as Math, { random: random('Math.random') }),
     /** a jump's height (plates) at time t from leaving at `up` plates a second, under
@@ -928,7 +1006,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   for(const each of actors) if(each.ride && each.ground) fail(`${each.name} rides ${each.ride.parent}, so it stands where it rides: ${each.ride.parent} follows the ground, not ${each.name}`, each.line);
   for(const each of actors) for(const look of each.looks) if(('actor' in look.target) && !actors.some(other => other.name === (look.target as { actor: string; }).actor)) fail(`${each.name}.look looks at '${look.target.actor}', which is no actor`, look.line);
   for(const [name, { keys }] of cameras) for(const key of keys) if(key.target && ('actor' in key.target) && !actors.some(other => other.name === (key.target as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) looks at '${(key.target as { actor: string; }).actor}', which is no actor`, key.line);
-  const times = [...actors.flatMap(each => [...each.keys, ...each.faces, ...each.hands].map(key => key.time)), ...actors.flatMap(each => each.reactions.map(reaction => reaction.to)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to), ...soundCues.map(each => each.until ?? each.time)];
+  const times = [...actors.flatMap(each => [...each.keys, ...each.faces, ...each.hands].map(key => key.time)), ...actors.flatMap(each => each.reactions.map(reaction => reaction.to)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...speedKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to), ...soundCues.map(each => each.until ?? each.time)];
   settings.length ??= Math.max(1, ...times);
   for(const each of crowds) walkCrowd(each);
   /** keys in time order, a held key after any other at its time, so a move may end
@@ -943,6 +1021,6 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
     })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
-    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), ...((soundCues.length > 0) ? { sounds: byTime(soundCues) } : {}), logs,
+    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), ...((soundCues.length > 0) ? { sounds: byTime(soundCues) } : {}), ...((speedKeys.length > 0) ? { speed: byTime(speedKeys) } : {}), logs,
   };
 };

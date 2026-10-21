@@ -9,7 +9,7 @@ import { CATALOG, resourceFamily } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
 import { drawnLines, partCount, type Model } from './model';
-import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type Point, type ShownActors, type ViewCamera } from './stage';
+import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type Point, type ShownActors, type StageCamera, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { Effects } from './render/effects';
@@ -109,12 +109,18 @@ type Theme = Readonly<{ stage: string; baseplate: string; }>;
  *  them), the area its baseplate covers at least, its actors (their lines in the
  *  scene's frame) in the frame shown, the size frames are captured at once one is, and
  *  the camera to put back when it ends */
+/** the shot a transition leaves: its camera, the set it stands on (an index into the
+ *  stage's), and, standing another set, its actors as they stood leaving it */
+type LeavingShot = Readonly<{ camera: StageCamera; set: number; actors?: ShownActors; }>;
 type Staging = { /*NOTE: Mutable: each frame replaces its set, actors and overlay, a capture its size*/
   readonly sets: ReadonlyArray<Model>;
   standing: number;
   floor?: Floor;
   actors: ShownActors;
   overlay: FilmOverlay;
+  /** the shot a transition leaves, and its picture as drawn last (SEE: drawLeaving) */
+  leaving?: LeavingShot;
+  left?: Readonly<{ key: string; picture: HTMLCanvasElement; }>;
   size?: Readonly<{ width: number; height: number; }>;
   readonly before: Readonly<{ position: THREE.Vector3; target: THREE.Vector3; fov: number; }>;
 };
@@ -157,6 +163,10 @@ export class Viewer {
   private readonly prints = new Map<string/*ldraw*/, ReadonlyArray<number>>();
   private readonly seams = new Map<string/*ldraw*/, THREE.Matrix4>();
   private readonly building = new Map<string/*ldraw*/, Promise<void>>();
+  /** how many times what a picture draws has changed beneath it: parts built (a
+   *  picture held over a build drew without them), the look, the theme (SEE:
+   *  drawLeaving) */
+  private drawingChanges = 0;
   /** each family read into the loader, or being read (SEE: PART_RESOURCES) */
   private readonly families = new Map<string/*resource name*/, Promise<void>>();
   /** parts that could not be drawn (their family could not be read, or their
@@ -279,6 +289,7 @@ export class Viewer {
       }
     })().finally(() => {
         for(const ldraw of missing) this.building.delete(ldraw);
+        this.drawingChanges++;
         if(missing.some(ldraw => this.unbuilt.has(ldraw))) this.onPartsChanged?.();
         // what is shown now, which may have replaced this one while its parts were
         // read (it skipped the parts being built, so it waits for these): a build kept
@@ -349,6 +360,7 @@ export class Viewer {
     this.stage.set(theme.stage);
     this.renderer.setClearColor(this.stage, 1);
     this.themeBaseplate = theme.baseplate;
+    this.drawingChanges++;
     this.colorBaseplate();
   }
 
@@ -387,6 +399,7 @@ export class Viewer {
     }
 
     this.fidelity = fidelity;
+    this.drawingChanges++;
     this.applyLook(fidelity);
     this.redraw(false)/*seams and tint follow the stop*/;
     this.requestFrame();
@@ -691,10 +704,12 @@ export class Viewer {
   }
 
   /** shows a frame of the stage on one of its sets (`set`, an index into them): its
-   *  actors' lines (LDraw, the scene's frame) seen through its camera, or its plan */
-  public showFrame(actors: ShownActors, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY, set = 0): void {
+   *  actors' lines (LDraw, the scene's frame) seen through its camera, or its plan,
+   *  over the shot a transition leaves (`leaving`) */
+  public showFrame(actors: ShownActors, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY, set = 0, leaving?: LeavingShot): void {
     if(!this.staging) return/*nothing staged*/;
     this.look(camera);
+    this.staging.leaving = leaving;
     this.pose(actors, overlay, set);
   }
 
@@ -702,21 +717,24 @@ export class Viewer {
    *  parts are built first, unseen, and the studio settled on the frame it shows; then
    *  the frame is drawn, copied and the frame shown put back in one task, so the screen
    *  never shows it: the browser paints between tasks */
-  public async thumbnail(actors: ShownActors, camera: ViewCamera, overlay: FilmOverlay, width: number, height: number, set = 0): Promise<ImageBitmap> {
+  public async thumbnail(actors: ShownActors, camera: ViewCamera, overlay: FilmOverlay, width: number, height: number, set = 0, leaving?: LeavingShot): Promise<ImageBitmap> {
     const staging = this.staging;
     if(!staging) throw new Error('nothing is staged');
     await this.partsBuilt(actors.lines, set);
+    if(leaving) await this.partsBuilt((leaving.actors ?? actors).lines, leaving.set)/*the shot it leaves*/;
     await this.whenSettled();
     if(this.staging !== staging) throw new Error('the stage was replaced while the thumbnail\'s parts were built');
-    const shown = { set: staging.standing, actors: staging.actors, overlay: staging.overlay, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, plan: this.camera.up.equals(NORTH) };
+    const shown = { set: staging.standing, actors: staging.actors, overlay: staging.overlay, leaving: staging.leaving, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, up: this.camera.up.clone() };
     const picture = Object.assign(document.createElement('canvas'), { width, height });
 
     this.look(camera);
+    staging.leaving = leaving;
     this.pose(actors, overlay, set);
     this.renderNow();
     this.drawPicture(picture.getContext('2d')!, overlay, width, height);
 
-    this.aim(shown.position, shown.target, shown.fov, shown.plan);
+    this.aimed(shown.position, shown.target, shown.fov, shown.up);
+    staging.leaving = shown.leaving;
     this.pose(shown.actors, shown.overlay, shown.set);
     this.renderNow();
     return createImageBitmap(picture);
@@ -755,17 +773,24 @@ export class Viewer {
    *  area at the canvas's shape */
   private look(camera: ViewCamera): void {
     const seen = isPlan(camera) ? planAim(camera.plan, this.camera.aspect) : camera;
-    this.aim(scenePoint(seen.position), scenePoint(seen.target), seen.fov, isPlan(camera));
+    this.aim(scenePoint(seen.position), scenePoint(seen.target), seen.fov, isPlan(camera), isPlan(camera) ? 0 : (camera.roll ?? 0));
   }
 
-  /** turns the camera to stand at `position`, looking at `target` through `fov`;
+  /** turns the camera to stand at `position`, looking at `target` through `fov`,
+   *  turned clockwise about where it looks by `roll` degrees as seen from behind it;
    *  looking straight down over a plan, north is up and the camera draws from high
    *  over the ground */
-  private aim(position: THREE.Vector3, target: THREE.Vector3, fov: number, plan = false): void {
+  private aim(position: THREE.Vector3, target: THREE.Vector3, fov: number, plan = false, roll = 0): void {
+    this.aimed(position, target, fov, plan ? NORTH : rolledUp(position, target, roll), plan);
+  }
+
+  /** turns the camera to stand at `position`, looking at `target` through `fov`, `up`
+   *  its up */
+  private aimed(position: THREE.Vector3, target: THREE.Vector3, fov: number, up: THREE.Vector3, plan = up.equals(NORTH)): void {
     this.camera.position.copy(position);
     this.controls.target.copy(target);
     this.camera.fov = fov;
-    this.camera.up.copy(plan ? NORTH : UP);
+    this.camera.up.copy(up);
     const height = position.distanceTo(target);
     [this.camera.near, this.camera.far] = plan ? [Math.max(CAMERA_NEAR, height - PLAN_DEPTH), height + 1] : [CAMERA_NEAR, CAMERA_FAR];
     this.camera.updateProjectionMatrix();
@@ -835,14 +860,48 @@ export class Viewer {
     context.drawImage(this.canvas, (width - w) / 2, (height - h) / 2, w, h);
     context.save();
     context.translate((width - w) / 2, (height - h) / 2);
-    drawOverlay(context, overlay, w, h);
+    drawOverlay(context, overlay, w, h, this.staging?.left?.picture);
     context.restore();
   }
 
-  /** draws the frame now, at the look's immediate render (no refining) */
+  /** draws the frame now, at the look's immediate render (no refining), over the shot
+   *  a transition leaves */
   private renderNow(): void {
+    this.drawLeaving();
     this.effects.focus(this.focusDistance());
     this.effects.render();
+  }
+
+  /** the shot a transition leaves, drawn apart as its picture before the frame's:
+   *  through its camera on the set standing, its actors where the frame puts them, at
+   *  every frame; or, on another set, with the actors it names (as they stood leaving
+   *  it), drawn there once for all it names and that picture held (standing the other
+   *  set takes rebuilding the actors' meshes, too slow for every frame), until what
+   *  it draws changes beneath it: parts it may have drawn without built, the look, the
+   *  theme. The picture is the frame's own however
+   *  the frame is reached: played to, sought, captured; the frame's own focus is put
+   *  back with its camera */
+  private drawLeaving(): void {
+    const staging = this.staging, leaving = staging?.leaving;
+    if(!staging || !leaving) { if(staging) staging.left = undefined; return; }
+    const elsewhere = (leaving.set !== staging.standing);
+    const actors = leaving.actors ?? staging.actors;
+    const { position, target, fov, roll } = leaving.camera;
+    const key = [leaving.set, position.x, position.z, position.height, target.x, target.z, target.height, fov, roll ?? 0, this.canvas.width, this.canvas.height, this.drawingChanges, ...actors.lines.map(line => `${line.ldraw}:${line.colorCode}:${line.position.join(',')}:${line.matrix.join(',')}`)].join('|');
+    if(elsewhere && (staging.left?.key === key)) return/*held*/;
+    const picture = staging.left?.picture ?? document.createElement('canvas');
+    [picture.width, picture.height] = [this.canvas.width, this.canvas.height];
+    const shown = { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, up: this.camera.up.clone() };
+    if(elsewhere) this.draw(staging.sets[leaving.set], actors, false);
+    this.look(leaving.camera);
+    this.effects.focus(this.focusDistance());
+    this.effects.render();
+    picture.getContext('2d')!.drawImage(this.canvas, 0, 0);
+    if(elsewhere) this.draw(staging.sets[staging.standing], staging.actors, false);
+    this.aimed(shown.position, shown.target, shown.fov, shown.up);
+    this.effects.focus(this.focusDistance());
+    staging.left = { key, picture };
+    this.overlayStale = true;
   }
 
   /** the overlay canvas at the stage canvas's pixels, the frame's overlay on it */
@@ -852,7 +911,7 @@ export class Viewer {
     const context = canvas.getContext('2d')!;
     context.clearRect(0, 0, canvas.width, canvas.height);
     const overlay = this.staging?.overlay;
-    if(overlay && !isBlank(overlay)) drawOverlay(context, overlay, canvas.width, canvas.height);
+    if(overlay && !isBlank(overlay)) drawOverlay(context, overlay, canvas.width, canvas.height, this.staging?.left?.picture);
     this.overlayStale = false;
   }
 
@@ -1045,7 +1104,7 @@ export class Viewer {
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
-    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && (this.tracer()?.settled ?? true);
+    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && (this.tracing()?.settled ?? true);
     if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
     if(moving || (this.drops.length > 0) || refining) this.requestFrame();
@@ -1093,17 +1152,21 @@ export class Viewer {
   private focusDistance(): number { return this.camera.position.distanceTo(this.controls.target); }
 
   /** whether the path tracer is still refining toward a settled frame */
-  public get refining(): boolean { return !(this.tracer()?.settled ?? true); }
+  public get refining(): boolean { return !(this.tracing()?.settled ?? true); }
   /** the parts drawn at the Path traced stop as Photo, being past what it draws (SEE:
    *  PATH_TRACED_PARTS) */
   public get untracedParts(): number | undefined { return (this.pathTrace && !this.tracer()) ? this.drawnParts : undefined; }
   /** the path tracer, while the parts drawn are within what it draws */
   private tracer(): PathTrace | undefined { return (this.drawnParts <= PATH_TRACED_PARTS) ? this.pathTrace : undefined; }
+  /** the path tracer drawing the frame now: none while parts drop or a transition draws
+   *  two shots (each drawn at once), so nothing waits on its refining then */
+  private tracing(): PathTrace | undefined { return ((this.drops.length > 0) || this.staging?.leaving) ? undefined : this.tracer(); }
 
   /** draws the frame at the current stop; true while the path tracer still refines */
   private render(moving: boolean): boolean {
-    const tracer = this.tracer();
-    if(!tracer || (this.drops.length > 0)) { this.effects.render(); return false; }
+    this.drawLeaving();
+    const tracer = this.tracing();
+    if(!tracer) { this.effects.render(); return false; }
 
     if(this.pathTraceStale) {
       const { plate, free } = this.tracedBaseplate();
@@ -1237,6 +1300,19 @@ const scenePoint = (point: Point): THREE.Vector3 => new THREE.Vector3(...ldrawPo
 const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 const isStanding = (walk: Walk): boolean => (walk.forward === 0) && (walk.right === 0) && (walk.up === 0) && (walk.turn === 0);
 const lerp = (a: number, b: number, t: number): number => a + ((b - a) * t);
+
+/** a camera's up turned clockwise about where it looks by `roll` degrees, as seen from
+ *  behind it: the world's up when it does not roll, or looks straight up or down */
+const rolledUp = (position: THREE.Vector3, target: THREE.Vector3, roll: number): THREE.Vector3 => {
+  if(roll === 0) return UP;
+  const forward = new THREE.Vector3().subVectors(target, position).normalize();
+  const right = new THREE.Vector3().crossVectors(forward, UP);
+  if(right.lengthSq() < 1e-12) return UP;
+  right.normalize();
+  const level = new THREE.Vector3().crossVectors(right, forward)/*its up, level*/;
+  const angle = roll * (Math.PI / 180);
+  return level.multiplyScalar(Math.cos(angle)).addScaledVector(right, Math.sin(angle));
+};
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t: number): number => (t < 0.5) ? (4 * t * t * t) : (1 - (Math.pow(-2 * t + 2, 3) / 2));
 const normalizeDegrees = (degrees: number): number => ((degrees % 360) + 360) % 360;

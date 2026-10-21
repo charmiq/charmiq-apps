@@ -549,7 +549,7 @@
       },
       {
         "name": "loadReel",
-        "description": "Load a page of the staged reel's frames, for Applications: at most 240 frames from the count loaded so far, each { set?, actors, camera, views?, fade?, title? } (set, actors and camera as frame takes them, views by name, each a camera or a plan { plan: { x, z, width, depth } } looking straight down over that area, fade from 0 to 1, title { text, style: card or caption, opacity? }). A page with a frame that is not one is refused whole",
+        "description": "Load a page of the staged reel's frames, for Applications: at most 240 frames from the count loaded so far, each { set?, actors, camera, views?, transition?, fade?, fadeColor?, fadeShape?, title? } (set, actors and camera as frame takes them, views by name, each a camera or a plan { plan: { x, z, width, depth } } looking straight down over that area; transition { camera, set?, actors?, left, shape }: the shot the frame leaves, through its camera on its set (with its actors as they stood when on another set), how much of it still shows from 1 to 0, and dissolve, wipe-left, wipe-right, wipe-up, wipe-down or iris; fade from 0 to 1, to fadeColor #rrggbb (black when left out), over the whole picture or closing as fadeShape iris; title { text, style: card or caption, opacity? }). A page with a frame that is not one is refused whole",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -634,7 +634,8 @@
               "properties": {
                 "position": { "type": "object", "description": "Where the camera stands", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
                 "target":   { "type": "object", "description": "The point it looks at and focuses on", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
-                "fov":      { "type": "number", "minimum": 5, "maximum": 120, "description": "Vertical field of view in degrees (32 when left out)" }
+                "fov":      { "type": "number", "minimum": 5, "maximum": 120, "description": "Vertical field of view in degrees (32 when left out)" },
+                "roll":     { "type": "number", "description": "Degrees the camera turns clockwise about where it looks, as seen from behind it (level when left out)" }
               },
               "required": ["position", "target"]
             },

@@ -65,12 +65,17 @@ export const viewAngle = (a: StageCamera, b: StageCamera): number => {
 };
 
 // == Util ========================================================================
-/** a camera's frame in the scene: where it stands, its view, its right and its up */
-const viewOf = ({ position, target }: StageCamera) => {
+/** a camera's frame in the scene: where it stands, its view, its right and its up,
+ *  both turned clockwise about its view by its roll as seen from behind it */
+const viewOf = ({ position, target, roll }: StageCamera) => {
   const eye = scene(position);
   const forward = unit(subtract(scene(target), eye)) ?? [0, 0, -1]/*on its target*/;
-  const right = unit(cross(forward, [0, 1, 0])) ?? [1, 0, 0]/*straight down or up*/;
-  return { eye, forward, right, up: cross(right, forward) };
+  const level = unit(cross(forward, [0, 1, 0]));
+  const right = level ?? [1, 0, 0]/*straight down or up*/;
+  const up = cross(right, forward);
+  if(!roll || !level) return { eye, forward, right, up }/*the studio rolls no camera looking straight down or up*/;
+  const [cos, sin] = [Math.cos(roll * (Math.PI / 180)), Math.sin(roll * (Math.PI / 180))];
+  return { eye, forward, right: [(right[0] * cos) - (up[0] * sin), (right[1] * cos) - (up[1] * sin), (right[2] * cos) - (up[2] * sin)] as Vector, up: [(up[0] * cos) + (right[0] * sin), (up[1] * cos) + (right[1] * sin), (up[2] * cos) + (right[2] * sin)] as Vector };
 };
 
 const scene = ({ x, z, height }: Point): Vector => [x, height * STUDS_PER_PLATE, -z];

@@ -1,4 +1,4 @@
-import { cameraShots, isReached, type Film, type FilmFrame, type StageCamera } from './film';
+import { cameraShots, frameEnd, isReached, type Film, type FilmFrame, type StageCamera } from './film';
 import type { Point, RecordedCamera } from './recorder';
 import { avoidingAt, type PartFinding } from './review';
 
@@ -11,7 +11,10 @@ import { avoidingAt, type PartFinding } from './review';
 // it clear (inside no part, its target hidden by none): each frame's farthest clear
 // stop, then eased so the camera never jumps, a frame drawn in as far as any frame
 // within EASE_SECONDS of it in its shot needs, less the nearer that frame is. A frame
-// clear at no stop stays where it was keyed, and its problem stands
+// clear at no stop stays where it was keyed, and its problem stands. The shot a
+// transition leaves is the film's camera held on: probed where it stands (on the set
+// it leaves), avoiding as the frame it last showed in did, and eased as one shot with
+// the frames before its cut, so neither it nor they jump
 // ********************************************************************************
 // == Constants ===================================================================
 /** the shares of its distance to its target an avoiding camera is tried at, the
@@ -35,9 +38,13 @@ export type Avoided = Readonly<{ from: number; to: number; kept: number; view?: 
  *  as the probe found them where the film's camera ends, and the spans drawn in */
 export type Cleared = Readonly<{ film: Film; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }>;
 
-/** a camera over the film: its keys, its name (none for the film's), and its camera at
- *  each frame */
-type Track = Readonly<{ keys: RecordedCamera; view?: string; at: (frame: FilmFrame) => StageCamera; }>;
+/** a camera over the film: its keys (whose cuts end its shots), its name (none for the
+ *  film's), its camera at each frame and the set it stands on, whether it avoids there
+ *  (as its keys say when left out), and whether it is the shot a transition leaves */
+type Track = Readonly<{
+  keys: RecordedCamera; view?: string; at: (frame: FilmFrame) => StageCamera; set: (frame: FilmFrame) => string | undefined;
+  avoids?: (frame: FilmFrame, index: number) => boolean; leaving?: true;
+}>;
 /** a camera of a track at a frame, at a share of its distance to its target */
 type Ask = Readonly<{ track: number; frame: number; share: number; }>;
 
@@ -45,11 +52,20 @@ type Ask = Readonly<{ track: number; frame: number; share: number; }>;
 /** the film's cameras against the set's parts, each drawn in where it avoids them */
 export const clearanceOf = async (film: Film, probe: Probe): Promise<Cleared> => {
   const { scene, frames } = film;
+  const reach = easeReach(film);
+  const avoidsAt = (index: number) => avoidingAt(scene.camera, frames[index].time);
   const tracks: ReadonlyArray<Track> = [
-    { keys: scene.camera, at: frame => frame.camera },
-    ...scene.views.filter(view => !view.plan).map(view => ({ keys: view, view: view.name, at: (frame: FilmFrame) => frame.views[view.name] as StageCamera/*no plan*/ })),
+    { keys: scene.camera, at: frame => frame.camera, set: frame => frame.set },
+    ...scene.views.filter(view => !view.plan).map(view => ({ keys: view, view: view.name, at: (frame: FilmFrame) => frame.views[view.name] as StageCamera/*no plan*/, set: (frame: FilmFrame) => frame.set })),
+    // the shot a transition leaves: over its frames, and the frames before its cut it eases with
+    ...(frames.some(frame => frame.transition) ? [{
+      keys: { ...scene.camera, keys: scene.camera.keys.filter(key => !key.transition) }/*one shot across each cut it leaves*/, leaving: true as const,
+      at: (frame: FilmFrame) => frame.transition?.camera ?? frame.camera, set: (frame: FilmFrame) => frame.transition ? frame.transition.set : frame.set,
+      avoids: (frame: FilmFrame, index: number) => frame.transition ? avoidsAt(frame.transition.frame) : (avoidsAt(index) && frames.slice(index + 1, index + 1 + reach).some(each => each.transition)),
+    }] : []),
   ];
-  const avoiding = tracks.map(track => frames.map(frame => avoidingAt(track.keys, frame.time) && (distanceOf(track.at(frame)) > 0)));
+  const avoiding = tracks.map(track => frames.map((frame, index) => (track.avoids ? track.avoids(frame, index) : avoidingAt(track.keys, frame.time)) && (distanceOf(track.at(frame)) > 0)));
+  const outgoing = tracks.findIndex(track => track.leaving);
 
   // the film's camera at every frame as keyed, and each avoiding camera at every stop
   const asked = tracks.flatMap((_, track) => frames.flatMap((__, frame) => [
@@ -69,19 +85,24 @@ export const clearanceOf = async (film: Film, probe: Probe): Promise<Cleared> =>
     if(isClear(found.get(keyOf(track, frame, share)))) return share;
     return [1, ...STOPS].find(stop => (stop <= share) && isClear(found.get(keyOf(track, frame, stop)))) ?? need;
   }));
+  // a frame before a cut drawn in as far as the shot its transition leaves eases it
+  // (that shot's camera there is its own), and the track whose stop it stands at
+  const source = frames.map((frame, index) => ((outgoing > 0) && !frame.transition && (shares[outgoing][index] < shares[0][index])) ? outgoing : 0);
+  const filmShares = frames.map((_, index) => shares[source[index]][index]);
 
   const cleared = frames.map((frame, index) => {
-    const camera = drawnIn(frame.camera, shares[0][index]);
+    const camera = drawnIn(frame.camera, filmShares[index]);
     const views = Object.fromEntries(Object.entries(frame.views).map(([name, view]) => {
       const track = tracks.findIndex(each => each.view === name);
       return [name, (track > 0) ? drawnIn(view as StageCamera, shares[track][index]) : view];
     }));
-    return { ...frame, camera, views };
+    const transition = frame.transition && { ...frame.transition, camera: drawnIn(frame.transition.camera, shares[outgoing][index]) };
+    return { ...frame, camera, views, ...(transition ? { transition } : {}) };
   });
   return {
     film: { scene, frames: cleared },
-    parts: shares[0].map((share, frame) => found.get(keyOf(0, frame, share)) ?? {}),
-    avoided: tracks.flatMap((track, index) => avoidedOf(film, shares[index]).map(span => ({ ...span, ...((track.view !== undefined) ? { view: track.view } : {}) }))),
+    parts: filmShares.map((share, frame) => found.get(keyOf(source[frame], frame, share)) ?? {}),
+    avoided: tracks.flatMap((track, index) => track.leaving ? [] : avoidedOf(film, (index === 0) ? filmShares : shares[index]).map(span => ({ ...span, ...((track.view !== undefined) ? { view: track.view } : {}) }))),
   };
 };
 
@@ -91,7 +112,7 @@ export const clearanceOf = async (film: Film, probe: Probe): Promise<Cleared> =>
 const probeAt = async (film: Film, tracks: ReadonlyArray<Track>, probe: Probe, asked: ReadonlyArray<Ask>): Promise<ReadonlyMap<string, PartFinding>> => {
   const bySet = new Map<string | undefined, Ask[]>();
   for(const each of asked) {
-    const set = film.frames[each.frame].set;
+    const set = tracks[each.track].set(film.frames[each.frame]);
     const listed = bySet.get(set) ?? [];
     listed.push(each);
     bySet.set(set, listed);
@@ -118,7 +139,7 @@ const easedShares = (film: Film, keys: RecordedCamera, needs: ReadonlyArray<numb
   const { scene, frames } = film;
   const shots = cameraShots(keys, scene.length);
   const shotOf = frames.map(frame => shots.filter(shot => isReached(shot.from, frame.time)).length);
-  const reach = Math.max(1, Math.round(EASE_SECONDS * scene.fps))/*frames*/;
+  const reach = easeReach(film);
   return frames.map((_, index) => {
     let share = needs[index] ?? 1;
     for(let other=Math.max(0, index - reach); other<=Math.min(frames.length - 1, index + reach); other++) {
@@ -130,17 +151,19 @@ const easedShares = (film: Film, keys: RecordedCamera, needs: ReadonlyArray<numb
   });
 };
 
+/** how many frames either way an avoiding camera eases over */
+const easeReach = ({ scene }: Film): number => Math.max(1, Math.round(EASE_SECONDS * scene.fps));
+
 /** the spans a camera is drawn in over, each with the least share it keeps */
 const avoidedOf = (film: Film, shares: ReadonlyArray<number>): ReadonlyArray<Avoided> => {
-  const spans: Array<{ from: number; to: number; kept: number; }> = [];
-  const step = 1 / film.scene.fps;
+  const spans: Array<{ from: number; to: number; kept: number; frame: number; }> = [];
   shares.forEach((share, index) => {
     if(share >= KEPT) return;
-    const time = film.frames[index].time, last = spans[spans.length - 1];
-    if(last && (Math.abs(last.to - time) < (step / 2))) { last.to = time + step; last.kept = Math.min(last.kept, share); return; }
-    spans.push({ from: time, to: time + step, kept: share });
+    const last = spans[spans.length - 1];
+    if(last && (last.frame === (index - 1))) { [last.to, last.frame, last.kept] = [frameEnd(film, index), index, Math.min(last.kept, share)]; return; }
+    spans.push({ from: film.frames[index].time, to: frameEnd(film, index), kept: share, frame: index });
   });
-  return spans;
+  return spans.map(({ frame: _last, ...span }) => span);
 };
 
 /** a camera drawn in to a share of its distance to its target */

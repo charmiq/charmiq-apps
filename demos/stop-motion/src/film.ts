@@ -1,4 +1,4 @@
-import type { Area, CameraPlace, Ease, FaceKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title } from './recorder';
+import type { Area, CameraKey, CameraPlace, Ease, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title, TransitionShape } from './recorder';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -38,7 +38,7 @@ const MAX_MARK_PATHS = 256;
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 /** an actor in one frame, as the stage's frame takes it */
 export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; face?: string; rightHand?: HandKey['item']; leftHand?: HandKey['item']; rolled?: number; }>;
-export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; }>;
+export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; roll?: number; }>;
 /** a plan: straight down over an area, north up */
 export type PlanCamera = Readonly<{ plan: Area; }>;
 /** the camera a view sees the scene through */
@@ -55,8 +55,15 @@ export type FilmFrame = Readonly<{
   camera: StageCamera;
   /** each named view's camera */
   views: Readonly<Record<string, ViewCamera>>;
-  /** 0 shows the frame, 1 is black */
+  /** 0 shows the frame, 1 is its fade's color (black unless a key names one), over
+   *  the whole picture or closing in as an iris */
   fade: number;
+  fadeColor?: string;
+  fadeShape?: 'iris';
+  /** the shot its camera leaves in a cut's transition: that camera, its set, its
+   *  actors on another set, the frame it last showed in (its index), how much of it
+   *  still shows (1 all, 0 none) and how it gives way */
+  transition?: Readonly<{ camera: StageCamera; set?: string; actors?: ReadonlyArray<Shot>; frame: number; left: number; shape: TransitionShape; }>;
   title?: Title;
 }>;
 
@@ -69,6 +76,9 @@ export type ReelFrame = Readonly<{
   camera: StageCamera;
   views?: Readonly<Record<string, ViewCamera>>;
   fade?: number;
+  fadeColor?: string;
+  fadeShape?: 'iris';
+  transition?: Readonly<{ camera: StageCamera; set?: string; actors?: ReadonlyArray<Shot>; left: number; shape: TransitionShape; }>;
   title?: Readonly<{ text: string; style: 'card' | 'caption'; opacity: number; }>;
 }>;
 
@@ -109,15 +119,16 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
   const rolled = new Map<string, number>();
   const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();
   let previous: ReadonlyMap<string, Placed> | undefined;
-  for(let index=0; index<scene.frames; index++) {
-    const time = index / scene.fps;
+  const times = sceneTimesOf(scene);
+  for(let index=0; index<times.length; index++) {
+    const time = times[index], at = time * scene.fps/*where it stands among the scene's own frames*/;
     const placed = new Map<string, Placed>(), headings = new Map<string, number>();
     for(const actor of order) {
       const rest = actor.ride ? undefined : rests.get(actor.name)/*a rider stands where it rides*/;
       const ground = grounds.get(actor.name)?.[index];
       // following the ground, its own height counts from the ground (its piece's place
       // and turn kept): what its keys and paths give it, over the ground under it
-      const keyed = localAt(actor, index, time, (rest && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest);
+      const keyed = localAt(actor, at, time, (rest && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest);
       const local = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
       const own = placedOf(local);
       const parent = actor.ride && placed.get(actor.ride.parent);
@@ -137,7 +148,7 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
       rolled.set(name, (rolled.get(name) ?? 0) + moved);
     }
     previous = placed;
-    for(const actor of scene.actors) if(actor.looks) looking(actor, time, 1 / scene.fps, placed, headings, looked);
+    for(const actor of scene.actors) if(actor.looks) looking(actor, time, (index > 0) ? (time - times[index - 1]) : (1 / scene.fps), placed, headings, looked);
 
     const actors = scene.actors.flatMap(({ name, faces, reactions, hands }) => {
       const standing = placed.get(name)!;
@@ -147,10 +158,12 @@ export const filmOf = (scene: Recorded, wheeled: ReadonlySet<string> = new Set()
       return [{ name, position: standing.position, turn: turnOf(standing.matrix), ...(standing.pose ? { pose: standing.pose } : {}), ...(face ? { face } : {}), ...Object.fromEntries(holding), ...(wheeled.has(name) ? { rolled: rolled.get(name)! } : {}) }];
     });
     const fade = channelAt(scene.fade, 'fade', time) ?? 0;
+    const fading = fadeStyleAt(scene.fade, time);
+    const transition = transitionAt(scene, at, time, placed, headings, setAt(scene.sets, time), frames);
     const title = scene.titles.find(each => (time >= each.from) && (time < each.to));
-    const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, cameraAt(view, index, time, placed, headings)]));
+    const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, cameraAt(view, at, time, placed, headings)]));
     const set = setAt(scene.sets, time);
-    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: cameraAt(scene.camera, index, time, placed, headings), views, fade, ...(title ? { title } : {}) });
+    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: cameraAt(scene.camera, at, time, placed, headings), views, fade, ...((fade > 0) ? fading : {}), ...(transition ? { transition } : {}), ...(title ? { title } : {}) });
   }
   if(!scene.views.some(view => view.plan)) return { scene, frames };
 
@@ -180,7 +193,7 @@ export const shotFrames = ({ scene, frames }: Film): ReadonlyArray<ShotFrames> =
   const next = frames.findIndex(frame => isReached(shot.to, frame.time));
   const last = ((next < 0) ? frames.length : next) - 1;
   if((first < 0) || (first > last)) return []/*no frame shows it*/;
-  return [{ shot, first, last, middle: Math.min(last, Math.max(first, Math.round(((shot.from + shot.to) / 2) * scene.fps))) }];
+  return [{ shot, first, last, middle: Math.min(last, Math.max(first, frameAtTime({ scene, frames }, (shot.from + shot.to) / 2))) }];
 });
 
 // == Plan ========================================================================
@@ -265,7 +278,8 @@ export const reelFrameOf = (frame: FilmFrame): ReelFrame => ({
   actors: frame.actors,
   camera: frame.camera,
   ...((Object.keys(frame.views).length > 0) ? { views: frame.views } : {}),
-  ...((frame.fade > 0) ? { fade: frame.fade } : {}),
+  ...((frame.fade > 0) ? { fade: frame.fade, ...(frame.fadeColor ? { fadeColor: frame.fadeColor } : {}), ...(frame.fadeShape ? { fadeShape: frame.fadeShape } : {}) } : {}),
+  ...(frame.transition ? { transition: { camera: frame.transition.camera, ...((frame.transition.set !== undefined) ? { set: frame.transition.set } : {}), ...(frame.transition.actors ? { actors: frame.transition.actors } : {}), left: frame.transition.left, shape: frame.transition.shape } } : {}),
   ...(frame.title ? { title: { text: frame.title.text, style: frame.title.style, opacity: titleOpacity(frame.title, frame.time) } } : {}),
 });
 
@@ -356,8 +370,65 @@ const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: R
   const standing = position ? pointOf(position) : orbitPoint(target, DEFAULT_ORBIT);
   const shaken = { x: standing.x + (channels.x ?? 0), z: standing.z + (channels.z ?? 0), height: standing.height + (channels.height ?? 0) };
   const apart = ((shaken.x === target.x) && (shaken.z === target.z) && (shaken.height === target.height)) ? { ...shaken, height: shaken.height + 0.01 } : shaken;
-  const fov = eased(keys.filter(key => key.fov !== undefined), time, key => key.fov!, lerp) ?? DEFAULT_FOV;
-  return { position: apart, target, fov };
+  const lensKeys = keys.filter(key => key.fov !== undefined);
+  const fov = eased(lensKeys, time, key => key.fov!, lerp) ?? DEFAULT_FOV;
+  const roll = eased(keys.filter(key => key.roll !== undefined), time, key => key.roll!, lerp) ?? 0;
+  const drawn = dollied(keys, lensKeys, time);
+  const seen = (drawn === 1) ? apart : { x: target.x + ((apart.x - target.x) * drawn), z: target.z + ((apart.z - target.z) * drawn), height: target.height + ((apart.height - target.height) * drawn) };
+  return { position: seen, target, fov, ...(roll ? { roll } : {}) };
+};
+
+/** how far dolly zooms draw the camera along its line to its target at a time (1 as
+ *  keyed): over a run of lens keys keeping their target's size (`dollyZoom`), from the
+ *  lens key before the run, the camera drawn as the lens narrows and pushed back as it
+ *  widens, so the target keeps the size it had there (the distance against the tangent
+ *  of half the lens); after the run, held where it left the camera (a lens changing
+ *  then changes the picture alone, and a later run draws on from there) until a key
+ *  placing the camera */
+const dollied = (keys: ReadonlyArray<CameraKey>, lensKeys: ReadonlyArray<CameraKey>, time: number): number => {
+  const half = (degrees: number) => Math.tan((degrees * (Math.PI / 180)) / 2);
+  let drawn = 1;
+  for(let start=1; start<lensKeys.length; start++) {
+    if(!lensKeys[start].dollyZoom || lensKeys[start - 1].dollyZoom) continue/*not a run's first*/;
+    let end = start;
+    while(lensKeys[end + 1]?.dollyZoom) end++;
+    const reference = lensKeys[start - 1];
+    if(!isReached(reference.time, time)) break/*later runs not begun*/;
+    const run = lensKeys.slice(start - 1, end + 1);
+    drawn *= half(reference.fov!) / half(eased(run, time, key => key.fov!, lerp)!);
+    if(keys.some(other => other.place && (other.time > lensKeys[end].time) && isReached(other.time, time))) drawn = 1/*a key placing the camera since*/;
+    start = end;
+  }
+  return drawn;
+};
+
+/** the shot a frame's camera leaves in a cut's transition: the latest cut the frame has
+ *  reached, while its transition's span holds the frame (a later cut ends it, with or
+ *  without one of its own); the camera as its keys before the cut place it
+ *  (holding its last place as the world moves on), on the set standing before the cut.
+ *  On another set than the frame's, it is the last frame before the cut (`before`, the
+ *  frames so far) as it stood: its camera and its actors, one moment, drawn once and
+ *  held. A cut no frame stands before leaves no shot */
+const transitionAt = (scene: Recorded, at: number, time: number, placed: ReadonlyMap<string, Placed>, headings: ReadonlyMap<string, number>, standing: string | undefined, before: ReadonlyArray<FilmFrame>): FilmFrame['transition'] => {
+  const keys = scene.camera.keys;
+  const cut = keys.filter(key => (key.ease === 'hold') && isReached(key.time, time)).pop();
+  if(!cut?.transition || (time >= (cut.time + cut.transition.seconds))) return undefined;
+  const leaving = { keys: keys.slice(0, keys.indexOf(cut)), spans: scene.camera.spans };
+  const set = setAt(scene.sets, cut.time - LEFT_SET_BEFORE);
+  const last = [...before].reverse().find(frame => !isReached(cut.time, frame.time));
+  if(!last) return undefined/*nothing filmed before the cut to leave*/;
+  const apart = (set !== standing) ? { camera: last.camera, actors: last.actors } : { camera: cameraAt(leaving, at, time, placed, headings) };
+  return { ...apart, ...((set !== undefined) ? { set } : {}), frame: last.index, left: 1 - ((time - cut.time) / cut.transition.seconds), shape: cut.transition.shape };
+};
+/** how long before a cut the set its shot leaves is read (seconds): a set keyed at the
+ *  cut is the shot it enters */
+const LEFT_SET_BEFORE = 1e-3;
+
+/** a fade's color and shape at a time: those of the key it eases into, else the last
+ *  key's (black and the whole picture when no key names them) */
+const fadeStyleAt = (keys: ReadonlyArray<FadeKey>, time: number): Readonly<{ fadeColor?: string; fadeShape?: 'iris'; }> => {
+  const key = keys.find(each => !isReached(each.time, time - TIME_EPSILON)) ?? keys[keys.length - 1];
+  return { ...(key?.color ? { fadeColor: key.color } : {}), ...(key?.shape ? { fadeShape: key.shape } : {}) };
 };
 
 /** where an orbit stands around a target: `angle` degrees round from its south (90
@@ -471,12 +542,90 @@ export const ease = (kind: Ease, u: number): number => {
 
 /** sets and adds what a frame's spans give: a set span's values replace, an add
  *  span's add */
-const applySpans = (channels: Record<string, number>, spans: ReadonlyArray<Span>, index: number) => {
+const applySpans = (channels: Record<string, number>, spans: ReadonlyArray<Span>, at: number) => {
   for(const mode of ['set', 'add'] as const) for(const span of spans) {
-    if((span.mode !== mode) || (index < span.from) || (index > span.to)) continue;
-    for(const [channel, value] of Object.entries(span.samples[index - span.from])) channels[channel] = (mode === 'set') ? value : ((channels[channel] ?? 0) + value);
+    if((span.mode !== mode) || (at < (span.from - FRAME_EPSILON)) || (at > (span.to + FRAME_EPSILON))) continue;
+    // between two of its frames (a film slowed past the scene's), each value eased
+    // from the one to the next
+    const into = Math.min(span.to, Math.max(span.from, at)) - span.from;
+    const whole = Math.floor(into + FRAME_EPSILON), part = into - whole;
+    const [sample, next] = [span.samples[whole], span.samples[Math.min(span.samples.length - 1, whole + 1)]];
+    for(const [channel, own] of Object.entries(sample)) {
+      const value = ((part > FRAME_EPSILON) && (channel in next)) ? own + ((next[channel] - own) * part) : own;
+      channels[channel] = (mode === 'set') ? value : ((channels[channel] ?? 0) + value);
+    }
   }
 };
+/** how near a frame's place among the scene's frames is to a whole one (frames) */
+const FRAME_EPSILON = 1e-6;
+
+// == Clock =======================================================================
+// the film's own time against the scene's: a frame a 1/fps of the film's time after
+// the one before, the scene's time it shows advancing by its speed (1 unless the scene
+// keys speed: 0.25 a quarter as fast, slow motion; 2 twice). A frame stands at the
+// scene's time it shows (FilmFrame.time); the film's time is its index over its fps
+// (SEE: filmTimeOf)
+
+/** the most frames a film runs (Brick Studio's reel's most) */
+const MAX_FILM_FRAMES = 7_200;
+/** the slowest and fastest a scene's speed runs */
+export const MIN_SPEED = 0.05;
+export const MAX_SPEED = 8;
+
+/** the scene's time each film frame shows: each frame its fps after the one before at
+ *  the speed there; a frame stands while it shows a time less than half a frame from
+ *  the scene's end, as a film of the scene's own frames would. Throws, naming the
+ *  speed's line, past MAX_FILM_FRAMES */
+export const sceneTimesOf = (scene: Recorded): ReadonlyArray<number> => {
+  if(!scene.speed || (scene.speed.length < 1)) return Array.from({ length: scene.frames }, (_, index) => index / scene.fps);
+  const times: number[] = [];
+  for(let time=0; ;) {
+    const rate = channelAt(scene.speed, 'speed', time)!;
+    if(time >= (scene.length - (rate / (2 * scene.fps)))) break;
+    if(times.length >= MAX_FILM_FRAMES) throw sceneError(`the film runs past ${MAX_FILM_FRAMES} frames at its speed: speed it up, or shorten what runs slow`, scene.speed[0].line);
+    times.push(time);
+    time += rate / scene.fps;
+  }
+  return times.length > 0 ? times : [0];
+};
+
+/** the film's own time (seconds) a scene's time shows at: between the frames that show
+ *  it, as far as it lies between them; past the film's ends at its first and last
+ *  frames' pace */
+export const filmTimeOf = (film: Film, time: number): number => {
+  const { frames, scene } = film;
+  const step = (index: number) => paceAt(film, index);
+  if(time <= frames[0].time) return (time - frames[0].time) / (step(0) * scene.fps);
+  let low = 0, high = frames.length - 1;
+  while(low < high) { const middle = Math.ceil((low + high) / 2); if(frames[middle].time <= time) low = middle; else high = middle - 1; }
+  return (low + ((time - frames[low].time) / step(low))) / scene.fps;
+};
+
+/** the scene's time a film's own time (seconds) shows: between its frames' */
+export const sceneTimeOf = (film: Film, filmTime: number): number => {
+  const { frames, scene } = film;
+  const at = filmTime * scene.fps;
+  const index = Math.max(0, Math.min(frames.length - 1, Math.floor(at)));
+  return frames[index].time + (paceAt(film, index) * (at - index));
+};
+
+/** the scene's seconds a frame's span shows (its pace): to the next frame's time, the
+ *  last frame's as the one before it (a film of one frame at its scene's own pace) */
+const paceAt = (film: Film, index: number): number => {
+  const { frames, scene } = film;
+  if(index < (frames.length - 1)) return frames[index + 1].time - frames[index].time;
+  return (index > 0) ? (frames[index].time - frames[index - 1].time) : (1 / scene.fps);
+};
+
+/** the scene's time a frame's span ends at: where the next frame stands, the last
+ *  frame's as long as the one before it */
+export const frameEnd = (film: Film, index: number): number => film.frames[index].time + paceAt(film, index);
+
+/** how long the film runs (seconds of its own) */
+export const filmLengthOf = (film: Film): number => film.frames.length / film.scene.fps;
+
+/** the frame showing a scene's time: the nearest, the later of two as near */
+export const frameAtTime = (film: Film, time: number): number => Math.max(0, Math.min(film.frames.length - 1, Math.round(filmTimeOf(film, time) * film.scene.fps)));
 
 // == Turns =======================================================================
 // row-major rotation rows in LDraw's frame (y down), as the stage turns an actor:

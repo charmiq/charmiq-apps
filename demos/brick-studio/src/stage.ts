@@ -24,7 +24,7 @@ import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LI
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 6;
+export const STAGE_VERSION = 7;
 
 /** the most sets a stage stands */
 export const MAX_STAGED_SETS = 8;
@@ -87,7 +87,7 @@ export type Hands = Readonly<Partial<Record<'rightHand' | 'leftHand', Gear | nul
 
 /** the camera of one frame: where it stands, the point it looks at (and focuses on)
  *  and its vertical field of view (degrees) */
-export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; }>;
+export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; roll?: number; }>;
 
 /** the area the baseplate covers at least (studs): its south-west corner and size */
 export type Floor = Readonly<{ x: number; z: number; width: number; depth: number; }>;
@@ -115,10 +115,22 @@ export type Size = Readonly<{ width: number; depth: number; height: number; }>;
 /** words over a frame: a card filling it or a caption along its foot, drawn at
  *  `opacity` (0 to 1) */
 export type Title = Readonly<{ text: string; style: 'card' | 'caption'; opacity: number; }>;
-/** what lies over a frame's picture: its fade to black (0 none, 1 black) and its
- *  title, standing over the black; a frame seen through a plan has its plan's marks
- *  in their place */
-export type FilmOverlay = Readonly<{ fade: number; title?: Title; plan?: PlanPicture; }>;
+/** what lies over a frame's picture: the shot it leaves in a transition (SEE:
+ *  Transition), its fade (0 none, 1 the whole picture its color, black unless named;
+ *  closing in from the frame's edge as an iris), and its title, standing over the fade;
+ *  a frame seen through a plan has its plan's marks in their place */
+export type FilmOverlay = Readonly<{ transition?: Transition; fade: number; fadeColor?: string; fadeShape?: 'iris'; title?: Title; plan?: PlanPicture; }>;
+/** how much of the shot a frame leaves still shows over the shot it enters (`left`,
+ *  1 all of it, 0 none), and how it gives way: all of it fading (a dissolve), an edge
+ *  moving across the frame toward a side (a wipe), or a circle opening from the middle
+ *  (an iris) */
+export type Transition = Readonly<{ left: number; shape: TransitionShape; }>;
+export type TransitionShape = 'dissolve' | 'wipe-left' | 'wipe-right' | 'wipe-up' | 'wipe-down' | 'iris';
+const TRANSITION_SHAPES: ReadonlyArray<TransitionShape> = ['dissolve', 'wipe-left', 'wipe-right', 'wipe-up', 'wipe-down', 'iris'];
+/** the shot a frame leaves in a transition: its camera, the set it stands on (an index
+ *  into the cast's sets), and, standing another set than the frame's, its actors as
+ *  they stood leaving it (so its picture is the frame's own however it is reached) */
+export type Leaving = Readonly<{ camera: StageCamera; set: number; shots?: ReadonlyArray<Shot>; }>;
 
 /** a reel's frames a second, its length in frames and the size its frames are drawn
  *  at (pixels): the film's shape */
@@ -126,7 +138,7 @@ export type ReelHeader = Readonly<{ fps: number; length: number; width: number; 
 /** a reel's frame as one screen shows it: its shots, the camera the screen sees it
  *  through (its view's, else the main camera), the film's main camera and every view,
  *  and what lies over it */
-export type ReelFrame = Readonly<{ set: number/*an index into the cast's sets*/; shots: ReadonlyArray<Shot>; camera: ViewCamera; main: StageCamera; views: ReadonlyMap<string, ViewCamera>; overlay: FilmOverlay; }>;
+export type ReelFrame = Readonly<{ set: number/*an index into the cast's sets*/; shots: ReadonlyArray<Shot>; camera: ViewCamera; main: StageCamera; views: ReadonlyMap<string, ViewCamera>; overlay: FilmOverlay; leaving?: Leaving; }>;
 
 /** a frame on a storyboard, and what its caption says */
 export type Board = Readonly<{ frame: number; caption: string; }>;
@@ -488,13 +500,14 @@ const inverseOf = ({ matrix, position }: Transform): Transform => {
 // -- Camera ----------------------------------------------------------------------
 /** the camera a frame call gives */
 export const cameraOf = (input: unknown): StageCamera => {
-  const { position, target, fov } = (input ?? {}) as Record<string, unknown>;
-  if((input === null) || (typeof input !== 'object')) throw new Error('camera is { position, target, fov? }');
+  const { position, target, fov, roll } = (input ?? {}) as Record<string, unknown>;
+  if((input === null) || (typeof input !== 'object')) throw new Error('camera is { position, target, fov?, roll? }');
   const lens = (fov === undefined) ? DEFAULT_FOV : fov;
   if(!isFiniteNumber(lens) || (lens < MIN_FOV) || (lens > MAX_FOV)) throw new Error(`camera.fov must lie between ${MIN_FOV} and ${MAX_FOV} degrees`);
+  if((roll !== undefined) && !isFiniteNumber(roll)) throw new Error('camera.roll is degrees, the camera turned clockwise about where it looks as seen from behind it');
   const from = toPoint(position, 'camera.position'), to = toPoint(target, 'camera.target');
   if((from.x === to.x) && (from.z === to.z) && (from.height === to.height)) throw new Error('camera.target must differ from camera.position');
-  return { position: from, target: to, fov: lens };
+  return { position: from, target: to, fov: lens, ...(roll ? { roll: roll as number } : {}) };
 };
 
 // -- Capture ---------------------------------------------------------------------
@@ -533,7 +546,7 @@ export const viewOf = (input: unknown): string | undefined => {
 /** a page of frames a loadReel call gives, the first being frame `from`; a frame
  *  that is not one refuses the page, naming it */
 export const reelPageOf = (cast: Cast, view: string | undefined, input: unknown, from: number): ReadonlyArray<ReelFrame> => {
-  if(!Array.isArray(input) || (input.length < 1) || (input.length > MAX_REEL_PAGE)) throw new Error(`frames is a page of 1 to ${MAX_REEL_PAGE} frames, each { set?, actors, camera, views?, fade?, title? }`);
+  if(!Array.isArray(input) || (input.length < 1) || (input.length > MAX_REEL_PAGE)) throw new Error(`frames is a page of 1 to ${MAX_REEL_PAGE} frames, each { set?, actors, camera, views?, transition?, fade?, fadeColor?, fadeShape?, title? }`);
   return input.map((item, index) => {
     try { return reelFrameOf(cast, view, item); }
     catch(error) { throw new Error(`frames[${index}] (frame ${from + index}): ${(error as Error).message}`); }
@@ -542,15 +555,39 @@ export const reelPageOf = (cast: Cast, view: string | undefined, input: unknown,
 
 /** one frame of a reel, as the screen showing `view` shows it */
 const reelFrameOf = (cast: Cast, view: string | undefined, input: unknown): ReelFrame => {
-  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error('a frame is { set?, actors, camera, views?, fade?, title? }');
-  const { set, actors, camera, views, fade, title } = input as Record<string, unknown>;
+  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error('a frame is { set?, actors, camera, views?, transition?, fade?, fadeColor?, fadeShape?, title? }');
+  const { set, actors, camera, views, transition, fade, fadeColor, fadeShape, title } = input as Record<string, unknown>;
   const standing = stagedSetOf(cast, set);
   const shots = shotsOf(cast, actors);
   const main = cameraOf(camera);
   const named = viewsOf(views);
   if((view !== undefined) && !named.has(view)) throw new Error(`views names no '${view}', the view this studio shows`);
   const titled = titleOf(title);
-  return { set: standing, shots, camera: (view !== undefined) ? named.get(view)! : main, main, views: named, overlay: { fade: fadeOf(fade), ...(titled ? { title: titled } : {}) } };
+  const leaving = transitionOf(cast, transition);
+  if((fadeColor !== undefined) && ((typeof fadeColor !== 'string') || !/^#[0-9a-fA-F]{6}$/.test(fadeColor))) throw new Error('fadeColor is #rrggbb (black when left out)');
+  if((fadeShape !== undefined) && (fadeShape !== 'iris')) throw new Error('fadeShape is iris (the whole picture when left out)');
+  const overlay: FilmOverlay = {
+    ...(leaving ? { transition: leaving.transition } : {}), fade: fadeOf(fade),
+    ...((fadeColor !== undefined) ? { fadeColor: fadeColor as string } : {}), ...((fadeShape !== undefined) ? { fadeShape: 'iris' as const } : {}), ...(titled ? { title: titled } : {}),
+  };
+  return { set: standing, shots, camera: (view !== undefined) ? named.get(view)! : main, main, views: named, overlay, ...(leaving ? { leaving: leaving.leaving } : {}) };
+};
+
+/** the transition a frame gives (`{ camera, set?, left, shape }`: the shot it leaves,
+ *  how much of that still shows and how it gives way), or undefined for none */
+const transitionOf = (cast: Cast, input: unknown): Readonly<{ transition: Transition; leaving: Leaving; }> | undefined => {
+  if(input === undefined) return undefined/*no transition*/;
+  if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error(`transition is { camera, set?, actors?, left, shape }: the shot left, how much of it still shows (0 to 1), and one of ${TRANSITION_SHAPES.join(', ')}`);
+  const { camera, set, actors, left, shape } = input as Record<string, unknown>;
+  if(!isFiniteNumber(left) || (left < 0) || (left > 1)) throw new Error('transition.left is how much of the shot left still shows, 0 to 1');
+  if(!TRANSITION_SHAPES.includes(shape as TransitionShape)) throw new Error(`transition.shape is one of ${TRANSITION_SHAPES.join(', ')}`);
+  let seen: StageCamera;
+  try { seen = cameraOf(camera); }
+  catch(error) { throw new Error(`transition.${(error as Error).message}`); }
+  let shots: ReadonlyArray<Shot> | undefined;
+  try { shots = (actors === undefined) ? undefined : shotsOf(cast, actors); }
+  catch(error) { throw new Error(`transition.${(error as Error).message}`); }
+  return { transition: { left, shape: shape as TransitionShape }, leaving: { camera: seen, set: stagedSetOf(cast, set), ...(shots ? { shots } : {}) } };
 };
 
 /** the views a frame names, each a camera or a plan */
@@ -582,10 +619,12 @@ export const isPlan = (camera: ViewCamera): camera is PlanCamera => 'plan' in ca
  *  the camera, and what lies over its picture. Through a plan, the marks' paths, each
  *  actor's name where it stands and the film's camera (its picture `aspect` wide for
  *  each unit high) lie over it in place of the fade and title */
-export const pictureOf = (frame: ReelFrame, view: string | undefined, marks: Marks | undefined, aspect: number): Readonly<{ camera: ViewCamera; overlay: FilmOverlay; }> => {
+export const pictureOf = (frame: ReelFrame, view: string | undefined, marks: Marks | undefined, aspect: number): Readonly<{ camera: ViewCamera; overlay: FilmOverlay; leaving?: Leaving; }> => {
   const camera = (view === undefined) ? frame.camera : frame.views.get(view);
   if(!camera) throw new Error(`No view '${view}' in the reel: ${(frame.views.size > 0) ? `its views are ${[...frame.views.keys()].join(', ')}` : 'it has none'}.`);
-  if(!isPlan(camera)) return { camera, overlay: frame.overlay };
+  if((view === undefined) && (camera === frame.main) && frame.leaving) return { camera, overlay: frame.overlay, leaving: frame.leaving }/*the film's camera: its transition*/;
+  const { transition: _left, ...overlay } = frame.overlay/*a view shows its own cuts*/;
+  if(!isPlan(camera)) return { camera, overlay };
   const labels = frame.shots.map(shot => ({ text: shot.name, x: shot.position.x, z: shot.position.z }));
   return { camera, overlay: { fade: 0, plan: { area: camera.plan, paths: marks?.paths ?? [], labels, camera: frame.main, aspect } } };
 };

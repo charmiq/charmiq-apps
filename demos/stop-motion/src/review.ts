@@ -1,4 +1,4 @@
-import { keyInForce, shotFrames, type Film, type FilmFrame, type ShotFrames } from './film';
+import { frameEnd, keyInForce, shotFrames, type Film, type FilmFrame, type ShotFrames } from './film';
 import { inBox, isSized, rideRoot, segmentEnters, type Box, type Size } from './measure';
 import type { Recorded, RecordedCamera } from './recorder';
 import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
@@ -72,16 +72,15 @@ export const avoidingAt = (camera: RecordedCamera, time: number): boolean =>
  *  inside an actor, else a part hiding its target (as the probe found), else an actor
  *  hiding it; each as a span of the frames it holds over */
 export const cameraProblems = (film: Film, sizes: Readonly<Record<string, Size>>, parts: ReadonlyArray<PartFinding | undefined>): ReadonlyArray<CameraProblem> => {
-  const spans: Array<{ from: number; to: number; kind: 'inside' | 'hidden'; by: string; }> = [];
-  const step = 1 / film.scene.fps;
+  const spans: Array<{ from: number; to: number; kind: 'inside' | 'hidden'; by: string; frame: number; }> = [];
   film.frames.forEach((frame, index) => {
     const found = problemAt(film, sizes, frame, parts[index]);
     const last = spans[spans.length - 1];
     if(!found) return;
-    if(last && (last.kind === found.kind) && (last.by === found.by) && (Math.abs(last.to - frame.time) < (step / 2))) { last.to = frame.time + step; return; }
-    spans.push({ from: frame.time, to: frame.time + step, ...found });
+    if(last && (last.kind === found.kind) && (last.by === found.by) && (last.frame === (index - 1))) { [last.to, last.frame] = [frameEnd(film, index), index]; return; }
+    spans.push({ from: frame.time, to: frameEnd(film, index), ...found, frame: index });
   });
-  return spans;
+  return spans.map(({ frame: _last, ...span }) => span);
 };
 
 /** the camera problem standing at a frame's time, if any: its span runs from that

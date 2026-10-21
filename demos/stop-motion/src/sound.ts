@@ -1,5 +1,5 @@
 import { SOUND_FILES } from '../../brick-shared/drive';
-import type { Film, StageCamera } from './film';
+import { filmLengthOf, filmTimeOf, type Film, type StageCamera } from './film';
 import type { Point, SoundCue } from './recorder';
 import { inView } from './screen';
 
@@ -126,9 +126,11 @@ export const followCurve = (film: Film, cue: SoundCue): ReadonlyArray<Readonly<{
   return Array.from({ length: count }, (_, at) => ({ time: film.frames[first + at].time, pan: pan.values[first + at], gain: gain.values[first + at] }));
 };
 
-/** the film's gain at each frame: what its fade leaves of its picture */
+/** the film's gain at each frame: what its fade to black leaves of its picture (a
+ *  fade to another color, a flash, leaves its sound) */
 export const fadeCurve = (film: Film): ReadonlyArray<Readonly<{ time: number; gain: number; }>> =>
-  film.frames.map(frame => ({ time: frame.time, gain: 1 - frame.fade }));
+  film.frames.map(frame => ({ time: frame.time, gain: soundLeft(frame) }));
+const soundLeft = (frame: Film['frames'][number]): number => (frame.fadeColor && (frame.fadeColor.toLowerCase() !== '#000000')) ? 1 : (1 - frame.fade);
 
 // the frames from `from` up to `to` (seconds): the first's index and how many
 const framesOf = (film: Film, from: number, to: number): Readonly<{ first: number; count: number; }> => {
@@ -140,16 +142,18 @@ const framesOf = (film: Film, from: number, to: number): Readonly<{ first: numbe
 };
 
 // == Mix =========================================================================
-/** a film's sound from `from` seconds into it, starting at the context's time `at`
- *  (the moment its picture shows `from`): every cue sounding then or later within the
- *  film, each through its volume (and, following an actor, that actor's bus: its gain
- *  and pan), the film's fade over them all, every sound ending as the film's last
- *  picture shows; returns what stops it */
+/** a film's sound from `from` seconds into it (the film's own time), starting at the
+ *  context's time `at` (the moment its picture shows `from`): every cue sounding then
+ *  or later within the film, each from where its scene's time shows in the film and
+ *  at its own pace however fast the scene runs, through its volume (and, following an
+ *  actor, that actor's bus: its gain and pan), the film's fade over them all, every
+ *  sound ending as the film's last picture shows; returns what stops it */
 export const scheduleMix = (context: BaseAudioContext, film: Film, buffers: SoundBuffers, from: number, at: number): (() => void) => {
-  const ends = at + Math.max(0, film.scene.length - from);
+  const length = filmLengthOf(film);
+  const ends = at + Math.max(0, length - from);
   const master = context.createGain();
   master.connect(context.destination);
-  follow(master.gain, { first: 0, values: Float32Array.from(film.frames, frame => 1 - frame.fade) }, film.scene.fps, from, at);
+  follow(master.gain, { first: 0, values: Float32Array.from(film.frames, soundLeft) }, film.scene.fps, from, at);
 
   // each followed actor's bus: its gain, then its pan, into the master
   const buses = new Map<string, AudioNode>();
@@ -171,18 +175,19 @@ export const scheduleMix = (context: BaseAudioContext, film: Film, buffers: Soun
   for(const cue of film.scene.sounds ?? []) {
     const buffer = buffers.get(cue.name);
     if(!buffer) continue/*not decoded: its file could not be read*/;
-    const end = cue.until ?? (cue.time + buffer.duration);
-    if((end <= from) || (cue.time >= film.scene.length)) continue/*over before the mix starts, or past the film's end*/;
+    const start = filmTimeOf(film, cue.time);
+    const end = (cue.until !== undefined) ? filmTimeOf(film, cue.until) : (start + buffer.duration);
+    if((end <= from) || (start >= length)) continue/*over before the mix starts, or past the film's end*/;
 
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.loop = (cue.until !== undefined);
     const volume = context.createGain();
-    volume.gain.value = cue.volume;
+    faded(volume.gain, { ...cue, time: start }, Math.min(end, length), from, at);
     source.connect(volume);
     volume.connect((cue.actor === undefined) ? master : busOf(cue.actor));
-    const into = Math.max(0, from - cue.time);
-    source.start(at + Math.max(0, cue.time - from), source.loop ? (into % buffer.duration) : into);
+    const into = Math.max(0, from - start);
+    source.start(at + Math.max(0, start - from), source.loop ? (into % buffer.duration) : into);
     source.stop(Math.min(ends, at + (end - from)));
     sources.push(source);
   }
@@ -190,6 +195,23 @@ export const scheduleMix = (context: BaseAudioContext, film: Film, buffers: Soun
     for(const source of sources) { try { source.stop(); } catch{ /*never started*/ } }
     master.disconnect();
   };
+};
+
+// a sound's volume over its span from `from` seconds on (the context's time from
+// `at`): its volume, rising from silence over its fadeIn and falling to silence over
+// its fadeOut before `end`; a fade longer than the sound reaches what it reaches by
+// the sound's end
+const faded = (param: AudioParam, cue: SoundCue, end: number, from: number, at: number): void => {
+  const gainAt = (time: number) => cue.volume * Math.max(0, Math.min(1, cue.fadeIn ? ((time - cue.time) / cue.fadeIn) : 1, cue.fadeOut ? ((end - time) / cue.fadeOut) : 1));
+  const start = Math.max(from, cue.time);
+  param.setValueAtTime(gainAt(start), at + (start - from));
+  if(!cue.fadeIn && !cue.fadeOut) return/*its volume throughout*/;
+  // its corners: where the fade in ends, the fade out begins, where the two cross
+  // overlapping (its loudest), and its end
+  const crossing = (cue.fadeIn && cue.fadeOut) ? (((cue.time * cue.fadeOut) + (end * cue.fadeIn)) / (cue.fadeIn + cue.fadeOut)) : undefined;
+  const turns = [...new Set([...(cue.fadeIn ? [cue.time + cue.fadeIn] : []), ...(cue.fadeOut ? [end - cue.fadeOut] : []), ...((crossing !== undefined) ? [crossing] : []), end])]
+    .filter(time => (time > start) && (time <= end)).sort((a, b) => a - b)/*each once*/;
+  for(const time of turns) param.linearRampToValueAtTime(gainAt(time), at + (time - from));
 };
 
 // a parameter following a curve over the film's frames from `from` seconds on, as
