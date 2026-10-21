@@ -1,5 +1,4 @@
-import type { AppStateAPI } from '../../shared/charmiq';
-
+import type { DocumentState } from './app-state';
 import { DESIGN_EXTENSION, DESIGNS, DRIVE_PAGE, type Design, type Drive, type DriveFile, type FileKind, type Folder, type FolderListing } from './drive';
 
 // the Brick family's saved designs in the Drive: what a design's name may be, which
@@ -49,19 +48,14 @@ export class DesignStore {
   private readonly folderListeners = new Set<() => void>();
 
   /** `kind` names the files its chooser lists: designs, unless a sound picker's */
-  public constructor(protected readonly drive: Drive, private readonly appState: AppStateAPI, public readonly words: DesignWords, private readonly kind: FileKind = DESIGNS) {}
+  /** follows the folder the app state names, from the first */
+  public constructor(protected readonly drive: Drive, private readonly documentState: DocumentState, public readonly words: DesignWords, private readonly kind: FileKind = DESIGNS) {
+    this.documentState.entry$(FOLDER_STATE).subscribe(chosen => this.follow(chosen));
+  }
 
-  /** follows the folder the app state names. A state that cannot be read leaves the
-   *  top of the Drive */
+  /** reads the app state. A state that cannot be read leaves the top of the Drive */
   public init(): Promise<void> {
-    this.ready = (async () => {
-      try {
-        this.appState.onChange$().subscribe({ next: state => this.follow(state), error: error => console.warn('the designs folder stopped following the app state:', error) });
-        this.follow(await this.appState.get());
-      } catch(error) {
-        console.warn('the designs folder could not be read:', error);
-      }
-    })();
+    this.ready = this.documentState.init().catch(error => console.warn('the designs folder could not be read:', error));
     return this.ready;
   }
 
@@ -71,14 +65,10 @@ export class DesignStore {
   // == Folder ====================================================================
   public getFolder(): Folder { return this.folder; }
 
-  /** chooses the folder designs go to: writes it to the app state, beside whatever
-   *  else the state holds, and follows what was written */
+  /** chooses the folder designs go to: writes it to the app state, followed at once */
   public async setFolder(folder: Folder): Promise<void> {
     await this.ready;
-    const state = ((await this.appState.get()) as Record<string, unknown> | null) ?? {};
-    const next = { ...state, [FOLDER_STATE]: { ...(folder.id ? { id: folder.id } : {}), name: folder.name } };
-    await this.appState.set(next);
-    this.follow(next);
+    await this.documentState.write(FOLDER_STATE, { ...(folder.id ? { id: folder.id } : {}), name: folder.name });
   }
 
   // == Browse ====================================================================
@@ -154,8 +144,7 @@ export class DesignStore {
 
   // == Internal ==================================================================
   /** takes the folder the app state names, telling listeners when it changed */
-  private follow(state: unknown): void {
-    const chosen = (state as Record<string, unknown> | null)?.[FOLDER_STATE];
+  private follow(chosen: unknown): void {
     const next = isFolder(chosen) ? chosen : TOP_OF_DRIVE;
     if((next.id === this.folder.id) && (next.name === this.folder.name)) return/*unchanged*/;
     this.folder = next;

@@ -29,6 +29,8 @@ export type FilmHost = Readonly<{
   studios: () => number;
   editors: () => number;
   stage: () => StageState;
+  /** stages the latest scene's film again: cast and shown on the studios */
+  restage: () => Promise<void>;
   player: Player;
   /** resolves once the main studio has drawn a frame */
   shown: (index: number) => Promise<void>;
@@ -47,10 +49,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       const film = host.film(), error = host.error(), stage = host.stage();
       const sizes = sizesOf(stage);
       return {
-        studios: host.studios(), editors: host.editors(), stage: stage.kind,
-        ...((stage.kind === 'staged') && (stage.refused.length > 0) ? { refused: stage.refused } : {}),
-        ...((stage.kind === 'failed') ? { stageError: stage.message } : {}),
-        ...((stage.kind === 'ambiguous') ? { stageError: `${stage.builds} studios hold a build: the set must be in one, the others empty.` } : {}),
+        studios: host.studios(), editors: host.editors(), ...stageReport(stage),
         ...(film ? {
           title: film.scene.title, seconds: film.scene.length, fps: film.scene.fps, frames: film.frames.length,
           actors: film.scene.actors.map(actor => actor.name), views: film.scene.views.map(view => view.name),
@@ -75,6 +74,8 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       await drawn;
       return { frame: shown, time: shown / film.scene.fps };
     },
+    stage: async () => { await host.restage(); return stageReport(host.stage()); },
+
     play: () => { host.player.play(); return { playing: true }; },
     pause: () => { host.player.pause(); return { playing: false, frame: host.player.current.index }; },
 
@@ -181,6 +182,15 @@ const frameAt = (film: Film, time: unknown, frame: unknown): number => {
   if(!Number.isFinite(index)) throw new Error('Give the time (seconds) or the frame (from 0).');
   return Math.max(0, Math.min(film.frames.length - 1, Math.round(index)));
 };
+
+/** how the stage stands, model-facing: its kind, the actors it refused, and why it
+ *  stands unstaged when it failed */
+const stageReport = (stage: StageState) => ({
+  stage: stage.kind,
+  ...((stage.kind === 'staged') && (stage.refused.length > 0) ? { refused: stage.refused } : {}),
+  ...((stage.kind === 'failed') ? { stageError: stage.message } : {}),
+  ...((stage.kind === 'ambiguous') ? { stageError: `${stage.builds} studios hold a build: the set must be in one, the others empty.` } : {}),
+});
 
 /** each actor's box, once the stage has said */
 const sizesOf = (stage: StageState): Readonly<Record<string, Size>> | undefined => (stage.kind === 'staged') ? stage.sizes : undefined;

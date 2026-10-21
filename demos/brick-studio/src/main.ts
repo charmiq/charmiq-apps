@@ -1,5 +1,6 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 
+import { DocumentState } from '../../brick-shared/app-state';
 import { Drive } from '../../brick-shared/drive';
 
 import { Build } from './build';
@@ -54,7 +55,7 @@ const viewer = new Viewer(canvas, overlay, readTheme(), name => charmiq.resource
 const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
-const designs = new Designs(new Drive(charmiq.mcp), build, charmiq.appState);
+const designs = new Designs(new Drive(charmiq.mcp), build, new DocumentState(charmiq.appState));
 const sheet = new Sheet({ root: element('sheet'), title: element('sheetTitle'), panels: element('sheetPanels'), back: element('sheetBack'), backLabel: element('sheetBackLabel') }, document.querySelector<HTMLElement>('.bar')!/*by contract*/);
 const lookAround = new LookAround(sheet, viewer);
 const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/;

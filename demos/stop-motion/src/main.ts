@@ -3,6 +3,7 @@ import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
 
+import { DocumentState } from '../../brick-shared/app-state';
 import { DesignStore } from '../../brick-shared/designs';
 import { Drive, type DriveFile, SOUND_FILES } from '../../brick-shared/drive';
 
@@ -11,7 +12,7 @@ import { Director } from './director';
 import { exportFilm, fileName, save } from './export';
 import type { Film, Paint } from './film';
 import { FilmDialog } from './film-dialog';
-import { Films } from './films';
+import { filmPartsOf, Films } from './films';
 import { closePairs } from './measure';
 import { Player, type PlayerState } from './player';
 import { castAs, type SceneError, type SoundCue } from './recorder';
@@ -123,7 +124,9 @@ const bank = drive && new SoundBank(
 const soundtrack = new Soundtrack(bank);
 
 /** the audio files in the Drive a sound is added from: the folder films go to first */
-const soundStore = charmiq && drive && new DesignStore(drive, charmiq.appState, { noun: 'sound', listing: 'describeFilm', pick: 'Add' }, SOUND_FILES);
+/** the document's app state, the one every store keeps its entry in */
+const documentState = charmiq && new DocumentState(charmiq.appState);
+const soundStore = documentState && drive && new DesignStore(drive, documentState, { noun: 'sound', listing: 'describeFilm', pick: 'Add' }, SOUND_FILES);
 const soundDialog = soundStore && new SoundDialog(element('sounds'), soundStore, file => addSoundAt(file));
 
 // -- Director --------------------------------------------------------------------
@@ -154,14 +157,7 @@ const strip = new Strip(element('strip'), index => { player.pause(); player.seek
 // -- Film Files ------------------------------------------------------------------
 /** the film's files: Stop Motion reads and writes the main studio's build and the
  *  code block's scene for them, the set written staged anew */
-const films = charmiq && drive && new Films(drive, charmiq.appState, {
-  set: () => studios.readSet(),
-  setSet: async ldraw => { await studios.writeSet(ldraw); void director.restage(); },
-  clearSet: async () => { await studios.clearSet(); void director.restage(); },
-  scene: () => source.code,
-  checkScene: () => source.check(),
-  setScene: code => source.write(code),
-});
+const films = documentState && drive && new Films(drive, documentState, filmPartsOf(studios, director, source));
 const filmDialog = films && new FilmDialog(element('films'), films, { onOpened: (name, scene) => opened(name, scene) });
 
 // == State =======================================================================
@@ -352,13 +348,15 @@ const followOpening = (stage: StageState) => {
   else if((stage.kind !== 'staged') || opening.staging) settleOpening()/*staged, or stopped*/;
 };
 
-/** saves the film over its own file, or asks for a name first */
+/** saves the film over its own file once the document has told it, or asks for a name */
 const saveFilm = async () => {
   if(!films || !filmDialog) return;
-  if(films.state.name === undefined) { filmDialog.saveAs(film?.scene.title ?? 'Untitled film'); return; }
   fileState.textContent = 'saving…';
-  try { await films.save(); showFile(); }
-  catch(failure) { fileState.textContent = (failure as Error).message; fileState.dataset.state = 'error'; }
+  try {
+    const saved = await films.saveOver();
+    showFile();
+    if(!saved) filmDialog.saveAs(film?.scene.title ?? 'Untitled film');
+  } catch(failure) { fileState.textContent = (failure as Error).message; fileState.dataset.state = 'error'; }
 };
 
 element('newButton').addEventListener('click', () => void filmDialog?.openNew());
@@ -586,11 +584,12 @@ studios.init(charmiq);
 void soundStore?.init()/*the folder sounds are added from first*/;
 if(films) {
   void films.store.init()/*the folder the app state names*/;
+  films.init().catch((failure: unknown) => { fileState.textContent = (failure as Error).message; fileState.dataset.state = 'error'; })/*the film's file the app state names*/;
   films.state$.subscribe(() => showFile());
   merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
 } /* else -- standalone: no Drive */
 if(charmiq) {
-  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
+  exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, restage: () => director.restage(), player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
 } /* else -- standalone: no Charm reaches the film */
 showSheet();
 showStatus();

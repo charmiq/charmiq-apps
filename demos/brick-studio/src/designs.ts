@@ -1,5 +1,4 @@
-import type { AppStateAPI } from '../../../shared/charmiq';
-
+import type { DocumentState } from '../../brick-shared/app-state';
 import { DesignStore, displayName } from '../../brick-shared/designs';
 import type { Design, Drive } from '../../brick-shared/drive';
 
@@ -17,8 +16,8 @@ const RESERVED_SUFFIX = '-design';
 
 // == Class =======================================================================
 export class Designs extends DesignStore {
-  public constructor(drive: Drive, private readonly build: Build, appState: AppStateAPI) {
-    super(drive, appState, { noun: 'design', listing: 'listDesigns' });
+  public constructor(drive: Drive, private readonly build: Build, documentState: DocumentState) {
+    super(drive, documentState, { noun: 'design', listing: 'listDesigns' });
   }
 
   // == Save & Load ===============================================================

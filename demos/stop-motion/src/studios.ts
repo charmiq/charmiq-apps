@@ -74,9 +74,9 @@ export type StageState = Readonly<
 /** a frame on a storyboard: the frame and what its caption says */
 export type Board = Readonly<{ frame: number; caption: string; }>;
 
-/** a film staged: its scene and film, the screens it is on (the main first) and each
- *  screen's reel */
-type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; }>;
+/** a film staged: its scene and film, the screens it is on (the main first), each
+ *  screen's reel and the main build's changes counted as it staged (SEE: buildEdits) */
+type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; edits: number; }>;
 
 // == Class =======================================================================
 export class Studios {
@@ -97,6 +97,9 @@ export class Studios {
   private readonly setChanges = new Subject<number>();
   /** the main screen's build changes last told: each frame drawn repeats them */
   private mainEdits: number | undefined;
+  /** the main build's changes since the screens were arranged: a film staged on an
+   *  older build casts again from the build as it stands */
+  private buildEdits = 0;
   /** the bridge the studios are looked for over, the looking, and why the Platform
    *  refused it (none while it looks) */
   private charmiq: CharmIQAPI | undefined;
@@ -167,8 +170,9 @@ export class Studios {
 
   // == Stage =====================================================================
   /** stages a scene on every screen and loads its film, made by `filmFor` with the
-   *  wheels the stage found and the rests of the actors cast from the set. Staged once per scene until the scene or the studios
-   *  change, or a studio goes back to its build. One scene is staged at a time, in the
+   *  wheels the stage found and the rests of the actors cast from the set. Staged once
+   *  per scene until the scene, the studios or the main build change, or a studio goes
+   *  back to its build. One scene is staged at a time, in the
    *  order asked. A staging the studios changed under (arranged again while it ran)
    *  tells nothing, staged or failed: the newer state stands */
   public stage(scene: Recorded, filmFor: FilmFor): Promise<StageState> {
@@ -179,9 +183,9 @@ export class Studios {
 
   /** stages a scene, the stagings asked before it ended (SEE: stage) */
   private async stageNow(scene: Recorded, filmFor: FilmFor): Promise<StageState> {
-    if((this.staged?.scene === scene) && (this.state.value.kind === 'staged')) return this.state.value;
+    if((this.staged?.scene === scene) && (this.staged.edits === this.buildEdits) && (this.state.value.kind === 'staged')) return this.state.value;
     if(this.state.value.kind === 'ambiguous') return this.state.value/*no film until one build remains*/;
-    const screens = this.screens;
+    const screens = this.screens, edits = this.buildEdits;
     if(screens.length < 1) { this.state.next({ kind: 'none' }); return this.state.value; }
 
     this.staged = undefined;
@@ -220,7 +224,7 @@ export class Studios {
         await Promise.all(screens.map((screen, index) => screen.loadReel({ reel: reels[index], from, frames: page })));
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
-      this.staged = { scene, film, screens, reels: reels as number[] };
+      this.staged = { scene, film, screens, reels: reels as number[], edits };
       this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {} });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
@@ -324,7 +328,11 @@ export class Studios {
   /** a studio's state: a build appearing in it or emptied out chooses the screens
    *  again (once its stream has answered); otherwise what it says as a screen */
   private studioState(found: ReadonlyArray<Found>, studio: Found, state: ScreenState): void {
-    if((this.screens[0] === studio.commands) && (state.edits !== undefined) && (state.edits !== this.mainEdits)) { this.mainEdits = state.edits; this.setChanges.next(state.edits)/*the film's set*/; }
+    if((this.screens[0] === studio.commands) && (state.edits !== undefined) && (state.edits !== this.mainEdits)) {
+      if(this.mainEdits !== undefined) this.buildEdits++/*its first count is the build as found*/;
+      this.mainEdits = state.edits;
+      this.setChanges.next(state.edits)/*the film's set*/;
+    }
     if((state.build !== undefined) && (state.build !== studio.build)) {
       const changed = found.map(each => (each === studio) ? { ...each, build: state.build! } : each);
       queueMicrotask(() => { if(this.found.value === found) { this.arrange(changed); this.found.next(changed); } })/*outside the stream's own call*/;

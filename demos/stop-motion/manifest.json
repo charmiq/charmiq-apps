@@ -31,7 +31,7 @@
     "charmiq.command": [
       {
         "name": "describeFilm",
-        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, the sounds it plays, every two actors that come within 2 studs and where: the moments to inspect for a possible collision, by their boxes, and what it logged), or the scene's mistake and its line, and the sounds a scene can play",
+        "description": "How the film stands: the studios and code editors found, whether the scene is staged, and the film the scene.js tab makes (its title, seconds, fps, frames, actors, views, its camera's shots from cut to cut and the set each starts on, its set keys, the sounds it plays, every two actors that come within 2 studs and where, once staged: the moments to inspect for a possible collision, by their boxes, and what it logged), or the scene's mistake and its line, and the sounds a scene can play",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
@@ -52,12 +52,26 @@
             "sounds":     { "type": "array", "description": "Each sound the scene plays (sound.at, or an actor's .sound to follow it): from when (seconds), the sound (a Platform file's charmiq://file/<assetId> URI, or a shipped sound's name), its volume (1 as recorded), until when it plays over and over (absent: once) and the actor it follows", "items": { "type": "object", "properties": { "time": { "type": "number" }, "name": { "type": "string" }, "volume": { "type": "number" }, "until": { "type": "number" }, "actor": { "type": "string" } }, "required": ["time", "name", "volume"] } },
             "shippedSounds": { "type": "array", "description": "The few sounds Stop Motion ships for its example films, playable by name (sound.at(1, 'engine')). A film's own sounds are files in the Platform, played by URI", "items": { "type": "string" } },
             "shippedSoundsError": { "type": "string", "description": "Why the shipped sounds could not be listed (shippedSounds is then empty): describe the film again to retry" },
-            "close":      { "type": "array", "description": "Every two actors that come within 2 studs (once the studio has staged the film), each where they come closest: the gap between their boxes in studs, 0 touching", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
+            "close":      { "type": "array", "description": "Every two actors that come within 2 studs, each where they come closest: the gap between their boxes in studs, 0 touching. Present only once staged: stage the film when it is absent", "items": { "type": "object", "properties": { "actors": { "type": "array", "items": { "type": "string" } }, "frame": { "type": "integer" }, "time": { "type": "number" }, "gap": { "type": "number" } }, "required": ["actors", "frame", "time", "gap"] } },
             "logs":       { "type": "array", "items": { "type": "string" } },
             "error":      { "type": "object", "properties": { "message": { "type": "string" }, "line": { "type": "integer" } }, "required": ["message"] },
             "file":       { "type": "object", "description": "The film's file in the Drive: its name once saved or opened, and whether the set or the scene changed since (a film never saved has changed)", "properties": { "name": { "type": "string" }, "changed": { "type": "boolean" } }, "required": ["changed"] }
           },
           "required": ["studios", "editors", "stage"]
+        }
+      },
+      {
+        "name": "stage",
+        "description": "Stage the scene's film again on the studios: casts its actors from the build and shows them, after the build changed or the person went back to it. Answers how the stage then stands; describe the film for what is close",
+        "inputSchema": { "type": "object", "properties": {} },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "stage":      { "type": "string", "description": "none, ambiguous (more than one studio holds a build), staged, left (the person went back to the build) or failed" },
+            "refused":    { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
+            "stageError": { "type": "string" }
+          },
+          "required": ["stage"]
         }
       },
       {

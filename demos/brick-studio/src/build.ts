@@ -418,7 +418,8 @@ export class Build {
     // cannot apply to is refused, since writing it flat keeps its main set alone
     const sets = parseSets(text);
     if(sets.some(each => each.truncated)) throw new BuildError(`That LDraw is too large to take: ${READ_IN_PART} Nothing was changed.`);
-    if(sets.some(each => partCount(each) > MAX_PARTS)) throw new BuildError(tooManyParts(sets.length));
+    const over = sets.find(each => partCount(each) > MAX_PARTS);
+    if(over) throw new BuildError(tooManyParts(sets.length, over));
     if(model.sets && !model.layout) throw new BuildError(`That LDraw cannot be taken: ${model.uneditable!/*by contract: no layout*/}. Nothing was changed.`);
     const asWritten = writtenAsGiven(model) && !!model.layout;
     if(!asWritten && model.unwritable) throw new BuildError(`That LDraw cannot be taken: ${model.unwritable}. Nothing was changed.`);
@@ -548,12 +549,16 @@ const looksOf = (model: Model): string => serializeModel({ ...model, data: undef
  *  is never written that its next edit could not apply to */
 const readWhole = (text: string, set?: string): Model => {
   const model = parseModel(text, (set === undefined) ? undefined : { name: set });
-  if(model.truncated || (partCount(model) > MAX_PARTS)) throw new BuildError(tooManyParts(model.sets?.length ?? 1));
+  if(model.truncated) throw new BuildError(`That edit would leave the build too large to read whole: ${READ_IN_PART}`);
+  if(partCount(model) > MAX_PARTS) throw new BuildError(tooManyParts(model.sets?.length ?? 1, model));
   return model;
 };
 
-/** the refusal of a set past its parts: a build's, when it is the build's one set */
-const tooManyParts = (sets: number): string => `A ${(sets > 1) ? 'set' : 'build'} holds at most ${MAX_PARTS} parts.`;
+/** the refusal of a set past its parts, naming how many it would hold: a build's, when
+ *  it is the build's one set */
+const tooManyParts = (sets: number, model: Model): string => (sets > 1)
+  ? `A set holds at most ${MAX_PARTS} parts: this would make ${model.set ?? MAIN_SET} ${partCount(model)}.`
+  : `A build holds at most ${MAX_PARTS} parts: this would make it ${partCount(model)}.`;
 
 /** the parts a component of that name holds: a name free for one, and parts that
  *  neither repeat nor collide; refuses the whole component otherwise */
