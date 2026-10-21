@@ -59,7 +59,10 @@ const designs = new Designs(new Drive(charmiq.mcp), build, new DocumentState(cha
 const sheet = new Sheet({ root: element('sheet'), title: element('sheetTitle'), panels: element('sheetPanels'), back: element('sheetBack'), backLabel: element('sheetBackLabel') }, document.querySelector<HTMLElement>('.bar')!/*by contract*/);
 const lookAround = new LookAround(sheet, viewer);
 const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/;
-const stage = new StageControl({ root: element('staged'), note: element('stagedNote'), back: element('stagedBack') }, studio, viewer, build, sheet);
+const stage = new StageControl({
+  root: element('staged'), note: element('stagedNote'), back: element('stagedBack'),
+  film: element('stagedFilm'), play: element('stagedPlay'), scrub: element('stagedScrub'), time: element('stagedTime'),
+}, studio, viewer, build, sheet);
 const commands = new CommandSurface(build, designs, viewer, lookAround, stage, look);
 /** why the last ground change was refused, until the build next changes */
 let groundRefused: string | undefined;
@@ -119,19 +122,37 @@ element('saveButton').addEventListener('click', () => { standStill(); designDial
 element('openButton').addEventListener('click', () => { standStill(); designDialog.openOpen(); });
 
 // .. Full screen .................................................................
-// the whole studio goes full screen, its controls with it; Esc (the browser's own)
-// or the button leaves. The button shows only where the page may go full screen
-// (an embedding frame allows it; some phones never do)
-const fullscreenButton = element<HTMLButtonElement>('fullscreenButton');
-fullscreenButton.hidden = !document.fullscreenEnabled;
-fullscreenButton.addEventListener('click', () => {
-  if(document.fullscreenElement) void document.exitFullscreen();
-  else studio.requestFullscreen().catch(error => console.error('brick-studio: full screen failed:', error));
-});
+// the whole studio goes full screen, its controls with it (a film's strip carrying
+// the film's); Esc (the browser's own) or either button leaves. The buttons show
+// only where the page may go full screen (an embedding frame allows it; some phones
+// never do). Over a film playing, the strip rests out of sight once the pointer stands
+// still off it, and comes back as it moves
+const fullscreenButtons = [element<HTMLButtonElement>('fullscreenButton'), element<HTMLButtonElement>('stagedFullscreen')];
+for(const button of fullscreenButtons) {
+  button.hidden = !document.fullscreenEnabled;
+  button.addEventListener('click', () => {
+    if(document.fullscreenElement) void document.exitFullscreen();
+    else studio.requestFullscreen().catch(error => console.error('brick-studio: full screen failed:', error));
+  });
+}
+/** how long the pointer stands still before a film's strip rests (ms) */
+const REST_MS = 2_500;
+let resting: ReturnType<typeof setTimeout> | undefined;
+const wake = () => {
+  studio.classList.remove('is-resting');
+  clearTimeout(resting);
+  if(document.fullscreenElement !== studio) return;
+  resting = setTimeout(() => { if(element('staged').matches(':hover')) wake(); else studio.classList.add('is-resting'); }, REST_MS)/*never under the pointer*/;
+};
+studio.addEventListener('pointermove', wake);
+studio.addEventListener('keydown', wake);
 document.addEventListener('fullscreenchange', () => {
   const full = (document.fullscreenElement === studio);
-  fullscreenButton.setAttribute('aria-pressed', String(full));
-  fullscreenButton.title = full ? 'Leave full screen' : 'Full screen';
+  for(const button of fullscreenButtons) {
+    button.setAttribute('aria-pressed', String(full));
+    button.title = button.ariaLabel = full ? 'Leave full screen' : 'Full screen';
+  }
+  wake();
 });
 
 // .. Help ........................................................................

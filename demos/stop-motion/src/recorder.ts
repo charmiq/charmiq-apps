@@ -37,8 +37,9 @@ export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
 export type SoundCue = Readonly<{ time: number; name: string; volume: number; until?: number; actor?: string; fadeIn?: number; fadeOut?: number; line?: number; }>;
 
 /** a function of time over a span, sampled at each frame from `from` up to `to`
- *  (frame numbers, inclusive): `set` replaces its channels there, `add` adds to them */
-export type Span = Readonly<{ from: number; to: number; mode: 'set' | 'add'; channels: ReadonlyArray<string>; samples: ReadonlyArray<Readonly<Record<string, number>>>; label: string; line?: number; }>;
+ *  (frame numbers, inclusive): `set` replaces its channels there, `add` adds to them;
+ *  `figure`, only where the actor is a figure (the stage says which pose) */
+export type Span = Readonly<{ from: number; to: number; mode: 'set' | 'add'; channels: ReadonlyArray<string>; samples: ReadonlyArray<Readonly<Record<string, number>>>; label: string; figure?: true; line?: number; }>;
 
 /** where the camera looks: a point, or an actor's position raised by `height` plates */
 export type Target = Readonly<{ point: Point; } | { actor: string; height: number; }>;
@@ -88,6 +89,8 @@ export type RecordedActor = Readonly<{
   /** its height follows the ground under it, stepping up at most `step` plates (SEE:
    *  studios.ts grounds) */
   ground?: Readonly<{ step: number; }>;
+  /** it stands as keyed alone: no figure's idling where nothing else moves it, no boil */
+  still?: true;
   spans: ReadonlyArray<Span>;
   line?: number;
 }>;
@@ -105,6 +108,9 @@ export type Recorded = Readonly<{
   /** the area (studs) the studio's baseplate covers at least: its south-west corner
    *  and size */
   floor?: Readonly<{ x: number; z: number; width: number; depth: number; }>;
+  /** how much every actor shifts from frame to frame, as bricks moved by hand (0 to 1),
+   *  when the scene asks for any (SEE: film.ts boiled) */
+  boil?: number;
   actors: ReadonlyArray<RecordedActor>;
   camera: RecordedCamera;
   /** more cameras, by name: each a second studio's view of the scene. A plan looks
@@ -210,8 +216,8 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
 
   // .. Recording .................................................................
   // what the scene declares, as it declares it
-  const settings = { title: 'Untitled film', fps: 24, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined };
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; spans: Array<() => Span>; line?: number; };
+  const settings = { title: 'Untitled film', fps: 24, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0 };
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; }>();
   /** the views that are plans, each with the area it names, if any */
@@ -227,9 +233,10 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   const counted = () => { if(++keyCount > MAX_KEYS) fail(`a scene holds at most ${MAX_KEYS} keys`); };
 
   // .. Scene .....................................................................
-  /** the film's settings: its title, fps, length, export size and floor */
+  /** the film's settings: its title, fps, length, export size, floor and boil */
   const scene = (options: Record<string, unknown> = {}) => {
-    const { title, fps, length, width, height, floor } = options;
+    const { title, fps, length, width, height, floor, boil } = options;
+    if(boil !== undefined) settings.boil = unitOf(boil, 'boil')/*0 to 1*/;
     if(title !== undefined) settings.title = String(title);
     if(fps !== undefined) { if(!Number.isInteger(fps) || ((fps as number) < 1) || ((fps as number) > MAX_FPS)) fail(`fps is a whole number from 1 to ${MAX_FPS}`); settings.fps = fps as number; }
     if(length !== undefined) { settings.length = toTime(length, 'length'); if(settings.length <= 0) fail('length must be more than 0 seconds'); }
@@ -406,6 +413,9 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         entry.ground = { step: step as number };
         return handle;
       },
+      /** stands as keyed alone: a figure never idles where nothing else moves it, and
+       *  the scene's boil leaves it */
+      still: () => { entry.still = true; return handle; },
       /** one of the studio's sounds from `time`, from where the actor stands in the
        *  picture (SEE: cue) */
       sound: (time: unknown, named: unknown, options?: unknown) => { cue(`${String(name)}.sound`, time, named, options, name as string); return handle; },
@@ -709,8 +719,9 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
     const smooth = (u: number) => u * u * (3 - (2 * u));
     return smooth(Math.min(up, down));
   };
-  /** standing alive (SEE: idle): a function of time giving what it adds */
-  const idleOf = (energy: number, nervous: number, start: number, end: number, seed: unknown) => {
+  /** standing alive (SEE: idle): a function of time giving what it adds, `scale` of
+   *  each movement */
+  const idleOf = (energy: number, nervous: number, start: number, end: number, seed: unknown, scale = 1) => {
     const next = random(seed);
     const offsets = Array.from({ length: 6 }, () => Math.floor(next() * 1000));
     const breathRate = 0.22 + (0.12 * nervous) + (0.05 * next()), breathPhase = next() * 2 * Math.PI;
@@ -731,15 +742,44 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
     return (_: number, t: number): Record<string, number> => {
       const breath = Math.sin((2 * Math.PI * breathRate * t) + breathPhase);
       const settle = envelope(t, start, end, 0.3);
+      const amount = settle * scale;
       return {
-        'pose.rightArm': settle * (1.5 + (2 * energy)) * breath, 'pose.leftArm': settle * (1.5 + (2 * energy)) * breath, 'pose.lean': settle * 0.8 * breath,
-        yaw: settle * (3 + (6 * energy)) * noise((t * 0.12) + offsets[0]), 'pose.twist': settle * (2 + (4 * energy)) * noise((t * 0.18) + offsets[1]),
-        x: settle * 0.06 * (0.5 + energy) * noise((t * 0.1) + offsets[2]), z: settle * 0.06 * (0.5 + energy) * noise((t * 0.1) + offsets[3]),
-        'pose.head': settle * headAt(t),
-        'pose.rightWrist': settle * 25 * nervous * noise((t * 2) + offsets[4]), 'pose.leftWrist': settle * 25 * nervous * noise((t * 2) + offsets[5]),
+        'pose.rightArm': amount * (1.5 + (2 * energy)) * breath, 'pose.leftArm': amount * (1.5 + (2 * energy)) * breath, 'pose.lean': amount * 0.8 * breath,
+        yaw: amount * (3 + (6 * energy)) * noise((t * 0.12) + offsets[0]), 'pose.twist': amount * (2 + (4 * energy)) * noise((t * 0.18) + offsets[1]),
+        x: amount * 0.06 * (0.5 + energy) * noise((t * 0.1) + offsets[2]), z: amount * 0.06 * (0.5 + energy) * noise((t * 0.1) + offsets[3]),
+        'pose.head': amount * headAt(t),
+        'pose.rightWrist': amount * 25 * nervous * noise((t * 2) + offsets[4]), 'pose.leftWrist': amount * 25 * nervous * noise((t * 2) + offsets[5]),
       };
     };
   };
+
+  /** an actor's spans, and where none of them moves it (no walk, idle, path or crowd)
+   *  for at least ALIVE_GAP seconds, idling subtly there should it be a figure: brick
+   *  films keep every figure in slight motion. None for an actor kept `still`, or a
+   *  component (which never poses) */
+  const alive = (name: string, source: Readonly<Record<string, unknown>>, still: true | undefined, spans: ReadonlyArray<Span>): Span[] => {
+    if(still || (source.component !== undefined)) return [...spans];
+    const last = Math.max(0, Math.round(settings.length! * settings.fps) - 1);
+    const moving = spans.filter(span => MOVING.has(span.label)).map(span => [span.from, span.to] as const).sort((a, b) => a[0] - b[0]);
+    const gaps: Array<readonly [number, number]> = [];
+    let from = 0;
+    for(const [start, end] of moving) {
+      if(start > from) gaps.push([from, start - 1]);
+      from = Math.max(from, end + 1);
+    }
+    if(from <= last) gaps.push([from, last]);
+    return [...spans, ...gaps.filter(([start, end]) => ((end - start) / settings.fps) >= ALIVE_GAP).map(([start, end], index) => {
+      const [begin, finish] = [start / settings.fps, end / settings.fps];
+      return { ...sampled(begin, finish, 'add', 'alive', undefined, idleOf(ALIVE_ENERGY, 0, begin, finish, `${name} alive ${index}`, ALIVE_SCALE)), figure: true as const };
+    })];
+  };
+  /** the spans that move an actor themselves, so a figure idles elsewhere alone */
+  const MOVING = new Set(['walk', 'idle', 'path', 'crowd', 'crowd walk']);
+  /** the shortest stretch a figure idles over (seconds), how lively, and how much of
+   *  an idle's every movement it makes: subtle */
+  const ALIVE_GAP = 0.6;
+  const ALIVE_ENERGY = 0.2;
+  const ALIVE_SCALE = 0.5;
 
   // .. Crowds ....................................................................
   /** what a crowd's walkers can be: how fast and how they walk (studs a second, studs a
@@ -1014,10 +1054,11 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
   return {
     title: settings.title, fps: settings.fps, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}),
-    actors: actors.map(({ name, source, ride, keys, faces, hands, reactions, looks, ground, spans, line }) => ({
+    ...((settings.boil > 0) ? { boil: settings.boil } : {}),
+    actors: actors.map(({ name, source, ride, keys, faces, hands, reactions, looks, ground, still, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
       ...((reactions.length > 0) ? { reactions } : {}), ...((looks.length > 0) ? { looks: looks.map(look => ({ ...look, to: look.to ?? settings.length! })) } : {}), ...(ground ? { ground } : {}),
-      spans: spans.map(span => span()), ...((line !== undefined) ? { line } : {}),
+      ...(still ? { still } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((line !== undefined) ? { line } : {}),
     })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),

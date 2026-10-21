@@ -77,7 +77,7 @@ export const rowsOf = (film: Film, close: ReadonlyArray<ClosePair>, known: Sound
           ...(actor.hands ?? []).map(key => ({ time: key.time, title: `${(key.hand === 'rightHand') ? 'Right' : 'Left'} hand at ${seconds2(key.time)}`, chips: [key.item ? [key.item.color, key.item.part].join(' ') : 'empty'], face: true as const })),
         ].sort((a, b) => a.time - b.time),
         bands: [
-          ...actor.spans.map(span => band(span, scene.fps)),
+          ...actor.spans.filter(span => !span.figure/*a figure's idling where nothing else moves it, written by no line*/).map(span => band(span, scene.fps)),
           ...(actor.reactions ?? []).map(reaction => ({ from: reaction.from, to: reaction.to, label: reaction.face, kind: 'wobble' as const, title: `Reacts "${reaction.face}"`, chips: [`${seconds2(reaction.from)} – ${seconds2(reaction.to)}`] })),
           ...(actor.looks ?? []).map(look => ({ from: look.from, to: look.to, label: `looks at ${lookTarget(look.target)}`, kind: 'wobble' as const, title: `Looks at ${lookTarget(look.target)}`, chips: [`${seconds2(look.from)} – ${seconds2(look.to)}`, `within ${round(look.within)} studs`, `up to ${round(look.max)}°`] })),
         ],

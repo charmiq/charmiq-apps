@@ -12,9 +12,10 @@ import { avoidingAt, type PartFinding } from './review';
 // stop, then eased so the camera never jumps, a frame drawn in as far as any frame
 // within EASE_SECONDS of it in its shot needs, less the nearer that frame is. A frame
 // clear at no stop stays where it was keyed, and its problem stands. The shot a
-// transition leaves is the film's camera held on: probed where it stands (on the set
-// it leaves), avoiding as the frame it last showed in did, and eased as one shot with
-// the frames before its cut, so neither it nor they jump
+// transition leaves on the same set is the film's camera held on: probed where it
+// stands, avoiding as the frame it last showed in did, and eased as one shot with the
+// frames before its cut, so neither it nor they jump. On another set it is that frame
+// held, its camera as that frame's was cleared
 // ********************************************************************************
 // == Constants ===================================================================
 /** the shares of its distance to its target an avoiding camera is tried at, the
@@ -57,11 +58,11 @@ export const clearanceOf = async (film: Film, probe: Probe): Promise<Cleared> =>
   const tracks: ReadonlyArray<Track> = [
     { keys: scene.camera, at: frame => frame.camera, set: frame => frame.set },
     ...scene.views.filter(view => !view.plan).map(view => ({ keys: view, view: view.name, at: (frame: FilmFrame) => frame.views[view.name] as StageCamera/*no plan*/, set: (frame: FilmFrame) => frame.set })),
-    // the shot a transition leaves: over its frames, and the frames before its cut it eases with
+    // the shot a transition leaves on its frame's set: over its frames, and the frames before its cut it eases with
     ...(frames.some(frame => frame.transition) ? [{
       keys: { ...scene.camera, keys: scene.camera.keys.filter(key => !key.transition) }/*one shot across each cut it leaves*/, leaving: true as const,
       at: (frame: FilmFrame) => frame.transition?.camera ?? frame.camera, set: (frame: FilmFrame) => frame.transition ? frame.transition.set : frame.set,
-      avoids: (frame: FilmFrame, index: number) => frame.transition ? avoidsAt(frame.transition.frame) : (avoidsAt(index) && frames.slice(index + 1, index + 1 + reach).some(each => each.transition)),
+      avoids: (frame: FilmFrame, index: number) => frame.transition ? (!isHeld(frame) && avoidsAt(frame.transition.frame)) : (avoidsAt(index) && frames.slice(index + 1, index + 1 + reach).some(each => each.transition && !isHeld(each))),
     }] : []),
   ];
   const avoiding = tracks.map(track => frames.map((frame, index) => (track.avoids ? track.avoids(frame, index) : avoidingAt(track.keys, frame.time)) && (distanceOf(track.at(frame)) > 0)));
@@ -96,7 +97,7 @@ export const clearanceOf = async (film: Film, probe: Probe): Promise<Cleared> =>
       const track = tracks.findIndex(each => each.view === name);
       return [name, (track > 0) ? drawnIn(view as StageCamera, shares[track][index]) : view];
     }));
-    const transition = frame.transition && { ...frame.transition, camera: drawnIn(frame.transition.camera, shares[outgoing][index]) };
+    const transition = frame.transition && { ...frame.transition, camera: drawnIn(frame.transition.camera, isHeld(frame) ? filmShares[frame.transition.frame]/*that frame's own*/ : shares[outgoing][index]) };
     return { ...frame, camera, views, ...(transition ? { transition } : {}) };
   });
   return {
@@ -150,6 +151,9 @@ const easedShares = (film: Film, keys: RecordedCamera, needs: ReadonlyArray<numb
     return roundShare(share);
   });
 };
+
+/** whether a frame's transition leaves another set: the frame it last showed in, held */
+const isHeld = (frame: FilmFrame): boolean => !!frame.transition && (frame.transition.set !== frame.set);
 
 /** how many frames either way an avoiding camera eases over */
 const easeReach = ({ scene }: Film): number => Math.max(1, Math.round(EASE_SECONDS * scene.fps));

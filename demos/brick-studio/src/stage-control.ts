@@ -17,7 +17,11 @@ import type { Viewer } from './viewer';
 // with a frame shown live), and a new stage, the way back or unstage refuses
 // whatever waits for the reel it ends. A storyboard shows frames of the reel on the
 // sheet until the film next shows or stages a frame. The build is never written: an
-// edit made while staged reaches the build, and the strip says the build changed
+// edit made while staged reaches the build, and the strip says the build changed.
+// Full screen, the strip carries the film's controls: play or pause, the frame
+// scrubbed to, the film's time (Space and the arrows besides). The film plays, so a
+// press is asked of it (each ask counted on the state, the latest named) and the
+// frames it then shows answer it
 // ********************************************************************************
 // == Constants ===================================================================
 const SHOWING = 'Showing a film scene';
@@ -27,13 +31,17 @@ const STORYBOARD = 'Your Charm is looking at the film\'s storyboard';
 const BACK_TO_FILM = 'Back to the film';
 
 // == Types =======================================================================
-/** the strip's elements: the strip, what it says and its way back */
-export type StageElements = Readonly<{ root: HTMLElement; note: HTMLElement; back: HTMLButtonElement; }>;
+/** the strip's elements: the strip, what it says, its way back, and the film's
+ *  controls (shown full screen): their group, play, the frame scrubbed to, the time */
+export type StageElements = Readonly<{
+  root: HTMLElement; note: HTMLElement; back: HTMLButtonElement;
+  film: HTMLElement; play: HTMLButtonElement; scrub: HTMLInputElement; time: HTMLElement;
+}>;
 
-/** what a stage call answers: the actors cast, those among them with wheels to roll,
- *  those refused with why, each cast actor's box, and the reel's number when one is
- *  staged */
-export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
+/** what a stage call answers: the actors cast, those among them with wheels to roll
+ *  and those that pose (figures), those refused with why, each cast actor's box, and
+ *  the reel's number when one is staged */
+export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
 /** what a frame call answers: how many actors it shows, and the frame captured when
  *  one is asked for */
 export type Framed = Readonly<{ shown: number; image?: ImageBitmap; }>;
@@ -44,11 +52,15 @@ export type StageState =
   | Readonly<{ kind: 'none'; }>
   | Readonly<{ kind: 'staged'; reel?: number; frame?: number; }>
   | Readonly<{ kind: 'left'; }>;
+/** what the person asks of the film from the studio's controls: to play, to pause,
+ *  or to show a frame (from 0) */
+export type Ask = Readonly<{ kind: 'play'; } | { kind: 'pause'; } | { kind: 'seek'; frame: number; }>;
 /** the screen's state as a film follows it: the stage's, whether the studio holds a
  *  build (a film takes its sets from the one that does), the build's sets by name,
- *  and how many times the build has changed since the studio opened (a film's file
- *  knows when to look again) */
-export type ScreenState = StageState & Readonly<{ build: boolean; sets: ReadonlyArray<string>; edits: number; }>;
+ *  how many times the build has changed since the studio opened (a film's file knows
+ *  when to look again), and how many times the person has asked something of the
+ *  film from its controls, the latest named (a film acts on each new one) */
+export type ScreenState = StageState & Readonly<{ build: boolean; sets: ReadonlyArray<string>; edits: number; asks: number; asked?: Ask; }>;
 
 /** a reel as loaded: its number, header and the frames loaded so far, each as this
  *  screen shows it */
@@ -80,10 +92,19 @@ export class StageControl {
   private holds = false;
   private sets: ReadonlyArray<string> = [];
   private edits = 0;
-  private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false, sets: [], edits: 0 });
+  /** the reel's frame last shown, and whether the film said it plays */
+  private shownFrame = 0;
+  private playing = false;
+  /** how many times the person has asked something of the film, and the latest */
+  private asks = 0;
+  private asked: Ask | undefined;
+  private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false, sets: [], edits: 0, asks: 0 });
 
   public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build, private readonly sheet: Pick<Sheet, 'show' | 'hide'>) {
     elements.back.addEventListener('click', () => { this.left = true; this.end(); });
+    elements.play.addEventListener('click', () => this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' }));
+    elements.scrub.addEventListener('input', () => this.ask({ kind: 'seek', frame: elements.scrub.valueAsNumber }));
+    studio.addEventListener('keydown', event => this.key(event));
   }
 
   // == Stage =====================================================================
@@ -117,12 +138,14 @@ export class StageControl {
     this.marks = marked;
     this.wanted = undefined/*a frame of the reel before*/;
     this.left = false;
+    [this.shownFrame, this.playing] = [0, false];
     this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged));
     if(header) this.viewer.drawStageAt(header.width, header.height);
     this.show(SHOWING);
+    this.showControls();
     this.publish({ kind: 'staged', ...(this.reel ? { reel: this.reel.id } : {}) });
-    const wheeled = [...cast.actors].filter(([, actor]) => actor.rolls).map(([name]) => name);
-    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
+    const [wheeled, figures] = [[...cast.actors].filter(([, actor]) => actor.rolls).map(([name]) => name), [...cast.actors].filter(([, actor]) => actor.poses).map(([name]) => name)];
+    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((figures.length > 0) ? { figures } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
   }
 
   /** what stands at points and across segments of a set as a stage of those sets and
@@ -160,14 +183,16 @@ export class StageControl {
   }
 
   /** shows a loaded frame of the reel. Live (no capture) it answers at once and the
-   *  newest frame asked is shown next; with a capture it answers that exact frame,
-   *  drawn whole at that size */
-  public showReel(reel: unknown, frame: unknown, capture: unknown): Promise<Framed> {
+   *  newest frame asked is shown next, the film `playing` or not as it says; with a
+   *  capture it answers that exact frame, drawn whole at that size */
+  public showReel(reel: unknown, frame: unknown, capture: unknown, playing?: unknown): Promise<Framed> {
     const { loaded } = this.reelNamed(reel);
     const shot = this.frameOf(loaded, frame);
     const size = captureOf(capture);
+    if((playing !== undefined) && (typeof playing !== 'boolean')) throw new Error('playing is whether the film plays: true or false');
     this.sheet.hide()/*the film moves on from its storyboard*/;
     if(!size) {
+      if(playing !== undefined) this.playing = playing;
       const queued = !!this.wanted;
       this.wanted = { reel: loaded.id, frame: frame as number };
       if(!queued) this.after(async () => { const wanted = this.wanted; this.wanted = undefined; if(wanted) this.showWanted(wanted.reel, wanted.frame); });
@@ -283,6 +308,8 @@ export class StageControl {
     const applied = ++this.applied;
     const picture = this.pictureOf(loaded, shot, undefined);
     this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving));
+    this.shownFrame = frame;
+    this.showControls();
     void this.viewer.whenSettled().then(() => { if((this.reel === loaded) && (this.applied === applied)) this.publish({ kind: 'staged', reel, frame }); });
   }
 
@@ -324,6 +351,7 @@ export class StageControl {
     this.wanted = undefined;
     this.viewer.unstage();
     this.show(undefined/*no strip*/);
+    this.showControls();
     this.publish(this.left ? { kind: 'left' } : { kind: 'none' });
   }
 
@@ -339,7 +367,43 @@ export class StageControl {
   }
 
   /** tells the film the screen's state */
-  private publish(state: StageState): void { this.state.next({ ...state, build: this.holds, sets: this.sets, edits: this.edits }); }
+  private publish(state: StageState): void { this.state.next({ ...state, build: this.holds, sets: this.sets, edits: this.edits, asks: this.asks, ...(this.asked ? { asked: this.asked } : {}) }); }
+
+  // .. Controls ..................................................................
+  /** asks the film to play, pause or show a frame, as the person pressed */
+  private ask(asked: Ask): void {
+    if(!this.reel) return/*no film to ask*/;
+    [this.asks, this.asked] = [this.asks + 1, asked];
+    this.state.next({ ...this.state.value, asks: this.asks, asked });
+  }
+
+  /** the keys the film's controls take full screen: Space plays or pauses, the arrows
+   *  step a frame (a second with Shift) */
+  private key(event: KeyboardEvent): void {
+    const header = this.reel?.header;
+    if(!header || !isFullScreen(this.studio) || event.altKey || event.ctrlKey || event.metaKey) return;
+    if(event.key === ' ') this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' });
+    else if((event.key === 'ArrowLeft') || (event.key === 'ArrowRight')) {
+      const step = (event.shiftKey ? header.fps : 1) * ((event.key === 'ArrowLeft') ? -1 : 1);
+      this.ask({ kind: 'seek', frame: Math.max(0, Math.min(header.length - 1, this.shownFrame + step)) });
+    } else return/*not the film's*/;
+    event.preventDefault();
+  }
+
+  /** the film's controls as the reel stands: hidden with none, else at its frame */
+  private showControls(): void {
+    const { film, play, scrub, time } = this.elements;
+    const header = this.reel?.header;
+    film.hidden = !header;
+    if(!header) { this.studio.classList.toggle('is-playing', false); return; }
+    scrub.max = String(header.length - 1);
+    scrub.value = String(this.shownFrame);
+    time.textContent = `${clock(this.shownFrame / header.fps)} / ${clock(header.length / header.fps)}`;
+    play.setAttribute('aria-pressed', String(this.playing));
+    this.studio.classList.toggle('is-playing', this.playing)/*the strip rests only over a film playing*/;
+    play.title = this.playing ? 'Pause (Space)' : 'Play (Space)';
+    play.ariaLabel = this.playing ? 'Pause' : 'Play';
+  }
 
   /** shows the strip saying `note`, or hides it */
   private show(note: string | undefined): void {
@@ -349,3 +413,9 @@ export class StageControl {
   }
 }
 
+// == Util ========================================================================
+/** whether an element fills the screen */
+const isFullScreen = (element: HTMLElement): boolean => element.ownerDocument.fullscreenElement === element;
+
+/** seconds as minutes, seconds and tenths: 1:05.3 */
+const clock = (seconds: number): string => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;

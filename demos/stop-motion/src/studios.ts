@@ -2,7 +2,7 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import { clearanceOf, type Avoided, type Probe } from './clearance';
-import { planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type Paint, type Rest } from './film';
+import { planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type Paint, type Rest, type StageFacts } from './film';
 import { groundsOf, type GroundProbe } from './ground';
 import type { Size } from './measure';
 import type { Recorded } from './recorder';
@@ -34,27 +34,30 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 7;
+const STAGE_VERSION = 8;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
 const SHOWN_MILLIS = 10_000/*ms*/;
 
 // == Types =======================================================================
-/** makes a scene's film once staged: with the wheels the stage found, the rests of
- *  the actors cast from the set and the ground under each actor following it (SEE:
- *  film.ts filmOf) */
-export type FilmFor = (wheeled: ReadonlySet<string>, rests: ReadonlyMap<string, Rest>, grounds: ReadonlyMap<string, ReadonlyArray<number>>) => Film;
+/** makes a scene's film once staged, with what the stage answered of its cast and the
+ *  ground under each actor following it (SEE: film.ts filmOf) */
+export type FilmFor = (facts: StageFacts) => Film;
+/** what the person asks of the film from a studio's controls (SEE: Brick Studio's
+ *  stage-control.ts Ask) */
+export type Ask = Readonly<{ kind: 'play'; } | { kind: 'pause'; } | { kind: 'seek'; frame: number; }>;
 /** a studio's state as its stream tells it: its stage's, whether it holds a build, its
- *  build's sets, and how many times its build has changed */
-type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; frame?: number; build?: boolean; sets?: ReadonlyArray<string>; edits?: number; }>;
+ *  build's sets, how many times its build has changed, and how many times the person
+ *  asked something of the film from its controls, the latest named */
+type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; frame?: number; build?: boolean; sets?: ReadonlyArray<string>; edits?: number; asks?: number; asked?: Ask; }>;
 
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
   probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; }>>;
   stage$(): Observable<ScreenState>;
-  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
+  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
   show(args: object): Promise<Readonly<{ shown: number; image?: ImageBitmap; }>>;
   thumbnail(args: object): Promise<Readonly<{ image: ImageBitmap; }>>;
@@ -109,6 +112,10 @@ export class Studios {
   private readonly setChanges = new Subject<number>();
   /** the main screen's build changes last told: each frame drawn repeats them */
   private mainEdits: number | undefined;
+  /** each studio's asks last told (its first count is where it stood when found), and
+   *  each new ask of the film from a screen showing it */
+  private readonly asks = new Map<StudioCommands, number>();
+  private readonly asked = new Subject<Ask>();
   /** the main build's changes since the screens were arranged: a film staged on an
    *  older build casts again from the build as it stands */
   private buildEdits = 0;
@@ -136,6 +143,9 @@ export class Studios {
   public get film(): Film | undefined { return this.staged?.film; }
   /** each change to the main studio's build (the film's set) */
   public get setChanges$(): Observable<number> { return this.setChanges.asObservable(); }
+  /** each thing the person asks of the film from a screen's controls (play, pause, a
+   *  frame) */
+  public get asked$(): Observable<Ask> { return this.asked.asObservable(); }
 
   /** `paint` colors a plan's marks */
   public constructor(private readonly paint: Paint) {}
@@ -228,8 +238,9 @@ export class Studios {
       const grounded = scene.actors.some(actor => actor.ground);
       const still = ((plan && actors.some(actor => 'placed' in actor)) || grounded) ? await main.stage({ ...standing, actors, ...floor }) : undefined;
       const rested = still ? restsOf(still) : new Map<string, Rest>();
-      const grounds = still && grounded ? await groundsOf(filmFor(new Set(), rested, new Map()/*where it goes, before the ground lifts it*/), still.sizes ?? {}, groundProbe) : new Map<string, ReadonlyArray<number>>();
-      const preview = plan ? await clearanceOf(filmFor(new Set()/*its wheels move nothing*/, rested, grounds), probe) : undefined;
+      const figures = new Set(still?.figures ?? []);
+      const grounds = still && grounded ? await groundsOf(filmFor({ figures, rests: rested }/*where it goes, before the ground lifts it*/), still.sizes ?? {}, groundProbe) : new Map<string, ReadonlyArray<number>>();
+      const preview = plan ? await clearanceOf(filmFor({ figures, rests: rested, grounds }/*its wheels move nothing*/), probe) : undefined;
       const marks = preview ? { marks: planMarksOf(preview.film, this.paint, preview.parts.map(found => found.inside !== undefined)) } : {};
       const answer = await main.stage({ ...standing, actors, ...floor, reel, ...marks });
       const ldraw = (others.length > 0) ? await buildText(main) : undefined;
@@ -242,7 +253,7 @@ export class Studios {
 
       // the film with its wheels, its camera cleared, loaded on every screen; an actor
       // the stage refused is left out of every frame (the sheet says why)
-      const { film, parts, avoided } = await clearanceOf(filmFor(new Set(answer.wheeled ?? []), restsOf(answer), grounds), probe);
+      const { film, parts, avoided } = await clearanceOf(filmFor({ wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), rests: restsOf(answer), grounds }), probe);
       const cast = new Set(answer.actors);
       const frames = film.frames.map(frame => reelFrameOf(castOnly(frame, cast)));
       for(let from=0; from<frames.length; from+=REEL_PAGE) {
@@ -260,11 +271,12 @@ export class Studios {
   }
 
   // == Frames ====================================================================
-  /** shows a frame on every screen; each draws the newest it is sent */
-  public show(index: number): void {
+  /** shows a frame on every screen, saying whether the film plays (for each screen's
+   *  controls); each draws the newest it is sent */
+  public show(index: number, playing: boolean): void {
     const staged = this.ready();
     if(!staged) return/*nothing staged: the state says why*/;
-    staged.screens.forEach((screen, at) => { screen.show({ reel: staged.reels[at], frame: index }).catch(error => this.refused(staged, error)); });
+    staged.screens.forEach((screen, at) => { screen.show({ reel: staged.reels[at], frame: index, playing }).catch(error => this.refused(staged, error)); });
   }
 
   /** a frame of `film` drawn whole (fade and title included) on the main screen at a
@@ -355,6 +367,11 @@ export class Studios {
   /** a studio's state: a build appearing in it or emptied out chooses the screens
    *  again (once its stream has answered); otherwise what it says as a screen */
   private studioState(found: ReadonlyArray<Found>, studio: Found, state: ScreenState): void {
+    if(state.asks !== undefined) {
+      const before = this.asks.get(studio.commands);
+      this.asks.set(studio.commands, state.asks);
+      if((before !== undefined) && (state.asks > before) && state.asked && this.showsOurs(studio.commands, state)) this.asked.next(state.asked);
+    } /* else -- a studio with no controls */
     if((this.screens[0] === studio.commands) && (state.edits !== undefined) && (state.edits !== this.mainEdits)) {
       if(this.mainEdits !== undefined) this.buildEdits++/*its first count is the build as found*/;
       this.mainEdits = state.edits;
@@ -367,6 +384,13 @@ export class Studios {
     } /* else -- its build as it was */
     const at = this.screens.indexOf(studio.commands);
     if(at >= 0) this.screenState(studio.commands, at, state);
+  }
+
+  /** whether a studio's state is of this film: a screen it is staged on, showing its
+   *  reel (another film may have staged its own there since) */
+  private showsOurs(screen: StudioCommands, state: ScreenState): boolean {
+    const at = this.staged?.screens.indexOf(screen) ?? -1;
+    return (at >= 0) && (state.kind === 'staged') && (state.reel === this.staged!.reels[at]);
   }
 
   /** a screen's state: the main screen's frames drawn, and any screen of the film

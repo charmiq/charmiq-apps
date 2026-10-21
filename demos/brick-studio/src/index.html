@@ -31,6 +31,18 @@
     <section class="staged" id="staged" aria-live="polite" hidden>
       <svg class="staged-icon" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="m160-800 80 160h120l-80-160h80l80 160h120l-80-160h80l80 160h120l-80-160h120q33 0 56.5 23.5T880-720v480q0 33-23.5 56.5T800-160H160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800Z"/></svg>
       <span class="staged-note" id="stagedNote"></span>
+      <div class="staged-film" id="stagedFilm" role="group" aria-label="The film" hidden>
+        <button class="tag tag--ink" id="stagedPlay" type="button" title="Play (Space)" aria-label="Play" aria-pressed="false">
+          <svg class="step-play" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M320-200v-560l440 280-440 280Z"/></svg>
+          <svg class="step-pause" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M520-200v-560h240v560H520Zm-320 0v-560h240v560H200Z"/></svg>
+        </button>
+        <input class="look-slider staged-scrub" id="stagedScrub" type="range" min="0" max="0" step="1" value="0" aria-label="Frame" aria-describedby="stagedTime">
+        <span class="staged-time" id="stagedTime"></span>
+      </div>
+      <button class="tag tag--ink" id="stagedFullscreen" type="button" title="Full screen" aria-label="Full screen" aria-pressed="false" hidden>
+        <svg class="fullscreen-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg>
+        <svg class="fullscreen-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M20 15h-5v5M4 15h5v5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/></svg>
+      </button>
       <button class="tag tag--yellow staged-back" id="stagedBack" type="button">Back to the build</button>
     </section>
 

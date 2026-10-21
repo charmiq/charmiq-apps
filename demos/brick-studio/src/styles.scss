@@ -392,6 +392,33 @@
 
 .staged-back { flex: none; white-space: nowrap; }
 
+// the film's controls, full screen alone: play, the frame scrubbed to and the film's
+// time; while the film plays, the strip rests out of sight once the pointer stands
+// still off it
+.staged-film {
+  display: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+
+  .studio:fullscreen &:not([hidden]) { display: flex; }
+}
+
+.staged-scrub { flex: 1 1 auto; min-width: 80px; width: auto; }
+
+.staged-time {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.studio:fullscreen .staged { width: calc(100% - 32px); transition: opacity 0.3s; }
+.studio:fullscreen.is-resting.is-playing {
+  .staged { opacity: 0; pointer-events: none; }
+  .stage { cursor: none; }
+}
+
 .studio.is-staged {
   .tags, .steps, .status, .hint, .credit { display: none; }
   .stage { cursor: default; }

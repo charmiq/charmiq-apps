@@ -1,5 +1,5 @@
 import { merge } from 'rxjs';
-import { debounceTime, distinctUntilChanged, map } from 'rxjs/operators';
+import { debounceTime, distinctUntilChanged, map, skip } from 'rxjs/operators';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
 
@@ -457,11 +457,11 @@ soundButton.disabled = !soundDialog;
 soundButton.addEventListener('click', () => soundDialog?.open());
 
 // == Transport ===================================================================
-/** a frame on the studios; while playing, how long the main studio takes to show it
- *  is what the sound waits */
+/** a frame on the studios, saying whether the film plays; while playing, how long the
+ *  main studio takes to show it is what the sound waits */
 const showFrame = (index: number) => {
   const asked = performance.now();
-  studios.show(index);
+  studios.show(index, player.current.playing);
   if(player.current.playing) void studios.whenShown(index).then(() => soundtrack.observeDelay(performance.now() - asked), () => undefined/*another frame meanwhile*/);
 };
 
@@ -478,6 +478,14 @@ const showPlayer = (state: PlayerState) => {
   if(!state.playing) void developTrack()/*idle: the picture track develops*/;
 };
 player.state$.subscribe(showPlayer);
+// a studio's controls say whether the film plays: told at once as it starts or stops
+player.state$.pipe(map(state => state.playing), distinctUntilChanged(), skip(1)).subscribe(() => showFrame(player.current.index));
+// what the person asks from a studio's controls, full screen: the film's own transport
+studios.asked$.subscribe(ask => {
+  if(ask.kind === 'play') player.play();
+  else if(ask.kind === 'pause') player.pause();
+  else player.seek(ask.frame);
+});
 
 element('firstButton').addEventListener('click', () => { player.pause(); player.seek(0); });
 element('backButton').addEventListener('click', () => player.step(-1));

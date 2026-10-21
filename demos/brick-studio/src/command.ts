@@ -12,6 +12,7 @@ import { filledCells, footprintSize, getColorByCode, getPart, getShape, type Par
 import type { LookAround } from './look-around';
 import { placedPartCount, type Model } from './model';
 import { fidelityLabel, toFidelity, untracedReason } from './render/fidelity';
+import { insideParts } from './stage';
 import type { StageControl } from './stage-control';
 import type { Viewer } from './viewer';
 
@@ -139,9 +140,22 @@ export class CommandSurface {
         await this.viewer.whenSettled();
         return { component, ...this.report(shown) }/*the component's own counts apart from the build's*/;
       },
-      listComponents: async () => {
+      listComponents: async ({ component: named, from }: { component?: unknown; from?: unknown; } = {}) => {
         await this.build.whenReady();
         const model = this.build.getModel();
+        if(named !== undefined) {
+          // one component's parts where each stands in it, a page at a time: where a
+          // stage's placed actor names a part inside a copy (`inside`), read from a
+          // copy as a stage reads it (a part in LDraw's inherited color listed as
+          // inherited); with no copy, its own parts as defined (nothing to cast)
+          const component = (model.components ?? []).find(each => each.name === named);
+          if(!component) throw new Error(`No component named '${String(named)}': listComponents names them.`);
+          const copied = this.build.allSets().flatMap(set => { const copy = (set.copies ?? []).findIndex(each => each.component === component.name); return (copy >= 0) ? [{ set, copy }] : []; })[0];
+          const parts = copied ? insideParts(copied.set, copied.copy) : component.placements;
+          const start = pageStart(from);
+          const end = Math.min(parts.length, start + PARTS_PER_PAGE);
+          return { component: component.name, parts: parts.slice(start, end), total: parts.length, ...((end < parts.length) ? { next: end } : {}) };
+        } /* else -- every component */
         return { components: (model.components ?? []).map(component => {
           const size = component.footprint ? footprintSize(component.footprint, 0) : [0, 0];
           const bySet = this.build.copiesBySet(component.name);
@@ -281,7 +295,7 @@ export class CommandSurface {
         return staged;
       },
       loadReel: async ({ reel, from, frames }: { reel?: unknown; from?: unknown; frames?: unknown; }) => this.stage.loadReel(reel, from, frames),
-      show: async ({ reel, frame, capture }: { reel?: unknown; frame?: unknown; capture?: unknown; }) => this.stage.showReel(reel, frame, capture),
+      show: async ({ reel, frame, capture, playing }: { reel?: unknown; frame?: unknown; capture?: unknown; playing?: unknown; }) => this.stage.showReel(reel, frame, capture, playing),
       thumbnail: async ({ reel, frame, width, height, view }: { reel?: unknown; frame?: unknown; width?: unknown; height?: unknown; view?: unknown; }) => ({ image: await this.stage.thumbnail(reel, frame, width, height, view) }),
       storyboard: async ({ reel, frames, view }: { reel?: unknown; frames?: unknown; view?: unknown; }) => this.stage.storyboard(reel, frames, view),
       frame: async ({ set, actors, camera, capture }: { set?: unknown; actors?: unknown; camera?: unknown; capture?: unknown; }) => {

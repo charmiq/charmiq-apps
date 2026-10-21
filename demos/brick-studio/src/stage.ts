@@ -1,7 +1,7 @@
 import { toGear, toPosing } from './build';
 import { getStageFace, ALL_FACES, type CatalogPart } from './catalog';
 import { occupiedCells } from './check';
-import { cellsFootprint, compose, footprint, footprintSize, getColor, getPart, getShape, ldrawPosition, partLines, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
+import { cellsFootprint, compose, copyTransform, footprint, footprintSize, getColor, getPart, getShape, gridPosition, ldrawPosition, matrixRotation, partLines, rotationMatrix, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Copy, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseSets, placedPartCount, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
 import { POSE_GEOMETRY } from './parts.generated';
 import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS } from './pose';
@@ -24,7 +24,7 @@ import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LI
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 7;
+export const STAGE_VERSION = 8;
 
 /** the most sets a stage stands */
 export const MAX_STAGED_SETS = 8;
@@ -159,9 +159,9 @@ type Actor = Readonly<{
   lines: (pose: Pose | undefined, rolled: number, face?: string, hands?: Hands) => PartLine[];
 }>;
 
-/** where a placed actor's piece stands in the set: a shot of it there draws the piece
- *  as the set does */
-export type Rest = Readonly<{ position: Point; turn: Turn; }>;
+/** where a placed actor's piece stands in the set, and a figure's pose there: a shot of
+ *  it there draws the piece as the set does */
+export type Rest = Readonly<{ position: Point; turn: Turn; pose?: Pose; }>;
 
 /** a set a stage stands: its name, the set, and the set as it is shown, the pieces
  *  cast from it gone */
@@ -229,14 +229,16 @@ export const floorOf = (input: unknown): Floor | undefined => {
  *  (`{ name, component }`), a catalog part dressed as a placement is (`{ name, part,
  *  color, legColor?, face?, hat?, rightHand?, leftHand? }`), or a piece standing in the
  *  set by where it stands (`{ name, placed: { x, z, level } }`, as listPlacedParts says:
- *  a part of its own as it is dressed there, a copy as its component); every one
+ *  a part of its own as it is dressed there, a copy as its component; with `inside`,
+ *  the part of that copy standing there in its component, as listComponents lists the
+ *  component's parts). A part is cast once, whole or within its copy; every actor
  *  refused names why */
 export const castOf = (sets: ReadonlyArray<Model>, input: unknown): Readonly<{ cast: Cast; refused: ReadonlyArray<Refusal>; }> => {
   if(!Array.isArray(input)) throw new Error('actors lists the actors: each { name, component }, { name, part, color } or { name, placed }');
   if(input.length > MAX_ACTORS) throw new Error(`A stage casts at most ${MAX_ACTORS} actors.`);
   const actors = new Map<string, Actor>();
   const placed = new Map<string, Rest>();
-  const pieces = new Map<string, string>()/*each piece cast, by the actor cast from it*/;
+  const pieces = new Map<string, string>()/*each part cast (a set's placement or other line), by the actor cast from it*/;
   const hidden = sets.map(() => ({ placements: new Set<number>(), others: new Set<number>() }))/*each set's pieces cast*/;
   const refused: Refusal[] = [];
   for(const item of input) {
@@ -255,10 +257,10 @@ export const castOf = (sets: ReadonlyArray<Model>, input: unknown): Readonly<{ c
     if(typeof at === 'string') { refused.push({ name, reason: at }); continue; }
     const piece = pieceOf(sets[at], fields);
     if(typeof piece === 'string') { refused.push({ name, reason: piece }); continue; }
-    const key = `${at} ${piece.key}`;
-    const caster = pieces.get(key);
+    const keys = [...piece.placements.map(index => `${at} part ${index}`), ...piece.others.map(index => `${at} other ${index}`)];
+    const caster = keys.map(key => pieces.get(key)).find(each => each !== undefined);
     if(caster !== undefined) { refused.push({ name, reason: `the piece at ${piece.at} is cast already, as ${caster}` }); continue; }
-    pieces.set(key, name);
+    for(const key of keys) pieces.set(key, name);
     actors.set(name, piece.actor);
     placed.set(name, piece.rest);
     for(const index of piece.placements) hidden[at].placements.add(index);
@@ -300,9 +302,9 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
   return partActor(catalogPart, { part: catalogPart.key, color, x: 0, z: 0, level: 0, rotation: 0, ...dressing });
 };
 
-/** a piece of the set cast in place: a key naming it, where it stands, its actor, its
- *  rest, and its parts (indices into the set's `placements` and `others`) */
-type Piece = Readonly<{ key: string; at: string; actor: Actor; rest: Rest; placements: ReadonlyArray<number>; others: ReadonlyArray<number>; }>;
+/** a piece of the set cast in place: where it stands, its actor, its rest, and its
+ *  parts (indices into the set's `placements` and `others`) */
+type Piece = Readonly<{ at: string; actor: Actor; rest: Rest; placements: ReadonlyArray<number>; others: ReadonlyArray<number>; }>;
 
 /** the piece of the set a placed actor names, by where it stands, or why it cannot be
  *  cast in place: nothing stands there, or its rest lies where no frame reaches */
@@ -317,35 +319,22 @@ const pieceOf = (set: Model, item: Record<string, unknown>): Piece | string => {
 /** the piece of the set standing where a placed actor names, or why there is none */
 const pieceAt = (set: Model, item: Record<string, unknown>): Piece | string => {
   if((item.component !== undefined) || (item.part !== undefined)) return 'names a placed piece, a component or a part: one of them';
-  const { x, z, level } = (item.placed ?? {}) as Record<string, unknown>;
+  const { x, z, level, inside } = (item.placed ?? {}) as Record<string, unknown>;
   if(![x, z, level].every(Number.isInteger)) return 'placed is { x, z, level }: whole numbers, where listPlacedParts says the piece stands';
   const at = `x ${String(x)}, z ${String(z)}, level ${String(level)}`;
   const standsThere = (piece: Readonly<{ x: number; z: number; level: number; }>) => (piece.x === x) && (piece.z === z) && (piece.level === level);
 
   // a part of its own
-  const own = set.placements.findIndex((placement, index) => (set.placementPlaced?.[index] === undefined) && standsThere(placement));
-  if(own >= 0) {
-    const placement = set.placements[own];
-    const catalogPart = getPart(placement.part)!/*by contract: the set's*/;
-    if(catalogPart.hinge || catalogPart.faces) return carriesComponents(catalogPart);
-    const shape = getShape(catalogPart);
-    const [width, depth] = footprint(shape, placement.rotation);
-    const standing = { ...placement, x: 0, z: 0, level: 0, rotation: 0 } as const;
-    const lift = (ldrawPosition(shape, { ...standing, pose: undefined })[1] - ldrawPosition(shape, standing)[1]) / LDU_PER_PLATE/*its pose's: a posed part's level is its posed bottom*/;
-    return {
-      key: `part ${own}`, at, actor: partActor(catalogPart, standing),
-      rest: { position: { x: placement.x + (width / 2), z: placement.z + (depth / 2), height: placement.level + lift }, turn: { yaw: placement.rotation, pitch: 0, roll: 0 } },
-      placements: [own], others: [],
-    };
-  } /* else -- a copy, or nothing */
+  const own = (inside !== undefined) ? -1/*a copy's part*/ : set.placements.findIndex((placement, index) => (set.placementPlaced?.[index] === undefined) && standsThere(placement));
+  if(own >= 0) return partPiece(set, own, at);
+  /* else -- a copy, a copy's part, or nothing */
 
   const copy = (set.copies ?? []).findIndex(standsThere);
   const component = (copy >= 0) ? set.components?.find(each => each.name === set.copies![copy].component) : undefined;
-  if(!component?.footprint) return `nothing stands at ${at} (listPlacedParts lists where each part and copy stands)`;
+  if(!component?.footprint) return `nothing stands at ${at} (listPlacedParts lists where each part and copy stands)${(inside !== undefined) ? ': inside names a part of the copy standing there' : ''}`;
   const { rotation } = set.copies![copy];
-  const lines = new Set((set.placed ?? []).flatMap((line, index) => (line.copy === copy) ? [index] : []));
-  const owned = (owners: ReadonlyArray<number | undefined> | undefined) => (owners ?? []).flatMap((owner, index) => ((owner !== undefined) && lines.has(owner)) ? [index] : []);
-  const [placements, others] = [owned(set.placementPlaced), owned(set.otherPlaced)];
+  const { placements, others } = copyParts(set, copy);
+  if(inside !== undefined) return insidePiece(set, set.copies![copy], component, placements, inside, at);
   // measured from its parts as the set holds them and what their hinges and faces
   // carry (SEE: filledBy), each inherited color's part among them (its component's own
   // footprint leaves those out)
@@ -353,7 +342,74 @@ const pieceAt = (set: Model, item: Record<string, unknown>): Piece | string => {
   const measured = filledBy(set, parts);
   const [width, depth] = footprintSize(measured, rotation)/*turned back*/;
   const rest: Rest = { position: { x: (measured.minX + measured.maxX) / 2, z: (measured.minZ + measured.maxZ) / 2, height: level as number }, turn: { yaw: rotation, pitch: 0, roll: 0 } };
-  return { key: `copy ${copy}`, at, actor: copyActor(set, rotation, parts, others, rest, { width, depth, height: measured.height - (level as number) }), rest, placements, others };
+  return { at, actor: copyActor(set, rotation, parts, others, rest, { width, depth, height: measured.height - (level as number) }), rest, placements, others };
+};
+
+/** a part of the set cast in place (`index` into its placements), as it stands and is
+ *  dressed there, or why it cannot be */
+const partPiece = (set: Model, index: number, at: string): Piece | string => {
+  const placement = set.placements[index];
+  const catalogPart = getPart(placement.part)!/*by contract: the set's*/;
+  if(catalogPart.hinge || catalogPart.faces) return carriesComponents(catalogPart);
+  const shape = getShape(catalogPart);
+  const [width, depth] = footprint(shape, placement.rotation);
+  const standing = { ...placement, x: 0, z: 0, level: 0, rotation: 0 } as const;
+  const lift = (ldrawPosition(shape, { ...standing, pose: undefined })[1] - ldrawPosition(shape, standing)[1]) / LDU_PER_PLATE/*its pose's: a posed part's level is its posed bottom*/;
+  return {
+    at, actor: partActor(catalogPart, standing),
+    rest: { position: { x: placement.x + (width / 2), z: placement.z + (depth / 2), height: placement.level + lift }, turn: { yaw: placement.rotation, pitch: 0, roll: 0 }, ...(placement.pose ? { pose: placement.pose } : {}) },
+    placements: [index], others: [],
+  };
+};
+
+/** the part of a copy standing `inside` it (where it stands in its component), among
+ *  the copy's `placements` as the set holds them (each in its copy's colors, a part in
+ *  LDraw's inherited color among them), or why there is none */
+const insidePiece = (set: Model, copy: Copy, component: Component, placements: ReadonlyArray<number>, inside: unknown, at: string): Piece | string => {
+  const { x, z, level } = (inside ?? {}) as Record<string, unknown>;
+  if(![x, z, level].every(Number.isInteger)) return 'placed.inside is { x, z, level }: whole numbers, where a part stands in its component (listComponents with its component lists them)';
+  const within = `${at}, inside at x ${String(x)}, z ${String(z)}, level ${String(level)}`;
+  const back = inverseOf(copyTransform(component.footprint!/*by contract: its copy stands*/, copy));
+  const index = placements.find(each => { const where = inComponent(back, set.placements[each]); return !!where && (where.x === x) && (where.z === z) && (where.level === level); });
+  if(index === undefined) return `nothing of ${component.name} stands inside at x ${String(x)}, z ${String(z)}, level ${String(level)} (listComponents with its component lists where each part stands)`;
+  return partPiece(set, index, within);
+};
+
+/** where a copy's part stands in its component's grid (`back`: the copy's frame
+ *  undone): its line read back there as a component's part is read, its pose's lift
+ *  kept, and its turn there */
+const inComponent = (back: Transform, part: Placement): Readonly<{ x: number; z: number; level: number; rotation: Rotation; }> | undefined => {
+  const shape = getShape(getPart(part.part)!/*by contract: the set's*/);
+  const placed = ldrawPosition(shape, part);
+  const lift = part.level - gridPosition(shape, part.rotation, placed)!.level/*its pose's, which reading adds*/;
+  const local = compose(back, { position: placed, matrix: rotationMatrix(part.rotation) });
+  const rotation = matrixRotation(local.matrix);
+  const position = (rotation !== undefined) ? gridPosition(shape, rotation, local.position) : undefined;
+  return (position && (rotation !== undefined)) ? { ...position, level: position.level + lift, rotation } : undefined;
+};
+
+/** a copy's parts as the set holds them: indices into its placements and others */
+const copyParts = (set: Model, copy: number): Readonly<{ placements: ReadonlyArray<number>; others: ReadonlyArray<number>; }> => {
+  const lines = new Set((set.placed ?? []).flatMap((line, index) => (line.copy === copy) ? [index] : []));
+  const owned = (owners: ReadonlyArray<number | undefined> | undefined) => (owners ?? []).flatMap((owner, index) => ((owner !== undefined) && lines.has(owner)) ? [index] : []);
+  return { placements: owned(set.placementPlaced), others: owned(set.otherPlaced) };
+};
+
+/** a component's parts as a copy of it (`copy`, an index into the set's copies) holds
+ *  them, each where it stands in the component, as a placed actor's `inside` names it
+ *  (read as a cast reads it, so each address casts): a part LDraw's inherited color
+ *  gives the copy's color is `inherited` */
+export const insideParts = (set: Model, copy: number): ReadonlyArray<Placement | (Omit<Placement, 'color'> & Readonly<{ color: 'inherited'; }>)> => {
+  const standing = set.copies![copy]/*by contract*/;
+  const component = set.components!.find(each => each.name === standing.component)!/*by contract: its copy stands*/;
+  const back = inverseOf(copyTransform(component.footprint!, standing));
+  return copyParts(set, copy).placements.flatMap(index => {
+    const placed = set.placements[index];
+    const where = inComponent(back, placed);
+    if(!where) return []/*off its component's grid*/;
+    const own = component.placements.some(part => (part.part === placed.part) && (part.x === where.x) && (part.z === where.z) && (part.level === where.level));
+    return [own ? { ...placed, ...where } : { ...placed, ...where, color: 'inherited' as const }];
+  });
 };
 
 /** a copy's actor: its own parts as the set draws them (each inherited color its

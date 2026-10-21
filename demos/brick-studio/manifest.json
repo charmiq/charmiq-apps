@@ -266,12 +266,23 @@
       },
       {
         "name": "listComponents",
-        "description": "The components the build defines, which every set may place: name, size (width x depth x height at rotation 0, its own parts: what its hinges and faces carry may reach past it), parts (what its hinges and faces carry included) and copies placed (and copiesBySet, by set, when the build has more than one)",
-        "inputSchema": { "type": "object", "properties": {} },
+        "description": "The components the build defines, which every set may place: name, size (width x depth x height at rotation 0, its own parts: what its hinges and faces carry may reach past it), parts (what its hinges and faces carry included) and copies placed (and copiesBySet, by set, when the build has more than one). With component, that component's own parts instead, each where it stands in the component as a copy of it holds them (a part in LDraw's inherited color, which takes each copy's, listed as inherited; with no copy, its parts as defined), a page at a time (pass next back as from): the address a stage's placed actor names a part inside a copy by (placed.inside)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "component": { "type": "string", "description": "A component's name: list its own parts" },
+            "from":      { "type": "integer", "minimum": 0, "description": "The index to start at (the previous page's next)" }
+          }
+        },
         "outputSchema": {
           "type": "object",
-          "properties": { "components": { "type": "array", "items": { "type": "object" } } },
-          "required": ["components"]
+          "properties": {
+            "components": { "type": "array", "items": { "type": "object" } },
+            "component":  { "type": "string", "description": "The component listed, with component" },
+            "parts":      { "type": "array", "items": { "type": "object" }, "description": "With component: each of its parts as addParts places one, where it stands in the component" },
+            "total":      { "type": "integer", "description": "With component: its parts" },
+            "next":       { "type": "integer", "description": "Set while parts remain: the next page's from" }
+          }
         }
       },
       {
@@ -499,13 +510,13 @@
             "sets":  { "type": "array", "maxItems": 8, "items": { "type": "string" }, "description": "The sets the stage stands, by name, the first standing first and a frame's set showing in its place (the first set alone when left out)" },
             "actors": {
               "type": "array",
-              "description": "Each actor once, by name: { name, component }, { name, part, color, legColor?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure, or { name, placed: { x, z, level } }, the part or copy standing there in the set as listPlacedParts gives it",
+              "description": "Each actor once, by name: { name, component }, { name, part, color, legColor?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure, or { name, placed: { x, z, level } }, the part or copy standing there in the set as listPlacedParts gives it, or with placed.inside one part of that copy, cast alone (a clerk in a store's copy, the copy shown without it); a part is cast once, whole or within its copy",
               "items": {
                 "type": "object",
                 "properties": {
                   "name":      { "type": "string" },
                   "component": { "type": "string" },
-                  "placed":    { "type": "object", "description": "Where the piece stands in its set: { set?, x, z, level }, as listPlacedParts gives it (in the first set staged when set is left out)", "properties": { "set": { "type": "string" }, "x": { "type": "integer" }, "z": { "type": "integer" }, "level": { "type": "integer" } }, "required": ["x", "z", "level"] },
+                  "placed":    { "type": "object", "description": "Where the piece stands in its set: { set?, x, z, level, inside? }, as listPlacedParts gives it (in the first set staged when set is left out); inside { x, z, level } names the part of the copy standing there by where it stands in its component, as listComponents with component lists them", "properties": { "set": { "type": "string" }, "x": { "type": "integer" }, "z": { "type": "integer" }, "level": { "type": "integer" }, "inside": { "type": "object", "properties": { "x": { "type": "integer" }, "z": { "type": "integer" }, "level": { "type": "integer" } }, "required": ["x", "z", "level"] } }, "required": ["x", "z", "level"] },
                   "part":      { "type": "string" },
                   "color":     { "type": "string" },
                   "legColor":  { "type": "string" },
@@ -539,9 +550,10 @@
           "properties": {
             "actors":  { "type": "array", "items": { "type": "string" } },
             "wheeled": { "type": "array", "description": "The actors with wheels, which frame's rolled turns", "items": { "type": "string" } },
+            "figures": { "type": "array", "description": "The actors that pose (figures), which frame's pose turns", "items": { "type": "string" } },
             "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
             "sizes":   { "type": "object", "description": "Each actor's box, unturned and unposed: studs across (x), studs along (z), plates up; a figure's as it measures, hands included (3.12 by 1.85 studs), never the whole cells it reaches into", "additionalProperties": { "type": "object", "properties": { "width": { "type": "number" }, "depth": { "type": "number" }, "height": { "type": "number" } }, "required": ["width", "depth", "height"] } },
-            "placed":  { "type": "object", "description": "Each placed actor's rest: the position and turn a frame gives it to stand where its piece stood (a posed figure's position is its unposed frame's: a seated one's 2 plates below its seat)", "additionalProperties": { "type": "object", "properties": { "position": { "type": "object" }, "turn": { "type": "object" } }, "required": ["position", "turn"] } },
+            "placed":  { "type": "object", "description": "Each placed actor's rest: the position and turn a frame gives it to stand where its piece stood (a posed figure's position is its unposed frame's: a seated one's 2 plates below its seat), and a posed figure's pose there (a frame's pose names only the limbs it turns: what a film adds moves from this)", "additionalProperties": { "type": "object", "properties": { "position": { "type": "object" }, "turn": { "type": "object" }, "pose": { "type": "object" } }, "required": ["position", "turn"] } },
             "reel":    { "type": "integer", "description": "The reel's number, when one is staged" }
           },
           "required": ["actors", "sizes"]
@@ -569,7 +581,8 @@
           "properties": {
             "reel":    { "type": "integer" },
             "frame":   { "type": "integer", "description": "From 0" },
-            "capture": { "type": "object", "properties": { "width": { "type": "integer" }, "height": { "type": "integer" } }, "required": ["width", "height"] }
+            "capture": { "type": "object", "properties": { "width": { "type": "integer" }, "height": { "type": "integer" } }, "required": ["width", "height"] },
+            "playing": { "type": "boolean", "description": "Whether the film plays, for the studio's controls full screen (a live frame alone)" }
           },
           "required": ["reel", "frame"]
         },
