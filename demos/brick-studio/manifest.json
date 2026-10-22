@@ -648,7 +648,9 @@
                 "position": { "type": "object", "description": "Where the camera stands", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
                 "target":   { "type": "object", "description": "The point it looks at and focuses on", "properties": { "x": { "type": "number", "description": "Studs east" }, "z": { "type": "number", "description": "Studs north" }, "height": { "type": "number", "description": "Plates above the baseplate" } }, "required": ["x", "z", "height"] },
                 "fov":      { "type": "number", "minimum": 5, "maximum": 120, "description": "Vertical field of view in degrees (32 when left out)" },
-                "roll":     { "type": "number", "description": "Degrees the camera turns clockwise about where it looks, as seen from behind it (level when left out)" }
+                "roll":     { "type": "number", "description": "Degrees the camera turns clockwise about where it looks, as seen from behind it (level when left out)" },
+                "focus":    { "description": "What is sharp: a point { x, z, height }, or a number of studs ahead along the view (the target when left out)" },
+                "aperture": { "type": "number", "minimum": 1, "maximum": 32, "description": "The lens's opening as an f-number: 1.4 very shallow (only what it focuses on sharp), 8 a toy photo's, 16 nearly all sharp. Given, the frame has a depth of field at every look; left out, the look's own (Photo's f/8, none below)" }
               },
               "required": ["position", "target"]
             },

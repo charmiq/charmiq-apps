@@ -38,7 +38,9 @@ const MAX_MARK_PATHS = 256;
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 /** an actor in one frame, as the stage's frame takes it */
 export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; face?: string; rightHand?: HandKey['item']; leftHand?: HandKey['item']; rolled?: number; }>;
-export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; roll?: number; }>;
+/** a frame's camera as the stage takes it: what it focuses on is a point, or studs
+ *  ahead along its view (kept so however it is drawn in clear of parts) */
+export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; roll?: number; focus?: Point | number; aperture?: number; }>;
 /** a plan: straight down over an area, north up */
 export type PlanCamera = Readonly<{ plan: Area; }>;
 /** the camera a view sees the scene through */
@@ -409,7 +411,27 @@ const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: R
   const roll = eased(keys.filter(key => key.roll !== undefined), time, key => key.roll!, lerp) ?? 0;
   const drawn = dollied(keys, lensKeys, time);
   const seen = (drawn === 1) ? apart : { x: target.x + ((apart.x - target.x) * drawn), z: target.z + ((apart.z - target.z) * drawn), height: target.height + ((apart.height - target.height) * drawn) };
-  return { position: seen, target, fov, ...(roll ? { roll } : {}) };
+  // what is sharp: each key's focus where it stands now (an actor as it moves), eased
+  // from key to key; held by a distance (none eased into, or a cut yet to come) or
+  // racked between two, a distance ahead along the view, which holds however the
+  // camera is drawn in; racked between a distance and a point, points, the distance
+  // read where the camera stands as keyed
+  const focusKeys = keys.filter(key => key.focus);
+  const next = focusKeys.find(key => !isReached(key.time, time));
+  const easing = [focusKeys.filter(key => isReached(key.time, time)).pop(), ((next?.ease === 'hold') && (next !== focusKeys[0])) ? undefined/*a cut: never eased into*/ : next].filter(key => key !== undefined);
+  const focus = easing.every(key => 'distance' in key.focus!)
+    ? eased(focusKeys, time, key => (('distance' in key.focus!) ? key.focus.distance : 0/*not between these keys*/), lerp)
+    : eased(focusKeys, time, key => (('distance' in key.focus!) ? ahead(seen, target, key.focus.distance) : resolve(key.focus!)), lerpPoint);
+  const aperture = eased(keys.filter(key => key.aperture !== undefined), time, key => key.aperture!, lerp);
+  return { position: seen, target, fov, ...(roll ? { roll } : {}), ...((focus !== undefined) ? { focus } : {}), ...((aperture !== undefined) ? { aperture } : {}) };
+};
+
+/** the point `studs` from `from` toward `toward` (heights in plates) */
+const ahead = (from: Point, toward: Point, studs: number): Point => {
+  const plates = LDU_PER_STUD / LDU_PER_PLATE/*a stud's width, in plates*/;
+  const [x, z, height] = [toward.x - from.x, toward.z - from.z, (toward.height - from.height) / plates];
+  const share = studs / (Math.hypot(x, z, height) || 1);
+  return { x: from.x + (x * share), z: from.z + (z * share), height: from.height + (height * share * plates) };
 };
 
 /** how far dolly zooms draw the camera along its line to its target at a time (1 as
@@ -439,7 +461,9 @@ const dollied = (keys: ReadonlyArray<CameraKey>, lensKeys: ReadonlyArray<CameraK
 /** the shot a frame's camera leaves in a cut's transition: the latest cut the frame has
  *  reached, while its transition's span holds the frame (a later cut ends it, with or
  *  without one of its own); the camera as its keys before the cut place it
- *  (holding its last place as the world moves on), on the set standing before the cut.
+ *  (holding its last place as the world moves on), each value none of them names held
+ *  from the first key naming it, as the frames before the cut draw it (SEE:
+ *  heldBefore), on the set standing before the cut.
  *  On another set than the frame's, it is the last frame before the cut (`before`, the
  *  frames so far) as it stood: its camera and its actors, one moment, drawn once and
  *  held. A cut no frame stands before leaves no shot */
@@ -447,13 +471,28 @@ const transitionAt = (scene: Recorded, at: number, time: number, placed: Readonl
   const keys = scene.camera.keys;
   const cut = keys.filter(key => (key.ease === 'hold') && isReached(key.time, time)).pop();
   if(!cut?.transition || (time >= (cut.time + cut.transition.seconds))) return undefined;
-  const leaving = { keys: keys.slice(0, keys.indexOf(cut)), spans: scene.camera.spans };
+  const leaving = { keys: heldBefore(keys, cut), spans: scene.camera.spans };
   const set = setAt(scene.sets, cut.time - LEFT_SET_BEFORE);
   const last = [...before].reverse().find(frame => !isReached(cut.time, frame.time));
   if(!last) return undefined/*nothing filmed before the cut to leave*/;
   const apart = (set !== standing) ? { camera: last.camera, actors: last.actors } : { camera: cameraAt(leaving, at, time, placed, headings) };
   return { ...apart, ...((set !== undefined) ? { set } : {}), frame: last.index, left: 1 - ((time - cut.time) / cut.transition.seconds), shape: cut.transition.shape };
 };
+/** the values of a camera key */
+const CAMERA_VALUES = ['place', 'target', 'fov', 'roll', 'focus', 'aperture'] as const;
+/** the keys before a cut as the frames before it draw them: a value none of them names
+ *  is the first key's naming it, held before that key (SEE: eased), so a lens first
+ *  keyed at the cut is the shot's it leaves too */
+const heldBefore = (keys: ReadonlyArray<CameraKey>, cut: CameraKey): ReadonlyArray<CameraKey> => {
+  const before = keys.slice(0, keys.indexOf(cut));
+  const [first, ...rest] = (before.length > 0) ? before : [{ time: cut.time, ease: cut.ease }]/*the cut keys all the frames before it*/;
+  const held = CAMERA_VALUES.filter(name => !before.some(key => key[name] !== undefined)).flatMap(name => {
+    const naming = keys.find(key => key[name] !== undefined);
+    return naming ? [[name, naming[name]] as const] : [];
+  });
+  return [{ ...first, ...Object.fromEntries(held) }, ...rest];
+};
+
 /** how long before a cut the set its shot leaves is read (seconds): a set keyed at the
  *  cut is the shot it enters */
 const LEFT_SET_BEFORE = 1e-3;

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { PhysicalCamera, WebGLPathTracer } from 'three-gpu-pathtracer';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
+import { DEFAULT_APERTURE, type Lens } from './effects';
 import { tracedGlass, TRACED_PLASTIC } from './plastic';
 
 // the top stop: the scene path traced with three-gpu-pathtracer, so reflections,
@@ -18,8 +19,9 @@ export const SETTLE_SAMPLES = 96;
 /** samples after which refining stops */
 export const MAX_SAMPLES = 512;
 
-/** the lens opening as a share of the focus distance: the Photo stop's macro blur */
-const BOKEH = 0.03;
+/** the lens opening as a share of the focus distance, times the f-number: at f/8,
+ *  the Photo stop's macro blur */
+const BOKEH_AT_F1 = 0.24;
 /** the key light's disc as a share of its distance: the Photo stop's soft shadow */
 const KEY_SOFTNESS = 0.1;
 
@@ -58,8 +60,8 @@ export class PathTrace {
   // ------------------------------------------------------------------------------
   /** rebuilds the traced scene without instancing: every brick its own mesh in its
    *  own tint, the baseplate's studs one merged mesh. Lit by the studio and the key,
-   *  focused at `focus` */
-  public setScene(source: PathSource, focus: number): void {
+   *  focused as `lens` says */
+  public setScene(source: PathSource, lens: Lens): void {
     this.free();
     const scene = new THREE.Scene();
     scene.environment = source.environment;
@@ -78,13 +80,13 @@ export class PathTrace {
       scene.add(flat);
     });
 
-    this.aim(focus);
+    this.aim(lens);
     this.tracer.setScene(scene, this.camera);
   }
 
-  /** restarts refining from the camera's new place, focused at `focus` */
-  public moved(focus: number): void {
-    this.aim(focus);
+  /** restarts refining from the camera's new place, focused as `lens` says */
+  public moved(lens: Lens): void {
+    this.aim(lens);
     this.tracer.updateCamera();
   }
 
@@ -101,11 +103,12 @@ export class PathTrace {
   }
 
   // == Internal ==================================================================
-  /** the lens takes the view camera's place and focuses on the build */
-  private aim(focus: number): void {
+  /** the lens takes the view camera's place, focused at its distance and opened to
+   *  its aperture */
+  private aim({ distance, aperture = DEFAULT_APERTURE }: Lens): void {
     this.camera.copy(this.view);
-    this.camera.focusDistance = focus;
-    this.camera.bokehSize = focus * BOKEH;
+    this.camera.focusDistance = distance;
+    this.camera.bokehSize = (distance * BOKEH_AT_F1) / aperture;
     this.camera.updateMatrixWorld(true);
   }
 

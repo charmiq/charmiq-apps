@@ -12,7 +12,8 @@ import { drawnLines, partCount, type Model } from './model';
 import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type Point, type ShownActors, type StageCamera, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
-import { Effects } from './render/effects';
+import { AutoFocus } from './render/autofocus';
+import { Effects, type Lens } from './render/effects';
 import { PATH_TRACED_PARTS, type Fidelity } from './render/fidelity';
 import { drawOverlay, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
@@ -112,6 +113,11 @@ type Theme = Readonly<{ stage: string; baseplate: string; }>;
 /** the shot a transition leaves: its camera, the set it stands on (an index into the
  *  stage's), and, standing another set, its actors as they stood leaving it */
 type LeavingShot = Readonly<{ camera: StageCamera; set: number; actors?: ShownActors; }>;
+/** a stage frame's lens: the point it focuses on, or how far ahead along the view
+ *  (studs, the scene's units), and its aperture */
+type StageLens = Readonly<{ focus?: THREE.Vector3 | number; aperture?: number; }>;
+/** where the camera stands and how it sees */
+type Eye = Readonly<{ position: THREE.Vector3; target: THREE.Vector3; fov: number; up: THREE.Vector3; lens: StageLens; }>;
 type Staging = { /*NOTE: Mutable: each frame replaces its set, actors and overlay, a capture its size*/
   readonly sets: ReadonlyArray<Model>;
   standing: number;
@@ -143,7 +149,16 @@ export class Viewer {
   private drawnParts = 0;
   /** the parts of the set drawn */
   private setParts = 0;
+  /** the camera moved since the path tracer was last told */
   private cameraMoved = false;
+  /** the camera moved since the frame before (SEE: AutoFocus) */
+  private viewMoved = false;
+  /** a stage frame's lens: the point it focuses on (its target when none) and its
+   *  aperture (the look's own when none) */
+  private stageLens: StageLens = {};
+  /** the build's focus: what lies at the middle of the picture, found once the view
+   *  rests (SEE: render/autofocus.ts) */
+  private readonly autoFocus = new AutoFocus(() => this.middleDistance());
   private fidelity: Fidelity = 0;
   private fidelityRequest = 0;
   private readonly stage = new THREE.Color();
@@ -234,7 +249,7 @@ export class Viewer {
     this.controls.addEventListener('start', () => { this.tween?.resolve(); this.tween = undefined; })/*a drag ends a move, settling its command*/;
     // a wheel zoom lands inside the controls' own handler, so the next frame sees no
     // movement; every change marks the camera moved for the path tracer
-    this.controls.addEventListener('change', () => { this.cameraMoved = true; this.requestFrame(); });
+    this.controls.addEventListener('change', () => { this.cameraChanged(); this.requestFrame(); });
 
     this.setTheme(theme);
     this.applyLook(0);
@@ -479,6 +494,7 @@ export class Viewer {
   /** draws a build and, over it, actors' lines (LDraw, the scene's frame). Staged, a
    *  set's meshes drawn before stand again (SEE: setMeshes) */
   private draw(model: Model, actors: ShownActors, animate: boolean): void {
+    this.autoFocus.forget()/*what lies at the middle may change*/;
     const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
     this.setGround(ground);
     const kept = this.staging ? this.setMeshes.get(model) : undefined;
@@ -724,7 +740,7 @@ export class Viewer {
     if(leaving) await this.partsBuilt((leaving.actors ?? actors).lines, leaving.set)/*the shot it leaves*/;
     await this.whenSettled();
     if(this.staging !== staging) throw new Error('the stage was replaced while the thumbnail\'s parts were built');
-    const shown = { set: staging.standing, actors: staging.actors, overlay: staging.overlay, leaving: staging.leaving, position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, up: this.camera.up.clone() };
+    const shown = { set: staging.standing, actors: staging.actors, overlay: staging.overlay, leaving: staging.leaving, eye: this.eye() };
     const picture = Object.assign(document.createElement('canvas'), { width, height });
 
     this.look(camera);
@@ -733,7 +749,7 @@ export class Viewer {
     this.renderNow();
     this.drawPicture(picture.getContext('2d')!, overlay, width, height);
 
-    this.aimed(shown.position, shown.target, shown.fov, shown.up);
+    this.toEye(shown.eye);
     staging.leaving = shown.leaving;
     this.pose(shown.actors, shown.overlay, shown.set);
     this.renderNow();
@@ -759,6 +775,7 @@ export class Viewer {
     if(!staging) return/*nothing staged*/;
     this.staging = undefined;
     this.aim(staging.before.position, staging.before.target, staging.before.fov)/*level again*/;
+    this.useLens({})/*the look's own focus again*/;
     this.controls.enabled = true;
     this.controls.update();
     this.renderer.setPixelRatio(screenPixelRatio());
@@ -774,6 +791,21 @@ export class Viewer {
   private look(camera: ViewCamera): void {
     const seen = isPlan(camera) ? planAim(camera.plan, this.camera.aspect) : camera;
     this.aim(scenePoint(seen.position), scenePoint(seen.target), seen.fov, isPlan(camera), isPlan(camera) ? 0 : (camera.roll ?? 0));
+    this.useLens(isPlan(camera) ? {} : { ...((camera.focus !== undefined) ? { focus: (typeof camera.focus === 'number') ? camera.focus/*studs, the scene's units*/ : scenePoint(camera.focus) } : {}), ...((camera.aperture !== undefined) ? { aperture: camera.aperture } : {}) });
+  }
+
+  /** a stage frame's lens from now on: an aperture of its own draws a depth of field
+   *  at every look */
+  private useLens(lens: StageLens): void {
+    this.stageLens = lens;
+    this.effects.setDepthOfField(lens.aperture !== undefined);
+  }
+
+  /** where the camera stands and how it sees, to put back */
+  private eye(): Eye { return { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, up: this.camera.up.clone(), lens: this.stageLens }; }
+  private toEye(eye: Eye): void {
+    this.aimed(eye.position, eye.target, eye.fov, eye.up);
+    this.useLens(eye.lens);
   }
 
   /** turns the camera to stand at `position`, looking at `target` through `fov`,
@@ -795,7 +827,7 @@ export class Viewer {
     [this.camera.near, this.camera.far] = plan ? [Math.max(CAMERA_NEAR, height - PLAN_DEPTH), height + 1] : [CAMERA_NEAR, CAMERA_FAR];
     this.camera.updateProjectionMatrix();
     this.camera.lookAt(this.controls.target);
-    this.cameraMoved = true;
+    this.cameraChanged();
   }
 
   /** shows a frame's set, actors and overlay: the standing actors moved where the
@@ -868,7 +900,7 @@ export class Viewer {
    *  a transition leaves */
   private renderNow(): void {
     this.drawLeaving();
-    this.effects.focus(this.focusDistance());
+    this.effects.focus(this.lens());
     this.effects.render();
   }
 
@@ -886,20 +918,20 @@ export class Viewer {
     if(!staging || !leaving) { if(staging) staging.left = undefined; return; }
     const elsewhere = (leaving.set !== staging.standing);
     const actors = leaving.actors ?? staging.actors;
-    const { position, target, fov, roll } = leaving.camera;
-    const key = [leaving.set, position.x, position.z, position.height, target.x, target.z, target.height, fov, roll ?? 0, this.canvas.width, this.canvas.height, this.drawingChanges, ...actors.lines.map(line => `${line.ldraw}:${line.colorCode}:${line.position.join(',')}:${line.matrix.join(',')}`)].join('|');
+    const { position, target, fov, roll, focus, aperture } = leaving.camera;
+    const key = [leaving.set, position.x, position.z, position.height, target.x, target.z, target.height, fov, roll ?? 0, JSON.stringify(focus ?? null), aperture, this.canvas.width, this.canvas.height, this.drawingChanges, ...actors.lines.map(line => `${line.ldraw}:${line.colorCode}:${line.position.join(',')}:${line.matrix.join(',')}`)].join('|');
     if(elsewhere && (staging.left?.key === key)) return/*held*/;
     const picture = staging.left?.picture ?? document.createElement('canvas');
     [picture.width, picture.height] = [this.canvas.width, this.canvas.height];
-    const shown = { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, up: this.camera.up.clone() };
+    const shown = this.eye();
     if(elsewhere) this.draw(staging.sets[leaving.set], actors, false);
     this.look(leaving.camera);
-    this.effects.focus(this.focusDistance());
+    this.effects.focus(this.lens());
     this.effects.render();
     picture.getContext('2d')!.drawImage(this.canvas, 0, 0);
     if(elsewhere) this.draw(staging.sets[staging.standing], staging.actors, false);
-    this.aimed(shown.position, shown.target, shown.fov, shown.up);
-    this.effects.focus(this.focusDistance());
+    this.toEye(shown);
+    this.effects.focus(this.lens());
     staging.left = { key, picture };
     this.overlayStale = true;
   }
@@ -1048,7 +1080,7 @@ export class Viewer {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.effects.setSize(width, height);
-    this.cameraMoved = true;
+    this.cameraChanged();
     this.overlayStale = true/*drawn at the canvas's pixels*/;
     this.requestFrame();
   }
@@ -1094,17 +1126,20 @@ export class Viewer {
         drop.mesh.instanceMatrix.needsUpdate = true;
         if(t >= 1) settled.push(drop);
       }
+      for(const mesh of new Set(this.drops.map(drop => drop.mesh))) mesh.computeBoundingSphere()/*a ray tests the bounds before the instances*/;
       this.drops = this.drops.filter(drop => !settled.includes(drop));
       moving = true;
     } /* else -- nothing dropping */
 
-    this.effects.focus(this.focusDistance());
+    if(this.autoFocused() && this.autoFocus.frame(moving || this.viewMoved)) this.requestFrame()/*a frame more, to find it at rest*/;
+    this.viewMoved = false;
+    this.effects.focus(this.lens());
     const refining = this.render(moving);
     if(this.overlayStale) this.paintOverlay()/*with the picture it lies over*/;
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
-    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && (this.tracing()?.settled ?? true);
+    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && !this.focusing() && (this.tracing()?.settled ?? true);
     if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
     if(moving || (this.drops.length > 0) || refining) this.requestFrame();
@@ -1128,7 +1163,13 @@ export class Viewer {
     move.y = Math.max(move.y, -target.y)/*the point never sinks below the baseplate*/;
     camera.add(move);
     target.add(move);
+    this.cameraChanged();
+  }
+
+  /** the camera moved: the path tracer starts again, the autofocus waits for it to rest */
+  private cameraChanged(): void {
     this.cameraMoved = true;
+    this.viewMoved = true;
   }
 
   /** moves the point the camera orbits in to what lies at the center of the view
@@ -1139,17 +1180,53 @@ export class Viewer {
     const camera = this.camera.position;
     const distance = camera.distanceTo(this.controls.target);
     const ahead = new THREE.Vector3().subVectors(this.controls.target, camera).normalize();
-    const ray = new THREE.Raycaster(camera, ahead);
-    const hit = ray.intersectObjects([this.parts, ...(this.baseplate ? [this.baseplate] : [])], true)[0]?.point
-      ?? ray.ray.intersectPlane(GROUND, new THREE.Vector3()) ?? undefined;
+    const hit = this.firstMet(ahead);
     if(!hit) return/*looking at the sky: the point stays*/;
     this.controls.target.copy(camera).addScaledVector(ahead, clamp(camera.distanceTo(hit), this.controls.minDistance, distance));
     this.controls.update();
     this.requestFrame();
   }
 
-  /** the depth of field focuses on the point the camera orbits */
-  private focusDistance(): number { return this.camera.position.distanceTo(this.controls.target); }
+  /** how the frame is focused: a stage frame on the point its lens names (its target
+   *  when none) through its aperture; the build on what lies at the middle of the
+   *  picture, as a camera's autofocus finds it (the point it orbits, looking at the
+   *  sky) */
+  private lens(): Lens {
+    if(this.staging) {
+      const { focus, aperture } = this.stageLens;
+      const ahead = this.camera.getWorldDirection(new THREE.Vector3());
+      const distance = (typeof focus === 'number') ? focus/*ahead along the view*/ : focus ? Math.max(CAMERA_NEAR, new THREE.Vector3().subVectors(focus, this.camera.position).dot(ahead))/*along the view*/ : this.camera.position.distanceTo(this.controls.target);
+      return { distance, ...((aperture !== undefined) ? { aperture } : {}) };
+    } /* else -- the build */
+    if(!this.focuses()) return { distance: this.camera.position.distanceTo(this.controls.target) }/*nothing blurs: no autofocus to find*/;
+    return { distance: this.autoFocus.distance ?? this.camera.position.distanceTo(this.controls.target)/*none found yet*/ };
+  }
+
+  /** whether the frame is the build's, focused by its autofocus (each frame drawn
+   *  advances it once: SEE: AutoFocus#frame) */
+  private autoFocused(): boolean { return !this.staging && this.focuses(); }
+
+  /** whether the build's autofocus has yet to find what lies at the middle of the
+   *  picture since the view last moved: a frame is not settled until it has */
+  private focusing(): boolean { return this.autoFocused() && this.autoFocus.pending; }
+
+  /** whether the frame is focused at all: a depth of field drawn, or the path tracer's */
+  private focuses(): boolean { return this.effects.focuses || !!this.tracing(); }
+
+  /** how far from the camera what lies at the middle of the picture stands (a brick,
+   *  else the baseplate's plane), else the point it orbits */
+  private middleDistance(): number {
+    const camera = this.camera.position;
+    const hit = this.firstMet(this.camera.getWorldDirection(new THREE.Vector3()));
+    return hit ? Math.max(CAMERA_NEAR, camera.distanceTo(hit)) : camera.distanceTo(this.controls.target);
+  }
+
+  /** the first point a ray from the camera toward `ahead` (normalized) meets: a brick,
+   *  else the baseplate, else the baseplate's plane; none toward the sky */
+  private firstMet(ahead: THREE.Vector3): THREE.Vector3 | undefined {
+    const ray = new THREE.Raycaster(this.camera.position, ahead);
+    return ray.intersectObjects([this.parts, ...(this.baseplate ? [this.baseplate] : [])], true)[0]?.point ?? ray.ray.intersectPlane(GROUND, new THREE.Vector3()) ?? undefined;
+  }
 
   /** whether the path tracer is still refining toward a settled frame */
   public get refining(): boolean { return !(this.tracing()?.settled ?? true); }
@@ -1165,6 +1242,7 @@ export class Viewer {
   /** draws the frame at the current stop; true while the path tracer still refines */
   private render(moving: boolean): boolean {
     this.drawLeaving();
+    const refocused = this.autoFocus.takeMoved()/*told once, whichever draws the frame*/;
     const tracer = this.tracing();
     if(!tracer) { this.effects.render(); return false; }
 
@@ -1174,11 +1252,11 @@ export class Viewer {
         parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: plate,
         environment: this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.stage,
         key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity },
-      }, this.focusDistance());
+      }, this.lens());
       free()/*the tracer merged its own copy*/;
       this.pathTraceStale = false;
-    } else if(moving || this.cameraMoved) {
-      tracer.moved(this.focusDistance());
+    } else if(refocused || moving || this.cameraMoved) {
+      tracer.moved(this.lens());
     } /* else -- still: keep refining */
     this.cameraMoved = false;
     tracer.render();

@@ -24,7 +24,10 @@ import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LI
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 8;
+export const STAGE_VERSION = 9;
+/** the widest and narrowest a frame's lens opens (f-numbers) */
+const MIN_APERTURE = 1;
+const MAX_APERTURE = 32;
 
 /** the most sets a stage stands */
 export const MAX_STAGED_SETS = 8;
@@ -85,9 +88,11 @@ export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: 
  *  accessory, or nothing (`null`); a hand not named holds what it holds */
 export type Hands = Readonly<Partial<Record<'rightHand' | 'leftHand', Gear | null>>>;
 
-/** the camera of one frame: where it stands, the point it looks at (and focuses on)
- *  and its vertical field of view (degrees) */
-export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; roll?: number; }>;
+/** the camera of one frame: where it stands, the point it looks at, its vertical
+ *  field of view (degrees), its roll, what it focuses on (a point, or studs ahead
+ *  along its view; its target when left out) and its aperture (an f-number: a depth of
+ *  field at every look, the look's own when left out) */
+export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; roll?: number; focus?: Point | number; aperture?: number; }>;
 
 /** the area the baseplate covers at least (studs): its south-west corner and size */
 export type Floor = Readonly<{ x: number; z: number; width: number; depth: number; }>;
@@ -556,14 +561,17 @@ const inverseOf = ({ matrix, position }: Transform): Transform => {
 // -- Camera ----------------------------------------------------------------------
 /** the camera a frame call gives */
 export const cameraOf = (input: unknown): StageCamera => {
-  const { position, target, fov, roll } = (input ?? {}) as Record<string, unknown>;
-  if((input === null) || (typeof input !== 'object')) throw new Error('camera is { position, target, fov?, roll? }');
+  const { position, target, fov, roll, focus, aperture } = (input ?? {}) as Record<string, unknown>;
+  if((input === null) || (typeof input !== 'object')) throw new Error('camera is { position, target, fov?, roll?, focus?, aperture? }');
   const lens = (fov === undefined) ? DEFAULT_FOV : fov;
   if(!isFiniteNumber(lens) || (lens < MIN_FOV) || (lens > MAX_FOV)) throw new Error(`camera.fov must lie between ${MIN_FOV} and ${MAX_FOV} degrees`);
   if((roll !== undefined) && !isFiniteNumber(roll)) throw new Error('camera.roll is degrees, the camera turned clockwise about where it looks as seen from behind it');
   const from = toPoint(position, 'camera.position'), to = toPoint(target, 'camera.target');
   if((from.x === to.x) && (from.z === to.z) && (from.height === to.height)) throw new Error('camera.target must differ from camera.position');
-  return { position: from, target: to, fov: lens, ...(roll ? { roll: roll as number } : {}) };
+  if(isFiniteNumber(focus) && (focus <= 0)) throw new Error('camera.focus as a number is studs ahead along the view, more than 0');
+  const focused = ((focus === undefined) || isFiniteNumber(focus)) ? focus : toPoint(focus, 'camera.focus');
+  if((aperture !== undefined) && (!isFiniteNumber(aperture) || (aperture < MIN_APERTURE) || (aperture > MAX_APERTURE))) throw new Error(`camera.aperture is an f-number from ${MIN_APERTURE} (the shallowest depth of field) to ${MAX_APERTURE}`);
+  return { position: from, target: to, fov: lens, ...(roll ? { roll: roll as number } : {}), ...((focused !== undefined) ? { focus: focused } : {}), ...((aperture !== undefined) ? { aperture: aperture as number } : {}) };
 };
 
 // -- Capture ---------------------------------------------------------------------

@@ -53,8 +53,14 @@ export type CameraPlace = Readonly<{ point: Point; } | { orbit: Readonly<{ angle
  *  camera out of the set's parts from it to the next key placing it (SEE: studios.ts
  *  avoided). `roll` turns the camera about where it looks (degrees, clockwise as seen
  *  from behind it); `dollyZoom` keeps its target the size it is on the screen while the
- *  lens eases into the key (the camera drawn in or out against the lens) */
-export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; roll?: number; dollyZoom?: true; avoid?: 'parts'; ease: Ease; name?: string; transition?: Transition; line?: number; }>;
+ *  lens eases into the key (the camera drawn in or out against the lens). `focus` is
+ *  what is sharp (its target when no key names it) and `aperture` the lens's opening
+ *  as an f-number (a depth of field at every look once a key names one), each eased
+ *  into: a rack focus */
+export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; roll?: number; dollyZoom?: true; focus?: Focus; aperture?: number; avoid?: 'parts'; ease: Ease; name?: string; transition?: Transition; line?: number; }>;
+/** what a camera focuses on: a point, an actor (raised), or what lies `distance` studs
+ *  ahead of it along its view */
+export type Focus = Target | Readonly<{ distance: number; }>;
 /** how a shot enters over the one it leaves, over `seconds` from its cut: dissolving,
  *  wiping it away toward a side, or opening on it as an iris (SEE: Brick Studio's
  *  transitions) */
@@ -443,9 +449,12 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       counted();
       const at = toTime(time, `${label}.${verb}`);
       const what = `${label}.${verb}(${at})`;
-      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov, roll, dollyZoom, avoid }`);
-      const { position, orbit, target, fov, roll, dollyZoom, avoid, ...rest } = values as Record<string, unknown>;
-      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov, roll, dollyZoom, avoid)`);
+      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov, roll, dollyZoom, focus, aperture, avoid }`);
+      const { position, orbit, target, fov, roll, dollyZoom, focus, aperture, avoid, ...rest } = values as Record<string, unknown>;
+      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov, roll, dollyZoom, focus, aperture, avoid)`);
+      if((aperture !== undefined) && (!isFiniteNumber(aperture) || (aperture < 1) || (aperture > 32))) fail(`${what}.aperture is an f-number from 1 (the shallowest: only what it focuses on sharp) to 32 (nearly all sharp)`);
+      if(isFiniteNumber(focus) && (focus <= 0)) fail(`${what}.focus as a number is studs ahead of the camera, more than 0`);
+      const focused: Focus | undefined = isFiniteNumber(focus) ? { distance: focus } : toTarget(focus, `${what}.focus`);
       if((roll !== undefined) && !isFiniteNumber(roll)) fail(`${what}.roll is degrees: the camera turned clockwise about where it looks, as seen from behind it`);
       if((dollyZoom !== undefined) && (dollyZoom !== true)) fail(`${what}.dollyZoom is true: the target kept its size on the screen while the lens eases into the key`);
       if(dollyZoom && (fov === undefined)) fail(`${what}.dollyZoom eases the lens into the key: give it a fov`);
@@ -464,7 +473,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       if((avoid !== undefined) && !place) fail(`${what}.avoid keeps the camera a key places out of parts: give it a position or an orbit`);
       cameraKeys.push({
         time: at, ...(place ? { place } : {}), ...(aim ? { target: aim } : {}), ...((fov !== undefined) ? { fov: fov as number } : {}), ...((roll !== undefined) ? { roll: roll as number } : {}),
-        ...(dollyZoom ? { dollyZoom: true as const } : {}), ...((avoid === 'parts') ? { avoid: 'parts' as const } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), ...(transition ? { transition } : {}), line: callerLine(),
+        ...(dollyZoom ? { dollyZoom: true as const } : {}), ...(focused ? { focus: focused } : {}), ...((aperture !== undefined) ? { aperture: aperture as number } : {}), ...((avoid === 'parts') ? { avoid: 'parts' as const } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), ...(transition ? { transition } : {}), line: callerLine(),
       });
     };
     const camera = {
@@ -1046,6 +1055,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   for(const each of actors) if(each.ride && each.ground) fail(`${each.name} rides ${each.ride.parent}, so it stands where it rides: ${each.ride.parent} follows the ground, not ${each.name}`, each.line);
   for(const each of actors) for(const look of each.looks) if(('actor' in look.target) && !actors.some(other => other.name === (look.target as { actor: string; }).actor)) fail(`${each.name}.look looks at '${look.target.actor}', which is no actor`, look.line);
   for(const [name, { keys }] of cameras) for(const key of keys) if(key.target && ('actor' in key.target) && !actors.some(other => other.name === (key.target as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) looks at '${(key.target as { actor: string; }).actor}', which is no actor`, key.line);
+  for(const [name, { keys }] of cameras) for(const key of keys) if(key.focus && ('actor' in key.focus) && !actors.some(other => other.name === (key.focus as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) focuses on '${(key.focus as { actor: string; }).actor}', which is no actor`, key.line);
   const times = [...actors.flatMap(each => [...each.keys, ...each.faces, ...each.hands].map(key => key.time)), ...actors.flatMap(each => each.reactions.map(reaction => reaction.to)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...speedKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to), ...soundCues.map(each => each.until ?? each.time)];
   settings.length ??= Math.max(1, ...times);
   for(const each of crowds) walkCrowd(each);

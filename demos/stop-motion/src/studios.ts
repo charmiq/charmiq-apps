@@ -34,7 +34,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 8;
+const STAGE_VERSION = 9;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
