@@ -245,7 +245,7 @@ export const standingAt = (row: Row, frame: FilmFrame): ReadonlyArray<string> =>
       if(!camera) return [];
       if('plan' in camera) return [`plan ${camera.plan.width} × ${camera.plan.depth} studs`];
       return [
-        `at ${point(camera.position)}`, `looks at ${point(camera.target)}`, `${round(camera.fov)}° lens`, ...(camera.roll ? [`rolled ${round(camera.roll)}°`] : []),
+        `at ${point(camera.position)}`, `looks at ${point(camera.target)}`, `${round(camera.fov)}° lens`, ...(camera.roll ? [`rolled ${round(camera.roll)}°`] : []), ...(camera.shift ? [`lens shifted ${round(camera.shift)}`] : []),
         ...((typeof camera.focus === 'number') ? [`focus ${round(camera.focus)} studs ahead`] : camera.focus ? [`focus at ${point(camera.focus)}`] : []), ...((camera.aperture !== undefined) ? [`f/${round(camera.aperture)}`] : []),
       ];
     }
@@ -280,6 +280,7 @@ const cameraChips = (key: CameraKey): ReadonlyArray<string> => {
   if(key.target) chips.push(('actor' in key.target) ? `looks at ${key.target.actor}` : `looks at ${point(key.target.point)}`);
   if(key.fov !== undefined) chips.push(`${round(key.fov)}° lens${key.dollyZoom ? ', a dolly zoom' : ''}`);
   if(key.roll !== undefined) chips.push(`rolled ${round(key.roll)}°`);
+  if(key.shift !== undefined) chips.push(`lens shifted ${round(key.shift)}`);
   if(key.focus) chips.push(('distance' in key.focus) ? `focus ${round(key.focus.distance)} studs ahead` : ('actor' in key.focus) ? `focus on ${key.focus.actor}` : `focus at ${point(key.focus.point)}`);
   if(key.aperture !== undefined) chips.push(`f/${round(key.aperture)}`);
   if(key.transition) chips.push(`${key.transition.shape} over ${round(key.transition.seconds)} s`);

@@ -39,9 +39,10 @@ const MAX_MARK_PATHS = 256;
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 /** an actor in one frame, as the stage's frame takes it */
 export type Shot = Readonly<{ name: string; position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; face?: string; rightHand?: HandKey['item']; leftHand?: HandKey['item']; rolled?: number; }>;
-/** a frame's camera as the stage takes it: what it focuses on is a point, or studs
+/** a frame's camera as the stage takes it: its lens shifted up by `shift`, a share of
+ *  the picture's height (down when negative); what it focuses on is a point, or studs
  *  ahead along its view (kept so however it is drawn in clear of parts) */
-export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; roll?: number; focus?: Point | number; aperture?: number; }>;
+export type StageCamera = Readonly<{ position: Point; target: Point; fov: number; roll?: number; shift?: number; focus?: Point | number; aperture?: number; }>;
 /** a plan: straight down over an area, north up */
 export type PlanCamera = Readonly<{ plan: Area; }>;
 /** the camera a view sees the scene through */
@@ -420,6 +421,7 @@ const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: R
   const lensKeys = keys.filter(key => key.fov !== undefined);
   const fov = eased(lensKeys, time, key => key.fov!, lerp) ?? DEFAULT_FOV;
   const roll = eased(keys.filter(key => key.roll !== undefined), time, key => key.roll!, lerp) ?? 0;
+  const shift = eased(keys.filter(key => key.shift !== undefined), time, key => key.shift!, lerp) ?? 0;
   const drawn = dollied(keys, lensKeys, time);
   const seen = (drawn === 1) ? apart : { x: target.x + ((apart.x - target.x) * drawn), z: target.z + ((apart.z - target.z) * drawn), height: target.height + ((apart.height - target.height) * drawn) };
   // what is sharp: each key's focus where it stands now (an actor as it moves), eased
@@ -434,7 +436,7 @@ const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: R
     ? eased(focusKeys, time, key => (('distance' in key.focus!) ? key.focus.distance : 0/*not between these keys*/), lerp)
     : eased(focusKeys, time, key => (('distance' in key.focus!) ? ahead(seen, target, key.focus.distance) : resolve(key.focus!)), lerpPoint);
   const aperture = eased(keys.filter(key => key.aperture !== undefined), time, key => key.aperture!, lerp);
-  return { position: seen, target, fov, ...(roll ? { roll } : {}), ...((focus !== undefined) ? { focus } : {}), ...((aperture !== undefined) ? { aperture } : {}) };
+  return { position: seen, target, fov, ...(roll ? { roll } : {}), ...(shift ? { shift } : {}), ...((focus !== undefined) ? { focus } : {}), ...((aperture !== undefined) ? { aperture } : {}) };
 };
 
 /** the point `studs` from `from` toward `toward` (heights in plates) */
@@ -490,7 +492,7 @@ const transitionAt = (scene: Recorded, at: number, time: number, placed: Readonl
   return { ...apart, ...((set !== undefined) ? { set } : {}), frame: last.index, left: 1 - ((time - cut.time) / cut.transition.seconds), shape: cut.transition.shape };
 };
 /** the values of a camera key */
-const CAMERA_VALUES = ['place', 'target', 'fov', 'roll', 'focus', 'aperture'] as const;
+const CAMERA_VALUES = ['place', 'target', 'fov', 'roll', 'shift', 'focus', 'aperture'] as const;
 /** the keys before a cut as the frames before it draw them: a value none of them names
  *  is the first key's naming it, held before that key (SEE: eased), so a lens first
  *  keyed at the cut is the shot's it leaves too */

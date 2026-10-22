@@ -5,7 +5,8 @@ import type { Point } from './recorder';
 // what a frame's camera sees, as the studio draws it: its scene is the film's x east,
 // height up and z north turned to the scene's -z (plates 0.4 studs), its camera
 // standing at its position looking at its target, the world's up its up, its field of
-// view vertical across the frame's height, at the frame's shape. Looking straight down
+// view vertical across the frame's height, at the frame's shape, its lens shifted up by
+// its shift's share of that height (its verticals as they are). Looking straight down
 // or up, the studio's aim (three.js lookAt) turns east to the screen's right: north is
 // up looking down, south looking up. A camera standing on its target looks north (the
 // scene's -z). A place on the screen
@@ -30,12 +31,13 @@ export type ScreenBox = Readonly<{ left: number; top: number; right: number; bot
 type Vector = readonly [number, number, number];
 
 // == Screen ======================================================================
-/** where a point stands on the screen, or undefined behind the camera */
+/** where a point stands on the screen, or undefined behind the camera: a lens shifted
+ *  up stands every point lower by the shift's share of the frame's height */
 export const onScreen = (camera: StageCamera, aspect: number, point: Point): OnScreen | undefined => {
   const { ahead: depth, across, up } = inView(camera, point);
   if(depth < NEAR) return undefined;
   const tan = Math.tan((camera.fov * (Math.PI / 180)) / 2);
-  return { x: 0.5 + (across / (2 * depth * tan * aspect)), y: 0.5 - (up / (2 * depth * tan)), depth };
+  return { x: 0.5 + (across / (2 * depth * tan * aspect)), y: 0.5 - (up / (2 * depth * tan)) + (camera.shift ?? 0), depth };
 };
 
 /** a point as a camera sees it (studs): how far ahead along its view, to its right,

@@ -118,8 +118,9 @@ type LeavingShot = Readonly<{ camera: StageCamera; set: number; actors?: ShownAc
 /** a stage frame's lens: the point it focuses on, or how far ahead along the view
  *  (studs, the scene's units), and its aperture */
 type StageLens = Readonly<{ focus?: THREE.Vector3 | number; aperture?: number; }>;
-/** where the camera stands and how it sees */
-type Eye = Readonly<{ position: THREE.Vector3; target: THREE.Vector3; fov: number; up: THREE.Vector3; lens: StageLens; }>;
+/** where the camera stands and how it sees, its lens shifted up by `shift` (a share of
+ *  the picture's height) */
+type Eye = Readonly<{ position: THREE.Vector3; target: THREE.Vector3; fov: number; shift: number; up: THREE.Vector3; lens: StageLens; }>;
 type Staging = { /*NOTE: Mutable: each frame replaces its set, actors and overlay, a capture its size*/
   readonly sets: ReadonlyArray<Model>;
   standing: number;
@@ -779,7 +780,7 @@ export class Viewer {
     const staging = this.staging;
     if(!staging) return/*nothing staged*/;
     this.staging = undefined;
-    this.aim(staging.before.position, staging.before.target, staging.before.fov)/*level again*/;
+    this.aim(staging.before.position, staging.before.target, staging.before.fov)/*level and unshifted again*/;
     this.useLens({})/*the look's own focus again*/;
     this.useLight({})/*the look's own light again*/;
     this.controls.enabled = true;
@@ -793,10 +794,10 @@ export class Viewer {
 
   // .. Stage frames ..............................................................
   /** turns the camera to a frame's: where it stands, or straight down over a plan's
-   *  area at the canvas's shape */
+   *  area at the canvas's shape, a plan neither rolled nor shifted */
   private look(camera: ViewCamera): void {
     const seen = isPlan(camera) ? planAim(camera.plan, this.camera.aspect) : camera;
-    this.aim(scenePoint(seen.position), scenePoint(seen.target), seen.fov, isPlan(camera), isPlan(camera) ? 0 : (camera.roll ?? 0));
+    this.aim(scenePoint(seen.position), scenePoint(seen.target), seen.fov, isPlan(camera), isPlan(camera) ? 0 : (camera.roll ?? 0), isPlan(camera) ? 0 : (camera.shift ?? 0));
     this.useLens(isPlan(camera) ? {} : { ...((camera.focus !== undefined) ? { focus: (typeof camera.focus === 'number') ? camera.focus/*studs, the scene's units*/ : scenePoint(camera.focus) } : {}), ...((camera.aperture !== undefined) ? { aperture: camera.aperture } : {}) });
   }
 
@@ -817,30 +818,44 @@ export class Viewer {
   }
 
   /** where the camera stands and how it sees, to put back */
-  private eye(): Eye { return { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, up: this.camera.up.clone(), lens: this.stageLens }; }
+  private eye(): Eye { return { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov, shift: this.lensShift(), up: this.camera.up.clone(), lens: this.stageLens }; }
   private toEye(eye: Eye): void {
-    this.aimed(eye.position, eye.target, eye.fov, eye.up);
+    this.aimed(eye.position, eye.target, eye.fov, eye.shift, eye.up);
     this.useLens(eye.lens);
   }
 
-  /** turns the camera to stand at `position`, looking at `target` through `fov`,
-   *  turned clockwise about where it looks by `roll` degrees as seen from behind it;
-   *  looking straight down over a plan, north is up and the camera draws from high
-   *  over the ground */
-  private aim(position: THREE.Vector3, target: THREE.Vector3, fov: number, plan = false, roll = 0): void {
-    this.aimed(position, target, fov, plan ? NORTH : rolledUp(position, target, roll), plan);
+  /** how far the camera's lens is shifted up: a share of the picture's height, its view
+   *  offset's (SEE: aimed) */
+  private lensShift(): number {
+    const view = this.camera.view;
+    return view?.enabled ? -(view.offsetY / view.fullHeight) : 0/*unshifted*/;
   }
 
-  /** turns the camera to stand at `position`, looking at `target` through `fov`, `up`
-   *  its up */
-  private aimed(position: THREE.Vector3, target: THREE.Vector3, fov: number, up: THREE.Vector3, plan = up.equals(NORTH)): void {
+  /** turns the camera to stand at `position`, looking at `target` through `fov`,
+   *  turned clockwise about where it looks by `roll` degrees as seen from behind it, its
+   *  lens shifted up by `shift` (a share of the picture's height, down when negative);
+   *  looking straight down over a plan, north is up and the camera draws from high
+   *  over the ground */
+  private aim(position: THREE.Vector3, target: THREE.Vector3, fov: number, plan = false, roll = 0, shift = 0): void {
+    this.aimed(position, target, fov, shift, plan ? NORTH : rolledUp(position, target, roll), plan);
+  }
+
+  /** turns the camera to stand at `position`, looking at `target` through `fov`, its
+   *  lens shifted up by `shift`, `up` its up. The shift is the camera's view offset (the
+   *  picture a window raised over the image its lens casts), so every reader of the
+   *  projection (ambient occlusion, the depth of field, the path tracer's rays) draws
+   *  through it and a resize keeps it */
+  private aimed(position: THREE.Vector3, target: THREE.Vector3, fov: number, shift: number, up: THREE.Vector3, plan = up.equals(NORTH)): void {
     this.camera.position.copy(position);
     this.controls.target.copy(target);
     this.camera.fov = fov;
     this.camera.up.copy(up);
     const height = position.distanceTo(target);
     [this.camera.near, this.camera.far] = plan ? [Math.max(CAMERA_NEAR, height - PLAN_DEPTH), height + 1] : [CAMERA_NEAR, CAMERA_FAR];
-    this.camera.updateProjectionMatrix();
+    // NOTE: each updates the projection; a view offset takes the picture's shape from
+    //       its full size, so the full size is the picture's own
+    if(shift !== 0) this.camera.setViewOffset(this.camera.aspect, 1, 0, -shift/*a view offset counts down the picture*/, this.camera.aspect, 1);
+    else this.camera.clearViewOffset();
     this.camera.lookAt(this.controls.target);
     this.cameraChanged();
   }
@@ -933,8 +948,8 @@ export class Viewer {
     if(!staging || !leaving) { if(staging) staging.left = undefined; return; }
     const elsewhere = (leaving.set !== staging.standing);
     const actors = leaving.actors ?? staging.actors;
-    const { position, target, fov, roll, focus, aperture } = leaving.camera;
-    const key = [leaving.set, position.x, position.z, position.height, target.x, target.z, target.height, fov, roll ?? 0, JSON.stringify(focus ?? null), aperture, this.canvas.width, this.canvas.height, this.drawingChanges, ...actors.lines.map(line => `${line.ldraw}:${line.colorCode}:${line.position.join(',')}:${line.matrix.join(',')}`)].join('|');
+    const { position, target, fov, roll, shift, focus, aperture } = leaving.camera;
+    const key = [leaving.set, position.x, position.z, position.height, target.x, target.z, target.height, fov, roll ?? 0, shift ?? 0, JSON.stringify(focus ?? null), aperture, this.canvas.width, this.canvas.height, this.drawingChanges, ...actors.lines.map(line => `${line.ldraw}:${line.colorCode}:${line.position.join(',')}:${line.matrix.join(',')}`)].join('|');
     if(elsewhere && (staging.left?.key === key)) return/*held*/;
     const picture = staging.left?.picture ?? document.createElement('canvas');
     [picture.width, picture.height] = [this.canvas.width, this.canvas.height];
@@ -1203,9 +1218,10 @@ export class Viewer {
   }
 
   /** how the frame is focused: a stage frame on the point its lens names (its target
-   *  when none) through its aperture; the build on what lies at the middle of the
-   *  picture, as a camera's autofocus finds it (the point it orbits, looking at the
-   *  sky) */
+   *  when none) through its aperture, its distance along the camera's axis (where it
+   *  looks, which a lens shift moves off the picture's middle and leaves as it is); the
+   *  build on what lies at the middle of the picture, as a camera's autofocus finds it
+   *  (the point it orbits, looking at the sky), its lens never shifted */
   private lens(): Lens {
     if(this.staging) {
       const { focus, aperture } = this.stageLens;

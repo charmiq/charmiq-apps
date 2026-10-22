@@ -38,7 +38,7 @@ export type SoundCue = Readonly<{ time: number; name: string; volume: number; un
 
 /** a walk: its span (seconds), the points it walks through (studs), how far its arms
  *  swing and it leans (degrees) and the foot it leads with (SEE: steps.ts) */
-export type Walk = Readonly<{ start: number; end: number; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; arms: number; lean: number; lead: Foot; line?: number; }>;
+export type Walk = Readonly<{ start: number; end: number; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; arms: number; lean: number; lead: Foot; swing?: number; backward?: true; line?: number; }>;
 export type Foot = 'left' | 'right';
 
 /** a function of time over a span, sampled at each frame from `from` up to `to`
@@ -57,12 +57,13 @@ export type CameraPlace = Readonly<{ point: Point; } | { orbit: Readonly<{ angle
  *  enters by its `transition` over the shot it leaves. `avoid: 'parts'` keeps the
  *  camera out of the set's parts from it to the next key placing it (SEE: studios.ts
  *  avoided). `roll` turns the camera about where it looks (degrees, clockwise as seen
- *  from behind it); `dollyZoom` keeps its target the size it is on the screen while the
- *  lens eases into the key (the camera drawn in or out against the lens). `focus` is
- *  what is sharp (its target when no key names it) and `aperture` the lens's opening
- *  as an f-number (a depth of field at every look once a key names one), each eased
- *  into: a rack focus */
-export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; roll?: number; dollyZoom?: true; focus?: Focus; aperture?: number; avoid?: 'parts'; ease: Ease; name?: string; transition?: Transition; line?: number; }>;
+ *  from behind it); `shift` shifts its lens up by that share of the picture's height
+ *  (down when negative, from -1 to 1), its verticals kept upright; `dollyZoom` keeps its
+ *  target the size it is on the screen while the lens eases into the key (the camera
+ *  drawn in or out against the lens). `focus` is what is sharp (its target when no key
+ *  names it) and `aperture` the lens's opening as an f-number (a depth of field at
+ *  every look once a key names one), each eased into: a rack focus */
+export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; roll?: number; shift?: number; dollyZoom?: true; focus?: Focus; aperture?: number; avoid?: 'parts'; ease: Ease; name?: string; transition?: Transition; line?: number; }>;
 /** what a camera focuses on: a point, an actor (raised), or what lies `distance` studs
  *  ahead of it along its view */
 export type Focus = Target | Readonly<{ distance: number; }>;
@@ -366,10 +367,12 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         const end = (given.until !== undefined) ? toTime(given.until, what) : (start + (path.total / (speed as number)));
         if(end <= start) fail(`${what} ends after it starts`);
         if(end > MAX_LENGTH) fail(`${what} walks past ${MAX_LENGTH} s: walk faster or a shorter way`);
+        const backward = given.backward ?? false;
+        if(typeof backward !== 'boolean') fail(`${what}'s backward is true or false`);
         const line = callerLine();
         const unused = (['stride', 'bounce'] as const).filter(key => given[key] !== undefined);
         if(unused.length > 0) logs.push(`${what} (line ${line ?? '?'}): ${unused.join(' and ')} move only an actor that does not click onto studs; a figure's step is a stud, its rise its own`);
-        entry.walks.push({ start, end, points: path.points, arms: gait.rightArm, lean: gait.lean, lead: (gait.phase < Math.PI) ? 'left' : 'right', ...((line !== undefined) ? { line } : {}) });
+        entry.walks.push({ start, end, points: path.points, arms: gait.rightArm, lean: gait.lean, lead: (gait.phase < Math.PI) ? 'left' : 'right', ...((given.swing !== undefined) ? { swing: given.swing as number } : {}), ...(backward ? { backward: true as const } : {}), ...((line !== undefined) ? { line } : {}) });
         const timeAt = (along: number) => start + ((end - start) * (along / path.total));
         path.points.forEach((point, index) => {
           counted();
@@ -378,8 +381,9 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         // each leg's heading, faced at the leg's start, over a corner's turn: the first
         // within half a turn of the yaw keyed before the walk, so it never spins round
         const keyedYaw = entry.keys.filter(key => ('yaw' in key.values) && (key.time <= start)).reduce<Key | undefined>((latest, key) => (!latest || (key.time >= latest.time)) ? key : latest, undefined)?.values.yaw;
-        const first = path.headings[0] + facingOf(entry.source);
-        const facing = facingOf(entry.source) + ((keyedYaw === undefined) ? 0 : (nearestTurn(first, keyedYaw) - first));
+        const faced = facingOf(entry.source) + (backward ? 180 : 0)/*a backward walk faces away from the way it goes*/;
+        const first = path.headings[0] + faced;
+        const facing = faced + ((keyedYaw === undefined) ? 0 : (nearestTurn(first, keyedYaw) - first));
         path.headings.forEach((heading, index) => {
           counted();
           if(index === 0) { entry.keys.push({ time: start, values: { yaw: heading + facing }, ease: 'ease-in-out', line }); return; }
@@ -470,13 +474,14 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       counted();
       const at = toTime(time, `${label}.${verb}`);
       const what = `${label}.${verb}(${at})`;
-      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov, roll, dollyZoom, focus, aperture, avoid }`);
-      const { position, orbit, target, fov, roll, dollyZoom, focus, aperture, avoid, ...rest } = values as Record<string, unknown>;
-      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov, roll, dollyZoom, focus, aperture, avoid)`);
+      if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov, roll, shift, dollyZoom, focus, aperture, avoid }`);
+      const { position, orbit, target, fov, roll, shift, dollyZoom, focus, aperture, avoid, ...rest } = values as Record<string, unknown>;
+      if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov, roll, shift, dollyZoom, focus, aperture, avoid)`);
       if((aperture !== undefined) && (!isFiniteNumber(aperture) || (aperture < 1) || (aperture > 32))) fail(`${what}.aperture is an f-number from 1 (the shallowest: only what it focuses on sharp) to 32 (nearly all sharp)`);
       if(isFiniteNumber(focus) && (focus <= 0)) fail(`${what}.focus as a number is studs ahead of the camera, more than 0`);
       const focused: Focus | undefined = isFiniteNumber(focus) ? { distance: focus } : toTarget(focus, `${what}.focus`);
       if((roll !== undefined) && !isFiniteNumber(roll)) fail(`${what}.roll is degrees: the camera turned clockwise about where it looks, as seen from behind it`);
+      if((shift !== undefined) && (!isFiniteNumber(shift) || (shift < -1) || (shift > 1))) fail(`${what}.shift is a share of the picture's height from -1 to 1: the lens shifted up (down when negative), verticals kept upright`);
       if((dollyZoom !== undefined) && (dollyZoom !== true)) fail(`${what}.dollyZoom is true: the target kept its size on the screen while the lens eases into the key`);
       if(dollyZoom && (fov === undefined)) fail(`${what}.dollyZoom eases the lens into the key: give it a fov`);
       if((avoid !== undefined) && (avoid !== 'parts')) fail(`${what}.avoid is 'parts': the camera kept out of the set's parts`);
@@ -494,7 +499,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       if((avoid !== undefined) && !place) fail(`${what}.avoid keeps the camera a key places out of parts: give it a position or an orbit`);
       cameraKeys.push({
         time: at, ...(place ? { place } : {}), ...(aim ? { target: aim } : {}), ...((fov !== undefined) ? { fov: fov as number } : {}), ...((roll !== undefined) ? { roll: roll as number } : {}),
-        ...(dollyZoom ? { dollyZoom: true as const } : {}), ...(focused ? { focus: focused } : {}), ...((aperture !== undefined) ? { aperture: aperture as number } : {}), ...((avoid === 'parts') ? { avoid: 'parts' as const } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), ...(transition ? { transition } : {}), line: callerLine(),
+        ...((shift !== undefined) ? { shift: shift as number } : {}), ...(dollyZoom ? { dollyZoom: true as const } : {}), ...(focused ? { focus: focused } : {}), ...((aperture !== undefined) ? { aperture: aperture as number } : {}), ...((avoid === 'parts') ? { avoid: 'parts' as const } : {}), ease, ...((shot !== undefined) ? { name: shot } : {}), ...(transition ? { transition } : {}), line: callerLine(),
       });
     };
     const camera = {
