@@ -22,8 +22,10 @@ export const MAX_SAMPLES = 512;
 /** the lens opening as a share of the focus distance, times the f-number: at f/8,
  *  the Photo stop's macro blur */
 const BOKEH_AT_F1 = 0.24;
-/** the key light's disc as a share of its distance: the Photo stop's soft shadow */
+/** the key light's disc as a share of its distance: the Photo stop's soft shadow; and
+ *  how much wider a stage's softest key's disc is */
 const KEY_SOFTNESS = 0.1;
+const SOFTEST_KEY = 4;
 
 // == Types =======================================================================
 /** what the path traced scene is built from */
@@ -34,8 +36,9 @@ export type PathSource = Readonly<{
   environment: THREE.CubeTexture;
   environmentIntensity: number;
   background: THREE.Color;
-  /** the key light: its world position, the point it lights and its intensity */
-  key: Readonly<{ position: THREE.Vector3; target: THREE.Vector3; intensity: number; }>;
+  /** the key light: its world position, the point it lights, its intensity and how
+   *  much softer than the Photo stop's its shadow falls (0 as soft, 1 the softest) */
+  key: Readonly<{ position: THREE.Vector3; target: THREE.Vector3; intensity: number; soft: number; }>;
 }>;
 
 // == PathTrace ===================================================================
@@ -151,7 +154,7 @@ const keyLight = (key: PathSource['key']): THREE.Object3D[] => {
   const light = new THREE.SpotLight(0xffffff, key.intensity, 0/*unbounded*/, Math.PI / 6, 0, 0/*no decay*/);
   light.position.copy(key.position);
   light.target.position.copy(key.target);
-  (light as THREE.SpotLight & { radius: number; }).radius = distance * KEY_SOFTNESS/*read by the path tracer*/;
+  (light as THREE.SpotLight & { radius: number; }).radius = distance * KEY_SOFTNESS * (1 + (SOFTEST_KEY * key.soft))/*read by the path tracer*/;
   light.updateMatrixWorld(true);
   light.target.updateMatrixWorld(true);
   return [light, light.target];

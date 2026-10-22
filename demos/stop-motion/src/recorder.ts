@@ -125,6 +125,9 @@ export type Recorded = Readonly<{
   /** how much every actor shifts from frame to frame, as bricks moved by hand (0 to 1),
    *  when the scene asks for any (SEE: film.ts boiled) */
   boil?: number;
+  /** how the stage is lit over the look's own light, when the scene says (SEE: Brick
+   *  Studio's StageLight) */
+  light?: Readonly<{ key?: number; fill?: number; exposure?: number; soft?: number; }>;
   actors: ReadonlyArray<RecordedActor>;
   camera: RecordedCamera;
   /** more cameras, by name: each a second studio's view of the scene. A plan looks
@@ -230,7 +233,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
 
   // .. Recording .................................................................
   // what the scene declares, as it declares it
-  const settings = { title: 'Untitled film', fps: 24, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0 };
+  const settings = { title: 'Untitled film', fps: 24, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined };
   type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; }>();
@@ -247,10 +250,11 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   const counted = () => { if(++keyCount > MAX_KEYS) fail(`a scene holds at most ${MAX_KEYS} keys`); };
 
   // .. Scene .....................................................................
-  /** the film's settings: its title, fps, length, export size, floor and boil */
+  /** the film's settings: its title, fps, length, export size, floor, boil and light */
   const scene = (options: Record<string, unknown> = {}) => {
-    const { title, fps, length, width, height, floor, boil } = options;
+    const { title, fps, length, width, height, floor, boil, light } = options;
     if(boil !== undefined) settings.boil = unitOf(boil, 'boil')/*0 to 1*/;
+    if(light !== undefined) settings.light = lightOf(light);
     if(title !== undefined) settings.title = String(title);
     if(fps !== undefined) { if(!Number.isInteger(fps) || ((fps as number) < 1) || ((fps as number) > MAX_FPS)) fail(`fps is a whole number from 1 to ${MAX_FPS}`); settings.fps = fps as number; }
     if(length !== undefined) { settings.length = toTime(length, 'length'); if(settings.length <= 0) fail('length must be more than 0 seconds'); }
@@ -371,8 +375,11 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
           counted();
           entry.keys.push({ time: timeAt(path.cumulative[index]), values: { x: point.x, z: point.z }, ease: (index === 0) ? 'ease-in-out' : 'linear', line });
         });
-        // each leg's heading, faced at the leg's start, over a corner's turn
-        const facing = facingOf(entry.source);
+        // each leg's heading, faced at the leg's start, over a corner's turn: the first
+        // within half a turn of the yaw keyed before the walk, so it never spins round
+        const keyedYaw = entry.keys.filter(key => ('yaw' in key.values) && (key.time <= start)).reduce<Key | undefined>((latest, key) => (!latest || (key.time >= latest.time)) ? key : latest, undefined)?.values.yaw;
+        const first = path.headings[0] + facingOf(entry.source);
+        const facing = facingOf(entry.source) + ((keyedYaw === undefined) ? 0 : (nearestTurn(first, keyedYaw) - first));
         path.headings.forEach((heading, index) => {
           counted();
           if(index === 0) { entry.keys.push({ time: start, values: { yaw: heading + facing }, ease: 'ease-in-out', line }); return; }
@@ -671,6 +678,8 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   /** a path over the ground: its points (each { x, z }), how far along it each lies,
    *  its length, and each leg's heading (degrees clockwise from north, each turned the
    *  short way from the one before) */
+  /** an angle turned by whole turns to lie within half a turn of another (degrees) */
+  const nearestTurn = (angle: number, near: number): number => near + ((((angle - near) % 360) + 540) % 360) - 180;
   type Path = Readonly<{ points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; cumulative: ReadonlyArray<number>; total: number; headings: ReadonlyArray<number>; }>;
   const pathOf = (value: unknown, what: string): Path => {
     if(!Array.isArray(value) || (value.length < 2) || (value.length > 200)) fail(`${what} are 2 to 200 points { x, z }`);
@@ -682,7 +691,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       cumulative.push(cumulative[index - 1] + Math.hypot(dx, dz));
       const heading = Math.atan2(dx, dz) * (180 / Math.PI);
       const before = headings[headings.length - 1];
-      headings.push((before === undefined) ? heading : (before + ((((heading - before) % 360) + 540) % 360) - 180));
+      headings.push((before === undefined) ? heading : nearestTurn(heading, before));
     }
     const total = cumulative[cumulative.length - 1];
     if(total <= 0) fail(`${what} cover no ground`);
@@ -741,6 +750,22 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
    *  orbiting its heading takes it */
   const FIGURE_FACING = 180;
   const facingOf = (source: Readonly<Record<string, unknown>>): number => (source.component !== undefined) ? 0 : FIGURE_FACING;
+  /** a scene's light: its key and fill scaled (0 to 3, 0 to 4), its exposure scaled
+   *  (0.25 to 4) and its key's shadows softened (0 to 1), as Brick Studio's stage takes
+   *  them (SEE: its StageLight) */
+  const LIGHT_LIMITS: ReadonlyArray<readonly [string, number, number]> = [['key', 0, 3], ['fill', 0, 4], ['exposure', 0.25, 4], ['soft', 0, 1]];
+  const lightOf = (value: unknown): Record<string, number> => {
+    if((value === null) || (typeof value !== 'object')) fail('scene\'s light is { key?, fill?, exposure?, soft? }');
+    const given = value as Record<string, unknown>;
+    const unknown = Object.keys(given).find(name => !LIGHT_LIMITS.some(([known]) => known === name));
+    if(unknown !== undefined) fail(`scene's light has no '${unknown}' (${LIGHT_LIMITS.map(([name]) => name).join(', ')})`);
+    return Object.fromEntries(LIGHT_LIMITS.flatMap(([name, least, most]) => {
+      const each = given[name];
+      if(each === undefined) return [];
+      if(!isFiniteNumber(each) || (each < least) || (each > most)) fail(`scene's light.${name} is ${least} to ${most}`);
+      return [[name, each as number]];
+    }));
+  };
   /** 0 to 1 over a span: rising over its first `ease` seconds and falling over its last */
   const envelope = (t: number, start: number, end: number, ease: number): number => {
     const edge = Math.min(ease, (end - start) / 2);
@@ -1089,7 +1114,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
    *  exactly where a cut jumps */
   const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
   return {
-    title: settings.title, fps: settings.fps, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}),
+    title: settings.title, fps: settings.fps, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
     actors: actors.map(({ name, source, ride, keys, walks, faces, hands, reactions, looks, ground, still, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),

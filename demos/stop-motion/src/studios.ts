@@ -223,7 +223,7 @@ export class Studios {
     try {
       const [main, ...others] = screens;
       const actors = scene.actors.map(({ name, source }) => ({ name, ...source }));
-      const floor = scene.floor ? { floor: scene.floor } : {};
+      const world = { ...(scene.floor ? { floor: scene.floor } : {}), ...(scene.light ? { light: scene.light } : {}) }/*the stage's floor and light*/;
       // the sets the scene cuts between, the build's first ahead of them while a frame
       // stands before the first key
       const sets = scene.sets ? stagedSets(scene, (await main.describeStage({})).sets[0]) : undefined;
@@ -240,17 +240,17 @@ export class Studios {
       // ground stands on what is under it, which the still's sizes measure
       const plan = scene.views.some(view => view.plan);
       const grounded = scene.actors.some(actor => actor.ground);
-      const still = ((plan && actors.some(actor => 'placed' in actor)) || grounded) ? await main.stage({ ...standing, actors, ...floor }) : undefined;
+      const still = ((plan && actors.some(actor => 'placed' in actor)) || grounded) ? await main.stage({ ...standing, actors, ...world }) : undefined;
       const rested = still ? restsOf(still) : new Map<string, Rest>();
       const figures = new Set(still?.figures ?? []);
       const grounds = still && grounded ? await groundsOf(filmFor({ figures, rests: rested }/*where it goes, before the ground lifts it*/), still.sizes ?? {}, groundProbe) : new Map<string, ReadonlyArray<number>>();
       const preview = plan ? await clearanceOf(filmFor({ figures, rests: rested, grounds }/*its wheels move nothing*/), probe) : undefined;
       const marks = preview ? { marks: planMarksOf(preview.film, this.paint, preview.parts.map(found => found.inside !== undefined)) } : {};
-      const answer = await main.stage({ ...standing, actors, ...floor, reel, ...marks });
+      const answer = await main.stage({ ...standing, actors, ...world, reel, ...marks });
       const ldraw = (others.length > 0) ? await buildText(main) : undefined;
       const answers = await Promise.all(others.map((studio, index) => {
         const view = scene.views[index]?.name;
-        return studio.stage({ ...(ldraw ? { ldraw } : {}), ...standing, actors, ...floor, reel, ...(view ? { view } : {}), ...marks });
+        return studio.stage({ ...(ldraw ? { ldraw } : {}), ...standing, actors, ...world, reel, ...(view ? { view } : {}), ...marks });
       }));
       const reels = [answer, ...answers].map(each => each.reel);
       if(reels.some(each => each === undefined)) throw new Error('A studio took the scene but no reel: it may need updating.');

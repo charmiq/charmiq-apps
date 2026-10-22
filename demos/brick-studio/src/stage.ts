@@ -232,6 +232,30 @@ export const floorOf = (input: unknown): Floor | undefined => {
   return { x: x as number, z: z as number, width: width as number, depth: depth as number };
 };
 
+/** how a stage is lit, over the look's own light: its key light and its fill (the
+ *  environment and the sky) scaled, its exposure scaled, and its key's shadows
+ *  softened (0 the look's own, 1 the softest); each 1 (soft 0) when left out */
+export type StageLight = Readonly<{ key?: number; fill?: number; exposure?: number; soft?: number; }>;
+/** the most each of a stage's light's scales takes, and the least exposure */
+export const LIGHT_LIMITS = { key: 3, fill: 4, exposure: 4, soft: 1 } as const;
+const LEAST_EXPOSURE = 0.25;
+
+/** the light a stage call gives */
+export const lightOf = (input: unknown): StageLight => {
+  if(input === undefined) return {};
+  if((input === null) || (typeof input !== 'object')) throw new Error('light is { key?, fill?, exposure?, soft? }');
+  const given = input as Record<string, unknown>;
+  const light: Record<string, number> = {};
+  for(const [name, most] of Object.entries(LIGHT_LIMITS)) {
+    const value = given[name];
+    if(value === undefined) continue;
+    const least = (name === 'exposure') ? LEAST_EXPOSURE : 0;
+    if(!isFiniteNumber(value) || (value < least) || (value > most)) throw new Error(`light.${name} is ${least} to ${most}`);
+    light[name] = value;
+  }
+  return light;
+};
+
 // -- Cast ------------------------------------------------------------------------
 /** the actors a stage call casts from a set: each named once, a component of the set
  *  (`{ name, component }`), a catalog part dressed as a placement is (`{ name, part,

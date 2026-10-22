@@ -530,6 +530,7 @@
               }
             },
             "floor": { "type": "object", "description": "The area (studs) the baseplate covers at least, so actors have ground to move over: { x, z, width, depth }, its south-west corner and size" },
+            "light": { "type": "object", "description": "How the stage is lit over the look's own light: { key, fill, exposure, soft }, the key light scaled (0 to 3), the fill (the studio's environment and sky) scaled (0 to 4), the exposure scaled (0.25 to 4) and the key's shadows softened (0 the look's own to 1 the softest); each 1 (soft 0) when left out" },
             "reel": {
               "type": "object",
               "description": "A film, for Applications: its frames a second (at most 60), length in frames (at most 7200) and the size its frames are drawn at. loadReel then loads its frames",

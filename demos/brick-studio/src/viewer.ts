@@ -9,7 +9,7 @@ import { CATALOG, resourceFamily } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
 import { drawnLines, partCount, type Model } from './model';
-import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type Point, type ShownActors, type StageCamera, type ViewCamera } from './stage';
+import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type Point, type ShownActors, type StageCamera, type StageLight, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { AutoFocus } from './render/autofocus';
@@ -52,6 +52,8 @@ const BASEPLATE_THICKNESS = 0.16/*scene units*/;
 /** how much wider than the build a framed view is */
 const FRAME_MARGIN = 1.08;
 
+/** how much more a stage's softest key blurs its shadows than the look's own */
+const SOFTEST_SHADOW = 3;
 const DROP_HEIGHT = 2.4/*scene units*/;
 const DROP_MS = 340/*ms*/;
 const DROP_STAGGER_MS = 22/*ms*/;
@@ -156,6 +158,8 @@ export class Viewer {
   /** a stage frame's lens: the point it focuses on (its target when none) and its
    *  aperture (the look's own when none) */
   private stageLens: StageLens = {};
+  /** a stage's light over the look's own (SEE: stage.ts StageLight) */
+  private stageLight: StageLight = {};
   /** the build's focus: what lies at the middle of the picture, found once the view
    *  rests (SEE: render/autofocus.ts) */
   private readonly autoFocus = new AutoFocus(() => this.middleDistance());
@@ -442,19 +446,20 @@ export class Viewer {
    *  its samples land */
   private applyLook(fidelity: Fidelity): void {
     const draft = (fidelity < 1);
+    const { key = 1, fill = 1, exposure = 1, soft = 0 } = this.stageLight;
     if(!draft) this.studio ??= createStudio(this.renderer, KEY_DIRECTION);
     this.scene.environment = draft ? this.room : this.studio!.environment;
-    this.scene.environmentIntensity = draft ? 0.42 : 0.9;
-    this.sky.intensity = draft ? 0.5 : 0.1;
-    this.sun.intensity = draft ? 1.6 : 2.4;
+    this.scene.environmentIntensity = (draft ? 0.42 : 0.9) * fill;
+    this.sky.intensity = (draft ? 0.5 : 0.1) * fill;
+    this.sun.intensity = (draft ? 1.6 : 2.4) * key;
     this.renderer.toneMapping = draft ? THREE.ACESFilmicToneMapping : THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = draft ? 1.05 : 1.2;
+    this.renderer.toneMappingExposure = (draft ? 1.05 : 1.2) * exposure;
+    this.sun.shadow.radius = ((fidelity >= 2) ? 10 : 4) * (1 + (SOFTEST_SHADOW * soft));
 
     // soft, blurred shadows from stop 2; a shadow type change recompiles materials
     const shadows = (fidelity >= 2) ? THREE.VSMShadowMap : THREE.PCFShadowMap;
     if(this.renderer.shadowMap.type !== shadows) {
       this.renderer.shadowMap.type = shadows;
-      this.sun.shadow.radius = (fidelity >= 2) ? 10 : 4;
       this.sun.shadow.blurSamples = 16;
       this.sun.shadow.map?.dispose();
       this.sun.shadow.map = null;
@@ -776,6 +781,7 @@ export class Viewer {
     this.staging = undefined;
     this.aim(staging.before.position, staging.before.target, staging.before.fov)/*level again*/;
     this.useLens({})/*the look's own focus again*/;
+    this.useLight({})/*the look's own light again*/;
     this.controls.enabled = true;
     this.controls.update();
     this.renderer.setPixelRatio(screenPixelRatio());
@@ -792,6 +798,15 @@ export class Viewer {
     const seen = isPlan(camera) ? planAim(camera.plan, this.camera.aspect) : camera;
     this.aim(scenePoint(seen.position), scenePoint(seen.target), seen.fov, isPlan(camera), isPlan(camera) ? 0 : (camera.roll ?? 0));
     this.useLens(isPlan(camera) ? {} : { ...((camera.focus !== undefined) ? { focus: (typeof camera.focus === 'number') ? camera.focus/*studs, the scene's units*/ : scenePoint(camera.focus) } : {}), ...((camera.aperture !== undefined) ? { aperture: camera.aperture } : {}) });
+  }
+
+  /** a stage's light from now on, over the look's own; the path tracer lights its
+   *  scene afresh */
+  public useLight(light: StageLight): void {
+    this.stageLight = light;
+    this.applyLook(this.fidelity);
+    this.pathTraceStale = true;
+    this.requestFrame();
   }
 
   /** a stage frame's lens from now on: an aperture of its own draws a depth of field
@@ -1251,7 +1266,7 @@ export class Viewer {
       tracer.setScene({
         parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: plate,
         environment: this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.stage,
-        key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity },
+        key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity, soft: this.stageLight.soft ?? 0 },
       }, this.lens());
       free()/*the tracer merged its own copy*/;
       this.pathTraceStale = false;

@@ -3,7 +3,7 @@ import { BehaviorSubject, type Observable } from 'rxjs';
 import type { Build } from './build';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, cameraOf, captureOf, castOf, floorOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
+import { boardsOf, cameraOf, captureOf, castOf, floorOf, lightOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -120,13 +120,15 @@ export class StageControl {
   public state$(): Observable<ScreenState> { return this.state.asObservable(); }
 
   /** stages sets (of LDraw text, else of the build; its first set when none is named)
-   *  and casts its actors, showing the first set alone until a frame shows them; a reel
+   *  and casts its actors, showing the first set alone until a frame shows them, lit as
+   *  `light` says over the look's own (SEE: stage.ts StageLight); a reel
    *  header readies the screen for a film shown through `view` (else the main camera),
    *  drawn at the film's size, and `marks` are what a plan draws over the set */
-  public async stage(ldraw: unknown, sets: unknown, actors: unknown, floor: unknown, reel: unknown, view: unknown, marks: unknown): Promise<Staged> {
+  public async stage(ldraw: unknown, sets: unknown, actors: unknown, floor: unknown, light: unknown, reel: unknown, view: unknown, marks: unknown): Promise<Staged> {
     await this.build.whenReady();
     const staged = setsOf(ldraw, sets, () => this.build.allSets());
     const area = floorOf(floor);
+    const lit = lightOf(light);
     const header = reelHeaderOf(reel);
     const named = viewOf(view);
     const marked = marksOf(marks);
@@ -140,6 +142,7 @@ export class StageControl {
     this.left = false;
     [this.shownFrame, this.playing] = [0, false];
     this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged));
+    this.viewer.useLight(lit);
     if(header) this.viewer.drawStageAt(header.width, header.height);
     this.show(SHOWING);
     this.showControls();
