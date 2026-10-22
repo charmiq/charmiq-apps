@@ -3,7 +3,7 @@ import type { Inspected, InspectedMark, Inspector } from './inspector';
 import type { ClosePair } from './measure';
 import type { SoundCue } from './recorder';
 import { bandTiers, groupReading, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type Row, type RowBand, type SoundReading, type SoundsKnown, type Under } from './timeline-marks';
-import { clampZoom, labelOf, labelStep, maxZoom, spanInView, ZOOM_STEP } from './timeline-view';
+import { clampZoom, labelOf, labelStep, labelWidth, maxZoom, spanInView, ZOOM_STEP } from './timeline-view';
 
 // the timeline: one row per track (SEE: timeline-marks.ts), each key a diamond at its
 // time (keys too near to tell apart one diamond, counted) and each function of time a
@@ -280,15 +280,24 @@ export class Timeline {
     this.root.classList.toggle('is-zoomed', this.zoom > 1);
 
     // the ruler: a label at a step that keeps labels apart at the zoom, finer ticks each
-    // frame when they fit
+    // frame when they fit. A last label running past the lanes stands before its tick,
+    // the one before giving way where they would meet, so nothing widens the scroll
     const ruler = element(document, 'div', 'ruler');
-    const step = labelStep((shown * this.zoom) / length, scene.fps);
+    const lanes = shown * this.zoom;
+    const step = labelStep(lanes / length, scene.fps, length);
+    const ticks: Array<Readonly<{ tick: HTMLElement; x: number; width: number; }>> = [];
     for(let index=0; (index * step) <= (length + 1e-9); index++) {
       const tick = element(document, 'span', 'ruler-tick');
       tick.style.left = atFilm(index * step);
-      tick.textContent = labelOf(index * step);
+      tick.textContent = labelOf(index * step, step);
       ruler.append(tick);
+      ticks.push({ tick, x: Math.min((index * step) / length, 1) * lanes, width: labelWidth(tick.textContent) });
     }
+    const [before, last] = ticks.slice(-2);
+    if(last && ((last.x + last.width) > (lanes + LANE_INSET))) {
+      last.tick.classList.add('ruler-tick--end');
+      if(before && ((before.x + before.width) > (last.x - last.width))) before.tick.textContent = ''/*its tick stands*/;
+    } /* else -- the last label within the lanes' inset */
     ruler.style.setProperty('--frame', atFilm(1 / scene.fps));
     const head = element(document, 'div', 'row row--ruler');
     head.append(this.zoomControls(film), ruler);
