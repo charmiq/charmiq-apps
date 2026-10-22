@@ -24,7 +24,7 @@ import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LI
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 9;
+export const STAGE_VERSION = 10;
 /** the widest and narrowest a frame's lens opens (f-numbers) */
 const MIN_APERTURE = 1;
 const MAX_APERTURE = 32;
@@ -154,6 +154,9 @@ type Actor = Readonly<{
   anchor: readonly [number, number, number];
   size: Size;
   poses: boolean;
+  /** it clicks onto studs: a figure or a creature (on studs it stands on them, a stud
+   *  at a time) */
+  clicks: boolean;
   /** it wears a face, which a frame may change: a figure */
   faces: boolean;
   rolls: boolean;
@@ -425,6 +428,7 @@ const copyActor = (set: Model, rotation: Rotation, parts: ReadonlyArray<Placemen
     anchor: [0, 0, 0],
     size,
     poses: false,
+    clicks: false,
     holds: false,
     faces: false,
     rolls: parts.some(placement => !!getPart(placement.part)!.wheels),
@@ -445,6 +449,7 @@ const componentActor = (set: Model, component: Component): Actor => {
     anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
     size: { width: maxX - minX, depth: maxZ - minZ, height },
     poses: false,
+    clicks: false,
     holds: false,
     faces: false,
     rolls: parts.some(each => !!each.wheels),
@@ -475,6 +480,7 @@ const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
     anchor: [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
     size: { ...(POSE_GEOMETRY[catalogPart.ldraw]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height },
     poses: !!catalogPart.limbs,
+    clicks: !!catalogPart.limbs || (catalogPart.kind === 'creature'),
     faces: catalogPart.facePiece !== undefined,
     rolls: !!catalogPart.wheels,
     parts: 1,

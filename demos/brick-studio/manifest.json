@@ -485,9 +485,10 @@
           "properties": {
             "points":   { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each point's part, named, or null" },
             "segments": { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each segment's first part, named, or null" },
-            "grounds":  { "type": "array", "items": { "type": "array", "items": { "type": "number" } }, "description": "The surfaces under each footprint in plates, lowest first: each top of a part's cells nothing stands on (seen through or not), and 0 where the baseplate is bare under it" }
+            "grounds":  { "type": "array", "items": { "type": "array", "items": { "type": "number" } }, "description": "The surfaces under each footprint in plates, lowest first: each top of a part's cells nothing stands on (seen through or not), and 0 where the baseplate is bare under it" },
+            "studded":  { "type": "array", "items": { "type": "array", "items": { "type": "boolean" } }, "description": "Beside grounds, whether each surface is studded under the footprint: the baseplate's studs, or a part's top studs at that level, in every column under it holding the surface (a tile's top is smooth)" }
           },
-          "required": ["points", "segments", "grounds"]
+          "required": ["points", "segments", "grounds", "studded"]
         }
       },
       {
@@ -551,6 +552,7 @@
             "actors":  { "type": "array", "items": { "type": "string" } },
             "wheeled": { "type": "array", "description": "The actors with wheels, which frame's rolled turns", "items": { "type": "string" } },
             "figures": { "type": "array", "description": "The actors that pose (figures), which frame's pose turns", "items": { "type": "string" } },
+            "clicks":  { "type": "array", "description": "The actors that click onto studs (figures and creatures): on studs they stand on them, a stud at a time", "items": { "type": "string" } },
             "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
             "sizes":   { "type": "object", "description": "Each actor's box, unturned and unposed: studs across (x), studs along (z), plates up; a figure's as it measures, hands included (3.12 by 1.85 studs), never the whole cells it reaches into", "additionalProperties": { "type": "object", "properties": { "width": { "type": "number" }, "depth": { "type": "number" }, "height": { "type": "number" } }, "required": ["width", "depth", "height"] } },
             "placed":  { "type": "object", "description": "Each placed actor's rest: the position and turn a frame gives it to stand where its piece stood (a posed figure's position is its unposed frame's: a seated one's 2 plates below its seat), and a posed figure's pose there (a frame's pose names only the limbs it turns: what a film adds moves from this)", "additionalProperties": { "type": "object", "properties": { "position": { "type": "object" }, "turn": { "type": "object" }, "pose": { "type": "object" } }, "required": ["position", "turn"] } },

@@ -38,10 +38,10 @@ export type StageElements = Readonly<{
   film: HTMLElement; play: HTMLButtonElement; scrub: HTMLInputElement; time: HTMLElement;
 }>;
 
-/** what a stage call answers: the actors cast, those among them with wheels to roll
- *  and those that pose (figures), those refused with why, each cast actor's box, and
- *  the reel's number when one is staged */
-export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
+/** what a stage call answers: the actors cast, those among them with wheels to roll,
+ *  those that pose (figures) and those that click onto studs, those refused with why,
+ *  each cast actor's box, and the reel's number when one is staged */
+export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
 /** what a frame call answers: how many actors it shows, and the frame captured when
  *  one is asked for */
 export type Framed = Readonly<{ shown: number; image?: ImageBitmap; }>;
@@ -144,8 +144,8 @@ export class StageControl {
     this.show(SHOWING);
     this.showControls();
     this.publish({ kind: 'staged', ...(this.reel ? { reel: this.reel.id } : {}) });
-    const [wheeled, figures] = [[...cast.actors].filter(([, actor]) => actor.rolls).map(([name]) => name), [...cast.actors].filter(([, actor]) => actor.poses).map(([name]) => name)];
-    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((figures.length > 0) ? { figures } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
+    const [wheeled, figures, clicks] = (['rolls', 'poses', 'clicks'] as const).map(can => [...cast.actors].filter(([, actor]) => actor[can]).map(([name]) => name));
+    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((figures.length > 0) ? { figures } : {}), ...((clicks.length > 0) ? { clicks } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
   }
 
   /** what stands at points and across segments of a set as a stage of those sets and

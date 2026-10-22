@@ -36,10 +36,15 @@ export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
  *  when it follows one (SEE: sound.ts) */
 export type SoundCue = Readonly<{ time: number; name: string; volume: number; until?: number; actor?: string; fadeIn?: number; fadeOut?: number; line?: number; }>;
 
+/** a walk: its span (seconds), the points it walks through (studs), how far its arms
+ *  swing and it leans (degrees) and the foot it leads with (SEE: steps.ts) */
+export type Walk = Readonly<{ start: number; end: number; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; arms: number; lean: number; lead: Foot; line?: number; }>;
+export type Foot = 'left' | 'right';
+
 /** a function of time over a span, sampled at each frame from `from` up to `to`
  *  (frame numbers, inclusive): `set` replaces its channels there, `add` adds to them;
  *  `figure`, only where the actor is a figure (the stage says which pose) */
-export type Span = Readonly<{ from: number; to: number; mode: 'set' | 'add'; channels: ReadonlyArray<string>; samples: ReadonlyArray<Readonly<Record<string, number>>>; label: string; figure?: true; line?: number; }>;
+export type Span = Readonly<{ from: number; to: number; mode: 'set' | 'add'; channels: ReadonlyArray<string>; samples: ReadonlyArray<Readonly<Record<string, number>>>; label: string; figure?: true; glide?: true; line?: number; }>;
 
 /** where the camera looks: a point, or an actor's position raised by `height` plates */
 export type Target = Readonly<{ point: Point; } | { actor: string; height: number; }>;
@@ -98,6 +103,9 @@ export type RecordedActor = Readonly<{
   /** it stands as keyed alone: no figure's idling where nothing else moves it, no boil */
   still?: true;
   spans: ReadonlyArray<Span>;
+  /** its walks, in time order, when it walks: laid as steps where it clicks onto studs
+   *  (SEE: steps.ts), its span `glide` the walk where it does not */
+  walks?: ReadonlyArray<Walk>;
   line?: number;
 }>;
 
@@ -223,7 +231,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   // .. Recording .................................................................
   // what the scene declares, as it declares it
   const settings = { title: 'Untitled film', fps: 24, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0 };
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; spans: Array<() => Span>; line?: number; };
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; }>();
   /** the views that are plans, each with the area it names, if any */
@@ -289,7 +297,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
     if(actors.some(each => each.name === name)) fail(`actor '${String(name)}' is declared twice`);
     if(actors.length >= MAX_ACTORS) fail(`a scene holds at most ${MAX_ACTORS} actors`);
     if((typeof source !== 'object') || (source === null)) fail(`actor '${String(name)}' names what it is: { component }, { part, color } or { placed: { x, z, level } }`);
-    const entry: Entry = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], faces: [], hands: [], reactions: [], looks: [], spans: [], line: callerLine() };
+    const entry: Entry = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], walks: [], faces: [], hands: [], reactions: [], looks: [], spans: [], line: callerLine() };
     actors.push(entry);
     const handle = {
       name,
@@ -337,9 +345,11 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       },
       /** walks along `points` (each { x, z }) from `time`: its position keyed along
        *  them at `speed` studs a second (or arriving `until` a time), turning to each
-       *  leg as it reaches it, its legs and arms swinging in step with the ground it
-       *  covers, a bounce and a lean (SEE: gaitAt), its own seeded stride, swing and
-       *  starting foot */
+       *  leg as it reaches it. An actor that clicks onto studs walks it in steps of a
+       *  stud (SEE: steps.ts), its arms and lean its gait's, leading with its seeded
+       *  foot; one that does not glides along it, its legs and arms swinging in step
+       *  with the ground it covers, a bounce and a lean (SEE: gaitAt), its own seeded
+       *  stride, swing and starting foot */
       walk: (time: unknown, points: unknown, options: unknown = {}) => {
         const what = `${String(name)}.walk`;
         const start = toTime(time, what);
@@ -353,21 +363,25 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         if(end <= start) fail(`${what} ends after it starts`);
         if(end > MAX_LENGTH) fail(`${what} walks past ${MAX_LENGTH} s: walk faster or a shorter way`);
         const line = callerLine();
+        const unused = (['stride', 'bounce'] as const).filter(key => given[key] !== undefined);
+        if(unused.length > 0) logs.push(`${what} (line ${line ?? '?'}): ${unused.join(' and ')} move only an actor that does not click onto studs; a figure's step is a stud, its rise its own`);
+        entry.walks.push({ start, end, points: path.points, arms: gait.rightArm, lean: gait.lean, lead: (gait.phase < Math.PI) ? 'left' : 'right', ...((line !== undefined) ? { line } : {}) });
         const timeAt = (along: number) => start + ((end - start) * (along / path.total));
         path.points.forEach((point, index) => {
           counted();
           entry.keys.push({ time: timeAt(path.cumulative[index]), values: { x: point.x, z: point.z }, ease: (index === 0) ? 'ease-in-out' : 'linear', line });
         });
-        // each leg's heading, turned into at the leg's start, over a corner's turn
+        // each leg's heading, faced at the leg's start, over a corner's turn
+        const facing = facingOf(entry.source);
         path.headings.forEach((heading, index) => {
           counted();
-          if(index === 0) { entry.keys.push({ time: start, values: { yaw: heading }, ease: 'ease-in-out', line }); return; }
+          if(index === 0) { entry.keys.push({ time: start, values: { yaw: heading + facing }, ease: 'ease-in-out', line }); return; }
           const at = timeAt(path.cumulative[index]);
           const turn = Math.min(TURN_SECONDS, 0.4 * (at - timeAt(path.cumulative[index - 1])), 0.4 * (timeAt(path.cumulative[index + 1]) - at));
           counted();
-          entry.keys.push({ time: at - (turn / 2), values: { yaw: path.headings[index - 1] }, ease: 'linear', line }, { time: at + (turn / 2), values: { yaw: heading }, ease: 'ease-in-out', line });
+          entry.keys.push({ time: at - (turn / 2), values: { yaw: path.headings[index - 1] + facing }, ease: 'linear', line }, { time: at + (turn / 2), values: { yaw: heading + facing }, ease: 'ease-in-out', line });
         });
-        entry.spans.push(() => sampled(start, end, 'add', 'walk', line, (_, t) => gaitAt(gait, ((t - start) / (end - start)) * path.total, envelope(t, start, end, GAIT_EASE))));
+        entry.spans.push(() => ({ ...sampled(start, end, 'add', 'walk', line, (_, t) => gaitAt(gait, ((t - start) / (end - start)) * path.total, envelope(t, start, end, GAIT_EASE))), glide: true as const }));
         return handle;
       },
       /** standing alive from `from` to `to` (the film's end): breathing, its weight
@@ -721,6 +735,12 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       'pose.twist': -amount * gait.twist * swing, 'pose.lean': amount * gait.lean, height: amount * gait.bounce * (1 - Math.abs(swing)),
     };
   };
+  /** the yaw past a heading that faces an actor along it: a catalog part, dressed or a
+   *  piece of the set, faces south at yaw 0 (its own front, as Brick Studio places it),
+   *  so it faces a heading 180 past it; a component faces north at yaw 0, as a camera
+   *  orbiting its heading takes it */
+  const FIGURE_FACING = 180;
+  const facingOf = (source: Readonly<Record<string, unknown>>): number => (source.component !== undefined) ? 0 : FIGURE_FACING;
   /** 0 to 1 over a span: rising over its first `ease` seconds and falling over its last */
   const envelope = (t: number, start: number, end: number, ease: number): number => {
     const edge = Math.min(ease, (end - start) / 2);
@@ -756,6 +776,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         'pose.rightArm': amount * (1.5 + (2 * energy)) * breath, 'pose.leftArm': amount * (1.5 + (2 * energy)) * breath, 'pose.lean': amount * 0.8 * breath,
         yaw: amount * (3 + (6 * energy)) * noise((t * 0.12) + offsets[0]), 'pose.twist': amount * (2 + (4 * energy)) * noise((t * 0.18) + offsets[1]),
         x: amount * 0.06 * (0.5 + energy) * noise((t * 0.1) + offsets[2]), z: amount * 0.06 * (0.5 + energy) * noise((t * 0.1) + offsets[3]),
+        roll: amount * 0.8 * (0.5 + energy) * noise((t * 0.1) + offsets[2])/*the weight shifting, which alone moves a figure clicked onto studs*/,
         'pose.head': amount * headAt(t),
         'pose.rightWrist': amount * 25 * nervous * noise((t * 2) + offsets[4]), 'pose.leftWrist': amount * 25 * nervous * noise((t * 2) + offsets[5]),
       };
@@ -903,7 +924,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
     });
     if(walkers.some(walker => walker.partner !== undefined)) states.forEach((state, index) => { const partner = walkers[index].partner; if((partner !== undefined) && (partner < index)) state.along = states[partner].along; });
     const frames = walkers.map(() => [] as Array<Record<string, number>>);
-    const gaits = walkers.map(() => [] as Array<Record<string, number>>);
+    const gaits = walkers.map(() => [] as Array<Record<string, number>>), poses = walkers.map(() => [] as Array<Record<string, number>>);
     const paused = (t: number, index: number) => states[index].heldUntil > t;
     for(let frame=first; frame<=last; frame++) {
       const t = frame / fps;
@@ -970,14 +991,19 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         if((state.along > (path.total + 0.5)) || (state.along < -0.5)) { state.along = (walker.direction > 0) ? -0.5 : path.total + 0.5; state.visited.clear(); visible = 0/*round to the start again, unseen*/; }
         const place = alongPath(path, state.along);
         const heading = place.heading * (Math.PI / 180);
-        frames[index].push({ x: place.x + (Math.cos(heading) * state.side), z: place.z - (Math.sin(heading) * state.side), yaw: place.heading + ((walker.direction > 0) ? 0 : 180), visible });
-        gaits[index].push({ ...gaitAt(walker.gait, state.covered, Math.max(0, Math.min(1, state.swing))), ...(state.lookingUp ? { 'pose.lean': -10 } : {}), ...(walker.personality.phone ? { 'pose.rightArm': 75 } : {}) });
+        frames[index].push({ x: place.x + (Math.cos(heading) * state.side), z: place.z - (Math.sin(heading) * state.side), yaw: place.heading + ((walker.direction > 0) ? 0 : 180) + FIGURE_FACING/*a walker is a figure*/, visible });
+        // its gait (the glide a walker clicking onto studs steps in place of), and what it
+        // does besides: looking up, a radio held up
+        const { 'pose.lean': lean, ...gait } = gaitAt(walker.gait, state.covered, Math.max(0, Math.min(1, state.swing)));
+        gaits[index].push(state.lookingUp ? gait : { ...gait, 'pose.lean': lean });
+        poses[index].push({ ...(state.lookingUp ? { 'pose.lean': -10 } : {}), ...(walker.personality.phone ? { 'pose.rightArm': 75 } : {}) });
       });
     }
     walkers.forEach((walker, index) => {
       const channels = ['x', 'z', 'yaw', 'visible'];
       walker.entry.spans.push(() => ({ from: first, to: last, mode: 'set', channels, samples: frames[index], label: 'crowd', ...((crowd.line !== undefined) ? { line: crowd.line } : {}) }));
-      walker.entry.spans.push(() => ({ from: first, to: last, mode: 'add', channels: [...new Set(gaits[index].flatMap(sample => Object.keys(sample)))], samples: gaits[index], label: 'crowd walk', ...((crowd.line !== undefined) ? { line: crowd.line } : {}) }));
+      walker.entry.spans.push(() => ({ from: first, to: last, mode: 'add', channels: [...new Set(gaits[index].flatMap(sample => Object.keys(sample)))], samples: gaits[index], label: 'crowd walk', glide: true as const, ...((crowd.line !== undefined) ? { line: crowd.line } : {}) }));
+      walker.entry.spans.push(() => ({ from: first, to: last, mode: 'add', channels: [...new Set(poses[index].flatMap(sample => Object.keys(sample)))], samples: poses[index], label: 'crowd pose', ...((crowd.line !== undefined) ? { line: crowd.line } : {}) }));
       if(walker.partner !== undefined) walker.entry.looks.push({ from: crowd.from, ...((crowd.to !== undefined) ? { to: crowd.to } : {}), target: { actor: walkers[walker.partner].entry.name, height: 10 }, within: 6, max: 35, ...((crowd.line !== undefined) ? { line: crowd.line } : {}) });
     });
   };
@@ -1065,10 +1091,10 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   return {
     title: settings.title, fps: settings.fps, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
-    actors: actors.map(({ name, source, ride, keys, faces, hands, reactions, looks, ground, still, spans, line }) => ({
+    actors: actors.map(({ name, source, ride, keys, walks, faces, hands, reactions, looks, ground, still, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
       ...((reactions.length > 0) ? { reactions } : {}), ...((looks.length > 0) ? { looks: looks.map(look => ({ ...look, to: look.to ?? settings.length! })) } : {}), ...(ground ? { ground } : {}),
-      ...(still ? { still } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((line !== undefined) ? { line } : {}),
+      ...(still ? { still } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((line !== undefined) ? { line } : {}),
     })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),

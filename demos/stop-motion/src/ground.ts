@@ -1,5 +1,6 @@
 import type { Film } from './film';
 import type { Size } from './measure';
+import { type Surface, type SurfaceAt, BASEPLATE } from './steps';
 
 // the ground actors follow (SEE: recorder.ts ground): each frame's footprint of every
 // actor that follows the ground, read where the film made without the ground puts it
@@ -10,7 +11,9 @@ import type { Size } from './measure';
 // height holds, as at a wall (its keys still move it on: the ground sets heights
 // alone). Where it is first shown, and shown again after it was
 // hidden (it never walked there), it starts as on the baseplate: the highest surface
-// within its step of 0, else the lowest under it
+// within its step of 0, else the lowest under it. The surfaces an actor that clicks onto
+// studs stands on are asked the same way, cell by cell around where its keys put it
+// each frame (its steps, turns and hops stray no further), each surface studded or not
 // ********************************************************************************
 // == Constants ===================================================================
 /** the most footprints one probe answers (Brick Studio's MAX_PROBES), and the most
@@ -26,6 +29,8 @@ export type Footprint = Readonly<{ x: number; z: number; width: number; depth: n
 /** asks the studio the surfaces under footprints of a set (the first staged when none
  *  is named), each lowest first (plates) */
 export type GroundProbe = (set: string | undefined, grounds: ReadonlyArray<Footprint>) => Promise<ReadonlyArray<ReadonlyArray<number>>>;
+/** the same, each surface studded or not (SEE: Brick Studio's probe studded) */
+export type SurfaceProbe = (set: string | undefined, grounds: ReadonlyArray<Footprint>) => Promise<ReadonlyArray<ReadonlyArray<Surface>>>;
 
 // == Ground ======================================================================
 /** the ground under each actor that follows it, at every frame (plates), by name: none
@@ -63,16 +68,34 @@ export const groundsOf = async (film: Film, sizes: Readonly<Record<string, Size>
   }));
 };
 
+// == Surfaces ====================================================================
+/** the surfaces in each cell of each set an actor that clicks onto studs (`clicks`)
+ *  stands near in a film: each cell around where it stands each frame asked once; a
+ *  cell not asked, the baseplate */
+export const surfacesOf = async (film: Film, clicks: ReadonlySet<string>, probe: SurfaceProbe): Promise<(set: string | undefined) => SurfaceAt> => {
+  const asked = new Map<string, Readonly<{ set: string | undefined; footprint: Footprint; }>>();
+  for(const frame of film.frames) for(const actor of frame.actors) {
+    if(!clicks.has(actor.name)) continue;
+    const [cx, cz] = [Math.floor(actor.position.x), Math.floor(actor.position.z)];
+    for(let x=cx-NEAR; x<=cx+NEAR; x++) for(let z=cz-NEAR; z<=cz+NEAR; z++) asked.set(cellKey(frame.set, x, z), { set: frame.set, footprint: { x: x + 0.5, z: z + 0.5, width: 1, depth: 1, yaw: 0 } });
+  }
+  const found = (asked.size > 0) ? await probeAll(probe, asked) : new Map<string, ReadonlyArray<Surface>>();
+  return set => (x, z) => found.get(cellKey(set, x, z)) ?? BASEPLATE(x, z);
+};
+/** how many cells either way around where an actor stands its surfaces are asked */
+const NEAR = 1;
+const cellKey = (set: string | undefined, x: number, z: number): string => `${set ?? ''}|${x}|${z}`;
+
 // == Internal ====================================================================
 /** asks the probe for every footprint, set by set, in batches within its bounds */
-const probeAll = async (probe: GroundProbe, asked: ReadonlyMap<string, Readonly<{ set: string | undefined; footprint: Footprint; }>>): Promise<ReadonlyMap<string, ReadonlyArray<number>>> => {
+const probeAll = async <T>(probe: (set: string | undefined, grounds: ReadonlyArray<Footprint>) => Promise<ReadonlyArray<ReadonlyArray<T>>>, asked: ReadonlyMap<string, Readonly<{ set: string | undefined; footprint: Footprint; }>>): Promise<ReadonlyMap<string, ReadonlyArray<T>>> => {
   const bySet = new Map<string | undefined, Array<readonly [string, Footprint]>>();
   for(const [key, { set, footprint }] of asked) {
     const listed = bySet.get(set) ?? [];
     listed.push([key, footprint]);
     bySet.set(set, listed);
   }
-  const found = new Map<string, ReadonlyArray<number>>();
+  const found = new Map<string, ReadonlyArray<T>>();
   for(const [set, all] of bySet) {
     let batch: Array<readonly [string, Footprint]> = [], columns = 0;
     const send = async () => {

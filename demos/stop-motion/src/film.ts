@@ -1,4 +1,5 @@
 import type { Area, CameraKey, CameraPlace, Ease, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title, TransitionShape } from './recorder';
+import { BASEPLATE, Clicked, type SurfaceAt } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -106,10 +107,12 @@ type Local = Readonly<{ channels: Readonly<Record<string, number>>; }>;
  *  Rest) */
 export type Rest = Readonly<{ position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; }>;
 /** what the stage answers of a scene's cast, and the ground under it: the actors with
- *  wheels to roll (`wheeled`), those that pose (`figures`), where each actor cast from
- *  a piece of the set stood (`rests`), and the surface under each actor following the
- *  ground at each frame (`grounds`, plates; SEE: groundsOf) */
-export type StageFacts = Readonly<{ wheeled?: ReadonlySet<string>; figures?: ReadonlySet<string>; rests?: ReadonlyMap<string, Rest>; grounds?: ReadonlyMap<string, ReadonlyArray<number>>; }>;
+ *  wheels to roll (`wheeled`), those that pose (`figures`), those that click onto studs
+ *  (`clicks`), where each actor cast from a piece of the set stood (`rests`), the
+ *  surface under each actor following the ground at each frame (`grounds`, plates;
+ *  SEE: groundsOf), and the surfaces in each cell of each set an actor clicking onto
+ *  studs stands on (`surfaces`; SEE: surfacesOf; the baseplate alone when none) */
+export type StageFacts = Readonly<{ wheeled?: ReadonlySet<string>; figures?: ReadonlySet<string>; clicks?: ReadonlySet<string>; rests?: ReadonlyMap<string, Rest>; grounds?: ReadonlyMap<string, ReadonlyArray<number>>; surfaces?: (set: string | undefined) => SurfaceAt; }>;
 /** an actor where it stands in one frame */
 type Placed = Readonly<{ position: Point; matrix: ReadonlyArray<number>; visible: boolean; pose?: Readonly<Record<string, number>>; }>;
 
@@ -119,13 +122,15 @@ type Placed = Readonly<{ position: Point; matrix: ReadonlyArray<number>; visible
  *  else moves it (a span for a figure alone), each actor cast from a piece of the set
  *  starting from its rest (each value it keys from its keys, the rest from where the
  *  piece stood), each actor following the ground standing on it (its keyed height
- *  above the surface under it), each head turned to what it looks at (SEE: looking),
- *  each actor not kept still shifted a frame at a time by the scene's boil (SEE:
- *  boiled). Throws, naming the scene's line, when an actor rides in a circle or leaves
- *  the stage's reach */
+ *  above the surface under it), each actor that clicks onto studs (and rides nothing)
+ *  walking and standing as one does (SEE: steps.ts; its walks' glide left out), each
+ *  head turned to what it looks at (SEE: looking), each actor not kept still shifted
+ *  a frame at a time by the scene's boil (SEE: boiled). Throws, naming the scene's
+ *  line, when an actor rides in a circle or leaves the stage's reach */
 export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
-  const { wheeled = new Set<string>(), figures = new Set<string>(), rests = new Map<string, Rest>(), grounds = new Map<string, ReadonlyArray<number>>() } = facts;
-  const order = rideOrder(scene.actors).map(actor => (figures.has(actor.name) || !actor.spans.some(span => span.figure)) ? actor : { ...actor, spans: actor.spans.filter(span => !span.figure)/*a figure's alone*/ });
+  const { wheeled = new Set<string>(), figures = new Set<string>(), clicks = new Set<string>(), rests = new Map<string, Rest>(), grounds = new Map<string, ReadonlyArray<number>>(), surfaces = () => BASEPLATE } = facts;
+  const order = rideOrder(scene.actors).map(actor => ({ ...actor, spans: actor.spans.filter(span => (!span.figure || figures.has(actor.name))/*a figure's alone*/ && (!span.glide || !clicks.has(actor.name) || !!actor.ride)/*a walk stepped*/) }));
+  const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [from / scene.fps, to / scene.fps] as const))]));
   const frames: FilmFrame[] = [];
   const rolled = new Map<string, number>();
   const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();
@@ -140,8 +145,10 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       const ground = grounds.get(actor.name)?.[index];
       // following the ground, its own height counts from the ground (its piece's place
       // and turn kept): what its keys and paths give it, over the ground under it
-      const keyed = boiled(localAt(actor, at, time, (rest?.position && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest), actor, index, scene.boil, figures.has(actor.name));
-      const local = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
+      const keyed = boiled(localAt(actor, at, time, (rest?.position && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest), actor, index, scene.boil, figures.has(actor.name), clicks.has(actor.name));
+      const grounded = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
+      const stepping = clicked.get(actor.name);
+      const local = stepping ? { channels: stepping.at(grounded.channels, time, surfaces(setAt(scene.sets, time))) } : grounded;
       const own = placedOf(local);
       const parent = actor.ride && placed.get(actor.ride.parent);
       const standing = parent ? riding(parent, actor.ride!.offset, own) : own;
@@ -329,9 +336,10 @@ const localAt = (actor: RecordedActor, index: number, time: number, rest: Partia
 
 /** an actor's values shifted at a frame (its index in the film) by the scene's boil
  *  (0 to 1), as bricks moved by hand between exposures: its place and turn, a
- *  figure's head and arms besides, by amounts its name and the frame fix (the same
- *  every run); an actor kept still, or a scene with no boil, as it is */
-const boiled = (local: Local, actor: RecordedActor, index: number, boil: number | undefined, figure: boolean): Local => {
+ *  figure's head and arms besides, and the tilt of one clicking onto studs (where it
+ *  stands clicked in, the tilt alone moves it), by amounts its name and the frame fix
+ *  (the same every run); an actor kept still, or a scene with no boil, as it is */
+const boiled = (local: Local, actor: RecordedActor, index: number, boil: number | undefined, figure: boolean, clicks: boolean): Local => {
   if(!boil || actor.still) return local;
   const shift = (channel: string, most: number) => boil * most * jitter(`${actor.name}|${index}|${channel}`);
   const channels: Record<string, number> = { ...local.channels };
@@ -339,10 +347,13 @@ const boiled = (local: Local, actor: RecordedActor, index: number, boil: number 
     if(channel.startsWith('pose.') && !figure) continue/*no limbs to shift*/;
     channels[channel] = (channels[channel] ?? 0) + shift(channel, most);
   }
+  if(clicks) for(const [channel, most] of TILT) channels[channel] = (channels[channel] ?? 0) + shift(channel, most);
   return { channels };
 };
-/** the most a full boil shifts each value: studs, degrees */
+/** the most a full boil shifts each value: studs, degrees; and tilts an actor clicking
+ *  onto studs, never quite level on them (degrees) */
 const BOIL: ReadonlyArray<readonly [string, number]> = [['x', 0.06], ['z', 0.06], ['yaw', 1.2], ['pose.head', 3], ['pose.rightArm', 3], ['pose.leftArm', 3]];
+const TILT: ReadonlyArray<readonly [string, number]> = [['pitch', 0.8], ['roll', 0.8]];
 /** a fixed number from -1 to 1 for some text (FNV-1a over it) */
 const jitter = (text: string): number => {
   let hash = 0x811c9dc5;

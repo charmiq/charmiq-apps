@@ -1,6 +1,6 @@
 import { isSeenThrough } from './catalog';
 import { describeIn, occupiedPartCells } from './check';
-import { getPart, MAX_COORDINATE, type Placement } from './grid';
+import { getPart, getShape, studCells, MAX_COORDINATE, type Placement } from './grid';
 import type { Model } from './model';
 import { toPoint } from './stage';
 
@@ -21,8 +21,11 @@ import { toPoint } from './stage';
 // not, and the baseplate (0) where a column under it is bare; an actor following the
 // ground chooses among them as it goes (SEE: Stop Motion's ground). A column is under
 // a footprint where they overlap over some area, and a call's footprints together
-// read a bounded number of columns. A part off the grid fills no cells, as collisions
-// count it
+// read a bounded number of columns. Each surface is studded where every column under
+// the footprint holding it holds a stud there: the baseplate's, or a part's top studs
+// at that level (as the check finds them), so an actor that clicks onto studs knows
+// where it can (a tile's top, a slope's, is smooth). A part off the grid fills no
+// cells, as collisions count it
 // ********************************************************************************
 // == Constants ===================================================================
 /** the most points, segments and grounds one probe answers */
@@ -45,9 +48,9 @@ export type ProbePoint = Readonly<{ x: number; z: number; height: number; }>;
  *  (studs), turned by its yaw (clockwise seen from above) */
 export type ProbeGround = Readonly<{ x: number; z: number; width: number; depth: number; yaw: number; }>;
 /** what a probe answers: each point's part, and each segment's first part, named (SEE:
- *  check.ts describeIn), null where none; and the surfaces under each footprint
- *  (plates, lowest first) */
-export type Probed = Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds: ReadonlyArray<ReadonlyArray<number>>; }>;
+ *  check.ts describeIn), null where none; the surfaces under each footprint (plates,
+ *  lowest first), and whether each is studded there (`studded`, beside `grounds`) */
+export type Probed = Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds: ReadonlyArray<ReadonlyArray<number>>; studded: ReadonlyArray<ReadonlyArray<boolean>>; }>;
 
 /** a part's span of levels in a column: the placement it is named by (itself, or its
  *  carrier), the part itself (each of a set's own and carried parts numbered once),
@@ -60,12 +63,14 @@ type Columns = Readonly<{ spans: ReadonlyMap<number, ReadonlyArray<Span>>; exten
 // == Probe =======================================================================
 /** the parts at points and across segments of a set as a stage shows it */
 export const probe = (model: Model, points: ReadonlyArray<ProbePoint>, segments: ReadonlyArray<readonly [ProbePoint, ProbePoint]>, grounds: ReadonlyArray<ProbeGround> = []): Probed => {
-  const columns = columnsOf(model), surfaces = surfacesBy(columns);
+  const columns = columnsOf(model), surfaces = surfacesBy(columns), studs = studsOf(model);
   const name = (part: number | undefined) => (part === undefined) ? null : describeIn(model, part);
+  const under = grounds.map(ground => surfacesUnder(columns, surfaces, ground));
   return {
     points: points.map(point => name(partsAt(columns, point)[0]?.part)),
     segments: segments.map(([from, to]) => name(firstAcross(columns, from, to))),
-    grounds: grounds.map(ground => surfacesUnder(columns, surfaces, ground)),
+    grounds: under,
+    studded: grounds.map((ground, index) => under[index].map(surface => isStudded(columns, surfaces, studs, ground, surface))),
   };
 };
 
@@ -125,6 +130,27 @@ const columnsOf = (model: Model): Columns => {
   });
   return { spans, ...(extent ? { extent } : {}) };
 };
+
+/** every top stud of a set's parts, as the check finds them: a part's own studs at its
+ *  top, keyed by column and level */
+const studsOf = (model: Model): ReadonlySet<string> => {
+  const studs = new Set<string>();
+  for(const placement of model.placements) {
+    const shape = getShape(getPart(placement.part)!/*by contract*/);
+    const top = placement.level + (shape.top ?? shape.height);
+    for(const [x, z] of studCells(shape, placement)) studs.add(studKey(x, z, top));
+  }
+  return studs;
+};
+const studKey = (x: number, z: number, level: number): string => `${x}|${z}|${level}`;
+
+/** whether a surface under a footprint is studded: every column under it holding the
+ *  surface holds a stud there (the baseplate's where the column is bare) */
+const isStudded = (columns: Columns, surfacesOf: (key: number) => ReadonlyArray<number>, studs: ReadonlySet<string>, ground: ProbeGround, surface: number): boolean =>
+  columnsUnder(ground).filter(([x, z]) => surfacesOf(columnKey(x, z)).includes(surface)).every(([x, z]) => studs.has(studKey(x, z, surface)) || ((surface === 0) && isBare(columns, x, z)));
+
+/** whether a column holds no part at the baseplate's level: the baseplate's studs show */
+const isBare = (columns: Columns, x: number, z: number): boolean => !(columns.spans.get(columnKey(x, z)) ?? []).some(span => (span.bottom <= 0) && (span.top > 0));
 
 /** whether a part is seen through: a trans- color, or a kind with an opening */
 const isSeenThroughPart = (placement: Placement): boolean => placement.color.startsWith('trans-') || isSeenThrough(getPart(placement.part)!.kind/*by contract*/);

@@ -3,7 +3,7 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import { clearanceOf, type Avoided, type Probe } from './clearance';
 import { planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type Paint, type Rest, type StageFacts } from './film';
-import { groundsOf, type GroundProbe } from './ground';
+import { groundsOf, surfacesOf, type GroundProbe, type SurfaceProbe } from './ground';
 import type { Size } from './measure';
 import type { Recorded } from './recorder';
 import type { PartFinding } from './review';
@@ -34,7 +34,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 9;
+const STAGE_VERSION = 10;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -55,9 +55,9 @@ type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; f
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
-  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; }>>;
+  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; }>>;
   stage$(): Observable<ScreenState>;
-  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
+  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
   show(args: object): Promise<Readonly<{ shown: number; image?: ImageBitmap; }>>;
   thumbnail(args: object): Promise<Readonly<{ image: ImageBitmap; }>>;
@@ -230,6 +230,10 @@ export class Studios {
       const standing = sets ? { sets } : {};
       const probe: Probe = (set, points, segments) => main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), points, segments });
       const groundProbe: GroundProbe = async (set, grounds) => (await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), grounds })).grounds ?? [];
+      const surfaceProbe: SurfaceProbe = async (set, grounds) => {
+        const probed = await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), grounds });
+        return (probed.grounds ?? []).map((surfaces, index) => surfaces.map((height, at) => ({ height, studded: probed.studded?.[index]?.[at] ?? false })));
+      };
       const reel = { fps: scene.fps, length: sceneTimesOf(scene).length/*its frames at its speed*/, width: scene.width, height: scene.height };
       // a plan's marks are where its actors go: an actor cast from the set starts where
       // its piece stands, which a still staged first tells; an actor following the
@@ -251,9 +255,12 @@ export class Studios {
       const reels = [answer, ...answers].map(each => each.reel);
       if(reels.some(each => each === undefined)) throw new Error('A studio took the scene but no reel: it may need updating.');
 
-      // the film with its wheels, its camera cleared, loaded on every screen; an actor
-      // the stage refused is left out of every frame (the sheet says why)
-      const { film, parts, avoided } = await clearanceOf(filmFor({ wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), rests: restsOf(answer), grounds }), probe);
+      // the film with its wheels, each actor clicking onto studs on the surfaces it
+      // stands near, its camera cleared, loaded on every screen; an actor the stage
+      // refused is left out of every frame (the sheet says why)
+      const facts = { wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), clicks: new Set(answer.clicks ?? []), rests: restsOf(answer), grounds };
+      const surfaces = (facts.clicks.size > 0) ? await surfacesOf(filmFor(facts), facts.clicks, surfaceProbe) : undefined;
+      const { film, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), probe);
       const cast = new Set(answer.actors);
       const frames = film.frames.map(frame => reelFrameOf(castOnly(frame, cast)));
       for(let from=0; from<frames.length; from+=REEL_PAGE) {
