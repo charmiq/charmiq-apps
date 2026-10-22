@@ -387,7 +387,7 @@
   min-height: calc(28px + ((var(--tiers) - 1) * 14px));
   border-bottom: 1px solid var(--lane-line);
 
-  &:last-child { border-bottom: none; }
+  &:last-child { border-bottom: none; .row-name { margin-bottom: 0; } }
 }
 
 .rows { position: relative; isolation: isolate/*its marks stack within it, under the ruler*/; }
@@ -401,8 +401,12 @@
   border-bottom: 1px solid var(--edge);
 }
 
-// the names stay at the left while zoomed lanes scroll sideways under them
+// the names stay at the left while zoomed lanes scroll sideways under them. A name
+// reaches over its row's rule and draws it, so nothing scrolled beneath the names
+// shows through the line between two of them
 .row-name {
+  margin-bottom: -1px;
+  border-bottom: inherit;
   @extend %mono-caps;
   position: sticky;
   left: 0;
