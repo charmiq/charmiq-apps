@@ -37,8 +37,9 @@ export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
 export type SoundCue = Readonly<{ time: number; name: string; volume: number; until?: number; actor?: string; fadeIn?: number; fadeOut?: number; line?: number; }>;
 
 /** a walk: its span (seconds), the points it walks through (studs), how far its arms
- *  swing and it leans (degrees) and the foot it leads with (SEE: steps.ts) */
-export type Walk = Readonly<{ start: number; end: number; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; arms: number; lean: number; lead: Foot; swing?: number; backward?: true; line?: number; }>;
+ *  swing and it leans (degrees), the foot it leads with, how far its leading leg
+ *  reaches (degrees) and how far it wanders from step to step (SEE: steps.ts) */
+export type Walk = Readonly<{ start: number; end: number; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; arms: number; lean: number; lead: Foot; swing?: number; variance?: number; backward?: true; line?: number; }>;
 export type Foot = 'left' | 'right';
 
 /** a function of time over a span, sampled at each frame from `from` up to `to`
@@ -182,6 +183,12 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   /** a walk's pace when none is given (studs a second) and the fastest */
   const WALK_SPEED = 3;
   const MAX_SPEED = 40;
+  /** a stepping walk's arm swing when none is given (degrees) and how far it wanders
+   *  from step to step (1 a rendered brick film's walk's own, SEE: steps.ts), and the
+   *  most */
+  const WALK_ARMS = 38;
+  const WALK_VARIANCE = 1;
+  const MAX_VARIANCE = 3;
   /** how long a walk's gait takes to start and to settle (seconds), and a turn at a
    *  corner */
   const GAIT_EASE = 0.2;
@@ -369,10 +376,12 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         if(end > MAX_LENGTH) fail(`${what} walks past ${MAX_LENGTH} s: walk faster or a shorter way`);
         const backward = given.backward ?? false;
         if(typeof backward !== 'boolean') fail(`${what}'s backward is true or false`);
+        const variance = given.variance ?? WALK_VARIANCE;
+        if(!isFiniteNumber(variance) || (variance < 0) || (variance > MAX_VARIANCE)) fail(`${what}'s variance is 0 to ${MAX_VARIANCE}`);
         const line = callerLine();
         const unused = (['stride', 'bounce'] as const).filter(key => given[key] !== undefined);
         if(unused.length > 0) logs.push(`${what} (line ${line ?? '?'}): ${unused.join(' and ')} move only an actor that does not click onto studs; a figure's step is a stud, its rise its own`);
-        entry.walks.push({ start, end, points: path.points, arms: gait.rightArm, lean: gait.lean, lead: (gait.phase < Math.PI) ? 'left' : 'right', ...((given.swing !== undefined) ? { swing: given.swing as number } : {}), ...(backward ? { backward: true as const } : {}), ...((line !== undefined) ? { line } : {}) });
+        entry.walks.push({ start, end, points: path.points, arms: (given.arms !== undefined) ? gait.rightArm : WALK_ARMS, lean: gait.lean, lead: (gait.phase < Math.PI) ? 'left' : 'right', ...((given.swing !== undefined) ? { swing: given.swing as number } : {}), variance: variance as number, ...(backward ? { backward: true as const } : {}), ...((line !== undefined) ? { line } : {}) });
         const timeAt = (along: number) => start + ((end - start) * (along / path.total));
         path.points.forEach((point, index) => {
           counted();

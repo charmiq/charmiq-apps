@@ -1,5 +1,5 @@
 import type { Area, CameraKey, CameraPlace, Ease, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title, TransitionShape } from './recorder';
-import { BASEPLATE, Clicked, type SurfaceAt } from './steps';
+import { BASEPLATE, Clicked, jitter, type SurfaceAt } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -120,7 +120,8 @@ type Placed = Readonly<{ position: Point; matrix: ReadonlyArray<number>; visible
 // == Film ========================================================================
 /** the film a recorded scene makes with what the stage answered of its cast (`facts`):
  *  every frame, each wheeled actor's wheels rolled, each figure idling where nothing
- *  else moves it (a span for a figure alone), each actor cast from a piece of the set
+ *  else moves it (a span for a figure alone) with its arms hanging where nothing keys
+ *  them (HANG; one cast from the set as the set built it), each actor cast from a piece of the set
  *  starting from its rest (each value it keys from its keys, the rest from where the
  *  piece stood), each actor following the ground standing on it (its keyed height
  *  above the surface under it), each actor that clicks onto studs (and rides nothing)
@@ -142,7 +143,8 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     const placed = new Map<string, Placed>(), headings = new Map<string, number>();
     for(const actor of order) {
       const cast = rests.get(actor.name);
-      const rest: Partial<Rest> | undefined = (actor.ride && cast) ? (cast.pose ? { pose: cast.pose } : undefined)/*a rider stands where it rides, in the pose it stood in*/ : cast;
+      const castRest: Partial<Rest> | undefined = (actor.ride && cast) ? (cast.pose ? { pose: cast.pose } : undefined)/*a rider stands where it rides, in the pose it stood in*/ : cast;
+      const rest = (figures.has(actor.name) && !cast) ? { pose: { leftArm: HANG, rightArm: HANG } }/*cast from the set, it stands as the set built it*/ : castRest;
       const ground = grounds.get(actor.name)?.[index];
       // following the ground, its own height counts from the ground (its piece's place
       // and turn kept): what its keys and paths give it, over the ground under it
@@ -351,16 +353,13 @@ const boiled = (local: Local, actor: RecordedActor, index: number, boil: number 
   if(clicks) for(const [channel, most] of TILT) channels[channel] = (channels[channel] ?? 0) + shift(channel, most);
   return { channels };
 };
+/** where a figure's arms hang when nothing keys them (degrees): a rendered brick
+ *  film's figure standing and walking (the bathroom remake's) */
+const HANG = -31;
 /** the most a full boil shifts each value: studs, degrees; and tilts an actor clicking
  *  onto studs, never quite level on them (degrees) */
 const BOIL: ReadonlyArray<readonly [string, number]> = [['x', 0.06], ['z', 0.06], ['yaw', 1.2], ['pose.head', 3], ['pose.rightArm', 3], ['pose.leftArm', 3]];
 const TILT: ReadonlyArray<readonly [string, number]> = [['pitch', 0.8], ['roll', 0.8]];
-/** a fixed number from -1 to 1 for some text (FNV-1a over it) */
-const jitter = (text: string): number => {
-  let hash = 0x811c9dc5;
-  for(let at=0; at<text.length; at++) hash = Math.imul(hash ^ text.charCodeAt(at), 0x01000193);
-  return (((hash >>> 0) / 0xffffffff) * 2) - 1;
-};
 
 /** an actor as its own values place it */
 const placedOf = ({ channels }: Local): Placed => {
