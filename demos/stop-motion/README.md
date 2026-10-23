@@ -5158,41 +5158,62 @@ for (let n = 0; n < NF; n += 2) for (let a = 0; a < crowd.length; a++) for (let 
   if (Math.abs(p.x - q.x) < bp.hw + bq.hw - 0.05 && Math.abs(p.z - q.z) < bp.hd + bq.hd - 0.05) { bumps++; if (bumps < 12) console.log('bump', a + 1, b + 1, (n / FPS).toFixed(1), p.x.toFixed(1), p.z.toFixed(1), q.x.toFixed(1), q.z.toFixed(1)) }
 }
 console.log('crowd', crowd.length, 'stalled', stalled, 'bumps', bumps)
+// each walker walks its route on the studs, in the walk every figure takes: every stretch
+// between its stops one walk, arriving when the crowd above has it arrive; facing what it
+// stops for, a tourist pointing, a phone held up, a jogger's elbows bent, its eyes on the
+// car or on the one it walks with, and on the gate once it has heard it
+const MOVING = 0.25 // studs a second: slower is standing
+// a route's points, as few as keep it within `tol` studs of where it went
+const simplify = (pts, tol) => {
+  if (pts.length < 3) return pts
+  const a = pts[0], b = pts[pts.length - 1], len = Math.hypot(b.x - a.x, b.z - a.z) || 1
+  let far = 0, at = 0
+  pts.forEach((p, i) => { const d = Math.abs(((b.x - a.x) * (a.z - p.z)) - ((a.x - p.x) * (b.z - a.z))) / len; if (d > far) { far = d; at = i } })
+  return far <= tol ? [a, b] : [...simplify(pts.slice(0, at + 1), tol).slice(0, -1), ...simplify(pts.slice(at), tol)]
+}
 crowd.forEach((w) => {
-  const a = actor('walker-' + (w.i + 1), { part: 'figure', color: w.shirt, legColor: w.legs, face: w.face0, hat: w.hat })
-  a.path(0, END, (u, t) => {
-    const n = lim(Math.round(t * FPS), 0, w.frames.length - 1), fr = w.frames[n]
-    const walk = lim(fr.spd / (w.v * 0.6), 0, 1), s = Math.sin((2 * Math.PI * fr.d / w.stride) + w.ph)
-    const id = idle(t, w.k, w.kind === 'waiter' ? 1.3 : 1), legs = w.swing * walk * s
-    const pose = { leftLeg: lerp(id.leftLeg, legs, walk), rightLeg: lerp(id.rightLeg, -legs, walk), leftArm: lerp(id.leftArm, -legs * w.armK, walk), rightArm: lerp(id.rightArm, legs * w.armK, walk), head: id.head * (1 - walk) }
-    if (w.kind === 'jogger') { pose.leftArm = lerp(id.leftArm, 65 - (30 * s), walk); pose.rightArm = lerp(id.rightArm, 65 + (30 * s), walk) }
-    if (w.kind === 'phone' && !w.reacted) { pose.rightArm = 80 + (3 * noise(t + w.k)); pose.head = 20 }
-    if (w.kind === 'phone' && w.reacted && t < w.reactAt) { pose.rightArm = 80 + (3 * noise(t + w.k)); pose.head = 20 }
-    if (w.kind === 'shopper' && walk > 0.5) pose.head = lim(wrap((w.side < 0 ? 90 : -90) - fr.yaw), -70, 70) * Math.max(0, glance(t, w.k, 0.25))
-    if (w.kind === 'tourist' && fr.stop === 'window') { pose.rightArm = 130 * Math.max(0, glance(t, w.k + 5, 0.4)); pose.head = 60 * glance(t, w.k + 9, 0.5) }
-    if (w.kind === 'waiter' && fr.stop) pose.rightLeg = (noise((t * 0.3) + w.k) > 0.3) ? 12 * Math.max(0, Math.sin(t * 9)) : pose.rightLeg
-    if (w.kind === 'customer' && fr.stop) pose.rightArm = 70 + (40 * Math.max(0, glance(t, w.k, 0.4)))
-    if (w.mate) {
-      const m = w.mate.frames[n], talk = Math.max(0, glance(t, w.k + 2, 0.3))
-      pose.head = lerp(pose.head, lim(wrap(yawTo(fr, m) - fr.yaw), -70, 70), talk)
-      if (!w.follow) pose.rightArm += 30 * talk * Math.max(0, noise((t * 1.3) + w.k))
-    }
-    const look = watch(t, fr, fr.yaw, t >= GATE ? 1 : w.interest)
-    pose.head = lerp(pose.head, look.head, look.w)
-    const ground = Math.abs(fr.z) > 8 ? 1 : 0.5
-    return { x: fr.x, z: fr.z, height: ground + ((w.kind === 'jogger' ? 0.5 : w.bounce) * walk * Math.abs(s)), yaw: fr.yaw, pose }
+  const a = actor('walker-' + (w.i + 1), { part: 'figure', color: w.shirt, legColor: w.legs, face: w.face0, hat: w.hat }).ground()
+  w.actor = a
+  const first = w.frames[0], arms = { phone: 6, jogger: 30 }[w.kind] // a hand on a phone barely swings
+  a.at(0, { x: first.x, z: first.z, yaw: first.yaw }, 'hold')
+  if (w.kind === 'jogger') a.at(0, { pose: { leftArm: 65, rightArm: 65 } }, 'hold')
+  if (w.kind === 'phone') {
+    a.at(0, { pose: { rightArm: 80, head: 20 } }, 'hold')
+    if (w.reactAt) a.at(w.reactAt - 0.3, { pose: { rightArm: 80 } }, 'hold').at(w.reactAt, { pose: { rightArm: -31, head: 0 } }, 'ease-out')
+  }
+  const stretch = (f0, f1) => {
+    const route = simplify(w.frames.slice(f0, f1 + 1).map((fr) => ({ x: fr.x, z: fr.z })), 0.3)
+    const far = route.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - route[i].x, p.z - route[i].z), 0)
+    if (far >= 0.8 && ((f1 - f0) * DT_W) >= 0.25) a.walk(f0 * DT_W, route, { until: f1 * DT_W, seed: 'walker-' + (w.i + 1), ...(arms === undefined ? {} : { arms }) })
+  }
+  let from = null
+  w.frames.forEach((fr, n) => {
+    const moving = (fr.spd > MOVING) && !fr.stop
+    if (moving && (from === null)) from = n
+    if (!moving && (from !== null)) { stretch(from, n); from = null }
+    if (!fr.stop || ((n > 0) && w.frames[n - 1].stop)) return
+    // a stop begun: facing what it stops for (a window, the light, the gate) until it ends
+    let end = n
+    while ((end + 1 < w.frames.length) && w.frames[end + 1].stop) end++
+    const [t0, t1] = [n * DT_W, end * DT_W]
+    a.at(t0, { yaw: w.frames[end].yaw }, 'hold')
+    if ((w.kind === 'tourist') && (fr.stop === 'window') && ((t1 - t0) > 1)) a.at(t0 + 0.1, { pose: { rightArm: -31 } }, 'hold').at(t0 + 0.5, { pose: { rightArm: 120 } }, 'ease-out').at(t1 - 0.4, { pose: { rightArm: 120 } }, 'hold').at(t1, { pose: { rightArm: -31 } }, 'ease-out')
   })
+  if (from !== null) stretch(from, w.frames.length - 1)
   if (w.reactAt) a.at(w.reactAt, { face: w.reactFace })
+})
+crowd.forEach((w) => {
+  if (w.mate) w.actor.look(w.mate.actor, { within: 4, max: 70 })
+  else if (w.interest >= 0.5) w.actor.look(car, { within: 28, max: 80 })
+  if (w.reactAt) w.actor.look(car, { from: w.reactAt, within: 60, max: 80 })
 })
 
 // .. the woman on the cross street, who sees the gate go from ten studs away ..............
-const pink = actor('walker-gate', { part: 'figure', color: 'pink', legColor: 'tan', face: 'freckles', hat: { part: 'pigtails', color: 'brown' } })
-pink.path(0, END, (u, t) => {
-  const d = 1.3 * Math.min(t, GATE), s = Math.sin((2 * Math.PI * d / 1.5) + 1), pos = { x: 18 + d, z: 12.5 }, look = watch(t, pos, -90, 1)
-  if (t >= GATE) return { ...pos, height: 1, yaw: -90, pose: { leftArm: 150 + (8 * noise(t * 2)), rightArm: 140 + (8 * noise((t * 2) + 4)), head: look.head } }
-  return { ...pos, height: 1 + (0.12 * Math.abs(s)), yaw: -90, pose: { leftLeg: 22 * s, rightLeg: -22 * s, leftArm: -16 * s, rightArm: 16 * s, head: lerp(30 * glance(t, 12, 0.3), look.head, look.w) } }
-})
-pink.at(GATE, { face: 'surprised' })
+const pink = actor('walker-gate', { part: 'figure', color: 'pink', legColor: 'tan', face: 'freckles', hat: { part: 'pigtails', color: 'brown' } }).ground()
+pink.at(0, { x: 18, z: 12.5, yaw: -90 }, 'hold').walk(0, [{ x: 18, z: 12.5 }, { x: 18 + (1.3 * GATE), z: 12.5 }], { until: GATE, seed: 'walker-gate' })
+pink.at(GATE, { face: 'surprised', pose: { leftArm: -31, rightArm: -31 } }, 'hold').at(GATE + 0.4, { pose: { leftArm: 150, rightArm: 140 } }, 'ease-out')
+pink.look(car, { within: 28, max: 80 })
+pink.look(car, { from: GATE, within: 60, max: 80 })
 
 // .. the ones who stand: the cop on the corner, the hot-dog man, the crew on the site .......
 // each is lifted out of the set where it stands, and only its pose and face are keyed
