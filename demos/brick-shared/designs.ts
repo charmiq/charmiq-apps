@@ -32,7 +32,8 @@ export class DesignExists extends DesignError {
 
 /** what a save did: the design written, and its folder when known (a design reached
  *  by its uri is in a folder no listing named) */
-export type Saved = Readonly<{ name: string; design: Design; folder?: Folder; replaced: boolean; }>;
+/** a design saved: `changed` false when the Drive already held its text (nothing written) */
+export type Saved = Readonly<{ name: string; design: Design; folder?: Folder; replaced: boolean; changed: boolean; }>;
 /** a save in the folder */
 export type SavedInFolder = Saved & Readonly<{ folder: Folder; }>;
 
@@ -115,15 +116,15 @@ export class DesignStore {
     if(!existing && unseen) throw new DesignError(`Too many ${this.words.noun}s in ${folder.name} have names like "${clean}" to tell whether one is named "${clean}". Save under a more distinctive name.`)/*a save never risks a duplicate*/;
     if(existing && !replace && (existing.uri !== own?.uri)) throw new DesignExists(displayName(existing), folder, this.words.noun);
 
-    if(existing) await this.drive.overwrite(existing, ldraw);
+    const changed = existing ? await this.drive.overwrite(existing, ldraw) : true/*created*/;
     const design = existing ?? await this.drive.create(folder.id, clean + DESIGN_EXTENSION, ldraw);
-    return { name: displayName(design), design, folder, replaced: !!existing };
+    return { name: displayName(design), design, folder, replaced: !!existing, changed };
   }
 
   /** saves LDraw text over a design wherever it is, `folder` the one it is known in */
   public async rewrite(design: Design, text: () => string | Promise<string>, folder?: Folder): Promise<Saved> {
-    await this.drive.overwrite(design, await text());
-    return { name: displayName(design), design, ...(folder ? { folder } : {}), replaced: true };
+    const changed = await this.drive.overwrite(design, await text());
+    return { name: displayName(design), design, ...(folder ? { folder } : {}), replaced: true, changed };
   }
 
   /** a saved design's text: one found in the Drive, or the one of that name in the

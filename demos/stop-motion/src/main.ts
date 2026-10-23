@@ -356,7 +356,7 @@ const saveFilm = async () => {
   fileState.textContent = 'saving…';
   try {
     const saved = await films.saveOver();
-    showFile();
+    showFile((saved && !saved.changed) ? 'saved: nothing had changed' : undefined);
     if(!saved) filmDialog.saveAs(film?.scene.title ?? 'Untitled film');
   } catch(failure) { fileState.textContent = (failure as Error).message; fileState.dataset.state = 'error'; }
 };

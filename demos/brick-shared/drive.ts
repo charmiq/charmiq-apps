@@ -50,6 +50,9 @@ type Read = Readonly<{ content: string; nextRead?: Readonly<Record<string, unkno
 /** a binary file's read: its bytes as base64 */
 type BinaryRead = Readonly<{ content: string; contentType: string; }>;
 type Created = Readonly<{ uri: string; }>;
+/** a write's answer: `changed` false for the text already saved (a Platform answering
+ *  before it said so carries none: it wrote) */
+type Written = Readonly<{ changed?: boolean; }>;
 
 // == Class =======================================================================
 export class Drive {
@@ -123,9 +126,11 @@ export class Drive {
     return { fileName, uri };
   }
 
-  /** replaces a saved design's text */
-  public async overwrite(design: Design, ldraw: string): Promise<void> {
-    await this.call('write_file', { uri: design.uri, content: ldraw, overwrite: true });
+  /** replaces a saved design's text: whether the text changed (the Drive writes
+   *  nothing for the text already saved) */
+  public async overwrite(design: Design, ldraw: string): Promise<boolean> {
+    const { changed } = await this.call<Written>('write_file', { uri: design.uri, content: ldraw, overwrite: true });
+    return changed !== false;
   }
 
   // == Internal ==================================================================
