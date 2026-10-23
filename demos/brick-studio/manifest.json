@@ -17,7 +17,8 @@
     "format": "esm",
     "mounts": { "/brick-shared": "../brick-shared", "/shared": "../../shared" },
     "resources": {
-      "parts/": "/src/parts/", "picture/": "/pictures/"
+      "parts/": "/src/parts/",
+      "picture/": "/pictures/"
     },
     "dependencies": {
       "importMap": {

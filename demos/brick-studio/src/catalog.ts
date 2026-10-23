@@ -7,7 +7,7 @@ import type { Limb } from './pose';
 //       tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'figure' | 'hinge' | 'side';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'mudguard' | 'windscreen' | 'figure' | 'hinge' | 'side';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -73,9 +73,9 @@ const HAND_GRIP: GripFrame = { position: [0, -0.8229, -9.8948], matrix: [1, 0, 0
 
 // ................................................................................
 /** whether a kind's underside is open (an arch's span, an inverted slope's face, a
- *  plant's foliage over its base): its fill is measured from below there, never
- *  assumed to reach its bottom */
-export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'plant') || (kind === 'creature') || (kind === 'figure');
+ *  mudguard's wheel well, the cabin under a windscreen's glass, a plant's foliage over
+ *  its base): its fill is measured from below there, never assumed to reach its bottom */
+export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'mudguard') || (kind === 'windscreen') || (kind === 'plant') || (kind === 'creature') || (kind === 'figure');
 /** whether a kind of part is seen through: a window or door frame (its cells are its
  *  whole block, opening and all), its glass, a fence */
 export const isSeenThrough = (kind: PartKind): boolean => (kind === 'window') || (kind === 'glass') || (kind === 'fence');
@@ -88,7 +88,7 @@ export const familyOf = (part: CatalogPart): string | undefined => {
   switch(part.kind) {
     case 'plant': case 'rock':     return 'nature';
     case 'fence': case 'detail':   return 'details';
-    case 'vehicle':                return 'vehicles';
+    case 'vehicle': case 'mudguard': case 'windscreen': return 'vehicles';
     case 'figure':                 return 'figures';
     case 'creature':               return `creature-${part.key}`;
     default:                       return undefined/*a building part*/;
@@ -244,6 +244,8 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'quarter-round-tile-2x2', ldraw: '27925', kind: 'detail' },
   { key: 'door-rail-plate-1x2', ldraw: '32028', kind: 'detail' },
   { key: 'tooth-plate-1x1', ldraw: '15070', kind: 'detail' },
+  { key: 'taxi-tile-1x2',   ldraw: '3069bp11', kind: 'detail' },
+  { key: 'taxi-brick-1x4',  ldraw: '3010p11',  kind: 'detail' },
 
   { key: 'curve-2x1',       ldraw: '11477', kind: 'curve' },
   { key: 'curve-3x1',       ldraw: '50950', kind: 'curve' },
@@ -305,8 +307,14 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
     '1 71 -30 6 0 0 0 1 0 1 0 -1 0 0 4624.dat', '1 0 -30 6 0 0 0 1 0 1 0 -1 0 0 3641.dat',
     '1 71 30 6 0 0 0 -1 0 1 0 1 0 0 4624.dat',  '1 0 30 6 0 0 0 -1 0 1 0 1 0 0 3641.dat',
   ], wheels: { radius: 18/*the tire's (3641)*/, turning: [[0, 1], [2, 3]] } },
-  { key: 'mudguard-2x4',    ldraw: '3788',  kind: 'vehicle' },
-  { key: 'windscreen-2x4x2', ldraw: '3823', kind: 'vehicle' },
+  { key: 'mudguard-2x4',    ldraw: '3788',  kind: 'mudguard' },
+  { key: 'windscreen-2x4x2', ldraw: '3823', kind: 'windscreen' },
+  { key: 'wheels-6x3',      ldraw: '2926',  kind: 'vehicle', pieces: [
+    '1 71 -50 5 0 0 0 1 0 1 0 -1 0 0 42610.dat', '1 0 -50 5 0 0 0 1 0 1 0 -1 0 0 50951.dat',
+    '1 71 50 5 0 0 0 -1 0 1 0 1 0 0 42610.dat',  '1 0 50 5 0 0 0 -1 0 1 0 1 0 0 50951.dat',
+  ], wheels: { radius: 19/*the tire's (50951)*/, turning: [[0, 1], [2, 3]] } },
+  { key: 'mudguard-4x3',    ldraw: '28326', kind: 'mudguard' },
+  { key: 'windscreen-2x6x2', ldraw: '4176', kind: 'windscreen' },
   // a figure is a torso in the placement's color with its arms, yellow hands and a
   // smiling yellow head, on blue hips and legs, as the library's torso assembly
   // (973c01) and hips and legs (21019bpde7) put them together. It poses: each arm
@@ -444,7 +452,12 @@ export type CatalogColor = Readonly<{
   code: number;
   /** see-through plastic */
   transparent?: true;
+  /** a metal look: chrome a bright satin mirror, pearl a soft metallic sheen */
+  finish?: Finish;
 }>;
+
+/** a color's metal look (SEE: render/plastic.ts METAL) */
+export type Finish = 'chrome' | 'pearl';
 
 // --------------------------------------------------------------------------------
 export const COLORS: ReadonlyArray<CatalogColor> = [
@@ -464,6 +477,14 @@ export const COLORS: ReadonlyArray<CatalogColor> = [
   { key: 'brown',        code: 70 },
   { key: 'light-gray',   code: 71 },
   { key: 'dark-gray',    code: 72 },
+  { key: 'dark-red',     code: 320 },
+  { key: 'dark-green',   code: 288 },
+  { key: 'sand-green',   code: 378 },
+  { key: 'dark-blue',    code: 272 },
+  { key: 'dark-tan',     code: 28 },
+
+  { key: 'chrome-silver', code: 383, finish: 'chrome' },
+  { key: 'pearl-gold',    code: 297, finish: 'pearl' },
 
   { key: 'trans-clear',      code: 47, transparent: true },
   { key: 'trans-red',        code: 36, transparent: true },
@@ -498,6 +519,8 @@ const KIND_WORDS: Readonly<Record<PartKind, ReadonlyArray<string>>> = {
   'detail':      ['decoration', 'trim'],
   'creature':    ['animal', 'pet', 'creature'],
   'vehicle':     ['car', 'wheel', 'truck'],
+  'mudguard':    ['car', 'wheel', 'arch', 'fender', 'vehicle'],
+  'windscreen':  ['car', 'glass', 'window', 'vehicle', 'cockpit'],
   'figure':      ['person', 'people', 'minifigure', 'knight', 'driver', 'figure'],
   'hinge':       ['turntable', 'lid', 'door', 'drawbridge', 'tilt', 'swivel', 'turn', 'open'],
   'side':        ['sideways', 'snot', 'bracket', 'headlight', 'grille', 'sign', 'face'],

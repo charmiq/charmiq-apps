@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 
+import type { Finish } from '../catalog';
 import type { Fidelity } from './fidelity';
 
 // moulded ABS: what makes a rendered brick read as a toy brick. Glossy plastic with a
@@ -23,6 +24,24 @@ export const applyPlastic = (material: THREE.MeshPhysicalMaterial, fidelity: Fid
   material.setValues(PLASTIC(fidelity));
   material.needsUpdate = true;
 };
+
+// == Metal =======================================================================
+/** a metal look at a stop: chrome a bright satin mirror that takes its color from what
+ *  it reflects (blurred and strengthened, as a studio's white cards light a chrome
+ *  part: a true mirror in a dark studio reflects the dark), pearl a soft sheen over its
+ *  color. Draft keeps them duller, as it keeps plastic */
+export const METAL = (finish: Finish, fidelity: Fidelity): THREE.MeshPhysicalMaterialParameters => (finish === 'chrome')
+  ? { metalness: 1, roughness: (fidelity < 1) ? 0.4 : 0.3, clearcoat: 0, specularIntensity: 1, envMapIntensity: 3 }
+  : { metalness: 0.6, roughness: (fidelity < 1) ? 0.45 : 0.32, clearcoat: (fidelity < 1) ? 0 : 0.4, clearcoatRoughness: 0.2, specularIntensity: 1 };
+
+/** sets a material to a metal look at a stop */
+export const applyMetal = (material: THREE.MeshPhysicalMaterial, finish: Finish, fidelity: Fidelity): void => {
+  material.setValues(METAL(finish, fidelity));
+  material.needsUpdate = true;
+};
+
+/** a metal look for the path tracer, in its color */
+export const tracedMetal = (finish: Finish, color: THREE.Color): THREE.MeshPhysicalMaterialParameters => ({ ...METAL(finish, 1), color: color.clone() });
 
 // == Transparent =================================================================
 /** polycarbonate, which transparent bricks are moulded from */

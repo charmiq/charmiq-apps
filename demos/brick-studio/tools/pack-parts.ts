@@ -206,15 +206,17 @@ const closure = (library: string, name: string, seen: Set<string>): void => {
 // == Measure =====================================================================
 const isWhole = (value: number): boolean => Math.abs(value - Math.round(value)) < EPSILON;
 
-/** the grid lines (LDU along one axis, every stud) a part lies on: its own extent
- *  when that is whole studs; otherwise the extent grown out to the lines its base
- *  sits on (a tree's foliage overhangs its base). A base an odd number of studs wide
- *  centers on a cell, an even one on a cell corner */
-const gridSpan = (min: number, max: number, baseMin: number, baseMax: number): readonly [number, number] => {
-  if(isWhole((max - min) / LDU_PER_STUD)) return [min, max];
+/** the grid lines (LDU along one axis, every stud) a part lies on: the extent grown
+ *  out to the lines its own top studs sit between, where they fix them (a wheel set's
+ *  tires reach half a stud past its plate's cells); otherwise its own extent when that
+ *  is whole studs, or the extent grown out to the lines its base sits on (a tree's
+ *  foliage overhangs its base). A base an odd number of studs wide centers on a cell,
+ *  an even one on a cell corner */
+const gridSpan = (min: number, max: number, baseMin: number, baseMax: number, stud: number | undefined): readonly [number, number] => {
+  if((stud === undefined) && isWhole((max - min) / LDU_PER_STUD)) return [min, max];
   const center = Math.round((baseMin + baseMax) / 2 / (LDU_PER_STUD / 2)) * (LDU_PER_STUD / 2)/*on a half stud*/;
   const odd = (Math.round((baseMax - baseMin) / LDU_PER_STUD) % 2) === 1;
-  const line = odd ? (center - (LDU_PER_STUD / 2)) : center/*one grid line*/;
+  const line = (stud !== undefined) ? (stud - (LDU_PER_STUD / 2)) : odd ? (center - (LDU_PER_STUD / 2)) : center/*one grid line*/;
   return [
     line + (Math.floor(((min - line) / LDU_PER_STUD) + (EPSILON / LDU_PER_STUD)) * LDU_PER_STUD),
     line + (Math.ceil(((max - line) / LDU_PER_STUD) - (EPSILON / LDU_PER_STUD)) * LDU_PER_STUD),
@@ -232,7 +234,7 @@ const bodyOfPart = (library: string, ldraw: string, sides = false): Measure => {
  *  face its top studs stand on (-y up). Its top studs are those of the files (its own
  *  or its pieces') whose studded top face is highest: a figure's head, not a wheel
  *  set's tires, which carry none; both halves of a hinge plate, level with each other */
-const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Measure; studTop: number; }> => {
+const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Measure; studTop: number; ownStud?: Point; }> => {
   const bodies = [bodyOfPart(library, part.ldraw, part.faces !== undefined), ...(part.pieces ?? []).map(line => {
     const walked: Walk = { faces: [], studs: [], sideStuds: [], discs: [] };
     walkText(library, line, IDENTITY, walked);
@@ -244,7 +246,7 @@ const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Me
 
   const triangles = bodies.flatMap(body => body.triangles);
   const points = triangles.flat();
-  return { studTop: crown.minY, body: {
+  return { studTop: crown.minY, ...(((crown === bodies[0]) && (crown.studs.length > 0)) ? { ownStud: crown.studs[0] } : {}), body: {
     minX: minOf(points.map(([x]) => x)), maxX: maxOf(points.map(([x]) => x)),
     minY: minOf(points.map(([, y]) => y)), maxY: maxOf(points.map(([, y]) => y)),
     minZ: minOf(points.map(([, , z]) => z)), maxZ: maxOf(points.map(([, , z]) => z)),
@@ -286,15 +288,15 @@ const paneDrop = (library: string, pane: string, frame: string): number => {
  *  tires): it stands on the nearest level, sunk into or raised above it */
 const measurePart = (library: string, part: CatalogPart) => {
   const { ldraw } = part;
-  const { body: measured, studTop } = bodyOfAssembly(library, part);
+  const { body: measured, studTop, ownStud } = bodyOfAssembly(library, part);
 
   const lowest = measured.maxY / LDU_PER_PLATE/*plates from the origin down to the bottom*/;
   if(!isWhole(lowest) && !part.pieces) throw new Error(`${ldraw}: bottom ${lowest} plates below the origin is not on a level.`);
   const base = Math.round(lowest);
   const body = { ...measured, maxY: base * LDU_PER_PLATE/*the level it stands on*/ };
   const bottomFace = body.triangles.flat().filter(([, y]) => Math.abs(y - measured.maxY) < EPSILON)/*its lowest points*/;
-  const [minX, maxX] = gridSpan(body.minX, body.maxX, minOf(bottomFace.map(([x]) => x)), maxOf(bottomFace.map(([x]) => x)));
-  const [minZ, maxZ] = gridSpan(body.minZ, body.maxZ, minOf(bottomFace.map(([, , z]) => z)), maxOf(bottomFace.map(([, , z]) => z)));
+  const [minX, maxX] = gridSpan(body.minX, body.maxX, minOf(bottomFace.map(([x]) => x)), maxOf(bottomFace.map(([x]) => x)), ownStud?.[0]);
+  const [minZ, maxZ] = gridSpan(body.minZ, body.maxZ, minOf(bottomFace.map(([, , z]) => z)), maxOf(bottomFace.map(([, , z]) => z)), ownStud?.[2]);
   const height = Math.ceil(((body.maxY - body.minY) / LDU_PER_PLATE) - EPSILON)/*a tip short of a level reaches into it*/;
   const top = Math.ceil(((body.maxY - studTop) / LDU_PER_PLATE) - EPSILON)/*its top studs' level*/;
 
@@ -600,11 +602,13 @@ const partResources = Object.fromEntries(CATALOG.flatMap(part => {
 
 // .. Manifest ....................................................................
 // the declaration is the folder the families are packed into, each family a file of
-// it (SEE: catalog.ts familyResource): `bundle.resources` is replaced whole, the rest
+// it (SEE: catalog.ts familyResource): its entry in `bundle.resources` is written
+// first, the manifest's other resources (the pictures Brick Studio ships) and the rest
 // of the manifest kept as written
-const declared = { 'parts/': '/src/parts/' };
-const resourcesBlock = `    "resources": {\n${Object.entries(declared).map(([name, path]) => `      ${JSON.stringify(name)}: ${JSON.stringify(path)}`).join(',\n')}\n    },\n`;
 const manifest = readFileSync(MANIFEST, 'utf8');
+const others = Object.entries((JSON.parse(manifest) as { bundle?: { resources?: Record<string, string>; }; }).bundle?.resources ?? {}).filter(([name]) => name !== 'parts/');
+const declared = Object.fromEntries([['parts/', '/src/parts/'], ...others]);
+const resourcesBlock = `    "resources": {\n${Object.entries(declared).map(([name, path]) => `      ${JSON.stringify(name)}: ${JSON.stringify(path)}`).join(',\n')}\n    },\n`;
 const RESOURCES_BLOCK = /^    "resources": \{[^}]*\},\n/m;
 const FORMAT_LINE = /^    "format": "esm",\n/m;
 const nextManifest = RESOURCES_BLOCK.test(manifest) ? manifest.replace(RESOURCES_BLOCK, resourcesBlock) : manifest.replace(FORMAT_LINE, match => match + resourcesBlock);

@@ -7,7 +7,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import type { Sky } from '../../brick-shared/sky';
 
-import { CATALOG, resourceFamily } from './catalog';
+import { CATALOG, resourceFamily, type Finish } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
 import { drawnLines, partCount, type Model } from './model';
@@ -20,7 +20,7 @@ import { PATH_TRACED_PARTS, type Fidelity } from './render/fidelity';
 import { drawOverlay, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
-import { applyGlass, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
+import { applyGlass, applyMetal, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
 import { PictureFiles, PictureStand } from './render/pictures';
 import { SkyBackdrop } from './render/sky';
 import { createStudio, type Studio } from './render/studio';
@@ -105,7 +105,7 @@ export type View = Readonly<{ azimuth: number; elevation: number; }>;
 /** one drawn file: `geometry` names a part's own faces (its LDraw stem) or a print's
  *  (SEE: printKey); `drop` names the part whose drop it rides; an actor's moves with
  *  each frame of a stage and never counts toward the build's bounds */
-type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; key: string; drop: string; matrix: THREE.Matrix4; actor?: true; }>;
+type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; finish: Finish | undefined/*plastic*/; key: string; drop: string; matrix: THREE.Matrix4; actor?: true; }>;
 type Drop = { mesh: THREE.InstancedMesh; index: number; matrix: THREE.Matrix4; start: number; };
 
 /** how the keys move the camera, each -1, 0 or 1: forward (or back), right (or
@@ -185,6 +185,8 @@ export class Viewer {
   /** see-through plastic, one material per tint: its color is absorption through the
    *  brick's depth, a material-wide property */
   private readonly glasses = new Map<string/*tint hex*/, THREE.MeshPhysicalMaterial>();
+  /** metal, one material per finish, each part its own color as plastic is */
+  private readonly metals = new Map<Finish, THREE.MeshPhysicalMaterial>();
   private readonly baseplateMaterial = new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0 });
   /** the baseplate's color: the build's ground when it names one, else the theme's */
   private themeBaseplate = '';
@@ -478,6 +480,23 @@ export class Viewer {
     return glass;
   }
 
+  /** the metal of a finish, made at the current stop on first use */
+  private metalFor(finish: Finish): THREE.MeshPhysicalMaterial {
+    let metal = this.metals.get(finish);
+    if(!metal) {
+      metal = new THREE.MeshPhysicalMaterial({ color: 0xffffff });
+      applyMetal(metal, finish, this.fidelity);
+      this.metals.set(finish, metal);
+    } /* else -- made */
+    return metal;
+  }
+
+  /** the finish a material is the metal of, if it is metal */
+  private finishOf(material: THREE.Material | THREE.Material[]): Finish | undefined {
+    for(const [finish, metal] of this.metals) if(metal === material) return finish;
+    return undefined;
+  }
+
   /** the tint a material is glass of, if it is glass */
   private tintOf(material: THREE.Material | THREE.Material[]): THREE.Color | undefined {
     for(const [tint, glass] of this.glasses) if(glass === material) return new THREE.Color(tint);
@@ -510,6 +529,7 @@ export class Viewer {
 
     applyPlastic(this.material, fidelity);
     for(const [tint, glass] of this.glasses) applyGlass(glass, new THREE.Color(tint), fidelity);
+    for(const [finish, metal] of this.metals) applyMetal(metal, finish, fidelity);
     this.effects.setFidelity((fidelity > 3) ? 3 : fidelity);
   }
 
@@ -598,9 +618,9 @@ export class Viewer {
     this.kept.clear();
   }
 
-  /** one instanced mesh per part in opaque plastic, and per part and tint in glass, an
-   *  actor's apart from the set's; parts not shown before drop into place when
-   *  `animate` */
+  /** one instanced mesh per part in opaque plastic, per part and finish in metal, and
+   *  per part and tint in glass, an actor's apart from the set's; parts not shown
+   *  before drop into place when `animate` */
   private meshesOf(items: ReadonlyArray<RenderItem>, animate: boolean, drops: Readonly<{ now: number; starts: Map<string, number>; }>): THREE.InstancedMesh[] {
     const real = (this.fidelity >= 1);
     const { now, starts: dropStarts } = drops;
@@ -608,8 +628,8 @@ export class Viewer {
     const byPart = new Map<string, RenderItem[]>();
     for(const item of items) byPart.set(groupOf(item), [...(byPart.get(groupOf(item)) ?? []), item]);
     for(const [groupKey, partItems] of byPart) {
-      const { geometry, glass, color: tint, actor } = partItems[0];
-      const mesh = new THREE.InstancedMesh(this.geometries.get(geometry)!, glass ? this.glassFor(tint) : this.material, partItems.length);
+      const { geometry, glass, finish, color: tint, actor } = partItems[0];
+      const mesh = new THREE.InstancedMesh(this.geometries.get(geometry)!, glass ? this.glassFor(tint) : finish ? this.metalFor(finish) : this.material, partItems.length);
       if(actor) mesh.userData.actor = groupKey/*how a frame finds the mesh to move*/;
       mesh.castShadow = !glass/*light passes through; the path tracer shades it physically*/;
       mesh.receiveShadow = true;
@@ -1354,7 +1374,7 @@ export class Viewer {
     if(this.pathTraceStale) {
       const { plate, free } = this.tracedBaseplate();
       tracer.setScene({
-        parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: plate, pictures: this.pictures.group,
+        parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material), finish: this.finishOf(mesh.material) })), baseplate: plate, pictures: this.pictures.group,
         environment: this.backdrop.lighting ?? this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.backdrop.texture ?? this.stage,
         key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity, soft: this.stageLight.soft ?? 0 },
       }, this.lens());
@@ -1393,14 +1413,14 @@ const instanceColor = (item: RenderItem, real: boolean): THREE.Color =>
   item.glass ? WHITE : real ? tintedColor(item.color, item.key) : new THREE.Color(item.color);
 
 /** the instanced mesh an item is drawn in: one per part in opaque plastic, per part
- *  and tint in glass, an actor's apart from the set's */
-const groupOf = (item: RenderItem): string => `${item.actor ? 'actor|' : ''}${item.glass ? `${item.geometry}|${item.color}` : item.geometry}`;
+ *  and finish in metal, per part and tint in glass, an actor's apart from the set's */
+const groupOf = (item: RenderItem): string => `${item.actor ? 'actor|' : ''}${item.glass ? `${item.geometry}|${item.color}` : item.finish ? `${item.geometry}|${item.finish}` : item.geometry}`;
 
 /** a part's faces printed in a fixed color, drawn with it */
 const printItem = (item: RenderItem, code: number): RenderItem =>
   ({ ...item, geometry: printKey(item.ldraw, code), ...drawnColor(code), key: `${item.key}#${code}` });
 
-const drawnColor = (code: number) => ({ color: getColorValue(code) ?? UNKNOWN_COLOR, glass: !!getColorByCode(code)?.transparent });
+const drawnColor = (code: number) => ({ color: getColorValue(code) ?? UNKNOWN_COLOR, glass: !!getColorByCode(code)?.transparent, finish: getColorByCode(code)?.finish });
 const lineKey = (line: PartLine): string => `${line.ldraw}|${line.colorCode}|${line.position}|${line.matrix}`;
 /** the geometry key of a part's faces printed in a color */
 const printKey = (ldraw: string, code: number): string => `${ldraw}#${code}`;

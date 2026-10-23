@@ -3,8 +3,9 @@ import * as THREE from 'three';
 import type { PhysicalCamera, WebGLPathTracer } from 'three-gpu-pathtracer';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
+import type { Finish } from '../catalog';
 import { DEFAULT_APERTURE, type Lens } from './effects';
-import { tracedGlass, TRACED_PLASTIC } from './plastic';
+import { tracedGlass, tracedMetal, TRACED_PLASTIC } from './plastic';
 
 // the top stop: the scene path traced with three-gpu-pathtracer, so reflections,
 // bounce light and soft shadows are physical. It refines one sample at a time while
@@ -30,8 +31,8 @@ const SOFTEST_KEY = 4;
 // == Types =======================================================================
 /** what the path traced scene is built from */
 export type PathSource = Readonly<{
-  /** each part's instances, and whether they are see-through plastic */
-  parts: ReadonlyArray<Readonly<{ mesh: THREE.InstancedMesh; glass: THREE.Color | undefined/*opaque*/; }>>;
+  /** each part's instances, and whether they are see-through plastic or metal */
+  parts: ReadonlyArray<Readonly<{ mesh: THREE.InstancedMesh; glass: THREE.Color | undefined/*opaque*/; finish: Finish | undefined/*plastic*/; }>>;
   baseplate: THREE.Object3D | undefined;
   /** the pictures standing in the set, each a panel in its own material */
   pictures: THREE.Object3D;
@@ -76,7 +77,7 @@ export class PathTrace {
     scene.background = source.background;
     scene.add(...keyLight(source.key));
 
-    for(const { mesh, glass } of source.parts) scene.add(...this.bricks(mesh, glass));
+    for(const { mesh, glass, finish } of source.parts) scene.add(...this.bricks(mesh, glass, finish));
     for(const placed of [source.baseplate, source.pictures]) {
       placed?.updateMatrixWorld(true);
       placed?.traverse(object => {
@@ -121,14 +122,15 @@ export class PathTrace {
     this.camera.updateMatrixWorld(true);
   }
 
-  /** each instance of a brick mesh as a mesh of its own, in its own plastic or glass */
-  private bricks(mesh: THREE.InstancedMesh, glass: THREE.Color | undefined): THREE.Mesh[] {
+  /** each instance of a brick mesh as a mesh of its own, in its own plastic, glass or
+   *  metal */
+  private bricks(mesh: THREE.InstancedMesh, glass: THREE.Color | undefined, finish: Finish | undefined): THREE.Mesh[] {
     const matrix = new THREE.Matrix4();
     const color = new THREE.Color();
     return Array.from({ length: mesh.count }, (_, index) => {
       mesh.getMatrixAt(index, matrix);
       mesh.getColorAt(index, color);
-      const material = new THREE.MeshPhysicalMaterial(glass ? tracedGlass(glass) : { ...TRACED_PLASTIC, color: color.clone() });
+      const material = new THREE.MeshPhysicalMaterial(glass ? tracedGlass(glass) : finish ? tracedMetal(finish, color) : { ...TRACED_PLASTIC, color: color.clone() });
       this.owned.push(material);
       const brick = new THREE.Mesh(mesh.geometry/*shared with the rasterized scene*/, material);
       brick.matrixAutoUpdate = false;
