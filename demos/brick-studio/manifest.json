@@ -543,7 +543,8 @@
               "description": "What a plan view draws over the set, for Applications: paths along the ground, each { label, color: #rrggbb, dashed (where it stands for something hidden), points: [{ x, z }] } (at most 256 paths, 7200 points each, 50000 in all)",
               "properties": { "paths": { "type": "array", "items": { "type": "object" } } },
               "required": ["paths"]
-            }
+            },
+            "keep": { "type": "boolean", "description": "For Applications staging a film again: the picture standing (its actors where they stood) stays until a frame shows, never the set bare between. A first stage, or one with keep left out, shows the first set alone until a frame shows its actors" }
           },
           "required": ["actors"]
         },

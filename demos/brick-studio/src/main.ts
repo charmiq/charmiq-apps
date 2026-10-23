@@ -60,7 +60,7 @@ const sheet = new Sheet({ root: element('sheet'), title: element('sheetTitle'), 
 const lookAround = new LookAround(sheet, viewer);
 const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/;
 const stage = new StageControl({
-  root: element('staged'), note: element('stagedNote'), back: element('stagedBack'),
+  root: element('staged'), note: element('stagedNote'), view: element('stagedView'), back: element('stagedBack'),
   film: element('stagedFilm'), play: element('stagedPlay'), scrub: element('stagedScrub'), time: element('stagedTime'),
 }, studio, viewer, build, sheet);
 const commands = new CommandSurface(build, designs, viewer, lookAround, stage, look);

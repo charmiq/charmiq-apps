@@ -34,7 +34,7 @@ const BACK_TO_FILM = 'Back to the film';
 /** the strip's elements: the strip, what it says, its way back, and the film's
  *  controls (shown full screen): their group, play, the frame scrubbed to, the time */
 export type StageElements = Readonly<{
-  root: HTMLElement; note: HTMLElement; back: HTMLButtonElement;
+  root: HTMLElement; note: HTMLElement; view: HTMLButtonElement; back: HTMLButtonElement;
   film: HTMLElement; play: HTMLButtonElement; scrub: HTMLInputElement; time: HTMLElement;
 }>;
 
@@ -101,6 +101,7 @@ export class StageControl {
   private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false, sets: [], edits: 0, asks: 0 });
 
   public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build, private readonly sheet: Pick<Sheet, 'show' | 'hide'>) {
+    elements.view.addEventListener('click', () => this.holdView(!this.viewer.isViewHeld));
     elements.back.addEventListener('click', () => { this.left = true; this.end(); });
     elements.play.addEventListener('click', () => this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' }));
     elements.scrub.addEventListener('input', () => this.ask({ kind: 'seek', frame: elements.scrub.valueAsNumber }));
@@ -123,8 +124,11 @@ export class StageControl {
    *  and casts its actors, showing the first set alone until a frame shows them, lit as
    *  `light` says over the look's own (SEE: stage.ts StageLight); a reel
    *  header readies the screen for a film shown through `view` (else the main camera),
-   *  drawn at the film's size, and `marks` are what a plan draws over the set */
-  public async stage(ldraw: unknown, sets: unknown, actors: unknown, floor: unknown, light: unknown, reel: unknown, view: unknown, marks: unknown): Promise<Staged> {
+   *  drawn at the film's size, and `marks` are what a plan draws over the set. To
+   *  `keep`, a stage replacing one leaves its picture standing (its actors where they
+   *  stood) until a frame shows: a film staged again never shows its set bare */
+  public async stage(ldraw: unknown, sets: unknown, actors: unknown, floor: unknown, light: unknown, reel: unknown, view: unknown, marks: unknown, keep: unknown): Promise<Staged> {
+    if((keep !== undefined) && (typeof keep !== 'boolean')) throw new Error('keep is whether the picture standing stays until a frame shows: true or false');
     await this.build.whenReady();
     const staged = setsOf(ldraw, sets, () => this.build.allSets());
     const area = floorOf(floor);
@@ -141,7 +145,8 @@ export class StageControl {
     this.wanted = undefined/*a frame of the reel before*/;
     this.left = false;
     [this.shownFrame, this.playing] = [0, false];
-    this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged));
+    this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged), keep === true);
+    this.showHeld();
     this.viewer.useLight(lit);
     if(header) this.viewer.drawStageAt(header.width, header.height);
     this.show(SHOWING);
@@ -206,7 +211,7 @@ export class StageControl {
       const cast = this.ensure(loaded);
       this.applied++;
       const picture = this.pictureOf(loaded, shot, undefined);
-      this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving));
+      this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving), true/*through its own camera*/);
       const image = await this.viewer.capture(size.width, size.height);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
       this.publish({ kind: 'staged', reel: loaded.id, frame: frame as number });
@@ -275,7 +280,7 @@ export class StageControl {
       const view = cameraOf(camera);
       const size = captureOf(capture);
       this.applied++/*a reel frame waiting to be drawn is no longer the one shown*/;
-      this.viewer.showFrame(shownActors(cast, shots), view, undefined/*no overlay*/, standing);
+      this.viewer.showFrame(shownActors(cast, shots), view, undefined/*no overlay*/, standing, undefined/*no transition*/, !!size/*a capture through its own camera*/);
       if(!size) return { shown: shots.length };
       const image = await this.viewer.capture(size.width, size.height);
       if(this.cast !== cast) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
@@ -353,6 +358,7 @@ export class StageControl {
     this.reel = undefined;
     this.wanted = undefined;
     this.viewer.unstage();
+    this.showHeld();
     this.show(undefined/*no strip*/);
     this.showControls();
     this.publish(this.left ? { kind: 'left' } : { kind: 'none' });
@@ -406,6 +412,22 @@ export class StageControl {
     this.studio.classList.toggle('is-playing', this.playing)/*the strip rests only over a film playing*/;
     play.title = this.playing ? 'Pause (Space)' : 'Play (Space)';
     play.ariaLabel = this.playing ? 'Pause' : 'Play';
+  }
+
+  /** holds the view for the person or lets it go (SEE: Viewer.holdView): let go, the
+   *  frame shown stands through its own camera again */
+  private holdView(held: boolean): void {
+    this.viewer.holdView(held);
+    this.showHeld();
+    const loaded = this.reel;
+    if(!held && loaded?.frames[this.shownFrame]) this.showWanted(loaded.id, this.shownFrame);
+  }
+
+  /** the strip's view button, and the studio, as the viewer holds the view */
+  private showHeld(): void {
+    const held = this.viewer.isViewHeld;
+    this.elements.view.setAttribute('aria-pressed', String(held));
+    this.studio.classList.toggle('is-holding', held);
   }
 
   /** shows the strip saying `note`, or hides it */

@@ -24,7 +24,7 @@ import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LI
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 11;
+export const STAGE_VERSION = 12;
 /** the widest and narrowest a frame's lens opens (f-numbers) */
 const MIN_APERTURE = 1;
 const MAX_APERTURE = 32;

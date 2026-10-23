@@ -1,6 +1,6 @@
 import type { SoundCue } from './recorder';
 
-// the edits the timeline makes to the scene's code, each one range of it measured on
+// the edits the timeline and the Gait mode make to the scene's code, each one range of it measured on
 // the whole scene as it was read (SEE: apps/codemirror-editor's editText, refused once
 // the scene has changed since): a sound added is its own line at the scene's end; a
 // sound moved is its time rewritten where its call writes it, on the line the
@@ -9,7 +9,9 @@ import type { SoundCue } from './recorder';
 // an expression (`HOME`, `RAMP + 0.2`) is the scene's to change, so moving such a sound
 // is refused, saying where it is written. What an edit plays is checked before it is
 // written: the scene as edited must play the sounds the scene did, with only that one
-// added or moved
+// added or moved. A gait shaped is its call's keys rewritten in place (or its own
+// line at the scene's start, the scene naming none), refused where the scene writes
+// them as anything but `{ ... }`
 // ********************************************************************************
 // == Types =======================================================================
 /** one range of the scene's code, `from` to `to` (offsets into `measured`, the whole
@@ -53,6 +55,40 @@ export const retimeSound = (code: string, cue: SoundCue, time: number): SceneEdi
   return { measured: code, from: call.timeAt[0], to: until.at[1], text: `${seconds(start)}${code.slice(call.timeAt[1], until.at[0])}${seconds(cue.until + (start - cue.time))}` };
 };
 
+/** the edit that writes the scene's gait `name` as `keys` (what it changes from the
+ *  built-in walk, SEE: writtenGait): its call's keys rewritten where it writes them, or,
+ *  the scene naming no such gait (`written` none), its own line at the scene's start;
+ *  refused when its keys are written as anything but `{ ... }`, or its call cannot be
+ *  found on its line */
+export const regait = (code: string, written: Readonly<{ name: string; line?: number; }> | undefined, name: string, keys: Readonly<Record<string, unknown>>): SceneEdit | Refusal => {
+  if(!written) return { measured: code, from: 0, to: 0, text: `gait(${literal(name)}, ${gaitLiteral(writtenGait(keys), '')});\n` };
+  const line = lineAt(code, written.line);
+  if(!line) return { refused: 'Its line in the scene is not known' };
+  const text = gaitLiteral(writtenGait(keys), /^[ \t]*/.exec(code.slice(line.start, line.end))![0]/*its line's indent*/);
+  const runs = inert(code);
+  const calls = [...runs.slice(line.start, line.end).matchAll(GAIT_CALL)].filter(call => { const [from, to] = call.indices![2]!; return code.slice(line.start + from, line.start + to) === name; });
+  if(calls.length !== 1) return { refused: `gait('${name}') is not found on line ${written.line}: change it there` };
+  // past the name: its keys, or the call's end
+  const after = (at: number) => { while(/\s/.test(runs[at] ?? '')) at++; return at; };
+  let at = after(line.start + calls[0].index + calls[0][0].length);
+  if(runs[at] === ')') return { measured: code, from: at, to: at, text: `, ${text}` };
+  if(runs[at] === ',') at = after(at + 1);
+  const close = (runs[at] === '{') ? closing(runs, at) : undefined/*not written as { ... }*/;
+  if(close === undefined) return { refused: `gait('${name}')'s keys are not written as { ... } on line ${written.line}: change them there` };
+  return { measured: code, from: at, to: close + 1, text };
+};
+
+/** a gait's keys as the scene writes them: each number to two places */
+export const writtenGait = (keys: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> => {
+  const round = (value: unknown): unknown => Array.isArray(value) ? value.map(round)
+    : ((typeof value === 'object') && (value !== null)) ? Object.fromEntries(Object.entries(value).map(([key, each]) => [key, round(each)]))
+    : (typeof value === 'number') ? Number(value.toFixed(2)) : value;
+  return Object.fromEntries(Object.entries(keys).map(([key, value]) => [key, round(value)]));
+};
+
+/** whether two gaits' keys say the same: the same keys, the same numbers */
+export const sameGait = (one: Readonly<Record<string, unknown>> | undefined, other: Readonly<Record<string, unknown>> | undefined): boolean => JSON.stringify(sorted(one ?? {})) === JSON.stringify(sorted(other ?? {}));
+
 /** whether an edit, or what it plays, refused */
 export const isRefusal = <T extends object>(result: T | Refusal): result is Refusal => 'refused' in result;
 
@@ -88,6 +124,9 @@ export const sameSounds = (one: ReadonlyArray<SoundCue>, other: ReadonlyArray<So
 const SOUND_CALL = /\b(?:at|sound)\(\s*([^,()]*?)\s*,\s*(['"])( *)\2/dg;
 // a call's `until` in its options: its value up to the next comma or brace
 const UNTIL = /\buntil\s*:\s*([^,{}()]*?)\s*(?=[,}])/d;
+// a gait's call in code: `gait(` and its name (group 2, a quoted string, its contents
+// blanked: SEE: inert), the places kept (`d`)
+const GAIT_CALL = /\bgait\(\s*(['"])( *)\1/dg;
 // a time written as a number
 const NUMBER = /^\d+(?:\.\d+)?$/;
 // a time past a cue's that rounding alone puts there (seconds)
@@ -133,6 +172,29 @@ const inert = (code: string): string => {
     } else at++;
   }
   return kept.join('');
+};
+
+// a gait's keys written as the scene writes them: a key a line, indented past `indent`
+const gaitLiteral = (keys: Readonly<Record<string, unknown>>, indent: string): string => {
+  const valueOf = (value: unknown): string => Array.isArray(value) ? `[${value.map(valueOf).join(', ')}]`
+    : ((typeof value === 'object') && (value !== null)) ? `{ ${Object.entries(value).map(([key, each]) => `${key}: ${valueOf(each)}`).join(', ')} }` : String(value);
+  const lines = Object.entries(keys).map(([key, value]) => `${indent}  ${key}: ${valueOf(value)},`);
+  return (lines.length < 1) ? '{}' : `{\n${lines.join('\n')}\n${indent}}`;
+};
+
+// a value with every object's keys in order, so two written alike compare alike
+const sorted = (value: unknown): unknown => Array.isArray(value) ? value.map(sorted)
+  : ((typeof value === 'object') && (value !== null)) ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, each]) => [key, sorted(each)])) : value;
+
+// where the bracket opening at `open` closes in code alone (`runs`, SEE: inert); none
+// when it never does
+const closing = (runs: string, open: number): number | undefined => {
+  let depth = 0;
+  for(let at=open; at<runs.length; at++) {
+    if('({['.includes(runs[at])) depth++;
+    else if(')}]'.includes(runs[at]) && (--depth === 0)) return at;
+  }
+  return undefined/*never closed*/;
 };
 
 // the `until` in a call's options: from `after` (past its sound) to the call's closing

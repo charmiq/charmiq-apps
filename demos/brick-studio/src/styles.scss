@@ -391,6 +391,11 @@
 }
 
 .staged-back { flex: none; white-space: nowrap; }
+.staged-view {
+  flex: none;
+  white-space: nowrap;
+  &[aria-pressed='true'] { background: var(--outline); color: #FFFDF2; }
+}
 
 // the film's controls, full screen alone: play, the frame scrubbed to and the film's
 // time; while the film plays, the strip rests out of sight once the pointer stands
@@ -422,6 +427,32 @@
 .studio.is-staged {
   .tags, .steps, .status, .hint, .credit { display: none; }
   .stage { cursor: default; }
+
+  // a film's scene framed as film: a band of sprocket holes along its top and foot
+  &::before, &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 14px;
+    z-index: 2;
+    pointer-events: none;
+    background: radial-gradient(circle, var(--stage) 0 2.5px, transparent 3px) 0 50% / 14px 14px repeat-x, #151412;
+  }
+  &::before { top: 0; }
+  &::after { bottom: 0; }
+
+  // the person's view held: the mouse turns and zooms round the scene
+  &.is-holding .stage { cursor: grab; &:active { cursor: grabbing; } }
+}
+
+// the strip stands only while the pointer is over the studio or a control in it holds
+// the keys; where nothing hovers (touch), it stands throughout
+@media (hover: hover) {
+  .studio.is-staged:not(:fullscreen) {
+    .staged { transition: opacity 0.3s; }
+    &:not(:hover):not(:focus-within) .staged { opacity: 0; pointer-events: none; }
+  }
 }
 
 // == Credit ======================================================================

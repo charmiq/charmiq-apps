@@ -202,6 +202,10 @@ export class Viewer {
   private readonly parts = new THREE.Group();
   private model: Model | undefined;
   private staging: Staging | undefined;
+  /** whether the person holds the view over the stage (SEE: holdView), and where it
+   *  stood while a capture draws a frame through the frame's own camera */
+  private viewHeld = false;
+  private heldEye: Eye | undefined/*no capture under way*/;
   /** each staged set's own meshes, built once and kept while the stage stands, so a
    *  frame standing another set swaps meshes, never rebuilding them; dropped when what
    *  they draw changes (a part built, the look: SEE redraw), and kept meshes are freed
@@ -696,22 +700,40 @@ export class Viewer {
   /** whether a stage is shown in place of the build */
   public get isStaged(): boolean { return !!this.staging; }
 
+  /** holds the view over a stage for the person (`held`): the mouse turns and zooms the
+   *  camera, and a live frame poses its actors without moving it; let go, the next
+   *  frame's camera stands again. A stage shown afresh, or the build shown again, lets
+   *  it go; a stage that keeps the picture keeps it held */
+  public holdView(held: boolean): void {
+    this.viewHeld = held && !!this.staging;
+    this.controls.enabled = !this.staging || this.viewHeld;
+    this.requestFrame();
+  }
+  /** whether the person holds the view over the stage (SEE: holdView) */
+  public get isViewHeld(): boolean { return this.viewHeld; }
+
   /** shows a stage's first set in place of the build, its baseplate covering at least
    *  `floor`, no actor shown yet, the parts of its other sets built unseen so a frame
    *  standing another draws it at once; the camera stands until a frame moves it.
-   *  Staged again, the new sets replace the last */
-  public showStage(sets: ReadonlyArray<Model>, floor: Floor | undefined): void {
+   *  Staged again, the new sets replace the last; to `keep` the picture, the actors and
+   *  the overlay standing stand on in the set standing (the first, if there are fewer
+   *  now) until a frame moves them, so a stage replacing one shows nothing bare */
+  public showStage(sets: ReadonlyArray<Model>, floor: Floor | undefined, keep: boolean): void {
+    const kept = keep ? this.staging : undefined/*shown afresh*/;
     if(!this.staging) {
       this.tween?.resolve();
       this.tween = undefined;
       this.walking = STANDING;
       this.controls.enabled = false/*the stage's camera, never the mouse's*/;
     } /* else -- staged: the camera to put back stays the build's */
+    if(!kept) this.viewHeld = false/*a stage afresh: its frames' camera*/;
+    this.controls.enabled = this.viewHeld;
     this.forgetSetMeshes()/*the last stage's*/;
-    this.staging = { sets, standing: 0, floor, actors: NO_ACTORS, overlay: NO_OVERLAY, size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
+    const standing = kept ? Math.min(kept.standing, sets.length - 1) : 0, actors = kept?.actors ?? NO_ACTORS;
+    this.staging = { sets, standing, floor, actors, overlay: kept?.overlay ?? NO_OVERLAY, size: this.staging?.size, before: this.staging?.before ?? { position: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov } };
     this.overlayStale = true;
-    for(const other of sets.slice(1)) this.buildGeometries(renderItems(other), other, false);
-    this.draw(sets[0], NO_ACTORS, false);
+    for(const other of sets.filter((_, index) => index !== standing)) this.buildGeometries(renderItems(other), other, false);
+    this.draw(sets[standing], actors, false);
   }
 
   /** draws the stage at `width` by `height` pixels from now on, the canvas showing
@@ -727,10 +749,13 @@ export class Viewer {
 
   /** shows a frame of the stage on one of its sets (`set`, an index into them): its
    *  actors' lines (LDraw, the scene's frame) seen through its camera, or its plan,
-   *  over the shot a transition leaves (`leaving`) */
-  public showFrame(actors: ShownActors, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY, set = 0, leaving?: LeavingShot): void {
+   *  over the shot a transition leaves (`leaving`); the view the person holds stands
+   *  unless the frame is `filmed` (to capture: through its own camera, the view put
+   *  back once captured) */
+  public showFrame(actors: ShownActors, camera: ViewCamera, overlay: FilmOverlay = NO_OVERLAY, set = 0, leaving?: LeavingShot, filmed = false): void {
     if(!this.staging) return/*nothing staged*/;
-    this.look(camera);
+    if(this.viewHeld && filmed) this.heldEye ??= this.eye();
+    if(!this.viewHeld || filmed) this.look(camera);
     this.staging.leaving = leaving;
     this.pose(actors, overlay, set);
   }
@@ -766,13 +791,17 @@ export class Viewer {
    *  that size from then on, the canvas showing it whole */
   public async capture(width: number, height: number): Promise<ImageBitmap> {
     if(!this.staging) throw new Error('nothing is staged');
-    this.drawStageAt(width, height);
-    await this.whenSettled();
-    const overlay = this.staging.overlay;
-    if(isBlank(overlay)) return createImageBitmap(this.canvas)/*the picture alone*/;
-    const picture = Object.assign(document.createElement('canvas'), { width, height });
-    this.drawPicture(picture.getContext('2d')!, overlay, width, height);
-    return createImageBitmap(picture);
+    try {
+      this.drawStageAt(width, height);
+      await this.whenSettled();
+      const overlay = this.staging.overlay;
+      if(isBlank(overlay)) return await createImageBitmap(this.canvas)/*the picture alone*/;
+      const picture = Object.assign(document.createElement('canvas'), { width, height });
+      this.drawPicture(picture.getContext('2d')!, overlay, width, height);
+      return await createImageBitmap(picture);
+    } finally {
+      if(this.heldEye) { this.toEye(this.heldEye); this.heldEye = undefined/*the person's view again*/; this.requestFrame(); }
+    }
   }
 
   /** shows the build again, the camera where it stood before the stage */
@@ -780,6 +809,7 @@ export class Viewer {
     const staging = this.staging;
     if(!staging) return/*nothing staged*/;
     this.staging = undefined;
+    [this.viewHeld, this.heldEye] = [false, undefined]/*the build's own view*/;
     this.aim(staging.before.position, staging.before.target, staging.before.fov)/*level and unshifted again*/;
     this.useLens({})/*the look's own focus again*/;
     this.useLight({})/*the look's own light again*/;

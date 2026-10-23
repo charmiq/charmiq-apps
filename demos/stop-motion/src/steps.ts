@@ -6,7 +6,9 @@ import type { Foot, Walk } from './recorder';
 // over the edge between the rows as a rendered brick film's walk measures (the
 // trailing foot tipping onto its toe on that edge, the leading foot reaching out and
 // landing on its heel there, rocking flat, the trailing one swinging through to stand
-// beside it, clicked in), quarter turns on the foot inside the turn and hops where the level changes; on
+// beside it, clicked in), quarter turns on the foot inside the turn, strides of two studs
+// up and down a level a step reaches (from the stud before the edge, so the leading leg
+// reaches over it as the trailing foot rocks onto its toe) and hops elsewhere; on
 // studs a diagonal is a staircase of steps and turns. Off studs (a tile, a slope) the
 // same steps and turns follow the path itself. Anything else that moves it over studs
 // (its keys, idling, the boil) leaves it clicked in where it stands until where it is
@@ -15,34 +17,35 @@ import type { Foot, Walk } from './recorder';
 // touching studs never moves over them
 // ********************************************************************************
 // == Constants ===================================================================
-/** a figure's leg from its hip's axis to its sole, and half its foot's depth (the
- *  toe's and the heel's edge either side of the hip's axis), studs: the figure's own
- *  hips (3815) and legs (3816, 3817) */
+/** a figure's leg from its hip's axis to its sole, and how far its toe reaches ahead of
+ *  that axis and its heel behind it (studs: 28, 11.25 and 8.75 LDU), the figure's own
+ *  hips (3815) and legs (3816, 3817): a foot a stud long, a step's trailing toe where
+ *  it stood meeting the leading heel where it lands */
 const LEG = 1.4;
-const FOOT = 0.5;
+const TOE = 0.5625;
+const HEEL = 0.4375;
+/** a foot's outer edge from the figure's middle (studs): two feet a stud wide side by side */
+const FOOT_EDGE = 1;
 /** plates a stud high */
 const PLATES_PER_STUD = 2.5;
-/** a step as a rendered brick film's walk measures (the bathroom remake's west walk,
- *  nine cycles: Brick Film Remakes): the body's share of the stud at each quarter of
- *  the step, never holding and quickest just after the leading foot lands; how far
- *  through the step the leading heel lands on the edge between the rows and the
- *  trailing toe leaves it; how far the leading leg reaches out before it lands, a
- *  quarter through (degrees, when the walk names no swing); and how far the shoulders
- *  turn against the arms' swing */
-const GLIDE = [0, 0.22, 0.57, 0.84, 1];
-const HEEL_ON = 0.5;
-const TOE_OFF = 0.75;
-const REACH = 25;
-const REACH_AT = 0.25;
-const TWIST_PER_ARM = 1 / 30;
-/** the most a full variance shifts a step, the bathroom walk's own wander from its
- *  cycle: the glide (studs), the leading leg's reach, the arms and the shoulders
- *  (degrees) */
-const WANDER = { glide: 0.04, reach: 2, arms: 6, twist: 2 };
-/** how far a hop rises above the higher of the levels it leaves and lands on, at
- *  least, and how far more for each plate it climbs (plates) */
-const HOP_LIFT = 2;
-const HOP_CLIMB = 0.5;
+/** how far a foot travelling over studs clears the plate (studs): a stud's height
+ *  (1.7 LDU), and how near (studs) the stud it leaves or lands on it may sink below that */
+const STUD_CLEAR = 1.7 / 20;
+const STUD_NEAR = 0.25;
+/** how far a foot that is moving at all stands off the plate (studs): it touches only
+ *  where it stands */
+const MOVING_CLEAR = 0.01;
+/** the most a figure's stride climbs or descends (plates): a level farther is a hop */
+const STEP_CLIMB = 2;
+/** a stride up or down a level (studs): from the stud before the edge to the stud past it */
+const STAIR = 2;
+/** the most a hop's legs may stand tipped as it leaves the plate (degrees): rolled
+ *  forward onto the toes, never back on the heels */
+const SPRING = -2;
+/** how finely a step's arch is fitted over what its feet need, and the arch between two
+ *  frames */
+const ARCH_SAMPLES = 32;
+const BETWEEN_SAMPLES = 8;
 /** how long a hop, a quarter turn and a crowd walker's step take when nothing times
  *  them (seconds) */
 const HOP_SECONDS = 0.35;
@@ -50,16 +53,6 @@ const TURN_SECONDS = 0.3;
 const STEP_SECONDS = 0.35;
 /** the quickest a crowd walker's step takes, catching up a walker keyed faster (seconds) */
 const QUICKEST_STEP = 0.12;
-/** a walk's moves weighed against each other to share its time: a stud's step, a
- *  quarter turn, a hop */
-const STEP_WEIGHT = 1;
-const TURN_WEIGHT = 0.5;
-const HOP_WEIGHT = 1.4;
-/** how far a figure's free leg swings forward as it turns on the other, how far its
- *  legs tuck and its arms rise through a hop (degrees) */
-const TURN_LEG = 25;
-const HOP_LEGS = 20;
-const HOP_ARMS = 70;
 /** how far past a stud's middle (studs) or a quarter's (degrees) where an actor is
  *  keyed must lie before it moves on: so a nudge on a boundary moves nothing */
 const PAST_STUD = 0.1;
@@ -79,6 +72,101 @@ const TIE = 1e-9;
 /** the most moves one walk lays */
 const MAX_MOVES = 20_000;
 
+// == Gaits =======================================================================
+/** how a figure moves through each kind of move a walk is made of (SEE: WALK) */
+export type GaitShape = Readonly<{
+  /** a step, keyed at its frames (even shares of it, the first and last its stances):
+   *  the body's share of the stud at each; the leading leg's angle while it travels and
+   *  the trailing leg's after it lifts (degrees, forward +); how far through it the
+   *  leading heel lands on the edge between the rows and the trailing toe lifts off it
+   *  (a heel landing after the toe lifts is a flight) */
+  glide: ReadonlyArray<number>; lead: ReadonlyArray<number>; trail: ReadonlyArray<number>; heelOn: number; toeOff: number;
+  /** a stride up onto another level and one down (STAIR studs, STEP_CLIMB plates at
+   *  most), each keyed as a step is, and the waist bent forward through it (degrees) */
+  upGlide: ReadonlyArray<number>; upLead: ReadonlyArray<number>; upTrail: ReadonlyArray<number>; upHeelOn: number; upToeOff: number; upLean: ReadonlyArray<number>;
+  downGlide: ReadonlyArray<number>; downLead: ReadonlyArray<number>; downTrail: ReadonlyArray<number>; downHeelOn: number; downToeOff: number; downLean: ReadonlyArray<number>;
+  /** a figure's arms where nothing keys them, how far a step swings them either way,
+   *  and how far the shoulders turn against that swing (degrees; a share) */
+  hang: number; arms: number; twistPerArm: number;
+  /** the head: its swing through a step, keyed at the step's frames (degrees toward the
+   *  leading foot's side, straight at the stances); and leading into a turn, how far it
+   *  turns ahead of the body (degrees) and how long before the turn it starts (seconds) */
+  headSwing: ReadonlyArray<number>; headTurn: number; headLead: number;
+  /** the most a full variance shifts a step: the glide (studs), the arms and the
+   *  shoulders (degrees) */
+  wander: Readonly<{ glide: number; arms: number; twist: number; }>;
+  /** a quarter turn, keyed at its frames (even shares of it): how far round the
+   *  heading has come (a share), the free leg's swing (degrees, forward +) and how far
+   *  the body leans out over the grounded foot (degrees: rolled onto that foot's outer
+   *  edge, which rounds its stud as the body turns, lifting the free foot as far) */
+  turnEase: ReadonlyArray<number>; turnLeg: ReadonlyArray<number>; turnRoll: ReadonlyArray<number>;
+  /** a shift of weight onto the other foot before a turn on the wrong foot, keyed at its
+   *  frames: how far the body rolls onto that foot's outer edge (degrees), lifting the
+   *  free foot clear of its stud and setting it down again */
+  shiftRoll: ReadonlyArray<number>;
+  /** a hop's crouch before it springs and its landing after, each keyed at its frames:
+   *  the legs tipped (degrees: + forward, rocking back on the heels, the hips going back;
+   *  - back, rolled forward onto the toes, the hips going forward), the waist bent
+   *  forward, the arms swung (degrees, forward +); the crouch starts from standing and
+   *  springs from its last pose, rolled forward onto the toes; the landing ends standing */
+  crouchLegs: ReadonlyArray<number>; crouchLean: ReadonlyArray<number>; crouchArms: ReadonlyArray<number>;
+  landLegs: ReadonlyArray<number>; landLean: ReadonlyArray<number>; landArms: ReadonlyArray<number>;
+  /** a hop's flight, keyed at its frames: its arc (a share of its rise), the legs
+   *  tucked and the arms raised over the way from the crouch to the landing (degrees);
+   *  its rise above the higher level, and more for each plate it climbs (plates) */
+  hopArc: ReadonlyArray<number>; hopLegs: ReadonlyArray<number>; hopArms: ReadonlyArray<number>; hopLift: number; hopClimb: number;
+  /** how long each kind of move takes against the others, in drawings: a walk's speed
+   *  sets a step's pace, and every other move takes its drawings at that pace (a quarter
+   *  turn of 6 against a step of 4 takes half again a step's time); a hop is its crouch,
+   *  its flight and its landing */
+  timing: GaitTiming;
+}>;
+/** a gait's drawings for each kind of move (SEE: GaitShape.timing) */
+export type GaitTiming = Readonly<{ step: number; up: number; down: number; turn: number; shift: number; crouch: number; air: number; land: number; }>;
+
+/** the built-in walk, timed as a rendered brick film's walk measures (the bathroom
+ *  remake's west walk, nine cycles: Brick Film Remakes): the body never holding,
+ *  quickest just after the leading foot lands; the arms hanging back and swinging
+ *  against the legs; the shoulders hardly turning; its wander from step to step its own */
+export const WALK: GaitShape = {
+  glide: [0, 0.22, 0.57, 0.84, 1], lead: [0, 44.64, 0, 0, 0], trail: [0, 0, 0, 0, 0], heelOn: 0.5, toeOff: 0.75,
+  // the strides: going up shaped by eye, leaning well forward, the leading
+  // leg swinging over the edge and its heel landing as the body passes a third of the
+  // stride, the trailing leg following through; going down, the trailing toe holding the
+  // edge while the body tips forward over it, dropping a frame onto the leading heel
+  upGlide: [0, 0.08, 0.28, 0.38, 0.63, 0.93, 1], upLead: [0, 40.8, 46.34, 11.45, 1.56, 0, 0], upTrail: [0, 0, 5.89, 19.01, 20.47, 0.53, 0], upHeelOn: 0.5, upToeOff: 0.5, upLean: [0, 17.75, 19.81, 15.13, 10.37, 3.25, 0],
+  downGlide: [0, 0.25, 0.5, 0.72, 0.9, 0.97, 1], downLead: [0, 10, 60, 30, 20, 0, 0], downTrail: [0, 0, 0, 0, 0, 0, 0], downHeelOn: 5 / 6, downToeOff: 4 / 6, downLean: [0, 2, 4, 4, 2, 1, 0],
+  hang: -31, arms: 38, twistPerArm: 1 / 30,
+  headSwing: [0, 2, 3, 2, 0], headTurn: 70, headLead: 0.533,
+  wander: { glide: 0.04, arms: 6, twist: 2 },
+  turnEase: [0, 0.11, 0.36, 0.58, 0.75, 0.9, 1], turnLeg: [0, 38.93, 47.39, 41.36, 26.5, 13.58, 0], turnRoll: [0, 2, 4, 5, 4, 2, 0],
+  shiftRoll: [0, 5, 6, 5, 0],
+  // the jump, shaped by eye: rocking back on the heels and rolling forward
+  // onto the toes to spring, a flat arc with the legs trailing and swinging through,
+  // landing toes first leaning back, rocking onto the heels and folding forward, the arms
+  // swinging back; 6 frames crouching, 5 in the air, 5 landing
+  crouchLegs: [0, 11.11, 17.41, 20, 3.6, -8.97, -15], crouchLean: [0, 11.46, 19.65, 24, 19.09, 13.87, 10], crouchArms: [0, -33.33, -52.22, -60, -29.55, 3.99, 30],
+  landLegs: [-33.56, -9.52, 5.51, 7.35, 3.17, 0], landLean: [-15.47, 9.32, 7.61, 5.25, 4.53, 0], landArms: [30, -8.27, -35.1, -50.04, -50.99, 0],
+  hopArc: [0, 0.46, 0.74, 0.76, 0.53, 0], hopLegs: [0, -9.91, -8.04, 0.2, 5.99, 0], hopArms: [0, 42.22, 65.57, 65.57, 42.22, 0], hopLift: 2, hopClimb: 0.1,
+  timing: { step: 4, up: 6, down: 6, turn: 6, shift: 4, crouch: 6, air: 5, land: 5 },
+};
+/** where a figure's arms hang when nothing keys them (degrees) */
+export const HANG = WALK.hang;
+/** a hop's crouch and landing, each a share of the hop, from its gait's timing */
+export const hopShares = (shape: GaitShape): Readonly<{ crouch: number; land: number; }> => {
+  const { crouch, air, land } = shape.timing, all = Math.max(TIE, crouch + air + land);
+  return { crouch: crouch / all, land: land / all };
+};
+/** what keys a step's body and legs: a level step's, or a step up or down's */
+export type Stride = Pick<GaitShape, 'glide' | 'lead' | 'trail' | 'heelOn' | 'toeOff'>;
+/** a move's stride: a step's onto its own level, or up or down onto another */
+export const strideOf = (shape: GaitShape, move: Pick<Move, 'from' | 'to'>): Stride => {
+  const rise = move.to.level - move.from.level;
+  if(Math.abs(rise) < ON_SURFACE) return shape;
+  return (rise > 0) ? { glide: shape.upGlide, lead: shape.upLead, trail: shape.upTrail, heelOn: shape.upHeelOn, toeOff: shape.upToeOff }
+    : { glide: shape.downGlide, lead: shape.downLead, trail: shape.downTrail, heelOn: shape.downHeelOn, toeOff: shape.downToeOff };
+};
+
 // == Types =======================================================================
 /** a surface an actor can stand on: its height (plates), studded or smooth */
 export type Surface = Readonly<{ height: number; studded: boolean; }>;
@@ -87,9 +175,21 @@ export type SurfaceAt = (x: number, z: number) => ReadonlyArray<Surface>;
 /** how an actor stands: its middle (studs), heading (degrees clockwise from north),
  *  the level it stands on (plates) and whether that is studded */
 export type Stance = Readonly<{ x: number; z: number; yaw: number; level: number; studded: boolean; }>;
+/** the kinds of move a gait keys apart: a step, a stride up or down a level, a quarter
+ *  turn, a shift of weight and a hop */
+export enum GaitMove { Step = 'step', Up = 'up', Down = 'down', Turn = 'turn', Shift = 'shift', Hop = 'hop' }
+/** a move as its gait keys it */
+export const gaitMoveOf = (move: Pick<Move, 'kind' | 'from' | 'to'>): GaitMove => {
+  if(move.kind === 'turn') return GaitMove.Turn;
+  if(move.kind === 'shift') return GaitMove.Shift;
+  if(move.kind === 'hop') return GaitMove.Hop;
+  const rise = move.to.level - move.from.level;
+  return (Math.abs(rise) < ON_SURFACE) ? GaitMove.Step : (rise > 0) ? GaitMove.Up : GaitMove.Down;
+};
+
 /** one move of a walk or of a clicked actor: a step forward, a turn on one foot or a
  *  hop, from a stance to another over a span (seconds) */
-export type Move = Readonly<{ kind: 'step' | 'turn' | 'hop'; from: Stance; to: Stance; start: number; end: number; foot: Foot/*the step's leading foot, the turn's pivot*/; }>;
+export type Move = Readonly<{ kind: 'step' | 'turn' | 'hop' | 'shift'; from: Stance; to: Stance; start: number; end: number; foot: Foot/*the step's leading foot, the turn's pivot, the foot a shift puts the weight on*/; }>;
 
 // == Surfaces ====================================================================
 /** the baseplate alone: studded at 0 everywhere (a film made before the stage answers) */
@@ -117,6 +217,30 @@ const FRONT = 180;
 const forwardOf = (yaw: number): readonly [number, number] => { const angle = (yaw + FRONT) * (Math.PI / 180); return [Math.sin(angle), Math.cos(angle)]; };
 const rightOf = (yaw: number): readonly [number, number] => { const angle = (yaw + FRONT) * (Math.PI / 180); return [Math.cos(angle), -Math.sin(angle)]; };
 
+/** how far a figure's feet reach into the set (studs; 0 when clear), its pose as `set`
+ *  places it (its middle, heading, height in plates and legs): each sole's corners
+ *  (its heel and toe, its inner and outer edge) against the surface under each, below
+ *  its top by the least way out of it, up or across its cell; the figure's roll left
+ *  out (a lean lifts a foot, never lowers one into the plate) */
+export const feetInto = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number => {
+  const [fx, fz] = forwardOf(set.yaw ?? 0), [rx, rz] = rightOf(set.yaw ?? 0), base = (set.height ?? 0) / PLATES_PER_STUD;
+  let into = 0;
+  for(const [limb, side] of [['pose.leftLeg', -1], ['pose.rightLeg', 1]] as const) {
+    const leg = radians(set[limb] ?? 0), [cos, sin] = [Math.cos(leg), Math.sin(leg)];
+    for(const a of [-HEEL, TOE]) for(const across of [0.05, 0.95]) {
+      const along = (a * cos) + (LEG * sin), up = base + LEG - ((LEG * cos) - (a * sin));
+      const x = (set.x ?? 0) + (fx * along) + (rx * side * across * FOOT_EDGE), z = (set.z ?? 0) + (fz * along) + (rz * side * across * FOOT_EDGE);
+      const [cx, cz] = [Math.floor(x), Math.floor(z)], topOf = (ax: number, az: number) => Math.max(0, ...surfaceAt(ax, az).map(surface => surface.height)) / PLATES_PER_STUD;
+      const top = topOf(cx, cz), below = top - up;
+      if(below <= into) continue/*clear, or no deeper*/;
+      // across its cell only toward a side opening onto something lower: out of the part
+      const sides = [[x - cx, -1, 0], [cx + 1 - x, 1, 0], [z - cz, 0, -1], [cz + 1 - z, 0, 1]].filter(([, dx, dz]) => topOf(cx + dx, cz + dz) < (top - 1e-9)).map(([distance]) => distance);
+      into = Math.min(below, ...sides);
+    }
+  }
+  return into;
+};
+
 /** the quarter heading nearest a heading, unwrapped as it is (450 stays 450) */
 export const quarterOf = (yaw: number): number => Math.round(yaw / 90) * 90;
 
@@ -133,11 +257,15 @@ export const clickedNear = (x: number, z: number, yaw: number): Pick<Stance, 'x'
 /** a walk's moves from where it starts (`from`) through its points, over its span: on
  *  studs a stud a step, square to them, the nearer axis walked first and turned to on
  *  one foot (a diagonal a staircase); off studs along the path itself, a stud a step
- *  at most; a step onto another level a hop, up at most `climb` plates when the actor
+ *  at most; a figure on studs strides onto a level within STEP_CLIMB from the stud
+ *  before its edge to the stud past it when the walk goes that far, and otherwise hops
+ *  onto another level; up at most `climb` plates when the actor
  *  follows the ground (else its level as it starts), a level past that holding its
  *  own as at a wall. A creature hops every step. Its moves share the walk's span by
- *  their weights */
+ *  their drawings in its gait's timing */
 export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: number | undefined, figure: boolean): ReadonlyArray<Move> => {
+  // each kind of move weighed by its drawings against a step's (SEE: GaitShape.timing)
+  const timing = (walk.shape ?? WALK).timing, weigh = (drawings: number) => drawings / Math.max(TIE, timing.step);
   const moves: Array<Omit<Move, 'start' | 'end'> & { weight: number; }> = [];
   let current = from.studded ? { ...from, ...clickedNear(from.x, from.z, from.yaw) } : from;
   let lead = walk.lead;
@@ -147,7 +275,15 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
     current = to;
     return true;
   };
-  const turn = (by: number) => push('turn', turnedOn(current, by), (by < 0) ? 'left' : 'right', TURN_WEIGHT * (Math.abs(by) / 90));
+  // a turn spins on the foot inside it, the other free; a figure whose free foot is that
+  // one (the wrong foot into the turn) first shifts its weight onto it. The turn sets the
+  // other foot down with the weight on it, so the next step leads with the foot it turned on
+  const turn = (by: number) => {
+    const pivot: Foot = (by < 0) ? 'left' : 'right';
+    if(figure && (lead === pivot) && !push('shift', current, pivot, weigh(timing.shift))) return false;
+    lead = pivot;
+    return push('turn', turnedOn(current, by), pivot, weigh(timing.turn) * (Math.abs(by) / 90));
+  };
   // a backward walk steps against the way it faces: its frame turned half round
   const back = walk.backward ? -1 : 1;
   const step = (length: number, yaw = current.yaw) => {
@@ -157,7 +293,22 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
     const kind = (next.level !== current.level) ? 'hop' : 'step';
     const foot = lead;
     lead = (lead === 'left') ? 'right' : 'left';
-    return push(kind, next, foot, (kind === 'hop') ? HOP_WEIGHT : (STEP_WEIGHT * length));
+    return push(kind, next, foot, (kind === 'hop') ? weigh(timing.crouch + timing.air + timing.land) : length);
+  };
+  // a figure's stride onto a level within its reach: up from a stud whose next lies on
+  // its own level and the one past it higher, down from a stud whose next lies lower as
+  // the one past it does (the edge between the levels always at the stride's own stud
+  // boundary: SEE edgeOf); none where the levels ahead are otherwise
+  const stair = (): boolean | undefined => {
+    if(!figure || !current.studded) return undefined/*not a figure on studs*/;
+    const [fx, fz] = forwardOf(current.yaw).map(v => back * v);
+    const at = (studs: number) => landing(surfaceAt, current, { x: current.x + (fx * studs), z: current.z + (fz * studs), yaw: current.yaw }, climb);
+    const [near, far] = [at(1), at(STAIR)], rise = far.level - current.level;
+    const up = (rise > ON_SURFACE) && (near.level === current.level), down = (rise < -ON_SURFACE) && (near.level === far.level);
+    if((!up && !down) || (Math.abs(rise) > (STEP_CLIMB + ON_SURFACE))) return undefined/*no stride*/;
+    const foot = lead;
+    lead = (lead === 'left') ? 'right' : 'left';
+    return push('step', far, foot, weigh((far.level > current.level) ? timing.up : timing.down));
   };
 
   for(const target of walk.points.slice(1)) {
@@ -167,6 +318,7 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
         const [fx, fz] = forwardOf(current.yaw).map(v => back * v), [rx, rz] = rightOf(current.yaw).map(v => back * v);
         const [along, across] = [(dx * fx) + (dz * fz), (dx * rx) + (dz * rz)];
         if((Math.abs(along) <= NEAREST) && (Math.abs(across) <= NEAREST)) break/*clicked in nearest the point*/;
+        if((along > (STAIR - NEAREST)) && (along >= (Math.abs(across) - TIE))) { const strode = stair(); if(strode === false) break; if(strode) continue; }
         if((along > NEAREST) && (along >= (Math.abs(across) - TIE))) { if(!step(1)) break; continue; }
         if(!((Math.abs(across) > (Math.abs(along) + TIE)) ? turn((across > 0) ? 90 : -90) : turn(90))) break/*about: two quarters*/;
         continue;
@@ -182,12 +334,16 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
   return timed(moves, walk.start, walk.end);
 };
 
+/** the stud a stance's foot stands on, its middle (studs) */
+export const studOf = (stance: Pick<Stance, 'x' | 'z' | 'yaw'>, foot: Foot): readonly [number, number] => {
+  const side = (foot === 'left') ? -1 : 1, [rx, rz] = rightOf(stance.yaw);
+  return [stance.x + (side * 0.5 * rx), stance.z + (side * 0.5 * rz)];
+};
+
 /** a stance turned `by` degrees on the foot inside the turn (the left turning left),
  *  its middle carried round that foot, on the level it stands */
-const turnedOn = (stance: Stance, by: number): Stance => {
-  const side = (by < 0) ? -1 : 1, [rx, rz] = rightOf(stance.yaw);
-  const pivot = [stance.x + (side * 0.5 * rx), stance.z + (side * 0.5 * rz)];
-  const [x, z] = turnedAbout([stance.x, stance.z], pivot, by);
+export const turnedOn = (stance: Stance, by: number): Stance => {
+  const [x, z] = turnedAbout([stance.x, stance.z], studOf(stance, (by < 0) ? 'left' : 'right'), by);
   return { ...stance, x, z, yaw: stance.yaw + by };
 };
 
@@ -235,95 +391,287 @@ const timed = (moves: ReadonlyArray<Omit<Move, 'start' | 'end'> & { weight: numb
 /** what a stance and a move set at a time: place, heading, height (plates) and the
  *  legs; what they add: arms, shoulders, lean */
 export type Posed = Readonly<{ set: Readonly<Record<string, number>>; add: Readonly<Record<string, number>>; }>;
-/** how a walk carries a figure: its arms' swing and its lean (degrees), how far its
- *  leading leg reaches out when it names that (degrees; REACH else) and how far it
- *  wanders from step to step (0 none; 1 the bathroom walk's own: WANDER) */
-export type Gait = Readonly<{ arms: number; lean: number; swing?: number; variance?: number; }>;
+/** how a walk carries a figure: its arms' swing when it names one (its shape's
+ *  otherwise) and its lean (degrees), how far it wanders from step to step (0 none; 1
+ *  its shape's own wander) and its shape (WALK when it names none) */
+export type Gait = Readonly<{ arms?: number; lean: number; variance?: number; shape?: GaitShape; }>;
 
 /** an actor standing in a stance, clicked in or not: its place, heading and level
  *  (its legs as keyed: a lunge, a seat) */
 export const stood = (stance: Stance): Posed => ({ set: { x: stance.x, z: stance.z, yaw: stance.yaw, height: stance.level }, add: {} });
 
 /** an actor `u` (0 to 1) through a move: a step vaulting over the edge between its
- *  rows, a turn on its pivot foot, a hop in an arc */
-export const posedAt = (move: Move, u: number, figure: boolean, gait: Gait): Posed => {
+ *  rows, a turn on its pivot foot, a hop in an arc. `drawn`, it is a drawing standing on
+ *  its own (a film on ones or twos, SEE: Drawing): its body as high as its feet need
+ *  there, never arching to clear the frames a smooth film draws between */
+export const posedAt = (move: Move, u: number, figure: boolean, gait: Gait, drawn = false): Posed => {
   const at = Math.max(0, Math.min(1, u));
-  if(move.kind === 'turn') return turning(move, at, figure);
-  if(move.kind === 'hop') return hopping(move, at, figure);
-  return stepping(move, at, gait);
+  if(move.kind === 'turn') return turning(move, at, figure, gait.shape ?? WALK, drawn);
+  if(move.kind === 'hop') return hopping(move, at, figure, gait.shape ?? WALK);
+  if(move.kind === 'shift') return shifting(move, at, figure, gait.shape ?? WALK);
+  return stepping(move, at, gait, drawn);
 };
 
-/** a step: the body gliding over the edge between its rows (GLIDE), the trailing toe
- *  on that edge until TOE_OFF and then swinging through, the leading leg reaching out
- *  (the gait's `swing`, REACH else) and its heel on that edge from HEEL_ON, so neither
- *  foot slides; the hips where the feet put them (the other way for a step backward);
- *  the arms swinging against the legs, the shoulders against the arms; wandering by
- *  the gait's `variance`, a planted foot never moved by it */
-const stepping = (move: Move, u: number, gait: Gait): Posed => {
+/** how a walker is drawn, each drawing a pose standing on its own: on twos (`frames`
+ *  2) a move in its gait's own drawings (SEE: GaitShape.timing), each held as many
+ *  frames as the move's span gives it (two at a walk's own pace); on ones (`frames` 1)
+ *  a drawing every frame at `fps`; none when it moves smoothly, on every frame between
+ *  its keys */
+export type Drawing = Readonly<{ frames: number; fps: number; }>;
+
+/** the drawings a gait draws a move in: a step's, a stride's, a quarter turn's (a half
+ *  turn twice as many), a shift's, a hop's crouch, flight and landing together */
+const drawingsOf = (move: Move, shape: GaitShape): number => {
+  const { timing } = shape;
+  if(move.kind === 'turn') return timing.turn * Math.max(1, Math.round(Math.abs(move.to.yaw - move.from.yaw) / 90));
+  if(move.kind === 'shift') return timing.shift;
+  if(move.kind === 'hop') return timing.crouch + timing.air + timing.land;
+  const rise = move.to.level - move.from.level;
+  return (Math.abs(rise) < ON_SURFACE) ? timing.step : (rise > 0) ? timing.up : timing.down;
+};
+
+/** a step: the body gliding over the edge between its rows (its stride's glide); the
+ *  trailing toe planted on that edge until its toe-off and the leading heel from its
+ *  heel-on, each planted leg set by where the body stands; the other leg where its keys
+ *  put it, its foot clearing the studs as it travels; the hips as low as the feet let
+ *  them, the body hopping just as far as a leg's swing needs, a planted foot rising
+ *  straight up from its stud (the other way for a step backward); the arms swinging
+ *  against the legs, the shoulders against the arms; wandering by the gait's
+ *  `variance`. A step onto another level keys its own stride, the leading foot planted
+ *  on the level it lands on and each travelling foot clearing the edge between the
+ *  levels, the waist bending through it. No foot touching the plate ever moves along it */
+const stepping = (move: Move, u: number, gait: Gait, drawn: boolean): Posed => {
+  const shape = gait.shape ?? WALK, stride = strideOf(shape, move);
   const length = Math.hypot(move.to.x - move.from.x, move.to.z - move.from.z);
-  const half = Math.min(FOOT, length / 2)/*a shorter step's edge nearer*/;
-  const radius = Math.hypot(half, LEG), tilt = Math.atan2(half, LEG);
-  const envelope = Math.sin(Math.PI * u)/*no wander where the step stands clicked in*/;
-  const wander = (channel: string, most: number) => (gait.variance ?? 0) * most * envelope * jitter(`${move.start}|${move.from.x}|${move.from.z}|${channel}|${Math.round(u * 1e6)}`);
-  const w = glideAt(u) + (wander('glide', WANDER.glide) / Math.max(length, TIE));
-  // the body's middle from the edge between the rows (studs, + past it): each planted
-  // foot hinges there, so both put the hips at one height
-  const past = (w * length) - half;
-  const phi = Math.asin(Math.max(-1, Math.min(1, past / radius)));
-  const rise = (radius * Math.cos(phi)) - LEG;
+  const rise = (move.to.level - move.from.level) / PLATES_PER_STUD/*studs*/, climbing = Math.abs(rise) > TIE;
+  // a step's wander: one shift a step, faded in and out across it, so it drifts from
+  // step to step and never shakes from frame to frame
+  const wander = (channel: string, most: number, at = u) => (gait.variance ?? 0) * most * Math.sin(Math.PI * at) * jitter(`${move.start}|${move.from.x}|${move.from.z}|${channel}`);
+  // where the body is through the step, its wander with it: one place for a planted leg
+  // and for the free leg it hands over to
+  const alongAt = (at: number) => (glideAt(stride, at) * length) + wander('glide', shape.wander.glide, at);
+  const legsAt = (at: number) => {
+    const along = alongAt(at);
+    const trailPlanted = at <= stride.toeOff, leadPlanted = at >= stride.heelOn;
+    const rocked = rockedAt(along, length);
+    const trailing = trailPlanted ? rocked.trail : radians(keyedAt(stride, stride.trail, at, [stride.toeOff, degreesOf(rockedAt(alongAt(stride.toeOff), length).trail)], [1, 0]));
+    const leading = leadPlanted ? rocked.lead : radians(keyedAt(stride, stride.lead, at, [0, 0], [stride.heelOn, degreesOf(rockedAt(alongAt(stride.heelOn), length).lead)]));
+    // the hip each foot needs above the level it starts on: a planted one's rock (the
+    // leading one's on the level it lands on), a travelling one's clearing the plate,
+    // the studs and the edge between the levels
+    const needs = Math.max(trailPlanted ? rocked.trailHip : 0, leadPlanted ? (rocked.leadHip + rise) : 0, ...(trailPlanted ? [] : [hipFor(degreesOf(trailing), along, length, rise)]), ...(leadPlanted ? [] : [hipFor(degreesOf(leading), along, length, rise)]));
+    return { along, trailing, leading, needs };
+  };
+  const { along, trailing, leading } = legsAt(u);
+  // the hip at each frame just where the feet need it (a planted foot on the plate
+  // there), arching between frames only as high as a travelling foot needs to clear
+  // the studs; a planted foot below it rises straight up from its stud
+  const hip = drawn ? legsAt(u).needs : between(stride.glide.length - 1, u, at => legsAt(at).needs);
   const backward = (((move.to.x - move.from.x) * forwardOf(move.from.yaw)[0]) + ((move.to.z - move.from.z) * forwardOf(move.from.yaw)[1])) < 0;
-  const side = backward ? -1 : 1;
-  const degrees = (radians: number) => side * radians * (180 / Math.PI);
-  const reach = (gait.swing ?? REACH) + wander('reach', WANDER.reach);
-  const toeOff = -phi - tilt, heelOn = tilt - phi/*each foot on the edge*/;
-  const trailing = (u <= TOE_OFF) ? degrees(toeOff) : degrees(toeAt(TOE_OFF, radius, tilt, half, length)) * (1 - smooth((u - TOE_OFF) / (1 - TOE_OFF)));
-  const leading = (u >= HEEL_ON) ? degrees(heelOn)
-    : (u <= REACH_AT) ? side * reach * smooth(u / REACH_AT)
-    : (side * reach) + ((degrees(heelAt(HEEL_ON, radius, tilt, half, length)) - (side * reach)) * smooth((u - REACH_AT) / (HEEL_ON - REACH_AT)));
+  const degrees = (angle: number) => (backward ? -1 : 1) * degreesOf(angle);
   const [lead, trail] = (move.foot === 'left') ? ['leftLeg', 'rightLeg'] : ['rightLeg', 'leftLeg'];
-  const arm = (gait.arms * envelope * ((move.foot === 'left') ? 1 : -1)/*the arm opposite the leading leg forward*/) + wander('arms', WANDER.arms);
+  const arm = ((gait.arms ?? shape.arms) * Math.sin(Math.PI * u) * ((move.foot === 'left') ? 1 : -1)/*the arm opposite the leading leg forward*/) + wander('arms', shape.wander.arms);
+  const w = along / Math.max(length, TIE);
   return {
-    set: { x: move.from.x + ((move.to.x - move.from.x) * w), z: move.from.z + ((move.to.z - move.from.z) * w), yaw: move.from.yaw, height: move.from.level + (rise * PLATES_PER_STUD), [`pose.${lead}`]: leading, [`pose.${trail}`]: trailing },
-    add: { 'pose.rightArm': arm, 'pose.leftArm': -arm, 'pose.twist': (-arm * TWIST_PER_ARM) + wander('twist', WANDER.twist), 'pose.lean': gait.lean * envelope },
+    set: { x: move.from.x + ((move.to.x - move.from.x) * w), z: move.from.z + ((move.to.z - move.from.z) * w), yaw: move.from.yaw, height: move.from.level + ((hip - LEG) * PLATES_PER_STUD), [`pose.${lead}`]: degrees(leading), [`pose.${trail}`]: degrees(trailing) },
+    add: { 'pose.rightArm': arm, 'pose.leftArm': -arm, 'pose.twist': (-arm * shape.twistPerArm) + wander('twist', shape.wander.twist), 'pose.lean': (gait.lean * Math.sin(Math.PI * u)) + (climbing ? keysAt((rise > 0) ? shape.upLean : shape.downLean, u) : 0), 'pose.head': keysAt(shape.headSwing, u) * ((move.foot === 'right') ? 1 : -1)/*a head turns clockwise seen from above: toward the right*/ },
   };
 };
 
-/** where a step's body glides at `u` through it: GLIDE's quarters, eased straight between */
-const glideAt = (u: number): number => {
-  const at = Math.max(0, Math.min(1, u)) * (GLIDE.length - 1), index = Math.min(GLIDE.length - 2, Math.floor(at));
-  return GLIDE[index] + ((GLIDE[index + 1] - GLIDE[index]) * (at - index));
+/** a height through a move of `frames` frames, at `u`: what `needs` says at each
+ *  frame, and between two the line joining them raised by one arch just enough to
+ *  stay over what `needs` says there */
+const between = (frames: number, u: number, needs: (u: number) => number): number => {
+  const i = Math.max(0, Math.min(frames - 1, Math.floor(u * frames))), [u0, u1] = [i / frames, (i + 1) / frames];
+  const [h0, h1] = [needs(u0), needs(u1)], t = (u - u0) / (u1 - u0);
+  let rise = 0;
+  for(let k=1; k<BETWEEN_SAMPLES; k++) {
+    const s = k / BETWEEN_SAMPLES;
+    rise = Math.max(rise, (needs(u0 + (s * (u1 - u0))) - (h0 + ((h1 - h0) * s))) / Math.sin(Math.PI * s));
+  }
+  return h0 + ((h1 - h0) * t) + (rise * Math.sin(Math.PI * t));
 };
-/** the trailing leg's angle with its toe on the edge, and the leading leg's with its
- *  heel there, `u` through a step without wander (radians, forward +) */
-const toeAt = (u: number, radius: number, tilt: number, half: number, length: number): number => -Math.asin(Math.max(-1, Math.min(1, ((glideAt(u) * length) - half) / radius))) - tilt;
-const heelAt = (u: number, radius: number, tilt: number, half: number, length: number): number => tilt - Math.asin(Math.max(-1, Math.min(1, ((glideAt(u) * length) - half) / radius)));
+/** the lowest arch over heights sampled evenly through a step (its upper hull), at `u` */
+const archAt = (heights: ReadonlyArray<number>, u: number): number => {
+  const last = heights.length - 1, hull: Array<readonly [number, number]> = [];
+  heights.forEach((height, i) => {
+    const point = [i / last, height] as const;
+    while(hull.length >= 2) {
+      const [[x0, y0], [x1, y1]] = [hull[hull.length - 2], hull[hull.length - 1]];
+      if((((x1 - x0) * (point[1] - y0)) - ((y1 - y0) * (point[0] - x0))) < 0) break/*a bend down: kept*/;
+      hull.pop();
+    }
+    hull.push(point);
+  });
+  const index = Math.max(0, hull.findIndex(([at], i) => (i > 0) && (u <= at)) - 1);
+  const [[u0, h0], [u1, h1]] = [hull[index], hull[Math.min(hull.length - 1, index + 1)]];
+  return (u1 > u0) ? (h0 + ((h1 - h0) * ((u - u0) / (u1 - u0)))) : h1;
+};
 
-/** a turn: the heading eased round, the middle carried round the pivot foot, the free
- *  leg swung forward and back */
-const turning = (move: Move, u: number, figure: boolean): Posed => {
-  const w = smooth(u), by = move.to.yaw - move.from.yaw;
-  const side = (move.foot === 'left') ? -1 : 1, [rx, rz] = rightOf(move.from.yaw);
-  const pivot = [move.from.x + (side * 0.5 * rx), move.from.z + (side * 0.5 * rz)];
-  const [x, z] = turnedAbout([move.from.x, move.from.z], pivot, by * w);
+/** where each planted foot holds its leg and the hip, the body `along` a step of
+ *  `length` (studs): the trailing toe on the plate where it stood, the leading heel
+ *  where it lands, each leg rocking about that corner (radians, forward +; studs above
+ *  the plate) */
+const rockedAt = (along: number, length: number) => {
+  const toe = along - TOE, heel = along - (length - HEEL);
+  const toeRadius = Math.hypot(TOE, LEG), heelRadius = Math.hypot(HEEL, LEG);
+  const within = (value: number) => Math.max(-1, Math.min(1, value));
+  return {
+    trail: -Math.asin(within(toe / toeRadius)) - Math.atan2(TOE, LEG), trailHip: Math.sqrt(Math.max(0, (toeRadius ** 2) - (toe ** 2))),
+    lead: Math.atan2(HEEL, LEG) - Math.asin(within(heel / heelRadius)), leadHip: Math.sqrt(Math.max(0, (heelRadius ** 2) - (heel ** 2))),
+  };
+};
+/** how far below the hip a leg at `leg` (radians, forward +) reaches: its heel's corner
+ *  swung forward, its toe's swung back (studs) */
+const reachOf = (leg: number): number => (LEG * Math.cos(leg)) + (((leg >= 0) ? HEEL : TOE) * Math.abs(Math.sin(leg)));
+/** where a stride's edge between its levels lies along it (studs): half a stud before
+ *  where it lands going up, half a stud past where it starts going down */
+const edgeOf = (length: number, rise: number): number => (rise > 0) ? (length - 0.5) : 0.5;
+/** how high the planted feet's rock holds the hip `u` through a step of `length` that
+ *  rises `rise` (studs above the level it starts on, without wander; 0 in a flight, no
+ *  foot planted) */
+export const rockAt = (stride: Stride, u: number, length = 1, rise = 0): number => {
+  const rocked = rockedAt(glideAt(stride, u) * length, length);
+  return Math.max((u <= stride.toeOff) ? rocked.trailHip : 0, (u >= stride.heelOn) ? (rocked.leadHip + rise) : 0);
+};
+/** how high the hip must stand for a free leg at `degrees` (forward +), its body `along`
+ *  a step of `length` rising `rise` at its edge (studs), to keep its
+ *  sole clear of the plate under each point of it (the edge's corner too) and,
+ *  travelling, of the studs (studs above the level it starts on) */
+export const hipFor = (degrees: number, along: number, length = 1, rise = 0): number => {
+  const leg = radians(degrees), [cos, sin] = [Math.cos(leg), Math.sin(leg)], offset = (TOE - HEEL) / 2/*the foot's middle ahead of the hip's axis*/;
+  const travel = travelling(along + (LEG * sin) + (offset * cos) - offset, length);
+  // a point of the sole `a` ahead of the hip's axis (heel -HEEL, toe TOE): where it lies
+  // along the step and how far below the hip, over the level under it
+  const edge = edgeOf(length, rise), alongOf = (a: number) => along + (a * cos) + (LEG * sin), below = (a: number) => (LEG * cos) - (a * sin);
+  const over = (a: number) => below(a) + ((alongOf(a) > edge) ? rise : 0);
+  const atEdge = (edge - along - (LEG * sin)) / cos/*the sole's point over the edge*/;
+  const lowest = Math.max(over(-HEEL), over(TOE), ...(((atEdge > -HEEL) && (atEdge < TOE)) ? [below(atEdge) + Math.max(0, rise)] : []));
+  return lowest + Math.max(STUD_CLEAR * travel, (travel > 0) ? MOVING_CLEAR : 0);
+};
+/** how far a foot whose middle stands `at` (studs along a step of `length`, from where
+ *  it stood) is travelling: 0 over the stud it left or lands on, 1 between them */
+const travelling = (at: number, length: number): number => Math.min(1, Math.abs(at) / STUD_NEAR, Math.abs(at - length) / STUD_NEAR);
+/** a free leg's angle at `u` through a step: a smooth curve through `from`, its keys at
+ *  the frames between, and `to` (each [u, degrees]) */
+const keyedAt = (stride: Stride, keys: ReadonlyArray<number>, u: number, from: readonly [number, number], to: readonly [number, number]): number => {
+  const frames = stride.glide.length - 1;
+  return smoothThrough([from, ...keys.map((key, i) => [i / frames, key] as const).filter(([at]) => (at > (from[0] + TIE)) && (at < (to[0] - TIE))), to], u);
+};
+/** a smooth curve through points (each [u, value], u rising), at `u`: each piece a cubic
+ *  that keeps the curve from overshooting between its points (monotone Hermite) */
+const smoothThrough = (points: ReadonlyArray<readonly [number, number]>, u: number): number => {
+  if(points.length < 2) return points[0]?.[1] ?? 0;
+  const at = Math.max(points[0][0], Math.min(points[points.length - 1][0], u));
+  const i = Math.max(0, Math.min(points.length - 2, points.findIndex(([x], k) => (k > 0) && (at <= x)) - 1));
+  const slope = (k: number) => (points[k + 1][1] - points[k][1]) / Math.max(TIE, points[k + 1][0] - points[k][0]);
+  const tangent = (k: number) => {
+    if((k === 0) || (k === (points.length - 1))) return slope(Math.min(k, points.length - 2));
+    const [a, b] = [slope(k - 1), slope(k)];
+    return ((a * b) <= 0) ? 0 : (2 / ((1 / a) + (1 / b)))/*a turn holds still; otherwise the slopes' harmonic mean*/;
+  };
+  const [[x0, y0], [x1, y1]] = [points[i], points[i + 1]], h = Math.max(TIE, x1 - x0), t = (at - x0) / h;
+  const [t2, t3] = [t * t, t * t * t];
+  return (((2 * t3) - (3 * t2) + 1) * y0) + ((t3 - (2 * t2) + t) * h * tangent(i)) + (((-2 * t3) + (3 * t2)) * y1) + ((t3 - t2) * h * tangent(i + 1));
+};
+const radians = (degrees: number): number => degrees * (Math.PI / 180);
+const degreesOf = (angle: number): number => angle * (180 / Math.PI);
+
+/** where a step's body glides at `u` through it: a smooth curve through its stride's
+ *  glide at even shares */
+export const glideAt = (stride: Pick<Stride, 'glide'>, u: number): number => smoothThrough(stride.glide.map((g, i) => [i / (stride.glide.length - 1), g] as const), u);
+/** a turn: the heading eased round as its shape keys it, the middle carried round the
+ *  pivot foot (turning on its stud), leaning out over that foot (rolled onto its outer
+ *  edge, which rounds the stud), the free leg swung as its shape keys it, the body
+ *  rising as far as the lean lifts it or, one arch a turn, as the free foot needs to
+ *  clear the studs it travels over */
+const turning = (move: Move, u: number, figure: boolean, shape: GaitShape, drawn: boolean): Posed => {
+  const w = keysAt(shape.turnEase, u), by = move.to.yaw - move.from.yaw, yaw = move.from.yaw + (by * w);
+  const [cx, cz] = turnedAbout([move.from.x, move.from.z], studOf(move.from, move.foot), by * w);
   const free = (move.foot === 'left') ? 'rightLeg' : 'leftLeg', pivoting = (move.foot === 'left') ? 'leftLeg' : 'rightLeg';
-  return { set: { x, z, yaw: move.from.yaw + (by * w), height: move.from.level, ...(figure ? { [`pose.${free}`]: TURN_LEG * Math.sin(Math.PI * u), [`pose.${pivoting}`]: 0 } : {}) }, add: {} };
-};
-
-/** a hop: carried from one stance to the other in an arc above the higher level, the
- *  legs tucked and the arms raised in the air */
-const hopping = (move: Move, u: number, figure: boolean): Posed => {
-  const w = smooth(u), air = Math.sin(Math.PI * u);
-  const [a, b] = [move.from.level, move.to.level];
-  const lift = HOP_LIFT + (HOP_CLIMB * Math.abs(b - a));
+  // the lean: rolled about the grounded foot's outer edge, the middle carried out toward
+  // it and up (SEE: shifting)
+  const roll = figure ? radians(keysAt(shape.turnRoll, u)) : 0, side = (move.foot === 'right') ? 1 : -1, [rx, rz] = rightOf(yaw);
+  const out = FOOT_EDGE * (1 - Math.cos(roll)), up = FOOT_EDGE * Math.sin(roll);
+  const clears = (at: number) => Math.max(0, reachOf(radians(keysAt(shape.turnLeg, at))) + (STUD_CLEAR * Math.min(1, at / STUD_NEAR, (1 - at) / STUD_NEAR)/*leaving and landing on its own stud*/) - LEG);
+  const hop = !figure ? 0 : drawn ? clears(u) : archAt(Array.from({ length: ARCH_SAMPLES + 1 }, (_, i) => clears(i / ARCH_SAMPLES)), u);
   return {
-    set: {
-      x: move.from.x + ((move.to.x - move.from.x) * w), z: move.from.z + ((move.to.z - move.from.z) * w), yaw: move.from.yaw + ((move.to.yaw - move.from.yaw) * w),
-      height: a + ((b - a) * u) + (4 * lift * u * (1 - u)),
-      ...(figure ? { 'pose.leftLeg': HOP_LEGS * air, 'pose.rightLeg': HOP_LEGS * air } : {}),
-    },
-    add: figure ? { 'pose.rightArm': HOP_ARMS * air, 'pose.leftArm': HOP_ARMS * air } : {},
+    // NOTE: a stage's roll raises the figure's right side, so leaning onto the right foot is negative
+    set: { x: cx + (side * rx * out), z: cz + (side * rz * out), yaw, height: move.from.level + (Math.max(up, hop) * PLATES_PER_STUD), ...(figure ? { roll: -side * degreesOf(roll), [`pose.${free}`]: keysAt(shape.turnLeg, u), [`pose.${pivoting}`]: 0 } : {}) },
+    add: {},
   };
 };
+
+/** a hop: a crouch (rocking back on the heels where it stands, the waist bending, the
+ *  arms swinging back), a flight in its shape's arc above the higher level from the
+ *  crouch's pose to the landing's (the legs tucked and the arms raised on the way), and a
+ *  landing (heels first where it lands, rocking back on them, rising to stand) */
+const hopping = (move: Move, u: number, figure: boolean, shape: GaitShape): Posed => {
+  const [a, b] = [move.from.level, move.to.level];
+  const [dx, dz] = [move.to.x - move.from.x, move.to.z - move.from.z], length = Math.hypot(dx, dz);
+  const [fx, fz] = (length > TIE) ? [dx / length, dz / length] : [0, 0];
+  const shares = hopShares(shape), crouch = figure ? shares.crouch : 0, land = figure ? shares.land : 0, flight = Math.max(TIE, 1 - crouch - land);
+  // a stance rocked on its feet, its legs tipped `degrees` (forward +: back on the heels,
+  // each heel where it stood; back -: forward onto the toes, each toe where it stood):
+  // where its hip stands back from the stance's middle and how high (studs)
+  const rocked = (degrees: number) => {
+    const leg = radians(degrees), corner = (degrees >= 0) ? HEEL : TOE, side = (degrees >= 0) ? 1 : -1;
+    return { back: side * (corner - (corner * Math.cos(leg))) + (LEG * Math.sin(leg)), hip: (LEG * Math.cos(leg)) + (corner * Math.abs(Math.sin(leg))) };
+  };
+  const at = (stance: Stance, level: number, legs: number, lean: number, arms: number) => {
+    const { back, hip } = rocked(legs);
+    return { x: stance.x - (fx * back), z: stance.z - (fz * back), height: level + ((hip - LEG) * PLATES_PER_STUD), legs, lean, arms };
+  };
+  const posed = (pose: ReturnType<typeof at>, yaw: number): Posed => ({
+    set: { x: pose.x, z: pose.z, yaw, height: pose.height, ...(figure ? { 'pose.leftLeg': pose.legs, 'pose.rightLeg': pose.legs } : {}) },
+    add: figure ? { 'pose.rightArm': pose.arms, 'pose.leftArm': pose.arms, 'pose.lean': pose.lean } : {},
+  });
+  if(u < crouch) {
+    const v = u / crouch, legs = keysAt(shape.crouchLegs, v);
+    return posed(at(move.from, a, (v < 1) ? legs : Math.min(SPRING, legs), keysAt(shape.crouchLean, v), keysAt(shape.crouchArms, v)), move.from.yaw);
+  }
+  if(u > (1 - land)) {
+    const v = (u - (1 - land)) / land;
+    return posed(at(move.to, b, keysAt(shape.landLegs, v), keysAt(shape.landLean, v), keysAt(shape.landArms, v)), move.to.yaw);
+  }
+  // the flight: from the crouch's last pose to the landing's first, in an arc; it leaves
+  // the plate only rolled forward onto the toes (SPRING at most), never back on the heels
+  const w = (u - crouch) / flight, eased = smooth(w);
+  const from = figure ? at(move.from, a, Math.min(SPRING, keysAt(shape.crouchLegs, 1)), keysAt(shape.crouchLean, 1), keysAt(shape.crouchArms, 1)) : at(move.from, a, 0, 0, 0);
+  const to = figure ? at(move.to, b, keysAt(shape.landLegs, 0), keysAt(shape.landLean, 0), keysAt(shape.landArms, 0)) : at(move.to, b, 0, 0, 0);
+  const between = (p: number, q: number) => p + ((q - p) * eased);
+  const lift = shape.hopLift + (shape.hopClimb * Math.abs(b - a));
+  // across the ground it carries the speed it leaves with, steady to the landing; only
+  // its rise follows the arc
+  return posed({
+    x: from.x + ((to.x - from.x) * w), z: from.z + ((to.z - from.z) * w), height: from.height + ((to.height - from.height) * w) + (lift * keysAt(shape.hopArc, w)),
+    legs: between(from.legs, to.legs) + keysAt(shape.hopLegs, w), lean: between(from.lean, to.lean), arms: between(from.arms, to.arms) + keysAt(shape.hopArms, w),
+  }, move.from.yaw + ((move.to.yaw - move.from.yaw) * eased));
+};
+
+/** a shift of weight: the body rolled onto the outer edge of the foot taking the weight,
+ *  that edge where it stands, lifting the other foot clear of its stud and setting it
+ *  down again */
+const shifting = (move: Move, u: number, figure: boolean, shape: GaitShape): Posed => {
+  const roll = figure ? radians(keysAt(shape.shiftRoll, u)) : 0, side = (move.foot === 'right') ? 1 : -1, [rx, rz] = rightOf(move.from.yaw);
+  const out = FOOT_EDGE * (1 - Math.cos(roll)), up = FOOT_EDGE * Math.sin(roll);
+  // NOTE: a stage's roll raises the figure's right side, so rolling onto the right foot is negative
+  return { set: { x: move.from.x + (side * rx * out), z: move.from.z + (side * rz * out), yaw: move.from.yaw, height: move.from.level + (up * PLATES_PER_STUD), roll: -side * degreesOf(roll), ...(figure ? { 'pose.leftLeg': 0, 'pose.rightLeg': 0 } : {}) }, add: {} };
+};
+
+/** how far a walking figure's head turns ahead of its body at `time` (degrees, clockwise
+ *  seen from above): toward the next turn's way from its shape's lead before it, easing
+ *  back to straight as the body comes round */
+export const leadingHead = (moves: ReadonlyArray<Move>, time: number, shape: GaitShape): number => {
+  const next = moves.find(move => (move.kind === 'turn') && (move.end >= time));
+  if(!next || (time < (next.start - shape.headLead))) return 0;
+  const toward = Math.sign(next.to.yaw - next.from.yaw) * shape.headTurn;
+  if(time < next.start) return toward * smooth((time - (next.start - shape.headLead)) / Math.max(TIE, shape.headLead));
+  return toward * (1 - keysAt(shape.turnEase, (time - next.start) / Math.max(TIE, next.end - next.start)));
+};
+
+/** a move's value at `u` through it: a smooth curve through its keys at even shares */
+export const keysAt = (keys: ReadonlyArray<number>, u: number): number => smoothThrough(keys.map((key, i) => [i / (keys.length - 1), key] as const), u);
 
 const smooth = (u: number): number => u * u * (3 - (2 * u));
 /** a fixed number from -1 to 1 for some text (FNV-1a over it): the same every run */
@@ -355,7 +703,17 @@ export class Clicked {
   /** the foot its last step in a crowd led with */
   private lead: Foot = 'right';
 
-  public constructor(private readonly walks: ReadonlyArray<Walk>, private readonly climb: number | undefined, private readonly figure: boolean, private readonly crowding: ReadonlyArray<readonly [number, number]> = []) {}
+  public constructor(private readonly walks: ReadonlyArray<Walk>, private readonly climb: number | undefined, private readonly figure: boolean, private readonly crowding: ReadonlyArray<readonly [number, number]> = [], private readonly drawing?: Drawing) {}
+
+  /** the move of a walk under way at `time` and how far through it (0 to 1: where its
+   *  drawing stands, drawn), once the walk has been laid; none between walks or before
+   *  one is laid */
+  public moveAt(time: number): Readonly<{ walk: Walk; move: Move; u: number; }> | undefined {
+    const walk = this.walks.find(each => (time >= each.start) && (time <= each.end)), laid = walk && this.laid.get(walk);
+    const move = laid?.moves.find(each => (time >= each.start) && (time <= each.end));
+    if(!walk || !move) return undefined/*not walking, or not laid yet*/;
+    return { walk, move, u: this.drawnAt(move, time, walk.shape ?? WALK) };
+  }
 
   /** what the actor's own values become at `time`, keyed (`channels`: its keys,
    *  spans, ground and boil), on the surfaces of the set standing then */
@@ -367,6 +725,16 @@ export class Clicked {
   }
 
   // == Internal ==================================================================
+  // how far through a move `time` stands (0 to 1): drawn, at the start of the drawing it
+  // falls in, the move laid in its gait's drawings on twos and in a drawing a frame on
+  // ones (SEE: Drawing)
+  private drawnAt(move: Move, time: number, shape: GaitShape): number {
+    const span = move.end - move.start, u = (span > 0) ? Math.max(0, Math.min(1, (time - move.start) / span)) : 1;
+    if(!this.drawing) return u/*smooth*/;
+    const drawings = Math.max(1, (this.drawing.frames > 1) ? drawingsOf(move, shape) : Math.round(span * this.drawing.fps));
+    return Math.min(1, Math.floor((u * drawings) + 1e-6) / drawings);
+  }
+
   private walking(walk: Walk, channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
     if(!this.laid.has(walk)) {
       const from = this.stance ?? this.keyedStance(channels, surfaceAt) ?? { x: walk.points[0].x, z: walk.points[0].z, yaw: channels.yaw ?? 0, level: channels.height ?? 0, studded: false };
@@ -378,15 +746,16 @@ export class Clicked {
     this.walked = walk;
     const move = moves.find(each => time <= each.end);
     if(!move) return applied(channels, stood(last));
-    const span = move.end - move.start;
-    return applied(channels, (time < move.start) ? stood(move.from) : posedAt(move, (span > 0) ? ((time - move.start) / span) : 1, this.figure, walk));
+    const u = this.drawnAt(move, time, walk.shape ?? WALK), drawnTime = move.start + ((move.end - move.start) * u)/*the time its drawing stands for*/;
+    const posed = (time < move.start) ? stood(move.from) : posedAt(move, u, this.figure, walk, !!this.drawing);
+    return applied(channels, this.figure ? { ...posed, add: { ...posed.add, 'pose.head': (posed.add['pose.head'] ?? 0) + leadingHead(moves, drawnTime, walk.shape ?? WALK) } } : posed);
   }
 
   private standing(channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
     if((channels.visible ?? 1) < 0.5) { this.stance = this.moving = undefined; return { ...channels }/*unseen: clicked in afresh where it shows again*/; }
     if(this.moving) {
       const { start, end } = this.moving;
-      if(time < end) return applied(channels, posedAt(this.moving, (time - start) / (end - start), this.figure, NO_GAIT));
+      if(time < end) return applied(channels, posedAt(this.moving, this.drawnAt(this.moving, time, WALK), this.figure, NO_GAIT, !!this.drawing));
       this.stance = this.moving.to;
       this.moving = undefined;
     }

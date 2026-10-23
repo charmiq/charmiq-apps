@@ -34,7 +34,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 11;
+const STAGE_VERSION = 12;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -235,22 +235,25 @@ export class Studios {
         return (probed.grounds ?? []).map((surfaces, index) => surfaces.map((height, at) => ({ height, studded: probed.studded?.[index]?.[at] ?? false })));
       };
       const reel = { fps: scene.fps, length: sceneTimesOf(scene).length/*its frames at its speed*/, width: scene.width, height: scene.height };
+      // a film staged again leaves each studio's picture standing until its frame shows,
+      // the actors never gone between (a first stage shows its set until then)
+      const keep = { keep: true };
       // a plan's marks are where its actors go: an actor cast from the set starts where
       // its piece stands, which a still staged first tells; an actor following the
       // ground stands on what is under it, which the still's sizes measure
       const plan = scene.views.some(view => view.plan);
       const grounded = scene.actors.some(actor => actor.ground);
-      const still = ((plan && actors.some(actor => 'placed' in actor)) || grounded) ? await main.stage({ ...standing, actors, ...world }) : undefined;
+      const still = ((plan && actors.some(actor => 'placed' in actor)) || grounded) ? await main.stage({ ...standing, actors, ...world, ...keep }) : undefined;
       const rested = still ? restsOf(still) : new Map<string, Rest>();
       const figures = new Set(still?.figures ?? []);
       const grounds = still && grounded ? await groundsOf(filmFor({ figures, rests: rested }/*where it goes, before the ground lifts it*/), still.sizes ?? {}, groundProbe) : new Map<string, ReadonlyArray<number>>();
       const preview = plan ? await clearanceOf(filmFor({ figures, rests: rested, grounds }/*its wheels move nothing*/), probe) : undefined;
       const marks = preview ? { marks: planMarksOf(preview.film, this.paint, preview.parts.map(found => found.inside !== undefined)) } : {};
-      const answer = await main.stage({ ...standing, actors, ...world, reel, ...marks });
+      const answer = await main.stage({ ...standing, actors, ...world, reel, ...marks, ...keep });
       const ldraw = (others.length > 0) ? await buildText(main) : undefined;
       const answers = await Promise.all(others.map((studio, index) => {
         const view = scene.views[index]?.name;
-        return studio.stage({ ...(ldraw ? { ldraw } : {}), ...standing, actors, ...world, reel, ...(view ? { view } : {}), ...marks });
+        return studio.stage({ ...(ldraw ? { ldraw } : {}), ...standing, actors, ...world, reel, ...(view ? { view } : {}), ...marks, ...keep });
       }));
       const reels = [answer, ...answers].map(each => each.reel);
       if(reels.some(each => each === undefined)) throw new Error('A studio took the scene but no reel: it may need updating.');

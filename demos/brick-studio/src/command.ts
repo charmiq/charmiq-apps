@@ -287,10 +287,10 @@ export class CommandSurface {
       // a stage: a film's scene shown in place of the build (SEE: stage.ts)
       describeStage: () => this.stage.describe(),
       stage$: () => this.stage.state$()/*a stream for the film, not a Charm's command*/,
-      stage: async ({ ldraw, set, sets, actors, floor, light, reel, view, marks }: { ldraw?: unknown; set?: unknown; sets?: unknown; actors?: unknown; floor?: unknown; light?: unknown; reel?: unknown; view?: unknown; marks?: unknown; }) => {
+      stage: async ({ ldraw, set, sets, actors, floor, light, reel, view, marks, keep }: { ldraw?: unknown; set?: unknown; sets?: unknown; actors?: unknown; floor?: unknown; light?: unknown; reel?: unknown; view?: unknown; marks?: unknown; keep?: unknown; }) => {
         if(set !== undefined) throw new Error('stage takes the sets it stands as sets (their names), and LDraw text standing for the build as ldraw.');
         this.lookAround.hide();
-        const staged = await this.stage.stage(ldraw, sets, actors, floor, light, reel, view, marks);
+        const staged = await this.stage.stage(ldraw, sets, actors, floor, light, reel, view, marks, keep);
         await this.viewer.whenSettled()/*the set drawn*/;
         return staged;
       },

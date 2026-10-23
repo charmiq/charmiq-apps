@@ -78,6 +78,8 @@ export type TimelineHost = Readonly<{
   moveSound: (cue: SoundCue, time: number) => Promise<string | undefined>;
   /** the span of the film in view (shares of it, 0 to 1), each time it changes */
   viewed: (span: Readonly<{ from: number; to: number; }>) => void;
+  /** shapes how an actor walks (its walk's band double-clicked: SEE gait-view.ts) */
+  gait: (actor: string) => void;
 }>;
 
 /** the film's sounds as the timeline draws them: their lengths and names, and each
@@ -176,6 +178,14 @@ export class Timeline {
     root.replaceChildren(this.scroller, this.over);
 
     this.scroller.addEventListener('pointerdown', event => this.press(event));
+    this.scroller.addEventListener('dblclick', event => {
+      // the band under the pointer: the press before scrubbed, so the lanes hold the
+      // pointer and the event's target is theirs
+      const mark = this.root.ownerDocument.elementsFromPoint(event.clientX, event.clientY).find((under): under is HTMLElement => (under instanceof HTMLElement) && under.classList.contains('band'));
+      const laid = mark && this.laid.find(each => each.bands.includes(mark));
+      if(!mark || !laid || !isWalk(laid.row, laid.row.bands[laid.bands.indexOf(mark)])) return/*not a walk*/;
+      this.host.gait(laid.row.track.name);
+    });
     this.scroller.addEventListener('pointermove', event => {
       if(this.dragging) { this.drag(event); return; }
       if(this.scrubbing) { this.scrub(event); return; }
@@ -452,6 +462,7 @@ export class Timeline {
       mark.style.setProperty('--tier', String(tiers[index]));
       if(each.strength !== undefined) mark.style.setProperty('--strength', String(each.strength));
       if((each.kind === 'title') || (each.kind === 'shot') || (each.kind === 'set')) mark.textContent = each.label;
+      if(isWalk(row, each)) mark.title = 'Double-click to shape how it walks';
       if(each.cue) this.soundBand(mark, each.cue, each.label, each.reading);
       lane.append(mark);
       return mark;
@@ -874,6 +885,10 @@ const REMOVE_ICON = 'M200-440v-80h560v80H200Z';
 
 /** whether an event comes with the modifier held */
 const held = (event: MouseEvent): boolean => MAC ? event.metaKey : event.ctrlKey;
+
+/** whether a band is an actor's walk: what adds its gait to the pose, whose shape the
+ *  Gait mode edits */
+const isWalk = (row: Row, band: RowBand | undefined): row is Row & Readonly<{ track: Extract<Row['track'], { kind: 'actor'; }>; }> => (row.track.kind === 'actor') && (band?.label === 'walk');
 
 // == DOM =========================================================================
 const element = <K extends keyof HTMLElementTagNameMap>(document: Document, tag: K, className: string): HTMLElementTagNameMap[K] => Object.assign(document.createElement(tag), { className });

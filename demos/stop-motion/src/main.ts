@@ -13,10 +13,11 @@ import { exportFilm, fileName, save } from './export';
 import { filmLengthOf, type Film, type Paint } from './film';
 import { FilmDialog } from './film-dialog';
 import { filmPartsOf, Films } from './films';
+import { GaitView } from './gait-view';
 import { closePairs } from './measure';
 import { Player, type PlayerState } from './player';
-import { castAs, type SceneError, type SoundCue } from './recorder';
-import { addSound, applyEdit, isRefusal, retimeSound, sameSounds, soundsAdded, soundsMoved, type Refusal, type SceneEdit } from './scene-edit';
+import { castAs, type Recorded, type SceneError, type SoundCue } from './recorder';
+import { addSound, applyEdit, isRefusal, regait, retimeSound, sameGait, sameSounds, soundsAdded, soundsMoved, writtenGait, type Refusal, type SceneEdit } from './scene-edit';
 import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB, type MeasuredScene } from './scene-source';
 import { isPlatformFile, listShippedSounds, peaksOf, shippedSoundsLister, soundsOf, SoundBank } from './sound';
@@ -81,6 +82,7 @@ const frameCount = element<HTMLSpanElement>('frameCount');
 const playButton = element<HTMLButtonElement>('playButton');
 const loopButton = element<HTMLButtonElement>('loopButton');
 const storyboardButton = element<HTMLButtonElement>('storyboardButton');
+const gaitButton = element<HTMLButtonElement>('gaitButton');
 const exportButton = element<HTMLButtonElement>('exportButton');
 const soundChip = element<HTMLButtonElement>('soundChip');
 const soundButton = element<HTMLButtonElement>('soundButton');
@@ -152,8 +154,10 @@ const timeline = new Timeline(element('timeline'), {
   picture: index => picture(index, INSPECT_WIDTH), nearPicture: index => strip.nearest(index),
   sounds: () => soundsKnown, fixed: cue => fixedWhy(cue), moveSound: (cue, time) => moveSound(cue, time),
   viewed: span => strip.setSpan(span)/*the picture track frames it*/,
+  gait: actor => { gaitView.choose(actor); showGait(true); },
 }, inspector);
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack(), (from, to) => timeline.showSpan(from, to));
+const gaitView = new GaitView(element('gait'), { write: (name, keys) => writeGait(name, keys), seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), rewind: index => player.seek(index), close: () => showGait(false) });
 
 // -- Film Files ------------------------------------------------------------------
 /** the film's files: Stop Motion reads and writes the main studio's build and the
@@ -181,6 +185,7 @@ const showFilm = (next: Film) => {
   player.setFilm(next);
   showTimeline();
   strip.show(next);
+  gaitView.setFilm(next);
   showSheet();
   showStatus();
 };
@@ -317,6 +322,17 @@ const showStoryboard = (storyboard: boolean) => {
 storyboardButton.addEventListener('click', () => showStoryboard(storyboardButton.getAttribute('aria-pressed') !== 'true'));
 try { if(localStorage.getItem(STORYBOARD_KEY) === 'true') showStoryboard(true); } catch { /*storage can be absent or refused*/ }
 
+// -- Gait ------------------------------------------------------------------------
+/** shows the Gait mode in place of the timeline, the picture track and the sheet, or
+ *  the film again */
+const showGait = (on: boolean) => {
+  gaitButton.setAttribute('aria-pressed', String(on));
+  gaitButton.textContent = on ? 'Close gait' : 'Gait';
+  document.querySelector('.motion')!.classList.toggle('is-gait', on);
+  gaitView.show(on);
+};
+gaitButton.addEventListener('click', () => showGait(gaitButton.getAttribute('aria-pressed') !== 'true'));
+
 // == File ========================================================================
 /** the film's file: its name, and whether it is saved; `note`, a word about the last
  *  thing done to it, until it next changes */
@@ -406,16 +422,16 @@ const learnSounds = (next: Film) => {
 const unread = (sounds: ReadonlyArray<string>) => `${sounds.map(soundsKnown.label).join(', ')} could not be read`;
 
 /** writes an edit measured on `scene` into the tab it was read from, once the scene as
- *  edited is shown to play what `expected` makes of the sounds the scene plays now
- *  (both run as the film runs them); undefined once the scene holds it, else why not */
-const editScene = async (scene: MeasuredScene, edit: SceneEdit, expected: (sounds: ReadonlyArray<SoundCue>) => ReadonlyArray<SoundCue> | Refusal): Promise<string | undefined> => {
+ *  edited (`after`) is shown to hold what the edit means against the scene now
+ *  (`before`; both run as the film runs them, `holds` saying why not); undefined once
+ *  the scene holds it, else why not */
+const editScene = async (scene: MeasuredScene, edit: SceneEdit, holds: (before: Recorded, after: Recorded) => string | undefined): Promise<string | undefined> => {
   const names = await shippedNames();
   const [before, after] = await Promise.all([runScene(edit.measured, names), runScene(applyEdit(edit), names)]);
   if(!before.ok) return `The scene has a mistake to fix first: ${before.error.message}`;
   if(!after.ok) return after.error.message;
-  const wanted = expected(before.scene.sounds ?? []);
-  if(isRefusal(wanted)) return wanted.refused;
-  if(!sameSounds(after.scene.sounds ?? [], wanted)) return 'The timeline cannot make this change to the scene: change it there';
+  const why = holds(before.scene, after.scene);
+  if(why !== undefined) return why;
   try {
     await source.edit(scene, edit);
     return undefined/*the scene holds it*/;
@@ -424,13 +440,21 @@ const editScene = async (scene: MeasuredScene, edit: SceneEdit, expected: (sound
   }
 };
 
+/** what a sound's edit must leave: the scene playing what `expected` makes of the sounds
+ *  it plays now */
+const playing = (expected: (sounds: ReadonlyArray<SoundCue>) => ReadonlyArray<SoundCue> | Refusal) => (before: Recorded, after: Recorded): string | undefined => {
+  const wanted = expected(before.sounds ?? []);
+  if(isRefusal(wanted)) return wanted.refused;
+  return sameSounds(after.sounds ?? [], wanted) ? undefined/*it plays them*/ : 'The timeline cannot make this change to the scene: change it there';
+};
+
 /** adds a Platform file to the scene, played from the playhead */
 const addSoundAt = async (file: DriveFile) => {
   const scene = source.scene;
   if(!scene) throw new Error(`No code editor holds the scene: add one with a ${SCENE_TAB} tab.`);
   const time = film ? film.frames[player.current.index].time : 0/*the scene's time the playhead shows*/;
   soundNames.set(file.uri, file.fileName);
-  const refused = await editScene(scene, addSound(scene.code, time, file.uri, file.fileName), sounds => soundsAdded(sounds, time, file.uri));
+  const refused = await editScene(scene, addSound(scene.code, time, file.uri, file.fileName), playing(sounds => soundsAdded(sounds, time, file.uri)));
   if(refused !== undefined) throw new Error(refused);
 };
 
@@ -450,7 +474,17 @@ const moveSound = async (cue: SoundCue, time: number): Promise<string | undefine
   if(!scene) return 'No code editor holds the scene';
   const edit = retimeSound(scene.code, cue, time);
   if(isRefusal(edit)) return edit.refused;
-  return editScene(scene, edit, sounds => soundsMoved(sounds, cue, time));
+  return editScene(scene, edit, playing(sounds => soundsMoved(sounds, cue, time)));
+};
+
+/** writes the scene's gait `name` as `keys` (what it changes from the built-in walk):
+ *  undefined once the scene holds it, else why not */
+const writeGait = async (name: string, keys: Readonly<Record<string, unknown>>): Promise<string | undefined> => {
+  const scene = source.scene;
+  if(!scene) return 'No code editor holds the scene';
+  const edit = regait(scene.code, film?.scene.gaits?.find(each => each.name === name), name, keys);
+  if(isRefusal(edit)) return edit.refused;
+  return editScene(scene, edit, (_, after) => sameGait(after.gaits?.find(each => each.name === name)?.keys, writtenGait(keys)) ? undefined/*it walks it*/ : 'The Gait mode cannot make this change to the scene: change it there');
 };
 
 soundButton.disabled = !soundDialog;
@@ -468,6 +502,7 @@ const showFrame = (index: number) => {
 const showPlayer = (state: PlayerState) => {
   timeline.setFrame(state.index);
   strip.setFrame(state.index);
+  gaitView.setFrame(film?.frames[state.index]);
   const fps = film?.scene.fps ?? 24;
   const seconds = Math.floor(state.index / fps), frames = state.index % fps;
   timecode.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;

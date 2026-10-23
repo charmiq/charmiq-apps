@@ -29,6 +29,7 @@
 
 // == Bench =======================================================================
 .motion {
+  position: relative/*the frame of the status floating over the floor*/;
   height: 100%;
   min-height: 420px;
   display: grid;
@@ -159,7 +160,7 @@
 }
 
 #loopButton[aria-pressed='false'] { background: var(--bench); color: var(--ink-soft); }
-#storyboardButton[aria-pressed='true'] { background: var(--outline); color: #FFFDF2; }
+#storyboardButton[aria-pressed='true'], #gaitButton[aria-pressed='true'] { background: var(--outline); color: #FFFDF2; }
 
 // the film's sound loading, waiting on a press, or unable to play (its title says why)
 .sound-chip {
@@ -187,10 +188,20 @@
   .tag { flex: none; margin-left: auto; }
 
   // work underway: a band of bricks along its foot, running while its share is
-  // unknown, filled to the share done once it is
+  // unknown, filled to the share done once it is. It floats over the floor's top corner,
+  // out of the grid's flow (placed nowhere, sizing nothing: the floor stands where it
+  // stands without it), and shows only once the work has lasted a moment: a quick
+  // restage shows nothing
   &.is-working {
-    position: relative;
+    position: absolute;
+    grid-area: 2 / 1/*the floor's cell, its frame*/;
+    top: 0;
+    right: 0;
+    z-index: 4;
+    max-width: min(520px, 100%);
     overflow: hidden;
+    pointer-events: none/*nothing to press while it works*/;
+    animation: show-late 150ms ease-out 400ms both;
     &::after {
       content: '';
       position: absolute;
@@ -206,6 +217,7 @@
 }
 
 @keyframes march-bricks { to { background-position: 60px 0; } }
+@keyframes show-late { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .status.is-working::after { animation: none; } }
 
 .status-icon { flex: none; width: 16px; height: 16px; color: var(--ink); }
@@ -998,6 +1010,95 @@
 }
 
 @keyframes develop { from { filter: sepia(1) brightness(0.4) contrast(1.4); } to { filter: none; } }
+
+// == Gait ========================================================================
+// the Gait mode: in place of the timeline, the picture track and the sheet, a walker's
+// gait on its graphs, its sliders beside them (SEE: gait-view.ts)
+.motion.is-gait {
+  .timeline, .strip, .sheet { display: none; }
+  .floor { grid-template-columns: minmax(0, 1fr); }
+  .deck { grid-template-rows: auto minmax(0, 1fr); }
+}
+
+.gait[hidden] { display: none; }
+.gait {
+  min-height: 0;
+  display: grid;
+  user-select: none/*a drag that misses its dot selects nothing*/;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--lane);
+  overflow: auto;
+}
+
+.gait-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.gait-walker { font: inherit; font-size: 13px; }
+.gait-name { @extend %mono-caps; font-size: 10px; white-space: nowrap; }
+.gait-note { @extend %mono-caps; flex: 1; min-width: 0; font-size: 9px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+// whether the walker's feet stay out of the set: a press shows the worst frame
+.gait-check {
+  @extend %mono-caps;
+  justify-self: start;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  font-size: 9px;
+  color: var(--ink-soft);
+  text-align: left;
+  &.is-into { color: var(--brick-red); cursor: pointer; text-decoration: underline; }
+  &[hidden] { display: none; }
+}
+.gait-loop[aria-pressed='true'] { background: var(--outline); color: #FFFDF2; }
+
+.gait-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.gait-tab {
+  &.is-on { background: var(--brick-yellow); }
+  &.is-moving { box-shadow: 0 0 0 2px var(--brick-red); }
+}
+
+.gait-body { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 210px); gap: 12px; }
+.gait-charts { min-width: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; align-content: start; }
+.gait-chart {
+  min-width: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+
+  .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  svg { width: 100%; height: 140px; background: var(--bench); border: 1px solid var(--lane-line); border-radius: 2px; touch-action: none; }
+}
+.gait-sliders { display: flex; flex-direction: column; gap: 10px; }
+.gait-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 8px;
+
+  .eyebrow { grid-column: 1 / -1; overflow-wrap: break-word; }
+  input { width: 100%; accent-color: var(--brick-yellow); }
+}
+.gait-value { @extend %mono-caps; min-width: 40px; font-size: 10px; text-align: right; }
+.gait-scrub { width: 100%; accent-color: var(--brick-red); }
+
+// .. Graphs ......................................................................
+// the strokes: the leading leg azure and the trailing orange, a planted leg dashed,
+// where a leg swings with no hop green, the dots to drag yellow, the playhead red
+.gait-grid { stroke: var(--lane-line); stroke-width: 1; }
+.gait-axis { fill: var(--ink-soft); font: 9px 'JetBrains Mono', monospace; }
+.gait-line { fill: none; stroke-width: 2; }
+.gait-curve { stroke: var(--ink); }
+.gait-derived { stroke: var(--ink-soft); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.gait-lead { stroke: var(--brick-azure); }
+.gait-trail { stroke: var(--brick-orange); }
+.gait-planted { stroke-dasharray: 5 3; }
+.gait-band { fill: var(--brick-green); opacity: 0.18; }
+.gait-handle { fill: var(--brick-yellow); stroke: var(--outline); stroke-width: 1.5; cursor: grab; }
+.gait-moment { stroke: var(--brick-red); stroke-width: 3; cursor: ew-resize; }
+.gait-playhead { stroke: var(--brick-red); stroke-width: 1.5; opacity: 0.6; }
 
 // == Narrow ======================================================================
 @media (max-width: 720px) {

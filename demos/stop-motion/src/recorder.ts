@@ -1,3 +1,5 @@
+import type { GaitShape } from './steps';
+
 // the scene recorder: runs a scene's code and records what it declares as plain
 // data: the scene's settings, each actor's keys and the camera's, the fade, the
 // titles and the sounds, every function of time sampled once per frame. It runs inside a Worker
@@ -37,9 +39,10 @@ export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
 export type SoundCue = Readonly<{ time: number; name: string; volume: number; until?: number; actor?: string; fadeIn?: number; fadeOut?: number; line?: number; }>;
 
 /** a walk: its span (seconds), the points it walks through (studs), how far its arms
- *  swing and it leans (degrees), the foot it leads with, how far its leading leg
- *  reaches (degrees) and how far it wanders from step to step (SEE: steps.ts) */
-export type Walk = Readonly<{ start: number; end: number; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; arms: number; lean: number; lead: Foot; swing?: number; variance?: number; backward?: true; line?: number; }>;
+ *  swing when it names that (its gait's otherwise) and it leans (degrees), the foot it
+ *  leads with, how far it wanders from step to step and the gait it walks: the scene's,
+ *  by name, and its shape (SEE: steps.ts) */
+export type Walk = Readonly<{ start: number; end: number; points: ReadonlyArray<Readonly<{ x: number; z: number; }>>; arms?: number; lean: number; lead: Foot; variance?: number; gait?: string/*the scene's gait it walks, by name; the built-in when none*/; shape?: GaitShape; backward?: true; line?: number; }>;
 export type Foot = 'left' | 'right';
 
 /** a function of time over a span, sampled at each frame from `from` up to `to`
@@ -80,7 +83,12 @@ export type FadeKey = Key & Readonly<{ color?: string; shape?: 'iris'; }>;
 
 export type Title = Readonly<{ from: number; to: number; text: string; style: 'card' | 'caption'; line?: number; }>;
 
-export type RecordedCamera = Readonly<{ keys: ReadonlyArray<CameraKey>; spans: ReadonlyArray<Span>; }>;
+/** how a film is drawn, as a stop-motion film is exposed: on ones (`ones`, a new
+ *  drawing every frame), on twos (`twos`, each drawing held two frames), or moving on
+ *  every frame between its keys (`smooth`) */
+export type Drawn = 'ones' | 'twos' | 'smooth';
+
+export type RecordedCamera = Readonly<{ keys: ReadonlyArray<CameraKey>; spans: ReadonlyArray<Span>; /** how it is drawn, when it says (the scene's otherwise) */ drawn?: Drawn; }>;
 
 export type RecordedActor = Readonly<{
   name: string;
@@ -104,6 +112,8 @@ export type RecordedActor = Readonly<{
   ground?: Readonly<{ step: number; }>;
   /** it stands as keyed alone: no figure's idling where nothing else moves it, no boil */
   still?: true;
+  /** how it is drawn, when it says (the scene's otherwise) */
+  drawn?: Drawn;
   spans: ReadonlyArray<Span>;
   /** its walks, in time order, when it walks: laid as steps where it clicks onto studs
    *  (SEE: steps.ts), its span `glide` the walk where it does not */
@@ -111,9 +121,15 @@ export type RecordedActor = Readonly<{
   line?: number;
 }>;
 
+/** a gait a scene names (`gait(name, keys)`): the keys it changes from the built-in
+ *  walk, as written, the line writing them, and the gait they make */
+export type SceneGait = Readonly<{ name: string; keys: Readonly<Record<string, unknown>>; shape: GaitShape; line?: number; }>;
+
 export type Recorded = Readonly<{
   title: string;
   fps: number;
+  /** how it is drawn: each actor and camera so unless it says otherwise */
+  drawn: Drawn;
   /** seconds */
   length: number;
   /** frames */
@@ -142,6 +158,8 @@ export type Recorded = Readonly<{
   sets?: ReadonlyArray<SetKey>;
   /** the sounds it plays, in time order, when it plays any */
   sounds?: ReadonlyArray<SoundCue>;
+  /** the gaits it names, as it writes them, when it names any */
+  gaits?: ReadonlyArray<SceneGait>;
   /** how fast the scene runs against the film from each key on (`speed`: 1 as it is,
    *  0.25 a quarter as fast), eased between keys, in time order, when it keys any
    *  (SEE: film.ts Clock) */
@@ -168,7 +186,7 @@ export const castAs = (source: Readonly<Record<string, unknown>>): Readonly<{ wo
 /** runs a scene's code and records it, its sounds Platform files (by URI) or named
  *  from the `shipped` sounds; throws a SceneError-shaped error for a scene that
  *  fails or declares something no film can show */
-export const record = (code: string, shipped: ReadonlyArray<string> = []): Recorded => {
+export const record = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape): Recorded => {
   // .. Limits ....................................................................
   const MAX_LENGTH = 120/*seconds*/;
   const MAX_FPS = 60;
@@ -183,12 +201,14 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   /** a walk's pace when none is given (studs a second) and the fastest */
   const WALK_SPEED = 3;
   const MAX_SPEED = 40;
-  /** a stepping walk's arm swing when none is given (degrees) and how far it wanders
-   *  from step to step (1 a rendered brick film's walk's own, SEE: steps.ts), and the
-   *  most */
-  const WALK_ARMS = 38;
+  /** how far a stepping walk wanders from step to step when none is given (1 a rendered
+   *  brick film's walk's own, SEE: steps.ts), and the most */
   const WALK_VARIANCE = 1;
   const MAX_VARIANCE = 3;
+  /** the most keys a gait's curve holds, and its curves that are a body's glide (from 0
+   *  to 1, rising) */
+  const MAX_GAIT_KEYS = 25;
+  const GLIDES = ['glide', 'upGlide', 'downGlide'];
   /** how long a walk's gait takes to start and to settle (seconds), and a turn at a
    *  corner */
   const GAIT_EASE = 0.2;
@@ -241,16 +261,17 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
 
   // .. Recording .................................................................
   // what the scene declares, as it declares it
-  const settings = { title: 'Untitled film', fps: 24, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined };
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; spans: Array<() => Span>; line?: number; };
+  const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined };
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
-  const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; }>();
+  const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; drawn?: Drawn; }>();
   /** the views that are plans, each with the area it names, if any */
   const plans = new Map<string, { area?: Area; }>();
   const fadeKeys: FadeKey[] = [];
   const speedKeys: Key[] = [];
   const setKeys: SetKey[] = [];
   const soundCues: SoundCue[] = [];
+  const gaits = new Map<string, { keys: Record<string, unknown>; line?: number; }>();
   const titles: Title[] = [];
   const logs: string[] = [];
   let keyCount = 0;
@@ -258,9 +279,16 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   const counted = () => { if(++keyCount > MAX_KEYS) fail(`a scene holds at most ${MAX_KEYS} keys`); };
 
   // .. Scene .....................................................................
-  /** the film's settings: its title, fps, length, export size, floor, boil and light */
+  /** how a film, an actor or a camera is drawn (SEE: Drawn) */
+  const drawnOf = (value: unknown, what: string): Drawn => {
+    if((value !== 'ones') && (value !== 'twos') && (value !== 'smooth')) fail(`${what} is 'ones' (a drawing every frame), 'twos' (each drawing held two frames) or 'smooth'`);
+    return value as Drawn;
+  };
+  /** the film's settings: its title, fps, length, export size, floor, boil, light and
+   *  how it is drawn */
   const scene = (options: Record<string, unknown> = {}) => {
-    const { title, fps, length, width, height, floor, boil, light } = options;
+    const { title, fps, length, width, height, floor, boil, light, drawn } = options;
+    if(drawn !== undefined) settings.drawn = drawnOf(drawn, 'drawn');
     if(boil !== undefined) settings.boil = unitOf(boil, 'boil')/*0 to 1*/;
     if(light !== undefined) settings.light = lightOf(light);
     if(title !== undefined) settings.title = String(title);
@@ -378,10 +406,11 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
         if(typeof backward !== 'boolean') fail(`${what}'s backward is true or false`);
         const variance = given.variance ?? WALK_VARIANCE;
         if(!isFiniteNumber(variance) || (variance < 0) || (variance > MAX_VARIANCE)) fail(`${what}'s variance is 0 to ${MAX_VARIANCE}`);
+        if((given.gait !== undefined) && (typeof given.gait !== 'string')) fail(`${what}'s gait names a gait of the scene's (gait('name', { ... }))`);
         const line = callerLine();
-        const unused = (['stride', 'bounce'] as const).filter(key => given[key] !== undefined);
+        const unused = (['stride', 'swing', 'bounce'] as const).filter(key => given[key] !== undefined);
         if(unused.length > 0) logs.push(`${what} (line ${line ?? '?'}): ${unused.join(' and ')} move only an actor that does not click onto studs; a figure's step is a stud, its rise its own`);
-        entry.walks.push({ start, end, points: path.points, arms: (given.arms !== undefined) ? gait.rightArm : WALK_ARMS, lean: gait.lean, lead: (gait.phase < Math.PI) ? 'left' : 'right', ...((given.swing !== undefined) ? { swing: given.swing as number } : {}), variance: variance as number, ...(backward ? { backward: true as const } : {}), ...((line !== undefined) ? { line } : {}) });
+        entry.walks.push({ start, end, points: path.points, ...((given.arms !== undefined) ? { arms: gait.rightArm } : {}), lean: gait.lean, lead: (gait.phase < Math.PI) ? 'left' : 'right', variance: variance as number, ...((given.gait !== undefined) ? { gait: given.gait as string } : {}), ...(backward ? { backward: true as const } : {}), ...((line !== undefined) ? { line } : {}) });
         const timeAt = (along: number) => start + ((end - start) * (along / path.total));
         path.points.forEach((point, index) => {
           counted();
@@ -456,6 +485,8 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       /** stands as keyed alone: a figure never idles where nothing else moves it, and
        *  the scene's boil leaves it */
       still: () => { entry.still = true; return handle; },
+      /** how it is drawn, the scene's otherwise (SEE: Drawn) */
+      drawn: (kind: unknown) => { entry.drawn = drawnOf(kind, `${String(name)}.drawn`); return handle; },
       /** one of the studio's sounds from `time`, from where the actor stands in the
        *  picture (SEE: cue) */
       sound: (time: unknown, named: unknown, options?: unknown) => { cue(`${String(name)}.sound`, time, named, options, name as string); return handle; },
@@ -474,7 +505,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   /** a camera: keys of where it stands, what it looks at and its lens, cuts, and
    *  shakes */
   const cameraNamed = (name: string, label: string) => {
-    const { keys: cameraKeys, spans: cameraSpans } = cameras.get(name) ?? cameras.set(name, { keys: [], spans: [] }).get(name)!;
+    const held = cameras.get(name) ?? cameras.set(name, { keys: [], spans: [] }).get(name)!, { keys: cameraKeys, spans: cameraSpans } = held;
     /** refuses a key on a plan, which looks down over the whole scene */
     const unplanned = () => { if(plans.has(name)) fail(`${label} is a plan: it takes no keys`); };
     /** a key's values at a time, eased into, starting a named shot when it cuts */
@@ -512,6 +543,8 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
       });
     };
     const camera = {
+      /** how it is drawn, the scene's otherwise (SEE: Drawn) */
+      drawn: (kind: unknown) => { held.drawn = drawnOf(kind, `${label}.drawn`); return camera; },
       /** a key: where the camera stands (a point or an orbit round its target), what
        *  it looks at and its lens at `time`, each left to the key before when left out */
       at: (time: unknown, values: unknown, ease?: unknown) => { key('at', time, values, toEase(ease)); return camera; },
@@ -877,6 +910,48 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   };
   /** a figure's body (studs): across, hands included, and along (SEE: Brick Studio's
    *  measured figure), and how close two walkers come, side by side and nose to tail */
+  // .. Gaits .....................................................................
+  /** a gait for the scene's walks to take (`a.walk(…, { gait })`): the keys it changes
+   *  from the built-in walk, each in the built-in's form (SEE: steps.ts GaitShape);
+   *  named `walk`, it is the gait of every walk naming none. Answers its name */
+  const gait = (name: unknown, keys: unknown = {}) => {
+    if((typeof name !== 'string') || !/^[a-z][a-z0-9-]{0,30}$/.test(name)) fail('a gait is named in lower case letters, digits and dashes, up to 31');
+    const what = `gait('${String(name)}')`;
+    if(!builtIn) fail(`${what}: this recorder knows no gaits`);
+    if(gaits.has(name as string)) fail(`${what} is named twice`);
+    const given = optionsOf(keys, what);
+    for(const [key, value] of Object.entries(given)) gaitKey(what, key, value, (builtIn as Record<string, unknown>)[key]);
+    gaits.set(name as string, { keys: given, line: callerLine() });
+    return name;
+  };
+  /** refuses a gait's key not in the built-in's form: a number, a curve of finite
+   *  numbers (a glide rising from 0 to 1), or a group of the built-in's own numbers
+   *  (its timing's drawings more than 0) */
+  const gaitKey = (what: string, key: string, value: unknown, base: unknown) => {
+    if(base === undefined) fail(`${what} has no ${key}: a gait's keys are the built-in walk's`);
+    if(typeof base === 'number') {
+      if(!isFiniteNumber(value)) fail(`${what}'s ${key} is a number`);
+      if(['heelOn', 'toeOff', 'upHeelOn', 'upToeOff', 'downHeelOn', 'downToeOff'].includes(key) && (((value as number) < 0) || ((value as number) > 1))) fail(`${what}'s ${key} is a share of the step, 0 to 1`);
+      return;
+    } /* else -- the built-in keys a curve or a group there: checked in its own form below */
+    if(Array.isArray(base)) {
+      if(!Array.isArray(value) || (value.length < 2) || (value.length > MAX_GAIT_KEYS) || !value.every(isFiniteNumber)) fail(`${what}'s ${key} is a curve: 2 to ${MAX_GAIT_KEYS} numbers`);
+      const curve = value as ReadonlyArray<number>;
+      if(GLIDES.includes(key) && ((curve[0] !== 0) || (curve[curve.length - 1] !== 1) || curve.some((each, i) => (i > 0) && (each <= curve[i - 1])))) fail(`${what}'s ${key} rises from 0 to 1`);
+      return;
+    } /* else -- neither a number nor a curve: a group of the built-in's numbers (its wander, its timing) */
+    const group = optionsOf(value, `${what}'s ${key}`), own = base as Record<string, unknown>;
+    for(const [part, number] of Object.entries(group)) {
+      if(!(part in own)) fail(`${what}'s ${key} has no ${part}: it holds ${Object.keys(own).join(', ')}`);
+      if(!isFiniteNumber(number) || ((key === 'timing') && (number <= 0))) fail(`${what}'s ${key}.${part} is a number${(key === 'timing') ? ' of drawings, more than 0' : ''}`);
+    }
+  };
+  /** the gait a scene's keys make over the built-in walk: its groups merged key by key */
+  const shapeOf = (keys: Readonly<Record<string, unknown>>): GaitShape => {
+    const base = builtIn!, given = keys as Partial<GaitShape>;
+    return { ...base, ...given, wander: { ...base.wander, ...given.wander }, timing: { ...base.timing, ...given.timing } };
+  };
+
   const SIDE_BY_SIDE = 2.8, NOSE_TO_TAIL = 2;
   type Walker = { entry: Entry; handle: unknown; personality: Personality; direction: 1 | -1; partner?: number; gait: Gait; seed: string; };
   type Crowd = Readonly<{ what: string; line?: number; path: Path; width: number; walkers: ReadonlyArray<Walker>; from: number; to?: number; stops: ReadonlyArray<Readonly<{ x: number; z: number; }>>; reacts: ReadonlyArray<Readonly<{ at: number; where: Readonly<{ x: number; z: number; }>; within: number; look: Target; lasting: number; }>>; go?: number; seed: unknown; }>;
@@ -1094,7 +1169,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   // .. Run .......................................................................
   // the scene's code, given the API alone
   const api: Record<string, unknown> = {
-    scene, actor, crowd, camera, view, set, fade, speed, title, sound, noise, random,
+    scene, actor, crowd, gait, camera, view, set, fade, speed, title, sound, noise, random,
     /** the language's Math, its random seeded by the scene: the same film every run */
     Math: Object.assign(Object.create(Math) as Math, { random: random('Math.random') }),
     /** a jump's height (plates) at time t from leaving at `up` plates a second, under
@@ -1124,19 +1199,26 @@ export const record = (code: string, shipped: ReadonlyArray<string> = []): Recor
   const times = [...actors.flatMap(each => [...each.keys, ...each.faces, ...each.hands].map(key => key.time)), ...actors.flatMap(each => each.reactions.map(reaction => reaction.to)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...speedKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to), ...soundCues.map(each => each.until ?? each.time)];
   settings.length ??= Math.max(1, ...times);
   for(const each of crowds) walkCrowd(each);
+  // each walk's gait: the one it names, or the scene's `walk` when it names none
+  for(const each of actors) each.walks = each.walks.map(walk => {
+    const named = walk.gait ?? (gaits.has('walk') ? 'walk' : undefined);
+    if(named === undefined) return walk/*the built-in*/;
+    if(!gaits.has(named)) fail(`${each.name}.walk takes gait '${named}', which the scene does not name: gait('${named}', { ... })`, walk.line);
+    return { ...walk, gait: named, shape: shapeOf(gaits.get(named)!.keys) };
+  });
   /** keys in time order, a held key after any other at its time, so a move may end
    *  exactly where a cut jumps */
   const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
   return {
-    title: settings.title, fps: settings.fps, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}),
+    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
-    actors: actors.map(({ name, source, ride, keys, walks, faces, hands, reactions, looks, ground, still, spans, line }) => ({
+    actors: actors.map(({ name, source, ride, keys, walks, faces, hands, reactions, looks, ground, still, drawn, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
       ...((reactions.length > 0) ? { reactions } : {}), ...((looks.length > 0) ? { looks: looks.map(look => ({ ...look, to: look.to ?? settings.length! })) } : {}), ...(ground ? { ground } : {}),
-      ...(still ? { still } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((line !== undefined) ? { line } : {}),
+      ...(still ? { still } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((line !== undefined) ? { line } : {}),
     })),
-    camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()) },
-    views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
-    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), ...((soundCues.length > 0) ? { sounds: byTime(soundCues) } : {}), ...((speedKeys.length > 0) ? { speed: byTime(speedKeys) } : {}), logs,
+    camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()), ...(cameras.get('main')!.drawn ? { drawn: cameras.get('main')!.drawn } : {}) },
+    views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans, drawn }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(drawn ? { drawn } : {}), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
+    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), ...((soundCues.length > 0) ? { sounds: byTime(soundCues) } : {}), ...((gaits.size > 0) ? { gaits: [...gaits].map(([name, { keys, line }]) => ({ name, keys, shape: shapeOf(keys), ...((line !== undefined) ? { line } : {}) })) } : {}), ...((speedKeys.length > 0) ? { speed: byTime(speedKeys) } : {}), logs,
   };
 };
