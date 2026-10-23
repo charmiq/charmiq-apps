@@ -49,8 +49,9 @@ type Slider = Readonly<{ label: string; unit: string; lo: number; hi: number; st
 /** what the mode asks of Stop Motion: the gait written into the scene (undefined once the
  *  scene holds it, else why not), a frame sought (by its index, the film paused) or
  *  stepped to (frames on, back when less than 0), a frame the film plays on from (a move
- *  looped), the film shown again */
-export type GaitHost = Readonly<{ write: (name: string, keys: Readonly<Record<string, unknown>>) => Promise<string | undefined>; seek: (index: number) => void; step: (delta: number) => void; rewind: (index: number) => void; close: () => void; }>;
+ *  looped, sought outside it), the frames played over and over (a move looped, none
+ *  once let go), the film shown again */
+export type GaitHost = Readonly<{ write: (name: string, keys: Readonly<Record<string, unknown>>) => Promise<string | undefined>; seek: (index: number) => void; step: (delta: number) => void; rewind: (index: number) => void; loop: (span: Readonly<{ first: number; last: number; }> | undefined) => void; close: () => void; }>;
 
 const LEVEL_STRIDE: StrideNames = { glide: 'glide', lead: 'lead', trail: 'trail', heelOn: 'heelOn', toeOff: 'toeOff' };
 const UP_STRIDE: StrideNames = { glide: 'upGlide', lead: 'upLead', trail: 'upTrail', heelOn: 'upHeelOn', toeOff: 'upToeOff' };
@@ -210,10 +211,11 @@ export class GaitView {
     this.showCheck();
   }
 
-  /** shows or hides the mode */
+  /** shows or hides the mode; hidden, it lets a move looped go, the film playing whole */
   public show(on: boolean): void {
     this.root.hidden = !on;
     if(on) this.draw();
+    else if(this.looped) this.loop(undefined);
   }
 
   // == Internal ==================================================================
@@ -242,6 +244,7 @@ export class GaitView {
   private loop(span: Readonly<{ first: number; last: number; }> | undefined) {
     this.looped = span;
     this.loopButton.setAttribute('aria-pressed', String(!!span));
+    this.host.loop(span)/*the player plays it over and over, a late frame never past it*/;
   }
 
   // the frames of the walker's move under way at frame `index`, first and last: none

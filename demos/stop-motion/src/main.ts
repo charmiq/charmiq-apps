@@ -5,7 +5,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 
 import { DocumentState } from '../../brick-shared/app-state';
 import { DesignStore } from '../../brick-shared/designs';
-import { Drive, type DriveFile, SOUND_FILES } from '../../brick-shared/drive';
+import { isPlatformFile, Drive, type DriveFile, SOUND_FILES } from '../../brick-shared/drive';
 import { PickDialog } from '../../brick-shared/pick-dialog';
 
 import { exportFilmCommands } from './command';
@@ -21,7 +21,7 @@ import { castAs, type Recorded, type SceneError, type SoundCue } from './recorde
 import { addSound, applyEdit, isRefusal, regait, retimeSound, sameGait, sameSounds, soundsAdded, soundsMoved, writtenGait, type Refusal, type SceneEdit } from './scene-edit';
 import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB, type MeasuredScene } from './scene-source';
-import { isPlatformFile, listShippedSounds, peaksOf, shippedSoundsLister, soundsOf, SoundBank } from './sound';
+import { listShippedSounds, peaksOf, shippedSoundsLister, soundsOf, SoundBank } from './sound';
 import { Soundtrack, type SoundState } from './soundtrack';
 import { Strip } from './strip';
 import { Studios, type StageState } from './studios';
@@ -157,7 +157,7 @@ const timeline = new Timeline(element('timeline'), {
   gait: actor => { gaitView.choose(actor); showGait(true); },
 }, inspector);
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack(), (from, to) => timeline.showSpan(from, to));
-const gaitView = new GaitView(element('gait'), { write: (name, keys) => writeGait(name, keys), seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), rewind: index => player.seek(index), close: () => showGait(false) });
+const gaitView = new GaitView(element('gait'), { write: (name, keys) => writeGait(name, keys), seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), rewind: index => player.seek(index), loop: span => player.loopSpan(span), close: () => showGait(false) });
 
 // -- Film Files ------------------------------------------------------------------
 /** the film's files: Stop Motion reads and writes the main studio's build and the

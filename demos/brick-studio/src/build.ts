@@ -1,4 +1,5 @@
 import type { ContentChange } from '../../../shared/charmiq';
+import { isImageName } from '../../brick-shared/shipped';
 import { drawnSky, skyFrom, type Sky } from '../../brick-shared/sky';
 import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_FACES, type CatalogPart, type Slot } from './catalog';
 import { checkModel, describeCopy, describePlaced, describePlacement, occupiedCells, MAX_LISTED, type CheckResult } from './check';
@@ -6,6 +7,7 @@ import type { ContentBridge } from './content-bridge';
 import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
 import { addSetEdits, appendLines, applyChanges, carriesComponents, clearEdits, clearSetEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, parseSets, partCount, placedPartCount, placementLines, removeSetEdits, renameSetEdits, sameSetName, serializeModel, setLines, skyEdit, stepCount, type Model, type ModelLayout, type SetSection, EMPTY_MODEL, MAIN_SET, MAX_PARTS, MAX_SET_NAME, MAX_SETS, READ_IN_PART } from './model';
 import { maxOf, minOf } from './numbers';
+import { isSize, pictureLine, FITS, MAX_PICTURE, MIN_PICTURE, type Picture } from './picture';
 import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
 
 // owns the current build: the `model` app-content's text, as last seen. Every
@@ -370,6 +372,37 @@ export class Build {
   }
 
   // ------------------------------------------------------------------------------
+  /** stands a picture in a set (SEE: picture.ts), its line after the set's parts, and
+   *  shows the set; answers the picture as written */
+  public async addPicture(given: unknown, set?: unknown): Promise<Picture> {
+    await this.whenReady();
+    const picture = toPicture(given);
+    if(typeof picture === 'string') throw new BuildError(picture);
+    let target: string | undefined;
+    await this.bridge.edit(text => { const { layout, name } = editable(text, set); target = name; return [appendLines(layout, [pictureLine(picture)], false)]; });
+    this.showNamed(target);
+    return picture;
+  }
+
+  /** removes a set's picture by its place among the set's pictures (0 the first, as
+   *  listPictures lists them), and shows the set; answers the picture removed */
+  public async removePicture(index: unknown, set?: unknown): Promise<Picture> {
+    await this.whenReady();
+    let removed: Picture | undefined;
+    let target: string | undefined;
+    await this.bridge.edit(text => {
+      const { model, layout, name } = editable(text, set);
+      const count = model.pictures?.length ?? 0;
+      if(!Number.isInteger(index) || ((index as number) < 0) || ((index as number) >= count)) throw new BuildError((count < 1) ? 'The set has no pictures.' : `picture is 0 to ${count - 1}, its place as listPictures lists it`);
+      target = name;
+      removed = model.pictures![index as number];
+      return deleteLines([layout.pictures![index as number]]);
+    });
+    this.showNamed(target);
+    return removed!;
+  }
+
+  // ------------------------------------------------------------------------------
   /** adds a set named `name`: empty, or a copy of the set `from` names (its parts,
    *  copies, steps and ground), and shows it */
   public async addSet(name: unknown, from?: unknown): Promise<SetSummary> {
@@ -720,6 +753,26 @@ export const toFace = (part: CatalogPart, face: unknown): Pick<Placement, 'face'
   if(part.facePiece === undefined) return `${part.key} takes no face (a figure does)`;
   if(!getFigureFace(face)) return `unknown face '${String(face)}' (one of ${FIGURE_FACES.map(each => each.key).join(', ')})`;
   return (face === DEFAULT_FIGURE_FACE) ? {} : { face: face as string };
+};
+
+/** the picture an input describes, or why it is not one: an image from the Drive,
+ *  placed as a part is, its size in studs (its height the image's own shape when it
+ *  names none), upright or flat, its image covering it unless `fit` says otherwise */
+const toPicture = (given: unknown): Picture | string => {
+  if((typeof given !== 'object') || (given === null) || Array.isArray(given)) return 'A picture is { image, x, z, level, rotation, width, height, flat, fit }';
+  const { image, x, z, level, rotation, width, height, flat, fit, ...rest } = given as Record<string, unknown>;
+  const unknown = Object.keys(rest);
+  if(unknown.length > 0) return `A picture has no ${unknown[0]}: it takes image, x, z, level, rotation, width, height, flat and fit`;
+  if(!isImageName(image)) return 'A picture\'s image is a Drive file (charmiq://file/...) or a picture Brick Studio ships, by name (listPictures names them)';
+  const position = toPosition(x, z, level, rotation);
+  if(typeof position === 'string') return position;
+  for(const [name, size] of [['width', width], ['height', height]] as const) if(((size !== undefined) || (name === 'width')) && ((typeof size !== 'number') || !isSize(size))) return `A picture's ${name} is ${MIN_PICTURE} to ${MAX_PICTURE} studs`;
+  if((flat !== undefined) && (typeof flat !== 'boolean')) return 'A picture\'s flat is true or false';
+  if((fit !== undefined) && (fit !== 'cover') && !(FITS as readonly unknown[]).includes(fit)) return `A picture's fit is cover, ${FITS.join(' or ')}`;
+  return {
+    image, ...position, width: Number((width as number).toFixed(2)), ...((height !== undefined) ? { height: Number((height as number).toFixed(2)) } : {}),
+    ...(flat ? { flat: true as const } : {}), ...(((fit !== undefined) && (fit !== 'cover')) ? { fit: fit as Picture['fit'] } : {}),
+  };
 };
 
 /** a position on the grid an input describes, or why it is not one */

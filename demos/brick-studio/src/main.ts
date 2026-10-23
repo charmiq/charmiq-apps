@@ -2,8 +2,9 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 
 import { DocumentState } from '../../brick-shared/app-state';
 import { DesignStore } from '../../brick-shared/designs';
-import { Drive, PICTURE_FILES } from '../../brick-shared/drive';
+import { isPlatformFile, Drive, PICTURE_FILES } from '../../brick-shared/drive';
 import { PickDialog } from '../../brick-shared/pick-dialog';
+import { listShipped, shippedLister } from '../../brick-shared/shipped';
 
 import { Build } from './build';
 import { familyLabel } from './catalog';
@@ -17,6 +18,7 @@ import { getColor, getColorValue } from './grid';
 import { GroundControl } from './ground-control';
 import { LookAround } from './look-around';
 import { partCount, type Model } from './model';
+import { SHIPPED_PICTURES } from './picture';
 import { SetControl } from './set-control';
 import { SkyControl } from './sky-control';
 import { Sheet } from './sheet';
@@ -55,7 +57,16 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 // == Instances ===================================================================
 const drive = new Drive(charmiq.mcp);
-const viewer = new Viewer(canvas, overlay, readTheme(), name => charmiq.resources.text(name)/*a part family, read the first time a build shows it*/, uri => drive.bytes(uri)/*a sky's picture*/);
+/** the pictures Brick Studio ships, listed when first asked */
+const shippedPictures = shippedLister(() => listShipped(charmiq.resources, SHIPPED_PICTURES, PICTURE_FILES));
+/** an image's bytes: a Drive file, or a picture Brick Studio ships, by name */
+const readImage = async (image: string): Promise<ArrayBuffer> => {
+  if(isPlatformFile(image)) return drive.bytes(image);
+  const resource = (await shippedPictures()).get(image);
+  if(!resource) throw new Error(`Brick Studio ships no picture named ${image}`);
+  return charmiq.resources.bytes(resource);
+};
+const viewer = new Viewer(canvas, overlay, readTheme(), name => charmiq.resources.text(name)/*a part family, read the first time a build shows it*/, readImage/*a sky's or a picture's image*/);
 const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
@@ -67,7 +78,7 @@ const stage = new StageControl({
   root: element('staged'), note: element('stagedNote'), view: element('stagedView'), back: element('stagedBack'),
   film: element('stagedFilm'), play: element('stagedPlay'), scrub: element('stagedScrub'), time: element('stagedTime'),
 }, studio, viewer, build, sheet);
-const commands = new CommandSurface(build, designs, viewer, lookAround, stage, look);
+const commands = new CommandSurface(build, designs, shippedPictures, viewer, lookAround, stage, look);
 /** why the last ground change was refused, until the build next changes */
 let groundRefused: string | undefined;
 const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build, reason => { groundRefused = reason; showStatus(build.getModel()); });
@@ -105,6 +116,7 @@ const showStatus = (model: Model) => {
     groundRefused ? 'ground not changed' : undefined,
     skyRefused ? 'sky not changed' : undefined,
     viewer.skyUnread ? 'sky picture could not be read' : undefined,
+    (viewer.picturesUnread > 0) ? `${plural(viewer.picturesUnread, 'picture')} could not be read` : undefined,
     model.uneditable ? 'not editable here' : undefined/*why, on hover*/,
     ...(model.duplicated ?? []).map(name => `${name} defined twice · the first is used`),
     build.isUncertain() ? 'could not check the document · reload to try again' : undefined,
@@ -114,7 +126,7 @@ const showStatus = (model: Model) => {
     (result.unchecked > 0) ? `${result.unchecked} off grid` : undefined,
   ].filter(Boolean);
   statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
-  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0) || !!groundRefused || !!skyRefused || viewer.skyUnread || !!model.uneditable || !!model.duplicated);
+  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0) || !!groundRefused || !!skyRefused || viewer.skyUnread || (viewer.picturesUnread > 0) || !!model.uneditable || !!model.duplicated);
   status.title = [groundRefused, skyRefused, model.uneditable].filter(Boolean).join('\n')/*the reasons, on hover*/;
   retryButton.hidden = retrySep.hidden = (unbuilt < 1);
   hint.hidden = (count > 0) || result.truncated;

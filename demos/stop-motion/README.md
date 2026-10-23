@@ -13,6 +13,8 @@ Three Applications, one document: Brick Studio is the screen, Stop Motion is the
 0 Brick Studio model
 0 Name: model.ldr
 0 !BRICKSTUDIO GROUND dark-gray
+0 !BRICKSTUDIO SKY HORIZON #E3E7EA ZENITH #5D8DC4 CLOUDS 0.3 SEED 12
+0 !BRICKSTUDIO PICTURE IMAGE see-america-montana X 49 Z -44 LEVEL 0 ROTATION 180 WIDTH 12 HEIGHT 15
 1 71 -240 -8 240 1 0 0 0 1 0 0 0 1 41539.dat
 1 71 240 -8 240 1 0 0 0 1 0 0 0 1 41539.dat
 1 71 -240 -8 400 1 0 0 0 1 0 0 0 1 41539.dat
@@ -4851,6 +4853,9 @@ Three Applications, one document: Brick Studio is the screen, Stop Motion is the
 // into his lane. He yanks the wheel left, round the corner onto the cross street, which is
 // closed for construction: he smashes through the barriers, hits the site's plank ramp and
 // flies, horror turning to joy. The cat scampers back to the curb and watches him go.
+// The city stands under its own sky (Brick Studio's sky swatch), and a billboard behind the
+// construction site shows a picture Brick Studio ships; ask your Charm to put up one of
+// your own from the Drive.
 scene({ title: 'The Shortcut', fps: 24 })
 
 // .. the cast ..........................................................................

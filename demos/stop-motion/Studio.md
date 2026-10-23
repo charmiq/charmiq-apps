@@ -50,6 +50,8 @@ theme: charmiq:none
 0 Brick Studio model
 0 Name: model.ldr
 0 !BRICKSTUDIO GROUND green
+0 !BRICKSTUDIO SKY HORIZON #D6E6F2 ZENITH #4A7FC1 CLOUDS 0.45 SEED 7
+0 !BRICKSTUDIO PICTURE IMAGE see-america-montana X 4 Z 30 LEVEL 0 ROTATION 90 WIDTH 8 HEIGHT 10
 1 72 0 -24 70 -1 0 0 0 1 0 0 0 -1 3297.dat
 1 72 0 -24 10 1 0 0 0 1 0 0 0 1 3010.dat
 1 72 0 -24 30 1 0 0 0 1 0 0 0 1 3010.dat
@@ -264,7 +266,9 @@ theme: charmiq:none
 // Cut to the garage: the car rolls in through the door toward us and stops, the driver
 // throws an arm up and laughs. Fade to black, and the title. The street and the garage
 // are two sets of one build; the car is a component both can place. The engine follows
-// the car across the picture; the garage door clanks, the car stops, the fanfare plays
+// the car across the picture; the garage door clanks, the car stops, the fanfare plays.
+// The street stands under its own sky, the garage under none, and a billboard by the road
+// shows a picture Brick Studio ships; ask your Charm to put up one of your own from the Drive
 scene({ title: 'The Homecoming', fps: 24, length: 9, floor: { x: -30, z: -40, width: 60, depth: 130 } })
 
 const car = actor('car', { component: 'car' })

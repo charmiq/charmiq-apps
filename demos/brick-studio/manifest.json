@@ -17,7 +17,7 @@
     "format": "esm",
     "mounts": { "/brick-shared": "../brick-shared", "/shared": "../../shared" },
     "resources": {
-      "parts/": "/src/parts/"
+      "parts/": "/src/parts/", "picture/": "/pictures/"
     },
     "dependencies": {
       "importMap": {
@@ -399,6 +399,62 @@
         }
       },
       {
+        "name": "addPicture",
+        "description": "Stand a picture from the Drive in a set: a billboard, a poster, a painted backdrop, or flat as a rug. It fills nothing (it never collides and the check passes it by)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "picture": {
+              "type": "object",
+              "description": "The picture: an image from the Drive placed as a part is",
+              "properties": {
+                "image":    { "type": "string", "description": "A picture from the Drive (charmiq://file/...), or one Brick Studio ships, by name (listPictures names them)" },
+                "x":        { "type": "integer", "description": "The south-west corner of its footprint, studs east" },
+                "z":        { "type": "integer", "description": "The south-west corner of its footprint, studs north" },
+                "level":    { "type": "integer", "description": "Its bottom, in plates above the baseplate" },
+                "rotation": { "type": "integer", "enum": [0, 90, 180, 270], "description": "Clockwise seen from above; upright at 0 it faces south" },
+                "width":    { "type": "number", "minimum": 1, "maximum": 64, "description": "Studs" },
+                "height":   { "type": "number", "minimum": 1, "maximum": 64, "description": "Studs; the image's own shape when left out" },
+                "flat":     { "type": "boolean", "description": "Lying on its level, its top edge north at rotation 0, rather than standing" },
+                "fit":      { "type": "string", "enum": ["cover", "contain", "stretch"], "description": "cover fills it, cropping the overflow (the default); contain shows the image whole; stretch fills it with the whole image" }
+              },
+              "required": ["image", "x", "z", "level", "width"]
+            },
+            "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" }
+          },
+          "required": ["picture"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "picture": { "type": "object", "description": "The picture as written" }, "index": { "type": "integer", "description": "Its place among the set's pictures (removePicture takes it)" }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
+          "required": ["picture", "index"]
+        }
+      },
+      {
+        "name": "listPictures",
+        "description": "The pictures standing in a set, in order: each as addPicture takes it, its place in the list the index removePicture takes; and the pictures Brick Studio ships, by name",
+        "inputSchema": { "type": "object", "properties": { "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" } } },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "pictures": { "type": "array", "items": { "type": "object" } }, "shipped": { "type": "array", "items": { "type": "string" }, "description": "The pictures Brick Studio ships, by the name image takes" }, "set": { "type": "string", "description": "The set read, when the build has more than one" } },
+          "required": ["pictures"]
+        }
+      },
+      {
+        "name": "removePicture",
+        "description": "Remove a picture from a set by its place among the set's pictures (listPictures lists them, 0 the first)",
+        "inputSchema": {
+          "type": "object",
+          "properties": { "index": { "type": "integer", "minimum": 0 }, "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" } },
+          "required": ["index"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "removed": { "type": "object", "description": "The picture removed" }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
+          "required": ["removed"]
+        }
+      },
+      {
         "name": "setSky",
         "description": "Put a sky behind a set: generated from a horizon and a zenith color with seeded clouds, or a picture from the Drive (a panorama wraps the whole sky; any other picture is tiled round the horizon). lights lets it light the set too. Omit the sky for the theme's backdrop",
         "inputSchema": {
@@ -412,7 +468,7 @@
                 "zenith":  { "type": "string", "description": "The color overhead, #rrggbb" },
                 "clouds":  { "type": "number", "description": "How clouded: 0 clear to 1 overcast" },
                 "seed":    { "type": "integer", "description": "Which clouds: another seed draws others alike" },
-                "image":   { "type": "string", "description": "A picture from the Drive (charmiq://file/...) in place of the generated sky" },
+                "image":   { "type": "string", "description": "A picture from the Drive (charmiq://file/...), or one Brick Studio ships, by name, in place of the generated sky" },
                 "lights":  { "type": "boolean", "description": "The sky lights the set as well as standing behind it" }
               }
             },

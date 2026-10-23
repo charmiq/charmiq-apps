@@ -21,6 +21,7 @@ import { drawOverlay, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
 import { applyGlass, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
+import { PictureFiles, PictureStand } from './render/pictures';
 import { SkyBackdrop } from './render/sky';
 import { createStudio, type Studio } from './render/studio';
 
@@ -170,6 +171,8 @@ export class Viewer {
   private stageLight: StageLight = {};
   /** the sky behind the set (SEE: render/sky.ts), and a stage's own over every set's */
   private readonly backdrop: SkyBackdrop;
+  /** the pictures standing in the set (SEE: render/pictures.ts) */
+  private readonly pictures: PictureStand;
   private stageSky: Sky | undefined/*each set's own*/;
   /** the build's focus: what lies at the middle of the picture, found once the view
    *  rests (SEE: render/autofocus.ts) */
@@ -238,7 +241,7 @@ export class Viewer {
   private overlayStale = false;
 
   // == Lifecycle =================================================================
-  public constructor(private readonly canvas: HTMLCanvasElement, private readonly overlayCanvas: HTMLCanvasElement/*a film's fade and title, over the canvas*/, theme: Theme, private readonly readResource: (name: string) => Promise<string>/*a declared resource's text*/, readFile: (uri: string) => Promise<ArrayBuffer>/*a Drive file's bytes: a sky's picture*/) {
+  public constructor(private readonly canvas: HTMLCanvasElement, private readonly overlayCanvas: HTMLCanvasElement/*a film's fade and title, over the canvas*/, theme: Theme, private readonly readResource: (name: string) => Promise<string>/*a declared resource's text*/, readImage: (image: string) => Promise<ArrayBuffer>/*an image's bytes: a Drive file, or a picture Brick Studio ships*/) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true/*the Application screenshot reads the canvas*/ });
     this.renderer.setPixelRatio(screenPixelRatio());
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -249,7 +252,9 @@ export class Viewer {
     const environment = new THREE.PMREMGenerator(this.renderer);
     this.room = environment.fromScene(new RoomEnvironment(), 0.04).texture;
     environment.dispose();
-    this.backdrop = new SkyBackdrop(this.renderer, readFile, () => { this.skyChanged(); this.onPartsChanged?.()/*the status says whether its picture was read*/; });
+    const files = new PictureFiles(readImage)/*one read of each image, for skies and pictures alike*/;
+    this.backdrop = new SkyBackdrop(this.renderer, files, () => { this.skyChanged(); this.onPartsChanged?.()/*the status says whether its picture was read*/; });
+    this.pictures = new PictureStand(files, () => { this.pathTraceStale = true; this.requestFrame(); this.onPartsChanged?.()/*the status counts the pictures not read*/; });
 
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -257,7 +262,7 @@ export class Viewer {
     this.sun.shadow.normalBias = 0.02;
     this.sun.shadow.radius = 4;
     this.scene.add(this.sun, this.sun.target, this.sky);
-    this.scene.add(this.parts);
+    this.scene.add(this.parts, this.pictures.group);
     this.effects = new Effects(this.renderer, this.scene, this.camera);
 
     this.controls = new OrbitControls(this.camera, canvas);
@@ -430,6 +435,9 @@ export class Viewer {
   /** whether the sky shown names a picture that could not be read (its generated sky
    *  stands in) */
   public get skyUnread(): boolean { return this.backdrop.isUnread; }
+  /** how many pictures standing in the set name an image that could not be read (each
+   *  drawn plain) */
+  public get picturesUnread(): number { return this.pictures.unreadCount; }
 
   // == Fidelity ==================================================================
   /** sets how real the build looks; resolves to the stop reached, which is lower
@@ -537,6 +545,7 @@ export class Viewer {
     const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
     this.setGround(ground);
     this.showSky(this.staging ? (this.stageSky ?? model.sky) : model.sky);
+    this.pictures.show(model.pictures ?? []);
     const kept = this.staging ? this.setMeshes.get(model) : undefined;
     const setItems = kept ? [] : renderItems(model)/*a set kept is built*/;
     const actorItems = actors.lines.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));
@@ -1234,7 +1243,7 @@ export class Viewer {
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
-    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && !this.backdrop.loading && !this.focusing() && (this.tracing()?.settled ?? true);
+    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && !this.backdrop.loading && !this.pictures.loading && !this.focusing() && (this.tracing()?.settled ?? true);
     if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
     if(moving || (this.drops.length > 0) || refining) this.requestFrame();
@@ -1345,7 +1354,7 @@ export class Viewer {
     if(this.pathTraceStale) {
       const { plate, free } = this.tracedBaseplate();
       tracer.setScene({
-        parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: plate,
+        parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: plate, pictures: this.pictures.group,
         environment: this.backdrop.lighting ?? this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.backdrop.texture ?? this.stage,
         key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity, soft: this.stageLight.soft ?? 0 },
       }, this.lens());

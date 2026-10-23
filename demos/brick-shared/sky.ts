@@ -1,9 +1,12 @@
+import { isImageName } from './shipped';
+
 // a set's sky: generated (a gradient from its horizon color to its zenith color, its
-// clouds drawn from a seed) or a picture from the Drive, standing behind the set or,
-// with `lights`, lighting it too. Written as Brick Studio's meta-command in the set's
-// header, its words in pairs: `0 !BRICKSTUDIO SKY HORIZON #CFE2F3 ZENITH #4F87C7
-// CLOUDS 0.35 SEED 1`, or `0 !BRICKSTUDIO SKY IMAGE charmiq://file/...`, `LIGHTS` added
-// to either. A line Brick Studio cannot read is kept as written and draws no sky
+// clouds drawn from a seed) or a picture (a Drive file, or one Brick Studio ships, by
+// name: SEE: shipped.ts), standing behind the set or, with `lights`, lighting it too.
+// Written as Brick Studio's meta-command in the set's header, its words in pairs:
+// `0 !BRICKSTUDIO SKY HORIZON #CFE2F3 ZENITH #4F87C7 CLOUDS 0.35 SEED 1`, or
+// `0 !BRICKSTUDIO SKY IMAGE charmiq://file/...`, `LIGHTS` added to either. A line
+// Brick Studio cannot read is kept as written and draws no sky
 // ********************************************************************************
 // == Constants ===================================================================
 /** Brick Studio's meta-command naming a set's sky */
@@ -16,7 +19,6 @@ export const MAX_SEED = 2 ** 31 - 1;
 
 const HEX = /^#[0-9a-f]{6}$/i;
 /** a file a sky's image is: the Platform's file uris, one word */
-const FILE_URI = /^charmiq:\/\/file\/\S+$/;
 
 // == Types =======================================================================
 /** a set's sky: generated from its colors, clouds and seed (each its default where it
@@ -44,7 +46,7 @@ export const skyOf = (fields: ReadonlyArray<string>): Sky | undefined => {
     else if((word === 'ZENITH') && (sky.zenith === undefined) && HEX.test(value)) sky.zenith = value.toUpperCase();
     else if((word === 'CLOUDS') && (sky.clouds === undefined) && isShare(Number(value)) && /^\d*\.?\d+$/.test(value)) sky.clouds = Number(value);
     else if((word === 'SEED') && (sky.seed === undefined) && isSeed(Number(value)) && /^\d+$/.test(value)) sky.seed = Number(value);
-    else if((word === 'IMAGE') && (sky.image === undefined) && FILE_URI.test(value)) sky.image = value;
+    else if((word === 'IMAGE') && (sky.image === undefined) && isImageName(value)) sky.image = value;
     else return undefined;
   }
   return sky;
@@ -76,7 +78,7 @@ export const skyFrom = (given: unknown): Sky | string => {
   for(const [name, color] of [['horizon', horizon], ['zenith', zenith]] as const) if((color !== undefined) && ((typeof color !== 'string') || !HEX.test(color))) return `The sky's ${name} is a color written #rrggbb`;
   if((clouds !== undefined) && ((typeof clouds !== 'number') || !isShare(clouds))) return 'The sky\'s clouds are 0 (none) to 1 (overcast)';
   if((seed !== undefined) && ((typeof seed !== 'number') || !isSeed(seed))) return `The sky's seed is a whole number from 0 to ${MAX_SEED}`;
-  if((image !== undefined) && ((typeof image !== 'string') || !FILE_URI.test(image))) return 'The sky\'s image is a Drive file (charmiq://file/...)';
+  if((image !== undefined) && !isImageName(image)) return 'The sky\'s image is a Drive file (charmiq://file/...) or a picture Brick Studio ships, by name';
   if((lights !== undefined) && (typeof lights !== 'boolean')) return 'The sky\'s lights is true or false';
   return {
     ...((horizon !== undefined) ? { horizon: (horizon as string).toUpperCase() } : {}), ...((zenith !== undefined) ? { zenith: (zenith as string).toUpperCase() } : {}),

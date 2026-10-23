@@ -3,6 +3,7 @@ import { isSkyLine, skyLine, skyOf, type Sky } from '../../brick-shared/sky';
 import { type CatalogPart, type FigureFace, ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_FACES } from './catalog';
 import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, isInheritedColor, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
+import { isPictureLine, pictureOf, type Picture } from './picture';
 import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, type Pose, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER } from './pose';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
@@ -22,8 +23,9 @@ import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posed
 // build's own or a copy's. `0 STEP` lines in the main file split the parts into building steps, in
 // order; a step with no parts is no step. A `0 !BRICKSTUDIO GROUND <color>` line in
 // the main file colors the baseplate (LDraw's form for a program's own meta-command:
-// other LDraw tools pass it by), and a `0 !BRICKSTUDIO SKY ...` line names its sky
-// (SEE: sky.ts). A build holds one set or more, each an arrangement on
+// other LDraw tools pass it by), a `0 !BRICKSTUDIO SKY ...` line names its sky
+// (SEE: brick-shared/sky.ts) and each `0 !BRICKSTUDIO PICTURE ...` line a picture
+// standing in it (SEE: picture.ts). A build holds one set or more, each an arrangement on
 // its own baseplate sharing the build's components: the main model is the first, and
 // a section holding a `0 !BRICKSTUDIO SET <name>` line is another, read as a main
 // model is (its own steps and ground) and never a component. A Model is one set
@@ -86,6 +88,8 @@ export type ModelLayout = Readonly<{
   ground?: Span;
   /** the first sky line, read or not, when the model has one */
   sky?: Span;
+  /** each picture line Brick Studio reads, in the order of `pictures` */
+  pictures?: ReadonlyArray<Span>;
   /** the first `0 STEP` line after the model's last part, when it ends in steps:
    *  parts added to the last step go before it */
   trailingStep?: Span;
@@ -147,6 +151,9 @@ export type Model = Readonly<{
   ground?: string;
   /** the set's sky, when its sky line names one Brick Studio reads (SEE: sky.ts) */
   sky?: Sky;
+  /** the pictures standing in the set, in the order their lines are written, when it
+   *  has any Brick Studio reads (SEE: picture.ts) */
+  pictures?: ReadonlyArray<Picture>;
   /** the components the file defines, and the copies its main model places; each
    *  placement's copy (an index into `copies`), or undefined for a part of its own */
   components?: ReadonlyArray<Component>;
@@ -489,6 +496,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
   let step = 0;
   let ground: Readonly<{ color: string; span: Span; }> | undefined/*the first ground line naming a ground color*/;
   let sky: Readonly<{ sky: Sky | undefined; span: Span; }> | undefined/*the first sky line, read or not*/;
+  const pictures: Array<Readonly<{ picture: Picture; span: Span; }>> = [];
 
   // a submodel's parts take the step of the line that places it: walk() counts
   // `0 STEP` lines in the main file alone
@@ -538,6 +546,10 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
         if(color) ground = { color, span: { from, to } }/*kept in the header as written*/;
       } /* else -- the first names the ground */
       if(isMain && !sky && isSkyLine(fields)) sky = { sky: skyOf(fields), span: { from, to } }/*kept in the header as written*/;
+      if(isMain && isPictureLine(fields)) {
+        const picture = pictureOf(fields);
+        if(picture) pictures.push({ picture, span: { from, to } });
+      } /* else -- no picture, or one Brick Studio cannot read: kept as written */
       if(fields[0] !== '1') {
         if(isMain && (line.trim().length > 0) && !line.trim().startsWith('0 FILE')) header.push(line.trimEnd());
         continue;
@@ -657,6 +669,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
     ...(truncated ? { truncated } : {}),
     ...(ground ? { ground: ground.color } : {}),
     ...(sky?.sky ? { sky: sky.sky } : {}),
+    ...((pictures.length > 0) ? { pictures: pictures.map(each => each.picture) } : {}),
     ...((components.length > 0) ? { components: components.map(({ nested: _, undecided: __, mountLines: ___, ...component }) => component) } : {}),
     ...((colored.size > 0) ? { carried: [...colored.values()] } : {}),
     ...((copies.length > 0) ? { copies, placementCopies } : {}),
@@ -667,7 +680,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
     ...withData,
     ...(uneditable ? { uneditable } : { layout: {
       placements: placementSpans, others: otherSpans, pieces: pieceSpans, placed: placedSpans, parts, steps: stepSpans,
-      ...(ground ? { ground: ground.span } : {}), ...(sky ? { sky: sky.span } : {}), ...(trailingStep ? { trailingStep } : {}),
+      ...(ground ? { ground: ground.span } : {}), ...(sky ? { sky: sky.span } : {}), ...((pictures.length > 0) ? { pictures: pictures.map(each => each.span) } : {}), ...(trailingStep ? { trailingStep } : {}),
       end, endsLine: (end < file.length) || file.endsWithBreak, file,
     } }),
     ...((steps.count > 1) ? { steps } : {}),
@@ -1238,9 +1251,10 @@ export const addSetEdits = (file: FileLayout, name: string, lines: ReadonlyArray
   newSectionEdits(file, sectionText(file, [`0 FILE ${setFileName(file, name)}`, `${SET_LINE} ${name}`, ...lines]));
 
 /** a set's lines that a copy of it takes, as written and in order: its ground, its
- *  sky, its part and copy lines and its steps (its header comments and name line left) */
+ *  sky, its pictures, its part and copy lines and its steps (its header comments and
+ *  name line left) */
 export const setLines = (text: string, layout: ModelLayout): string[] =>
-  [...(layout.ground ? [layout.ground] : []), ...(layout.sky ? [layout.sky] : []), ...layout.parts, ...layout.steps].sort((a, b) => a.from - b.from).map(({ from, to }) => text.slice(from, to).replace(/[\r\n]+$/, ''));
+  [...(layout.ground ? [layout.ground] : []), ...(layout.sky ? [layout.sky] : []), ...(layout.pictures ?? []), ...layout.parts, ...layout.steps].sort((a, b) => a.from - b.from).map(({ from, to }) => text.slice(from, to).replace(/[\r\n]+$/, ''));
 
 /** the edits that rename a set: its name line rewritten, or one written for a main
  *  model that names none (after its `0 FILE` line, else before a flat file's first

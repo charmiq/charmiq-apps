@@ -1,4 +1,5 @@
-import { SOUND_FILES } from '../../brick-shared/drive';
+import { isPlatformFile, SOUND_FILES } from '../../brick-shared/drive';
+import { listShipped, shippedLister, shippedOf, type ResourceLister } from '../../brick-shared/shipped';
 import { filmLengthOf, filmTimeOf, type Film, type StageCamera } from './film';
 import type { Point, SoundCue } from './recorder';
 import { inView } from './screen';
@@ -22,8 +23,6 @@ import { inView } from './screen';
  *  ships for its example films: whatever audio files it holds are the shipped sounds */
 // SEE: ../sounds/README.md
 export const SHIPPED_FOLDER = 'sound/';
-/** how a sound that is a file in the Platform is named: its URI's start */
-export const PLATFORM_FILE = 'charmiq://file/';
 
 /** how near (studs) an actor sounds at full volume; farther, it quiets as the
  *  distance grows */
@@ -44,43 +43,15 @@ export type SoundBuffers = ReadonlyMap<string, AudioBuffer>;
  *  its top by the name a scene plays it by (its file's name without its extension,
  *  `radio` for `sound/radio.ogg`) and the resource it is read as; the first of two
  *  that share a name */
-export const shippedSoundsOf = (names: ReadonlyArray<string>): ReadonlyMap<string, string> => {
-  const shipped = new Map<string, string>();
-  for(const resource of names) {
-    const file = resource.startsWith(SHIPPED_FOLDER) ? resource.slice(SHIPPED_FOLDER.length) : '';
-    const extension = SOUND_FILES.extensions.find(each => file.toLowerCase().endsWith(each));
-    if(!extension || file.includes('/') || (file.length <= extension.length)) continue/*a subfolder, or no audio file*/;
-    const name = file.slice(0, -extension.length);
-    if(!shipped.has(name)) shipped.set(name, resource);
-  }
-  return shipped;
-};
+export const shippedSoundsOf = (names: ReadonlyArray<string>): ReadonlyMap<string, string> => shippedOf(SHIPPED_FOLDER, SOUND_FILES, names);
 
 /** the shipped sounds as `list` gives them, listed when first asked and kept once a
- *  listing succeeds: a failed listing rejects that ask alone, and the next asks again */
-export const shippedSoundsLister = (list: () => Promise<ReadonlyMap<string, string>>): (() => Promise<ReadonlyMap<string, string>>) => {
-  let listed: Promise<ReadonlyMap<string, string>> | undefined/*not yet asked, or failed*/;
-  return () => {
-    listed ??= list().catch((error: unknown) => { listed = undefined/*asked again next time*/; throw error; });
-    return listed;
-  };
-};
+ *  listing succeeds (SEE: brick-shared/shipped.ts shippedLister) */
+export const shippedSoundsLister = shippedLister;
 
 /** the shipped sounds, from every page of {@link SHIPPED_FOLDER}'s listing */
-export const listShippedSounds = async (resources: Readonly<{ list: (prefix: string, options?: Readonly<{ next?: string; }>) => Promise<Readonly<{ names: ReadonlyArray<string>; next?: string; }>>; }>): Promise<ReadonlyMap<string, string>> => {
-  const names: string[] = [];
-  let page = await resources.list(SHIPPED_FOLDER);
-  names.push(...page.names);
-  while(page.next !== undefined) {
-    page = await resources.list(SHIPPED_FOLDER, { next: page.next });
-    names.push(...page.names);
-  }
-  return shippedSoundsOf(names);
-};
+export const listShippedSounds = (resources: ResourceLister): Promise<ReadonlyMap<string, string>> => listShipped(resources, SHIPPED_FOLDER, SOUND_FILES);
 
-/** whether a sound is a file in the Platform (named by its URI) rather than one Stop
- *  Motion ships */
-export const isPlatformFile = (name: string): boolean => name.startsWith(PLATFORM_FILE);
 
 /** the names of the sounds a film's cues play */
 export const soundsOf = (film: Film): ReadonlySet<string> => new Set((film.scene.sounds ?? []).map(cue => cue.name));

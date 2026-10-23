@@ -33,6 +33,8 @@ export type PathSource = Readonly<{
   /** each part's instances, and whether they are see-through plastic */
   parts: ReadonlyArray<Readonly<{ mesh: THREE.InstancedMesh; glass: THREE.Color | undefined/*opaque*/; }>>;
   baseplate: THREE.Object3D | undefined;
+  /** the pictures standing in the set, each a panel in its own material */
+  pictures: THREE.Object3D;
   /** what lights the scene: the studio's capture, or a sky that lights (a panorama) */
   environment: THREE.Texture;
   environmentIntensity: number;
@@ -64,7 +66,7 @@ export class PathTrace {
 
   // ------------------------------------------------------------------------------
   /** rebuilds the traced scene without instancing: every brick its own mesh in its
-   *  own tint, the baseplate's studs one merged mesh. Lit by the studio and the key,
+   *  own tint, the baseplate's studs one merged mesh, each picture where it stands. Lit by the studio and the key,
    *  focused as `lens` says */
   public setScene(source: PathSource, lens: Lens): void {
     this.free();
@@ -75,15 +77,17 @@ export class PathTrace {
     scene.add(...keyLight(source.key));
 
     for(const { mesh, glass } of source.parts) scene.add(...this.bricks(mesh, glass));
-    source.baseplate?.updateMatrixWorld(true);
-    source.baseplate?.traverse(object => {
-      const mesh = object as THREE.Mesh;
-      if(!mesh.isMesh) return;
-      const flat = (mesh as THREE.InstancedMesh).isInstancedMesh ? this.merged(mesh as THREE.InstancedMesh) : mesh.clone();
-      flat.matrixAutoUpdate = false;
-      flat.matrix.copy(mesh.matrixWorld);
-      scene.add(flat);
-    });
+    for(const placed of [source.baseplate, source.pictures]) {
+      placed?.updateMatrixWorld(true);
+      placed?.traverse(object => {
+        const mesh = object as THREE.Mesh;
+        if(!mesh.isMesh) return;
+        const flat = (mesh as THREE.InstancedMesh).isInstancedMesh ? this.merged(mesh as THREE.InstancedMesh) : mesh.clone();
+        flat.matrixAutoUpdate = false;
+        flat.matrix.copy(mesh.matrixWorld);
+        scene.add(flat);
+      });
+    }
 
     this.aim(lens);
     this.tracer.setScene(scene, this.camera);

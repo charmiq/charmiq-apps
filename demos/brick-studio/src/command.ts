@@ -11,6 +11,7 @@ import type { FidelityControl } from './fidelity-control';
 import { filledCells, footprintSize, getColorByCode, getPart, getShape, type PartShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE } from './grid';
 import type { LookAround } from './look-around';
 import { placedPartCount, type Model } from './model';
+import { pictureLine } from './picture';
 import { fidelityLabel, toFidelity, untracedReason } from './render/fidelity';
 import { insideParts } from './stage';
 import type { StageControl } from './stage-control';
@@ -52,6 +53,7 @@ const GRID = [
   `A part with side faces (${CATALOG.filter(part => part.faces).map(part => `${part.key}: ${part.faces!.join(', ')}`).join('; ')}) carries one component on each of those faces: sides is { face: { component, x, z, rotation } }. A face is named as the part stands at rotation 0 (north is +z) and turns with it. Each face has its own map, seen from outside the face: x runs right and z up, in studs, and x 0, z 0 is the cell of its first stud (the leftmost in its row nearest the top). The component stands on that map as a copy stands on the grid: its footprint's corner at x and z, turned clockwise as seen from outside, its level 0 against the face and its levels reaching out, covering at least one of the face's studs; seen from outside it looks as it does from above, its north up. Build the detail flat as a component (a grille, a sign, a lamp), then mount it. A mount collides where it reaches (with the part's other mounts too, never with the part), is held by its part alone (put whatever rides on it inside its component), and is removed with its part. A component's own parts carry nothing on their faces.`,
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
+  'addPicture stands a picture from the Drive in a set (a billboard, a poster, a painted backdrop, a rug): image is a charmiq://file/ uri or a picture Brick Studio ships by name (listPictures names them), placed as a part is (x, z the south-west corner of its footprint, level its bottom, rotation in quarter turns), width and height in studs (1 to 64; leave height out for the image\'s own shape). Upright it stands in the middle of a stud row width long, facing south at rotation 0; flat: true lays it on its level, its top edge north. The image covers it, cropping the overflow, unless fit is contain (shown whole) or stretch. A picture fills nothing: it never collides and the check passes it by. listPictures lists a set\'s pictures; removePicture takes one by its place in that list.',
   'setSky puts a sky behind a set: generated from a horizon and a zenith color (#rrggbb) with clouds from 0 (clear) to 1 (overcast), another seed drawing other clouds alike; or a picture from the Drive (image: a charmiq://file/ uri), a panorama twice as wide as high wrapping the whole sky, any other picture tiled round the horizon. lights: true lets the sky light the set too, for an outdoor shot. Omit the sky for the theme\'s backdrop.',
   'A component is a group of parts defined once (defineComponent, in its own grid: x, z and level from 0) and placed many times: an addParts item {component, x, z, level, rotation} places a copy by its footprint\'s south-west corner and its bottom level, turned as a part is. Copies are checked as parts are; removing any cell of a copy removes the whole copy, and redefining a component changes every copy. Build a repeated thing (a tower, a house, a tree with a fence) as a component.',
   'A saved design can be a component too: defineComponentFromDesign defines one from a design in the designs folder (listDesigns lists each with its uri), its footprint from x 0, z 0 and its lowest part at level 0, so a house, a car or a tree saved once is placed many times.',
@@ -62,7 +64,7 @@ const GRID = [
 
 // == Class =======================================================================
 export class CommandSurface {
-  public constructor(private readonly build: Build, private readonly designs: Designs, private readonly viewer: Viewer, private readonly lookAround: LookAround, private readonly stage: StageControl, private readonly look: FidelityControl) {}
+  public constructor(private readonly build: Build, private readonly designs: Designs, private readonly shippedPictures: () => Promise<ReadonlyMap<string, string>>/*by name*/, private readonly viewer: Viewer, private readonly lookAround: LookAround, private readonly stage: StageControl, private readonly look: FidelityControl) {}
 
   /** a set's check (the set shown's when none is given), model-facing, naming the set
    *  when the build has more than one: never sound while the document holds more than
@@ -206,6 +208,27 @@ export class CommandSurface {
         const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
         await this.viewer.whenSettled();
         return { ground: ground ?? 'theme', ...named(edited) };
+      },
+
+      addPicture: async ({ picture, set }: { picture?: unknown; set?: unknown; }) => {
+        const added = await this.build.addPicture(picture, set);
+        const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
+        await this.viewer.whenSettled();
+        return { picture: added, index: (edited.pictures ?? []).map(pictureLine).lastIndexOf(pictureLine(added))/*its place as listPictures lists it*/, ...named(edited) };
+      },
+
+      listPictures: async ({ set }: { set?: unknown; }) => {
+        await this.build.whenReady();
+        const model = this.build.modelOf(set);
+        const shipped = await this.shippedPictures().then(names => [...names.keys()].sort(), () => []/*unlisted: none named*/);
+        return { pictures: model.pictures ?? [], shipped, ...named(model) };
+      },
+
+      removePicture: async ({ index, set }: { index?: unknown; set?: unknown; }) => {
+        const removed = await this.build.removePicture(index, set);
+        const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
+        await this.viewer.whenSettled();
+        return { removed, ...named(edited) };
       },
 
       setSky: async ({ sky, set }: { sky?: unknown; set?: unknown; }) => {

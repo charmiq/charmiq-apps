@@ -9,7 +9,9 @@ import type { Film } from './film';
 // jumps to the frame due, and the timeline scrolled out of view (where the browser
 // draws it no animation frames) still plays the studios in view. The film's sound
 // starts on the same clock wherever playing starts, seeks or loops, stops with a
-// pause, and plays out what it started at the film's end
+// pause, and plays out what it started at the film's end. A span looped (a move the
+// Gait mode loops) plays over and over on the same clock: a late wake past its end
+// lands where the time falls within it, never past it
 // ********************************************************************************
 // == Types =======================================================================
 /** where the player stands: the frame the playhead is at, and whether it plays and
@@ -31,6 +33,8 @@ export class Player {
   private clock: { start: number; from: number; } | undefined;
   /** the timer that wakes the clock, while playing */
   private wake: ReturnType<typeof setTimeout> | undefined;
+  /** the frames played over and over, first and last, while a span is looped */
+  private span: Readonly<{ first: number; last: number; }> | undefined;
 
   /** `show` puts a frame on the studios; `soundtrack` plays the film's sound */
   public constructor(private readonly show: (index: number) => void, private readonly soundtrack?: Soundtrack) {}
@@ -75,6 +79,9 @@ export class Player {
   }
   public toggle(): void { if(this.state.value.playing) this.pause(); else this.play(); }
   public setLoop(loop: boolean): void { this.update({ loop }); }
+  /** plays the frames from `first` to `last` over and over while playing, or the film
+   *  again (`undefined`) */
+  public loopSpan(span: Readonly<{ first: number; last: number; }> | undefined): void { this.span = span; }
   /** shows the playhead's frame on the studios again (staged anew) */
   public redraw(): void { if(this.film) this.show(this.state.value.index); }
 
@@ -86,6 +93,14 @@ export class Player {
     const { fps } = film.scene;
     let { start, from } = clock;
     let due = from + Math.floor(((performance.now() - start) / 1000) * fps);
+    const span = this.span;
+    if(span && (due > span.last)) {
+      // past the span's end: where the time falls within it, on the clock from its first
+      due = span.first + ((due - span.first) % ((span.last - span.first) + 1));
+      [start, from] = [performance.now() - (((due - span.first) / fps) * 1000), span.first];
+      this.clock = { start, from };
+      this.sound();
+    } /* else -- no span looped, or within it */
     const last = film.frames.length - 1;
     if(due > last) {
       if(!this.state.value.loop) { this.moveTo(last); this.end(); return; }

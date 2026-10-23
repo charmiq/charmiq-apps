@@ -13,6 +13,8 @@ const ROOT = 'root';
 const FOLDER_URI = 'charmiq://folder/';
 const SOURCE_URI = 'charmiq://source/';
 const FILE_URI = 'charmiq://file/';
+/** a Platform file as one word, as a build or a scene names it (a sky's picture, a picture's image) */
+const PLATFORM_FILE = /^charmiq:\/\/file\/\S+$/;
 
 /** the file extension a design's name carries in the Drive */
 export const DESIGN_EXTENSION = '.ldr';
@@ -45,6 +47,9 @@ export const DESIGNS: FileKind = { uriPrefix: SOURCE_URI, extensions: [DESIGN_EX
 export const SOUND_FILES: FileKind = { uriPrefix: FILE_URI, extensions: ['.aac', '.flac', '.m4a', '.mp3', '.oga', '.ogg', '.opus', '.wav', '.webm'] };
 /** pictures: image files, by the extensions a browser decodes */
 export const PICTURE_FILES: FileKind = { uriPrefix: FILE_URI, extensions: ['.avif', '.gif', '.jpeg', '.jpg', '.png', '.webp'] };
+
+/** whether a value names a Platform file (`charmiq://file/...`) */
+export const isPlatformFile = (uri: unknown): uri is string => (typeof uri === 'string') && PLATFORM_FILE.test(uri);
 
 type Entry = Readonly<{ name: string; uri: string; }>;
 type Listing = Readonly<{ entries: ReadonlyArray<Entry>; hasMore: boolean; }>;

@@ -13,6 +13,10 @@ Apps embedded by the CharmIQ platform via an app iframe. No `package.json` or `t
 - Through the primitives, a `ContentChange` with `deleted=true` is **a reason to check, not proof** (`content$()` needs no check: its removal is exact): the platform also sends one during an app-content's first-save, and it can arrive late, after an unrelated action. Check with `snapshot("[id='…']")`: the app-content is gone when that returns `null` while the app still shows exactly the snapshot it checked (it may have been restored or replaced meanwhile). Apply any read's answer only while the app still shows what it showed when the read began, and treat a failed read as a visible error, never an absence.
 - `demos/brick-studio`'s content bridge is the line-record example. Records with ids (`apps/image-gallery`, `apps/custom-drawing`) write through the app-content shown with `shared/line-records` (the one guarded change, the conflict check, an older one-array app-content read as lines) and measure a refused write again by id on the app-content as it is now; an app that bundles `shared/` mounts it (`"mounts": { "/shared": "../../shared" }`).
 
+## Example films
+
+- **Every new Brick Studio or Stop Motion feature lands in the example films in the same change.** The films a person meets first are Stop Motion's starter scene (`demos/stop-motion/src/films.ts` `STARTER_SCENE`), *The Homecoming* (`demos/stop-motion/Studio.md`) and *The Shortcut* (`demos/stop-motion/README.md`). Each one uses every feature where the film has a place for it (a sky over the street, a gait for the walkers, a sound on the cut), so the defaults show what the apps can do. A feature that needs the viewer's own files (a picture from their Drive) is shown in the scene's comments, saying how to add one. A feature is not done until the films show it.
+
 ## Tests
 
 - **This repository carries no tests**: it is public. Never add test files, test scripts or test setup here.

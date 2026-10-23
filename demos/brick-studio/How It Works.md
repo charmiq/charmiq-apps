@@ -73,6 +73,12 @@ The swatch beside the ground's puts a sky behind the set, in place of the theme'
 Like the ground, the sky is the set's: a `0 !BRICKSTUDIO SKY ...` line in its header (`HORIZON #CFE2F3 ZENITH #4F87C7 CLOUDS 0.35 SEED 1`, or `IMAGE charmiq://file/...`, with `LIGHTS`), saved with designs, undone like any edit, kept by Clear and by a copy of the set. A line Brick Studio cannot read is kept as written and draws no sky. A sky change the build cannot take says *sky not changed* in the status.
 
 
+## Pictures
+
+A set holds pictures: an image on a flat panel standing in it, as a billboard over a street, a poster on a wall, a painted backdrop behind a stage, or a rug on a floor. The image is one from your Drive, or a picture Brick Studio ships for its example films, by name (`see-america-montana`: every image in [`pictures`](charmiq://./pictures/README.md), where each one's source and rights are named); `listPictures` names the shipped ones, and a sky's `image` takes them too. Your Charm stands them (`addPicture`), placed as a part is: `x` and `z` the south-west corner of its footprint, `level` its bottom, `rotation` in quarter turns. Upright, a picture stands in the middle of a stud row as long as it is wide, facing south at rotation 0; flat, it lies on its level's studs, its top edge north. Its size is in studs, 1 to 64 either way; with no height it takes its image's own shape. The image covers the panel, its overflow cropped, unless the picture says *contain* (shown whole, the panel's gray round it) or *stretch*.
+
+A picture fills nothing: it never collides with a part and the check passes it by, so a backdrop can stand behind a set or a sign through a wall's top without changing the build's check. Each is a `0 !BRICKSTUDIO PICTURE ...` line in the set, saved with designs, undone like any edit and kept by a copy of the set; a line Brick Studio cannot read is kept as written and draws nothing. The image stays in your Drive and each viewer reads it with their own access, once for every picture and sky naming it; a panel stands plain until its image is read, and stays so when it cannot be, the status counting the pictures that could not be read. Every look draws them, path traced included, and a stage shows each staged set's pictures.
+
 ## Components
 
 A thing a build repeats (a tower, a house, a tree with its fence) is defined once as a component, in its own small grid, and placed as many copies as the build needs, each turned and moved as a part is. A copy is checked like any part. Removing any cell of a copy removes the whole copy, and changing a component changes every copy.
@@ -179,6 +185,9 @@ A Charm drives the Studio through these:
 | `clear` | removes every part, copy, further set and component, and any file the build carries, keeping the first set's name and ground; with `set`, empties that set alone; with `expect`, only while the build is still that text |
 | `check` | lists collisions and floating parts, for a build changed some other way |
 | `setGround` | colors the baseplate, as the swatch does |
+| `addPicture` | stands a picture from the Drive in a set (SEE: *Pictures*), answering its place among the set's pictures |
+| `listPictures` | a set's pictures, in order, each as `addPicture` takes it |
+| `removePicture` | removes a set's picture by its place in `listPictures` |
 | `setSky` | puts a sky behind a set, as the sky swatch does: generated (`horizon`, `zenith`, `clouds`, `seed`) or a Drive picture (`image`), with `lights`; none for the theme's backdrop. A generated sky is written whole, each value it names none of its default |
 | `setView` | turns the camera and frames the build |
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
@@ -197,7 +206,7 @@ A Charm drives the Studio through these:
 | `loadDesign` | replaces the build with a saved design (its `uri` from `listDesigns`, or its name) |
 | `saveDesign` | saves the build as a design in your designs folder; a name already there needs `replace` |
 
-Every edit resolves once the parts have landed, so a screenshot taken next shows the result. `listPlacedParts`, `addParts`, `removeParts`, `setGround`, `setSky`, `check` and `lookAround` take `set`, and in a build of more than one set each answer names the set it acted on.
+Every edit resolves once the parts have landed, so a screenshot taken next shows the result. `listPlacedParts`, `addParts`, `removeParts`, `setGround`, `setSky`, `addPicture`, `listPictures`, `removePicture`, `check` and `lookAround` take `set`, and in a build of more than one set each answer names the set it acted on.
 
 A Charm can also call these from the Platform's Run Code: its script finds the Studio among `charmiq.discoverAll('charmiq.command')` (every Application with commands) as the one whose `listSets()` answers, and calls each command as a method, checked as if called directly, so loops and functions build a whole scene in one action.
 
@@ -225,14 +234,16 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
 | [`src/designs.ts`](charmiq://./src/designs.ts) | the build saved as a design, and a design loaded whole or as a component |
 | [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog's Brick Studio choices: add a design to the build, or replace it |
-| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog (the dialog brings its own styles, `design-dialog.scss`), the dialog that picks a file (a sky's picture), a sky's words (`sky.ts`), and the family's look (`_family.scss`, `_kit.scss`) |
+| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog (the dialog brings its own styles, `design-dialog.scss`), the dialog that picks a file (a sky's picture), a sky's words (`sky.ts`), the files an app ships by name (`shipped.ts`), and the family's look (`_family.scss`, `_kit.scss`) |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
 | [`src/frame-request.ts`](charmiq://./src/frame-request.ts) | a frame drawn once, at the next animation frame or after a moment when the Studio is out of view |
-| [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the sky (its panoramas, `panorama.ts`, and the backdrop and light they make, `sky.ts`), the effects and the path tracer; a film's fade, titles and plans drawn over the stage |
+| [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the sky (its panoramas, `panorama.ts`, and the backdrop and light they make, `sky.ts`), the pictures standing in a set and the Drive images they and skies are read from (`pictures.ts`), the effects and the path tracer; a film's fade, titles and plans drawn over the stage |
 | [`src/step-control.ts`](charmiq://./src/step-control.ts) | playing the building steps |
 | [`src/fidelity-control.ts`](charmiq://./src/fidelity-control.ts) | the Look slider |
 | [`src/ground-control.ts`](charmiq://./src/ground-control.ts) | the ground swatch and its colors |
 | [`src/sky-control.ts`](charmiq://./src/sky-control.ts) | the sky swatch and its panel |
+| [`src/picture.ts`](charmiq://./src/picture.ts) | a picture's words: its line read and written |
+| [`pictures`](charmiq://./pictures/README.md) | the pictures Brick Studio ships for its example films, and where each comes from |
 | [`src/sheet.ts`](charmiq://./src/sheet.ts) | the sheet over the stage: pictures in a grid, each captioned, for one screenshot |
 | [`src/look-around.ts`](charmiq://./src/look-around.ts) | the build from four sides at once, on the sheet |
 | [`src/parts/`](charmiq://./src/parts) | the packed parts (generated): `built-in.ldr` comes with the Studio, each other family is a resource read when first shown |
