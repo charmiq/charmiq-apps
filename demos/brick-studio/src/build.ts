@@ -1,9 +1,10 @@
 import type { ContentChange } from '../../../shared/charmiq';
+import { drawnSky, skyFrom, type Sky } from '../../brick-shared/sky';
 import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_FACES, type CatalogPart, type Slot } from './catalog';
 import { checkModel, describeCopy, describePlaced, describePlacement, occupiedCells, MAX_LISTED, type CheckResult } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
-import { addSetEdits, appendLines, applyChanges, carriesComponents, clearEdits, clearSetEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, parseSets, partCount, placedPartCount, placementLines, removeSetEdits, renameSetEdits, sameSetName, serializeModel, setLines, stepCount, type Model, type ModelLayout, type SetSection, EMPTY_MODEL, MAIN_SET, MAX_PARTS, MAX_SET_NAME, MAX_SETS, READ_IN_PART } from './model';
+import { addSetEdits, appendLines, applyChanges, carriesComponents, clearEdits, clearSetEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, parseSets, partCount, placedPartCount, placementLines, removeSetEdits, renameSetEdits, sameSetName, serializeModel, setLines, skyEdit, stepCount, type Model, type ModelLayout, type SetSection, EMPTY_MODEL, MAIN_SET, MAX_PARTS, MAX_SET_NAME, MAX_SETS, READ_IN_PART } from './model';
 import { maxOf, minOf } from './numbers';
 import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
 
@@ -50,7 +51,7 @@ export type Defined = Readonly<{ name: string; size: string; parts: number; copi
 export type DefinedFromDesign = Defined & Readonly<{ leftOut: number; otherSets?: number; }>;
 /** a set as listSets tells it: its name, its parts (its copies' included), copies and
  *  steps, and its ground when it names one */
-export type SetSummary = Readonly<{ name: string; parts: number; copies: number; steps: number; ground?: string; }>;
+export type SetSummary = Readonly<{ name: string; parts: number; copies: number; steps: number; ground?: string; sky?: Sky; }>;
 
 // == Class =======================================================================
 export class Build {
@@ -100,7 +101,7 @@ export class Build {
   public shownSet(): string { return this.model.set ?? MAIN_SET; }
   /** every set of the build, the main set first */
   public sets(): ReadonlyArray<SetSummary> {
-    return this.allSets().map(model => ({ name: model.set ?? MAIN_SET, parts: partCount(model), copies: model.placed?.length ?? 0/*every line placing a component*/, steps: stepCount(model), ...((model.ground !== undefined) ? { ground: model.ground } : {}) }));
+    return this.allSets().map(model => setSummary(model.set ?? MAIN_SET, model));
   }
   /** every set of the build as a model, the main set first */
   public allSets(): ReadonlyArray<Model> {
@@ -354,6 +355,20 @@ export class Build {
     return color;
   }
 
+  /** sets a set's sky (SEE: sky.ts), or returns it to the theme's backdrop (`undefined`),
+   *  and shows the set. A generated sky is written whole, each value it names none of
+   *  its default, so the sky a film was made under never moves with the defaults */
+  public async setSky(given: unknown, set?: unknown): Promise<Sky | undefined> {
+    await this.whenReady();
+    const read = (given === undefined) ? undefined : skyFrom(given);
+    if(typeof read === 'string') throw new BuildError(read);
+    const sky = ((read === undefined) || (read.image !== undefined)) ? read : { ...drawnSky(read), ...(read.lights ? { lights: true as const } : {}) };
+    let target: string | undefined;
+    await this.bridge.edit(text => { const { layout, name } = editable(text, set); target = name; return skyEdit(layout, sky); });
+    this.showNamed(target);
+    return sky;
+  }
+
   // ------------------------------------------------------------------------------
   /** adds a set named `name`: empty, or a copy of the set `from` names (its parts,
    *  copies, steps and ground), and shows it */
@@ -369,7 +384,7 @@ export class Build {
       const source = (from === undefined) ? undefined : editable(text, from);
       const changes = addSetEdits(layout.file, named, source ? setLines(text, source.layout) : []);
       const next = readWhole(applyChanges(text, changes), named);
-      added = { name: named, parts: partCount(next), copies: next.placed?.length ?? 0, steps: stepCount(next), ...((next.ground !== undefined) ? { ground: next.ground } : {}) };
+      added = setSummary(named, next);
       return changes;
     });
     this.showNamed(named);
@@ -514,6 +529,12 @@ const pickSet = (main: Model, set: unknown): string => {
 
 /** every set's name, the main set's first */
 const setNames = (model: Model): ReadonlyArray<string> => model.sets?.map(each => each.name) ?? [model.set ?? MAIN_SET];
+
+/** a set as listSets tells it: its name, its parts, copies and steps, its ground and its sky */
+const setSummary = (name: string, model: Model): SetSummary => ({
+  name, parts: partCount(model), copies: model.placed?.length ?? 0/*every line placing a component*/, steps: stepCount(model),
+  ...((model.ground !== undefined) ? { ground: model.ground } : {}), ...((model.sky !== undefined) ? { sky: model.sky } : {}),
+});
 
 /** the file of the set a model is, when the build holds more than one (the main set's
  *  otherwise: none) */

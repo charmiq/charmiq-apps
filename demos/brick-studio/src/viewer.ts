@@ -5,6 +5,8 @@ import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
+import type { Sky } from '../../brick-shared/sky';
+
 import { CATALOG, resourceFamily } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
@@ -19,6 +21,7 @@ import { drawOverlay, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
 import { applyGlass, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
+import { SkyBackdrop } from './render/sky';
 import { createStudio, type Studio } from './render/studio';
 
 // renders a build: one instanced mesh per catalog part over a studded baseplate.
@@ -85,6 +88,10 @@ const PLAN_DEPTH = 900/*scene units: the stage's highest reach and more*/;
 
 /** the direction toward the sun, and the studio's key softbox, from the build */
 const KEY_DIRECTION = new THREE.Vector3(-0.45, 1, 0.6).normalize();
+/** a sky that lights the set lights it this much of the look's own environment's
+ *  strength: a pale sky all round is several times brighter than the studio's dark room
+ *  and its panels, and would wash every color out */
+const SKY_LIGHT = 0.35;
 
 // --------------------------------------------------------------------------------
 export const DEFAULT_VIEW: View = { azimuth: 30, elevation: 28 };
@@ -161,6 +168,9 @@ export class Viewer {
   private stageLens: StageLens = {};
   /** a stage's light over the look's own (SEE: stage.ts StageLight) */
   private stageLight: StageLight = {};
+  /** the sky behind the set (SEE: render/sky.ts), and a stage's own over every set's */
+  private readonly backdrop: SkyBackdrop;
+  private stageSky: Sky | undefined/*each set's own*/;
   /** the build's focus: what lies at the middle of the picture, found once the view
    *  rests (SEE: render/autofocus.ts) */
   private readonly autoFocus = new AutoFocus(() => this.middleDistance());
@@ -228,7 +238,7 @@ export class Viewer {
   private overlayStale = false;
 
   // == Lifecycle =================================================================
-  public constructor(private readonly canvas: HTMLCanvasElement, private readonly overlayCanvas: HTMLCanvasElement/*a film's fade and title, over the canvas*/, theme: Theme, private readonly readResource: (name: string) => Promise<string>/*a declared resource's text*/) {
+  public constructor(private readonly canvas: HTMLCanvasElement, private readonly overlayCanvas: HTMLCanvasElement/*a film's fade and title, over the canvas*/, theme: Theme, private readonly readResource: (name: string) => Promise<string>/*a declared resource's text*/, readFile: (uri: string) => Promise<ArrayBuffer>/*a Drive file's bytes: a sky's picture*/) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true/*the Application screenshot reads the canvas*/ });
     this.renderer.setPixelRatio(screenPixelRatio());
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -239,6 +249,7 @@ export class Viewer {
     const environment = new THREE.PMREMGenerator(this.renderer);
     this.room = environment.fromScene(new RoomEnvironment(), 0.04).texture;
     environment.dispose();
+    this.backdrop = new SkyBackdrop(this.renderer, readFile, () => { this.skyChanged(); this.onPartsChanged?.()/*the status says whether its picture was read*/; });
 
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
@@ -402,6 +413,24 @@ export class Viewer {
     this.requestFrame();
   }
 
+  // == Sky =======================================================================
+  /** shows a set's sky, or the theme's backdrop (`undefined`) */
+  private showSky(sky: Sky | undefined): void {
+    if(this.backdrop.show(sky)) this.skyChanged();
+  }
+
+  /** the sky behind every look, and the light it gives one that lights */
+  private skyChanged(): void {
+    this.scene.background = this.backdrop.texture ?? null/*the theme's clear color*/;
+    this.applyLook(this.fidelity);
+    this.pathTraceStale = true;
+    this.requestFrame();
+  }
+
+  /** whether the sky shown names a picture that could not be read (its generated sky
+   *  stands in) */
+  public get skyUnread(): boolean { return this.backdrop.isUnread; }
+
   // == Fidelity ==================================================================
   /** sets how real the build looks; resolves to the stop reached, which is lower
    *  when the path tracer cannot run here */
@@ -453,8 +482,8 @@ export class Viewer {
     const draft = (fidelity < 1);
     const { key = 1, fill = 1, exposure = 1, soft = 0 } = this.stageLight;
     if(!draft) this.studio ??= createStudio(this.renderer, KEY_DIRECTION);
-    this.scene.environment = draft ? this.room : this.studio!.environment;
-    this.scene.environmentIntensity = (draft ? 0.42 : 0.9) * fill;
+    this.scene.environment = this.backdrop.environment ?? (draft ? this.room : this.studio!.environment);
+    this.scene.environmentIntensity = (draft ? 0.42 : 0.9) * fill * (this.backdrop.environment ? SKY_LIGHT : 1);
     this.sky.intensity = (draft ? 0.5 : 0.1) * fill;
     this.sun.intensity = (draft ? 1.6 : 2.4) * key;
     this.renderer.toneMapping = draft ? THREE.ACESFilmicToneMapping : THREE.NeutralToneMapping;
@@ -507,6 +536,7 @@ export class Viewer {
     this.autoFocus.forget()/*what lies at the middle may change*/;
     const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
     this.setGround(ground);
+    this.showSky(this.staging ? (this.stageSky ?? model.sky) : model.sky);
     const kept = this.staging ? this.setMeshes.get(model) : undefined;
     const setItems = kept ? [] : renderItems(model)/*a set kept is built*/;
     const actorItems = actors.lines.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));
@@ -813,6 +843,7 @@ export class Viewer {
     this.aim(staging.before.position, staging.before.target, staging.before.fov)/*level and unshifted again*/;
     this.useLens({})/*the look's own focus again*/;
     this.useLight({})/*the look's own light again*/;
+    this.stageSky = undefined/*each set's own again*/;
     this.controls.enabled = true;
     this.controls.update();
     this.renderer.setPixelRatio(screenPixelRatio());
@@ -830,6 +861,10 @@ export class Viewer {
     this.aim(scenePoint(seen.position), scenePoint(seen.target), seen.fov, isPlan(camera), isPlan(camera) ? 0 : (camera.roll ?? 0), isPlan(camera) ? 0 : (camera.shift ?? 0));
     this.useLens(isPlan(camera) ? {} : { ...((camera.focus !== undefined) ? { focus: (typeof camera.focus === 'number') ? camera.focus/*studs, the scene's units*/ : scenePoint(camera.focus) } : {}), ...((camera.aperture !== undefined) ? { aperture: camera.aperture } : {}) });
   }
+
+  /** a stage's sky from now on, over every set's (`undefined`: each set's own); shown
+   *  with the set the next frame draws */
+  public useSky(sky: Sky | undefined): void { this.stageSky = sky; }
 
   /** a stage's light from now on, over the look's own; the path tracer lights its
    *  scene afresh */
@@ -1199,7 +1234,7 @@ export class Viewer {
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
-    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && !this.focusing() && (this.tracing()?.settled ?? true);
+    const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && !this.backdrop.loading && !this.focusing() && (this.tracing()?.settled ?? true);
     if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
     if(moving || (this.drops.length > 0) || refining) this.requestFrame();
@@ -1311,7 +1346,7 @@ export class Viewer {
       const { plate, free } = this.tracedBaseplate();
       tracer.setScene({
         parts: (this.parts.children as THREE.InstancedMesh[]).map(mesh => ({ mesh, glass: this.tintOf(mesh.material) })), baseplate: plate,
-        environment: this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.stage,
+        environment: this.backdrop.lighting ?? this.studio!.cube, environmentIntensity: this.scene.environmentIntensity, background: this.backdrop.texture ?? this.stage,
         key: { position: this.sun.position, target: this.sun.target.position, intensity: this.sun.intensity, soft: this.stageLight.soft ?? 0 },
       }, this.lens());
       free()/*the tracer merged its own copy*/;

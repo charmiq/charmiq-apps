@@ -43,6 +43,8 @@ export type FolderListing = Readonly<{ folders: ReadonlyArray<Folder>; files: Re
 export const DESIGNS: FileKind = { uriPrefix: SOURCE_URI, extensions: [DESIGN_EXTENSION] };
 /** sounds: audio files, by the extensions a browser decodes */
 export const SOUND_FILES: FileKind = { uriPrefix: FILE_URI, extensions: ['.aac', '.flac', '.m4a', '.mp3', '.oga', '.ogg', '.opus', '.wav', '.webm'] };
+/** pictures: image files, by the extensions a browser decodes */
+export const PICTURE_FILES: FileKind = { uriPrefix: FILE_URI, extensions: ['.avif', '.gif', '.jpeg', '.jpg', '.png', '.webp'] };
 
 type Entry = Readonly<{ name: string; uri: string; }>;
 type Listing = Readonly<{ entries: ReadonlyArray<Entry>; hasMore: boolean; }>;

@@ -148,6 +148,89 @@
   background: var(--baseplate);
 }
 
+// == Sky =========================================================================
+// the swatch shows the set's sky (its gradient, a picture's mark over it), else a
+// cloud on the theme's backdrop; its panel picks the kind and its values
+.sky { position: relative; display: flex; }
+
+.tag--sky {
+  width: 22px;
+  padding: 0;
+  color: var(--ink);
+  background: var(--sky, var(--stage));
+
+  .sky-mark { display: block; margin: auto; }
+  &[style*='--sky']:not(.is-picture) .sky-mark { display: none; }
+}
+
+.sky-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 210px;
+  padding: 8px;
+  color: var(--ink);
+  background: var(--stage);
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  box-shadow: 0 1px 0 var(--outline);
+}
+
+.sky-kinds { display: flex; gap: 3px; }
+
+.sky-kind,
+.sky-action {
+  @extend %mono-caps;
+  font-size: 9px;
+  color: var(--ink);
+  background: var(--stage);
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  cursor: pointer;
+
+  &:hover { filter: brightness(1.08); }
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+  &:disabled { opacity: 0.4; cursor: default; filter: none; }
+}
+
+.sky-kind {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  &[aria-checked='true'] { background: var(--outline); color: #FFFDF2; }
+}
+
+.sky-action { flex: none; padding: 4px 7px; }
+
+.sky-row,
+.sky-lights {
+  @extend %mono-caps;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 9px;
+}
+.sky-row[hidden] { display: none; }
+.sky-row input[type='color'] { margin-left: auto; width: 44px; height: 20px; padding: 0; border: 1px solid var(--outline); background: none; }
+.sky-row input[type='range'] { flex: 1 1 auto; min-width: 0; }
+
+.sky-picture-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-transform: none;
+}
+
 // == Sets ========================================================================
 // the set shown, by name, opening a menu of the build's sets; a long name truncates
 .set-pick { position: relative; display: flex; min-width: 0; }

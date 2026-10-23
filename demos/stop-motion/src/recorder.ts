@@ -1,3 +1,5 @@
+import { skyFrom, type Sky } from '../../brick-shared/sky';
+
 import type { GaitShape } from './steps';
 
 // the scene recorder: runs a scene's code and records what it declares as plain
@@ -146,6 +148,8 @@ export type Recorded = Readonly<{
   /** how the stage is lit over the look's own light, when the scene says (SEE: Brick
    *  Studio's StageLight) */
   light?: Readonly<{ key?: number; fill?: number; exposure?: number; soft?: number; }>;
+  /** the film's sky over every set's own, when the scene says (SEE: brick-shared/sky.ts) */
+  sky?: Sky;
   actors: ReadonlyArray<RecordedActor>;
   camera: RecordedCamera;
   /** more cameras, by name: each a second studio's view of the scene. A plan looks
@@ -261,7 +265,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
 
   // .. Recording .................................................................
   // what the scene declares, as it declares it
-  const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined };
+  const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, sky: undefined as Sky | undefined };
   type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; drawn?: Drawn; }>();
@@ -284,13 +288,14 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
     if((value !== 'ones') && (value !== 'twos') && (value !== 'smooth')) fail(`${what} is 'ones' (a drawing every frame), 'twos' (each drawing held two frames) or 'smooth'`);
     return value as Drawn;
   };
-  /** the film's settings: its title, fps, length, export size, floor, boil, light and
-   *  how it is drawn */
+  /** the film's settings: its title, fps, length, export size, floor, boil, light, sky
+   *  and how it is drawn */
   const scene = (options: Record<string, unknown> = {}) => {
-    const { title, fps, length, width, height, floor, boil, light, drawn } = options;
+    const { title, fps, length, width, height, floor, boil, light, sky, drawn } = options;
     if(drawn !== undefined) settings.drawn = drawnOf(drawn, 'drawn');
     if(boil !== undefined) settings.boil = unitOf(boil, 'boil')/*0 to 1*/;
     if(light !== undefined) settings.light = lightOf(light);
+    if(sky !== undefined) { const read = skyFrom(sky); settings.sky = (typeof read === 'string') ? fail(read) : read; }
     if(title !== undefined) settings.title = String(title);
     if(fps !== undefined) { if(!Number.isInteger(fps) || ((fps as number) < 1) || ((fps as number) > MAX_FPS)) fail(`fps is a whole number from 1 to ${MAX_FPS}`); settings.fps = fps as number; }
     if(length !== undefined) { settings.length = toTime(length, 'length'); if(settings.length <= 0) fail('length must be more than 0 seconds'); }
@@ -1210,7 +1215,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
    *  exactly where a cut jumps */
   const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
   return {
-    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}),
+    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...(settings.sky ? { sky: settings.sky } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
     actors: actors.map(({ name, source, ride, keys, walks, faces, hands, reactions, looks, ground, still, drawn, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),

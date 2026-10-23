@@ -6,6 +6,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import { DocumentState } from '../../brick-shared/app-state';
 import { DesignStore } from '../../brick-shared/designs';
 import { Drive, type DriveFile, SOUND_FILES } from '../../brick-shared/drive';
+import { PickDialog } from '../../brick-shared/pick-dialog';
 
 import { exportFilmCommands } from './command';
 import { Director } from './director';
@@ -21,7 +22,6 @@ import { addSound, applyEdit, isRefusal, regait, retimeSound, sameGait, sameSoun
 import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB, type MeasuredScene } from './scene-source';
 import { isPlatformFile, listShippedSounds, peaksOf, shippedSoundsLister, soundsOf, SoundBank } from './sound';
-import { SoundDialog } from './sound-dialog';
 import { Soundtrack, type SoundState } from './soundtrack';
 import { Strip } from './strip';
 import { Studios, type StageState } from './studios';
@@ -129,7 +129,7 @@ const soundtrack = new Soundtrack(bank);
 /** the document's app state, the one every store keeps its entry in */
 const documentState = charmiq && new DocumentState(charmiq.appState);
 const soundStore = documentState && drive && new DesignStore(drive, documentState, { noun: 'sound', listing: 'describeFilm', pick: 'Add' }, SOUND_FILES);
-const soundDialog = soundStore && new SoundDialog(element('sounds'), soundStore, file => addSoundAt(file));
+const soundDialog = soundStore && new PickDialog(element('sounds'), soundStore, file => addSoundAt(file), 'The sound was not added');
 
 // -- Director --------------------------------------------------------------------
 /** runs the scene once its shipped sounds are listed, and shows the film it makes */

@@ -66,6 +66,24 @@
             <button class="tag tag--ground" id="groundButton" title="Ground" aria-label="Ground" aria-haspopup="menu" aria-expanded="false"></button>
             <div class="ground-menu" id="groundMenu" role="menu" aria-label="Ground color" hidden></div>
           </div>
+          <div class="sky" id="sky">
+            <button class="tag tag--sky" id="skyButton" title="Sky" aria-label="Sky" aria-haspopup="dialog" aria-expanded="false">
+              <svg class="sky-mark" viewBox="0 -960 960 960" aria-hidden="true"><path fill="currentColor" d="M260-160q-91 0-155.5-63T40-377q0-78 47-139t123-78q25-92 100-149t170-57q117 0 198.5 81.5T760-520q69 8 114.5 59.5T920-340q0 75-52.5 127.5T740-160H260Z"/></svg>
+            </button>
+            <div class="sky-panel" id="skyPanel" role="dialog" aria-label="Sky" hidden>
+              <div class="sky-kinds" role="radiogroup" aria-label="Sky">
+                <button class="sky-kind" id="skyTheme" type="button" role="radio">Theme</button>
+                <button class="sky-kind" id="skyGenerated" type="button" role="radio">Generated</button>
+                <button class="sky-kind" id="skyPicture" type="button" role="radio">Picture</button>
+              </div>
+              <label class="sky-row">Horizon <input id="skyHorizon" type="color"></label>
+              <label class="sky-row">Overhead <input id="skyZenith" type="color"></label>
+              <label class="sky-row">Clouds <input id="skyClouds" type="range" min="0" max="1" step="0.05"></label>
+              <div class="sky-row"><button class="sky-action" id="skyReseed" type="button">New clouds</button></div>
+              <div class="sky-row"><span class="sky-picture-name" id="skyPictureName"></span><button class="sky-action" id="skyPick" type="button">Choose…</button></div>
+              <label class="sky-lights"><input id="skyLights" type="checkbox"> Lights the set</label>
+            </div>
+          </div>
           <button class="tag tag--ink" id="fitButton" title="Fit the build" aria-label="Fit the build">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>
           </button>
@@ -130,6 +148,7 @@
 
     <!-- == Designs =========================================================== -->
     <dialog class="designs" id="designs" aria-label="Designs"></dialog>
+    <dialog class="designs" id="pictures" aria-label="Pictures"></dialog>
 
     <!-- == Loading =========================================================== -->
     <div class="loading" id="loading">

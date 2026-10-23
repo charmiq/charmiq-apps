@@ -34,7 +34,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 12;
+const STAGE_VERSION = 13;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -223,7 +223,7 @@ export class Studios {
     try {
       const [main, ...others] = screens;
       const actors = scene.actors.map(({ name, source }) => ({ name, ...source }));
-      const world = { ...(scene.floor ? { floor: scene.floor } : {}), ...(scene.light ? { light: scene.light } : {}) }/*the stage's floor and light*/;
+      const world = { ...(scene.floor ? { floor: scene.floor } : {}), ...(scene.light ? { light: scene.light } : {}), ...(scene.sky ? { sky: scene.sky } : {}) }/*the stage's floor, light and sky*/;
       // the sets the scene cuts between, the build's first ahead of them while a frame
       // stands before the first key
       const sets = scene.sets ? stagedSets(scene, (await main.describeStage({})).sets[0]) : undefined;

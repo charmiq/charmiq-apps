@@ -1,7 +1,9 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 
 import { DocumentState } from '../../brick-shared/app-state';
-import { Drive } from '../../brick-shared/drive';
+import { DesignStore } from '../../brick-shared/designs';
+import { Drive, PICTURE_FILES } from '../../brick-shared/drive';
+import { PickDialog } from '../../brick-shared/pick-dialog';
 
 import { Build } from './build';
 import { familyLabel } from './catalog';
@@ -16,6 +18,7 @@ import { GroundControl } from './ground-control';
 import { LookAround } from './look-around';
 import { partCount, type Model } from './model';
 import { SetControl } from './set-control';
+import { SkyControl } from './sky-control';
 import { Sheet } from './sheet';
 import { StageControl } from './stage-control';
 import { StepControl } from './step-control';
@@ -51,11 +54,12 @@ const readTheme = () => {
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 // == Instances ===================================================================
-const viewer = new Viewer(canvas, overlay, readTheme(), name => charmiq.resources.text(name)/*a part family, read the first time a build shows it*/);
+const drive = new Drive(charmiq.mcp);
+const viewer = new Viewer(canvas, overlay, readTheme(), name => charmiq.resources.text(name)/*a part family, read the first time a build shows it*/, uri => drive.bytes(uri)/*a sky's picture*/);
 const bridge = new ContentBridge(charmiq.appContent);
 const build = new Build(bridge);
 const look = new FidelityControl(element('fidelity'), element('fidelityName'), element('fidelityState'), viewer);
-const designs = new Designs(new Drive(charmiq.mcp), build, new DocumentState(charmiq.appState));
+const designs = new Designs(drive, build, new DocumentState(charmiq.appState));
 const sheet = new Sheet({ root: element('sheet'), title: element('sheetTitle'), panels: element('sheetPanels'), back: element('sheetBack'), backLabel: element('sheetBackLabel') }, document.querySelector<HTMLElement>('.bar')!/*by contract*/);
 const lookAround = new LookAround(sheet, viewer);
 const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/;
@@ -67,6 +71,14 @@ const commands = new CommandSurface(build, designs, viewer, lookAround, stage, l
 /** why the last ground change was refused, until the build next changes */
 let groundRefused: string | undefined;
 const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build, reason => { groundRefused = reason; showStatus(build.getModel()); });
+/** why the last sky change was refused, until the build next changes */
+let skyRefused: string | undefined;
+const pictureStore = new DesignStore(drive, new DocumentState(charmiq.appState), { noun: 'picture', listing: 'setSky', pick: 'Use' }, PICTURE_FILES);
+const pictures: PickDialog = new PickDialog(element('pictures'), pictureStore, (file): Promise<void> => sky.pictured(file.uri)/*the control below*/, 'The sky was not changed');
+const sky = new SkyControl({
+  root: element('sky'), button: element('skyButton'), panel: element('skyPanel'), theme: element('skyTheme'), generated: element('skyGenerated'), picture: element('skyPicture'),
+  horizon: element('skyHorizon'), zenith: element('skyZenith'), clouds: element('skyClouds'), reseed: element('skyReseed'), pictureName: element('skyPictureName'), pick: element('skyPick'), lights: element('skyLights'),
+}, build, pictures, uri => drive.fileName(uri), reason => { skyRefused = reason; showStatus(build.getModel()); });
 const setPick = new SetControl({ root: element('setPick'), button: element('setButton'), menu: element('setMenu') }, build);
 const steps = new StepControl({ root: element('steps'), first: element('stepFirst'), previous: element('stepPrevious'), play: element('stepPlay'), next: element('stepNext'), label: element('stepLabel') }, viewer, () => !reducedMotion.matches);
 const designDialog = new DesignDialog(element('designs'), designs, {
@@ -91,6 +103,8 @@ const showStatus = (model: Model) => {
     viewer.reachesPastBaseplate() ? 'reaches past the baseplate' : undefined,
     (builds > 1) ? `${builds} builds in this document · edits paused` : undefined,
     groundRefused ? 'ground not changed' : undefined,
+    skyRefused ? 'sky not changed' : undefined,
+    viewer.skyUnread ? 'sky picture could not be read' : undefined,
     model.uneditable ? 'not editable here' : undefined/*why, on hover*/,
     ...(model.duplicated ?? []).map(name => `${name} defined twice · the first is used`),
     build.isUncertain() ? 'could not check the document · reload to try again' : undefined,
@@ -100,8 +114,8 @@ const showStatus = (model: Model) => {
     (result.unchecked > 0) ? `${result.unchecked} off grid` : undefined,
   ].filter(Boolean);
   statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
-  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0) || !!groundRefused || !!model.uneditable || !!model.duplicated);
-  status.title = [groundRefused, model.uneditable].filter(Boolean).join('\n')/*the reasons, on hover*/;
+  status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0) || !!groundRefused || !!skyRefused || viewer.skyUnread || !!model.uneditable || !!model.duplicated);
+  status.title = [groundRefused, skyRefused, model.uneditable].filter(Boolean).join('\n')/*the reasons, on hover*/;
   retryButton.hidden = retrySep.hidden = (unbuilt < 1);
   hint.hidden = (count > 0) || result.truncated;
 };
@@ -221,14 +235,16 @@ const start = async () => {
 
   await look.init();
   void designs.init()/*every save, list and load waits for it*/;
+  void pictureStore.init()/*the folder pictures are picked from first*/;
   build.onChange((model, source) => {
     if(source !== 'elsewhere') lookAround.hide()/*a picture of the set as it stood*/;
     if(source !== 'set') stage.buildChanged()/*another set shown is no change to the build*/;
-    groundRefused = undefined/*a refusal is about the build as it stood*/;
+    groundRefused = skyRefused = undefined/*a refusal is about the build as it stood*/;
     // the set whole, any playback ended: never for a change that leaves the set shown
     // as it was, and another set shown drops nothing in
     if(source !== 'elsewhere') steps.show(model, (source === 'document') && !reducedMotion.matches);
     ground.show(model);
+    sky.show(model);
     setPick.show(model);
     if(source === 'document') viewer.keepInView()/*the first view is framed once its parts are drawn (SEE start); another set keeps the view*/;
     showStatus(model);

@@ -287,12 +287,12 @@
       },
       {
         "name": "listSets",
-        "description": "The build's sets, the first first: each an arrangement on its own baseplate (a film's street, its garage) sharing the build's components, with its parts, copies, steps and ground; and the set the studio shows. A build of more than one set takes set on every command that reads or edits one",
+        "description": "The build's sets, the first first: each an arrangement on its own baseplate (a film's street, its garage) sharing the build's components, with its parts, copies, steps, ground and sky; and the set the studio shows. A build of more than one set takes set on every command that reads or edits one",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
           "properties": {
-            "sets":  { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "parts": { "type": "integer" }, "copies": { "type": "integer" }, "steps": { "type": "integer" }, "ground": { "type": "string" } }, "required": ["name", "parts", "copies", "steps"] } },
+            "sets":  { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "parts": { "type": "integer" }, "copies": { "type": "integer" }, "steps": { "type": "integer" }, "ground": { "type": "string" }, "sky": { "type": "object", "description": "Its sky, when it has one (setSky)" } }, "required": ["name", "parts", "copies", "steps"] } },
             "shown": { "type": "string", "description": "The set the studio shows" }
           },
           "required": ["sets", "shown"]
@@ -399,8 +399,35 @@
         }
       },
       {
+        "name": "setSky",
+        "description": "Put a sky behind a set: generated from a horizon and a zenith color with seeded clouds, or a picture from the Drive (a panorama wraps the whole sky; any other picture is tiled round the horizon). lights lets it light the set too. Omit the sky for the theme's backdrop",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sky": {
+              "type": "object",
+              "description": "The sky; omit it for the theme's backdrop",
+              "properties": {
+                "horizon": { "type": "string", "description": "The color at the horizon, #rrggbb" },
+                "zenith":  { "type": "string", "description": "The color overhead, #rrggbb" },
+                "clouds":  { "type": "number", "description": "How clouded: 0 clear to 1 overcast" },
+                "seed":    { "type": "integer", "description": "Which clouds: another seed draws others alike" },
+                "image":   { "type": "string", "description": "A picture from the Drive (charmiq://file/...) in place of the generated sky" },
+                "lights":  { "type": "boolean", "description": "The sky lights the set as well as standing behind it" }
+              }
+            },
+            "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "sky": { "description": "The sky as written, or theme" }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
+          "required": ["sky"]
+        }
+      },
+      {
         "name": "clear",
-        "description": "Remove every part, copy, set but the first and component, and any file the build carries (a film's scene), keeping the first set's name and ground. With set, empty that set alone (its name and ground kept, the components every set shares left). With expect, only while the build is still that text",
+        "description": "Remove every part, copy, set but the first and component, and any file the build carries (a film's scene), keeping the first set's name, ground and sky. With set, empty that set alone (its name, ground and sky kept, the components every set shares left). With expect, only while the build is still that text",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -531,6 +558,7 @@
             },
             "floor": { "type": "object", "description": "The area (studs) the baseplate covers at least, so actors have ground to move over: { x, z, width, depth }, its south-west corner and size" },
             "light": { "type": "object", "description": "How the stage is lit over the look's own light: { key, fill, exposure, soft }, the key light scaled (0 to 3), the fill (the studio's environment and sky) scaled (0 to 4), the exposure scaled (0.25 to 4) and the key's shadows softened (0 the look's own to 1 the softest); each 1 (soft 0) when left out" },
+            "sky":   { "type": "object", "description": "The stage's sky over every set's own (a film's sky): { horizon, zenith, clouds, seed } or { image }, with lights, as setSky takes it; each set's own when left out" },
             "reel": {
               "type": "object",
               "description": "A film, for Applications: its frames a second (at most 60), length in frames (at most 7200) and the size its frames are drawn at. loadReel then loads its frames",

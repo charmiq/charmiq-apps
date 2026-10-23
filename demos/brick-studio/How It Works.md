@@ -60,6 +60,18 @@ The building parts come with the Studio. Every other family (vehicles, figures, 
 
 The swatch beside the save and open buttons colors the baseplate: grass, a road, sand. The color is part of the build, a `0 !BRICKSTUDIO GROUND green` line at the top of its LDraw that other LDraw tools pass by, so it is saved with designs and undone like any edit, and it stays that color in a dark theme. Theme returns the baseplate to the theme's color. Parts still stand on it at level 0. A ground change the build cannot take (one it shows but does not edit) says *ground not changed* in the status, the reason on hover.
 
+## The Sky
+
+The swatch beside the ground's puts a sky behind the set, in place of the theme's backdrop, at every look. Its panel picks the kind:
+
+- **Generated**: a gradient from a horizon color to an overhead one, with clouds from none to overcast (heavier cover grays them, as an overcast day is), and **New clouds** for other clouds alike. The clouds come from a seed alone, so the same sky is drawn the same way in every look, screenshot and export, and it costs no file.
+- **Picture**: an image from your Drive. A panorama (a picture about twice as wide as it is high, as panorama cameras and sky libraries write them) wraps the whole sky; any other picture is tiled round the horizon, every other copy mirrored so the seams meet, with its own top and bottom colors above and below it. The picture stays in your Drive: the build names the file, never its pixels, and each viewer reads it with their own access. Until it is read, and when it cannot be, the generated sky its colors name stands in, and the status says *sky picture could not be read*.
+- **Theme**: the theme's backdrop again.
+
+**Lights the set** lets the sky light the build as well as stand behind it (Photo and Path traced reflect it), as an outdoor shot needs; otherwise the sky is a backdrop and every look keeps the light it was tuned with. Below the horizon, past the baseplate's edge, the sky goes on in its own color just above the horizon, so the weather meets the ground.
+
+Like the ground, the sky is the set's: a `0 !BRICKSTUDIO SKY ...` line in its header (`HORIZON #CFE2F3 ZENITH #4F87C7 CLOUDS 0.35 SEED 1`, or `IMAGE charmiq://file/...`, with `LIGHTS`), saved with designs, undone like any edit, kept by Clear and by a copy of the set. A line Brick Studio cannot read is kept as written and draws no sky. A sky change the build cannot take says *sky not changed* in the status.
+
 
 ## Components
 
@@ -167,12 +179,13 @@ A Charm drives the Studio through these:
 | `clear` | removes every part, copy, further set and component, and any file the build carries, keeping the first set's name and ground; with `set`, empties that set alone; with `expect`, only while the build is still that text |
 | `check` | lists collisions and floating parts, for a build changed some other way |
 | `setGround` | colors the baseplate, as the swatch does |
+| `setSky` | puts a sky behind a set, as the sky swatch does: generated (`horizon`, `zenith`, `clouds`, `seed`) or a Drive picture (`image`), with `lights`; none for the theme's backdrop. A generated sky is written whole, each value it names none of its default |
 | `setView` | turns the camera and frames the build |
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |
 | `setFidelity` | sets the look, from Draft to Path traced, as the Look slider does |
 | `probeStage` | what stands at `points` and across `segments` of a set as a stage shows it (staged or not, its cast pieces left out): the part filling each point, and the first part each segment crosses, none holding its end, against the cells collisions are checked in; glass, a `trans-` color, window and door frames and fences hide nothing; a part a hinge or face carries is judged by itself and named by its carrier; and under each of `grounds` (footprints `{ x, z, width, depth, yaw }`), every surface an actor there could stand on: each top nothing stands on, and the baseplate where it is bare, a column under a footprint only where they overlap over some area, a call's footprints reading at most 200,000 columns together; beside them (`studded`), whether each surface is studded under the footprint (the baseplate's studs, or a part's top studs at that level, in every column holding it: a tile's top is smooth) |
 | `describeStage` | whether a scene is staged, whether the person went back to the build since, whether the studio holds a build, and its sets |
-| `stage` | shows a scene in place of the build: its sets (`sets`, of the build or of LDraw text given as `ldraw`), its `light` over the look's own, and its actors, each a component, a dressed part, or a piece of a set by where it stands (`placed`, naming its set: lifted out of that set while staged, its rest answered so a frame there draws it where it stood); answers each actor's box (`sizes`) and which actors click onto studs (`clicks`: figures and creatures). A film's `marks` are what a plan view draws over the set, a path `dashed` where it stands for something hidden. A stage shows its first set alone until a frame shows its actors; an Application staging its film again asks to `keep` the picture standing (its actors where they stood) until the new film's frame shows, so nothing goes bare between |
+| `stage` | shows a scene in place of the build: its sets (`sets`, of the build or of LDraw text given as `ldraw`), its `light` over the look's own, its `sky` over every set's own (a film's sky), and its actors, each a component, a dressed part, or a piece of a set by where it stands (`placed`, naming its set: lifted out of that set while staged, its rest answered so a frame there draws it where it stood); answers each actor's box (`sizes`) and which actors click onto studs (`clicks`: figures and creatures). A film's `marks` are what a plan view draws over the set, a path `dashed` where it stands for something hidden. A stage shows its first set alone until a frame shows its actors; an Application staging its film again asks to `keep` the picture standing (its actors where they stood) until the new film's frame shows, so nothing goes bare between |
 | `frame` | shows one moment of the staged scene on one of its sets (`set`): each actor where its shot puts it, through a camera; `capture` answers it as an image, for Applications. A figure's shot takes joints a build's figure never turns (`twist` and `lean` of its upper body over its hips, `rightWrist` and `leftWrist` on its forearms), what its hands hold in that frame alone (`rightHand`, `leftHand`: a hand item, or `null`), and the faces on a two-sided head's back (`scared`, `asleep`); a figure's box (`sizes`) is what it measures, 3.12 by 1.85 studs, never the 4 by 3 cells it reaches into |
 | `loadReel` | loads a page of a film's frames into the stage, for Applications (`stage` with a `reel` first); each frame names the staged set it stands on (`set`), and its views are cameras, or plans looking straight down over an area, north up, the film's paths, names and camera drawn over it. A frame's `fade` is to its `fadeColor` (black when left out), over the whole picture or, with `fadeShape: 'iris'`, closing in from its edge; its `transition` is the shot it leaves (`camera`, `set`, and on another set the `actors` as they stood), how much of it is `left` (1 all, 0 none) and its `shape` (a dissolve, a wipe toward a side, an iris opening): the shot left is drawn through its own camera, focused there, and on another set drawn once and held until the look, the theme or the parts it draws change. The film's own screen shows it; a view's screen shows its own cuts |
 | `show` | shows a frame of the film: at once, the newest asked; with `capture`, that exact frame as an image, its fade and title drawn |
@@ -184,7 +197,7 @@ A Charm drives the Studio through these:
 | `loadDesign` | replaces the build with a saved design (its `uri` from `listDesigns`, or its name) |
 | `saveDesign` | saves the build as a design in your designs folder; a name already there needs `replace` |
 
-Every edit resolves once the parts have landed, so a screenshot taken next shows the result. `listPlacedParts`, `addParts`, `removeParts`, `setGround`, `check` and `lookAround` take `set`, and in a build of more than one set each answer names the set it acted on.
+Every edit resolves once the parts have landed, so a screenshot taken next shows the result. `listPlacedParts`, `addParts`, `removeParts`, `setGround`, `setSky`, `check` and `lookAround` take `set`, and in a build of more than one set each answer names the set it acted on.
 
 A Charm can also call these from the Platform's Run Code: its script finds the Studio among `charmiq.discoverAll('charmiq.command')` (every Application with commands) as the one whose `listSets()` answers, and calls each command as a method, checked as if called directly, so loops and functions build a whole scene in one action.
 
@@ -212,13 +225,14 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |
 | [`src/designs.ts`](charmiq://./src/designs.ts) | the build saved as a design, and a design loaded whole or as a component |
 | [`src/design-dialog.ts`](charmiq://./src/design-dialog.ts) | the save and open dialog's Brick Studio choices: add a design to the build, or replace it |
-| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog (the dialog brings its own styles, `design-dialog.scss`), and the family's look (`_family.scss`, `_kit.scss`) |
+| [`../brick-shared`](charmiq://../brick-shared) | what Brick Studio shares with Stop Motion: the Drive, designs and their save and open dialog (the dialog brings its own styles, `design-dialog.scss`), the dialog that picks a file (a sky's picture), a sky's words (`sky.ts`), and the family's look (`_family.scss`, `_kit.scss`) |
 | [`src/viewer.ts`](charmiq://./src/viewer.ts) | the three.js scene: instanced parts, baseplate, camera |
 | [`src/frame-request.ts`](charmiq://./src/frame-request.ts) | a frame drawn once, at the next animation frame or after a moment when the Studio is out of view |
-| [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the effects and the path tracer; a film's fade, titles and plans drawn over the stage |
+| [`src/render/`](charmiq://./src/render) | the look: its stops, the plastic, the studio light, the sky (its panoramas, `panorama.ts`, and the backdrop and light they make, `sky.ts`), the effects and the path tracer; a film's fade, titles and plans drawn over the stage |
 | [`src/step-control.ts`](charmiq://./src/step-control.ts) | playing the building steps |
 | [`src/fidelity-control.ts`](charmiq://./src/fidelity-control.ts) | the Look slider |
 | [`src/ground-control.ts`](charmiq://./src/ground-control.ts) | the ground swatch and its colors |
+| [`src/sky-control.ts`](charmiq://./src/sky-control.ts) | the sky swatch and its panel |
 | [`src/sheet.ts`](charmiq://./src/sheet.ts) | the sheet over the stage: pictures in a grid, each captioned, for one screenshot |
 | [`src/look-around.ts`](charmiq://./src/look-around.ts) | the build from four sides at once, on the sheet |
 | [`src/parts/`](charmiq://./src/parts) | the packed parts (generated): `built-in.ldr` comes with the Studio, each other family is a resource read when first shown |

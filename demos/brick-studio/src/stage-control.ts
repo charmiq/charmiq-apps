@@ -1,5 +1,7 @@
 import { BehaviorSubject, type Observable } from 'rxjs';
 
+import { skyFrom } from '../../brick-shared/sky';
+
 import type { Build } from './build';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
@@ -122,17 +124,20 @@ export class StageControl {
 
   /** stages sets (of LDraw text, else of the build; its first set when none is named)
    *  and casts its actors, showing the first set alone until a frame shows them, lit as
-   *  `light` says over the look's own (SEE: stage.ts StageLight); a reel
+   *  `light` says over the look's own (SEE: stage.ts StageLight) under `sky` over every
+   *  set's own (SEE: sky.ts); a reel
    *  header readies the screen for a film shown through `view` (else the main camera),
    *  drawn at the film's size, and `marks` are what a plan draws over the set. To
    *  `keep`, a stage replacing one leaves its picture standing (its actors where they
    *  stood) until a frame shows: a film staged again never shows its set bare */
-  public async stage(ldraw: unknown, sets: unknown, actors: unknown, floor: unknown, light: unknown, reel: unknown, view: unknown, marks: unknown, keep: unknown): Promise<Staged> {
+  public async stage(ldraw: unknown, sets: unknown, actors: unknown, floor: unknown, light: unknown, sky: unknown, reel: unknown, view: unknown, marks: unknown, keep: unknown): Promise<Staged> {
     if((keep !== undefined) && (typeof keep !== 'boolean')) throw new Error('keep is whether the picture standing stays until a frame shows: true or false');
     await this.build.whenReady();
     const staged = setsOf(ldraw, sets, () => this.build.allSets());
     const area = floorOf(floor);
     const lit = lightOf(light);
+    const skied = (sky === undefined) ? undefined : skyFrom(sky);
+    if(typeof skied === 'string') throw new Error(skied);
     const header = reelHeaderOf(reel);
     const named = viewOf(view);
     const marked = marksOf(marks);
@@ -145,6 +150,7 @@ export class StageControl {
     this.wanted = undefined/*a frame of the reel before*/;
     this.left = false;
     [this.shownFrame, this.playing] = [0, false];
+    this.viewer.useSky(skied)/*before the first set is shown under it*/;
     this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged), keep === true);
     this.showHeld();
     this.viewer.useLight(lit);

@@ -52,6 +52,7 @@ const GRID = [
   `A part with side faces (${CATALOG.filter(part => part.faces).map(part => `${part.key}: ${part.faces!.join(', ')}`).join('; ')}) carries one component on each of those faces: sides is { face: { component, x, z, rotation } }. A face is named as the part stands at rotation 0 (north is +z) and turns with it. Each face has its own map, seen from outside the face: x runs right and z up, in studs, and x 0, z 0 is the cell of its first stud (the leftmost in its row nearest the top). The component stands on that map as a copy stands on the grid: its footprint's corner at x and z, turned clockwise as seen from outside, its level 0 against the face and its levels reaching out, covering at least one of the face's studs; seen from outside it looks as it does from above, its north up. Build the detail flat as a component (a grille, a sign, a lamp), then mount it. A mount collides where it reaches (with the part's other mounts too, never with the part), is held by its part alone (put whatever rides on it inside its component), and is removed with its part. A component's own parts carry nothing on their faces.`,
   'Colors named trans- are see-through plastic.',
   'setGround colors the baseplate (green for grass, gray for a road, tan for sand): use it instead of covering the baseplate with plates. Parts on it still stand at level 0.',
+  'setSky puts a sky behind a set: generated from a horizon and a zenith color (#rrggbb) with clouds from 0 (clear) to 1 (overcast), another seed drawing other clouds alike; or a picture from the Drive (image: a charmiq://file/ uri), a panorama twice as wide as high wrapping the whole sky, any other picture tiled round the horizon. lights: true lets the sky light the set too, for an outdoor shot. Omit the sky for the theme\'s backdrop.',
   'A component is a group of parts defined once (defineComponent, in its own grid: x, z and level from 0) and placed many times: an addParts item {component, x, z, level, rotation} places a copy by its footprint\'s south-west corner and its bottom level, turned as a part is. Copies are checked as parts are; removing any cell of a copy removes the whole copy, and redefining a component changes every copy. Build a repeated thing (a tower, a house, a tree with a fence) as a component.',
   'A saved design can be a component too: defineComponentFromDesign defines one from a design in the designs folder (listDesigns lists each with its uri), its footprint from x 0, z 0 and its lowest part at level 0, so a house, a car or a tree saved once is placed many times.',
   'A build can be split into building steps the Studio plays in order: addParts with newStep: true puts its parts in a new step after the last.',
@@ -207,6 +208,13 @@ export class CommandSurface {
         return { ground: ground ?? 'theme', ...named(edited) };
       },
 
+      setSky: async ({ sky, set }: { sky?: unknown; set?: unknown; }) => {
+        const shown = await this.build.setSky(sky ?? undefined/*null returns it to the theme's backdrop*/, set);
+        const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
+        await this.viewer.whenSettled();
+        return { sky: shown ?? 'theme', ...named(edited) };
+      },
+
       clear: async ({ expect, set }: { expect?: unknown; set?: unknown; }) => {
         const removed = await this.build.clear(expectedText(expect), set);
         const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
@@ -287,10 +295,10 @@ export class CommandSurface {
       // a stage: a film's scene shown in place of the build (SEE: stage.ts)
       describeStage: () => this.stage.describe(),
       stage$: () => this.stage.state$()/*a stream for the film, not a Charm's command*/,
-      stage: async ({ ldraw, set, sets, actors, floor, light, reel, view, marks, keep }: { ldraw?: unknown; set?: unknown; sets?: unknown; actors?: unknown; floor?: unknown; light?: unknown; reel?: unknown; view?: unknown; marks?: unknown; keep?: unknown; }) => {
+      stage: async ({ ldraw, set, sets, actors, floor, light, sky, reel, view, marks, keep }: { ldraw?: unknown; set?: unknown; sets?: unknown; actors?: unknown; floor?: unknown; light?: unknown; sky?: unknown; reel?: unknown; view?: unknown; marks?: unknown; keep?: unknown; }) => {
         if(set !== undefined) throw new Error('stage takes the sets it stands as sets (their names), and LDraw text standing for the build as ldraw.');
         this.lookAround.hide();
-        const staged = await this.stage.stage(ldraw, sets, actors, floor, light, reel, view, marks, keep);
+        const staged = await this.stage.stage(ldraw, sets, actors, floor, light, sky, reel, view, marks, keep);
         await this.viewer.whenSettled()/*the set drawn*/;
         return staged;
       },

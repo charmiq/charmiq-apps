@@ -33,9 +33,11 @@ export type PathSource = Readonly<{
   /** each part's instances, and whether they are see-through plastic */
   parts: ReadonlyArray<Readonly<{ mesh: THREE.InstancedMesh; glass: THREE.Color | undefined/*opaque*/; }>>;
   baseplate: THREE.Object3D | undefined;
-  environment: THREE.CubeTexture;
+  /** what lights the scene: the studio's capture, or a sky that lights (a panorama) */
+  environment: THREE.Texture;
   environmentIntensity: number;
-  background: THREE.Color;
+  /** behind the scene: the theme's color, or a sky's panorama */
+  background: THREE.Color | THREE.Texture;
   /** the key light: its world position, the point it lights, its intensity and how
    *  much softer than the Photo stop's its shadow falls (0 as soft, 1 the softest) */
   key: Readonly<{ position: THREE.Vector3; target: THREE.Vector3; intensity: number; soft: number; }>;
