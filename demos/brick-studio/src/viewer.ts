@@ -896,7 +896,12 @@ export class Viewer {
   public showGhosts(ghosts: ReadonlyArray<Readonly<{ lines: ReadonlyArray<PartLine>; offset: number; }>>, path: GhostPath | undefined, reach: Readonly<{ before: number; after: number; }>): void {
     this.clearGhosts();
     let numbered = 0;
-    for(const { lines, offset } of ghosts) {
+    // each ghost a layer of its own, the furthest in time first: drawn so, the nearest
+    // covers the rest where they stand all but on each other, and their surfaces (a head
+    // turned a little from one to the next) never interleave pixel by pixel into stripes
+    for(const { lines, offset } of [...ghosts].sort((a, b) => Math.abs(b.offset) - Math.abs(a.offset))) {
+      const layer = new THREE.Group();
+      this.ghostPieces.add(layer);
       const items = this.itemsOf(lines.filter(isDrawable).map(line => renderItem(line, lineKey(line)))).filter(item => this.geometries.has(item.geometry));
       const span = (offset < 0) ? reach.before : reach.after;
       const near = (span > 0) ? Math.max(0, 1 - (Math.abs(offset) / span)) : 1;
@@ -909,7 +914,7 @@ export class Viewer {
         const mesh = new THREE.InstancedMesh(this.geometries.get(item.geometry)!, material, 1);
         mesh.setMatrixAt(0, item.matrix);
         mesh.frustumCulled = false;
-        this.ghostPieces.add(mesh);
+        layer.add(mesh);
       }
     }
     if(path) {
@@ -923,7 +928,7 @@ export class Viewer {
   /** takes the ghosts down, freeing what they alone hold: their materials and the
    *  path's geometry (the parts' geometries are the studio's) */
   private clearGhosts(): void {
-    for(const child of [...this.ghosts.children, ...this.ghostPieces.children]) {
+    for(const child of [...this.ghosts.children, ...this.ghostPieces.children.flatMap(layer => layer.children)]) {
       const shape = child as THREE.Mesh | THREE.Line | THREE.Points;
       (Array.isArray(shape.material) ? shape.material : [shape.material]).forEach(material => material.dispose());
       if(!(child instanceof THREE.InstancedMesh)) shape.geometry.dispose();
@@ -933,8 +938,9 @@ export class Viewer {
   }
 
   /** outlines the ghosts over the frame just drawn: their pieces drawn unseen as numbers,
-   *  then white wherever two neighboring pixels' numbers differ. None while they are
-   *  hidden (a picture made for the film) or there are none */
+   *  a ghost at a time from the furthest in time (its own depth each), then outlined
+   *  wherever two neighboring pixels' numbers differ. None while they are hidden (a
+   *  picture made for the film) or there are none */
   private outlineGhosts(): void {
     if(!this.ghosts.visible || (this.ghostPieces.children.length < 1)) return;
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -944,7 +950,14 @@ export class Viewer {
     this.renderer.setRenderTarget(target);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.clear();
-    this.renderer.render(this.ghostPieces, this.camera);
+    this.renderer.autoClear = false;
+    const layers = this.ghostPieces.children;
+    for(const layer of layers) {
+      layers.forEach(other => { other.visible = (other === layer); });
+      this.renderer.clearDepth()/*the ghost before stands in color alone: this one covers it*/;
+      this.renderer.render(this.ghostPieces, this.camera);
+    }
+    layers.forEach(layer => { layer.visible = true; });
     this.renderer.setRenderTarget(null);
     this.renderer.setClearColor(clearColor, clearAlpha);
     const material = this.ghostOutline.material;
