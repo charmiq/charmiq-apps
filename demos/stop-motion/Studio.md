@@ -11099,6 +11099,8 @@ camera.at(END + 2, { position: { x: 51, z: -2, height: 11 }, target: { x: 54, z:
 
 sound.at(INTO - 0.4, 'whoosh', { volume: 0.4 }).at(OUT - 0.2, 'whoosh', { volume: 0.4 })
 sound.at(INTO, 'birds', { volume: 0.8, fadeIn: 1.2, until: OUT + 0.8, fadeOut: 1 })/*the riverbank, through the dissolve back*/
+// the gallery's murmur and footsteps under the salon, giving way to the birds through each dissolve
+sound.at(0, 'museum', { volume: 0.6, until: INTO + 0.8, fadeOut: 1.2 }).at(OUT - 0.4, 'museum', { volume: 0.6, fadeIn: 1, until: END + 2 })
 
 fade.out(END, END + 2)
 title(END, END + 2, 'The Salon')

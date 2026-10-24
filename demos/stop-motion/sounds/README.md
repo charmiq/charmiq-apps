@@ -18,6 +18,7 @@ band a car radio plays.
 | `bump` | `impactSoft_medium_000.ogg`, Impact Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
 | `engine` | `engineCircular_000.ogg`, Sci-fi Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
 | `meow` | `Meow.ogg`, [Meow](https://opengameart.org/content/meow) | IgnasD |
+| `museum` | 29 s to the end of [Museum Gallery ambience soft walla calm steps](https://freesound.org/people/visionear/sounds/563379/) | visionear |
 | `purr` | `cat_purractive_loop.wav`, [Cat Purr & Meow](https://opengameart.org/content/cat-purr-meow) | Kerzoven |
 | `radio` | [Short Elevator Music Loop](https://freesound.org/s/659889/), the whole loop | BlondPanda |
 | `scream` | [man-screaming.wav](https://freesound.org/people/mariateresa_garcia/sounds/219719/) | mariateresa_garcia |
