@@ -67,7 +67,7 @@ Open the chat on this document and ask:
 - *Build a castle gate with its drawbridge half raised, and a turret on a turntable.*
 - *Build a ramp and a little car, then show the car flying off the ramp with its driver cheering.*
 
-**For the best builds, use the Brick Builder Charm.** Its Instructions, [Brick Builder](charmiq://./Brick%20Builder.md), teach a Charm to plan a scene, build it in steps you can play back, look at it from all four sides, and fix what it sees. Make a Charm with those Instructions and pick it in the chat.
+**For the best builds, use the Brick Builder Charm.** [Brick Builder](charmiq://./Brick%20Builder.md) is a Charm beside this README: it plans a scene, builds it in steps you can play back, looks at it from all four sides, and fixes what it sees. Pick it in the chat.
 
 The grid, the check, building together, the commands and the code are in [How It Works](charmiq://./How%20It%20Works.md).
 
