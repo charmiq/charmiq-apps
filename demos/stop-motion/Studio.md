@@ -11005,6 +11005,8 @@ salon.push(admirer)
 girl.at(0, { x: -5, z: 32, yaw: 180, face: 'freckles', pose: { leftArm: -31, rightArm: -31, lean: 0 } })
     .walk(5, [{ x: -5, z: 32 }, { x: 22, z: 32 }, { x: 28.5, z: 14 }, { x: 36, z: 10 }, { x: 56, z: 11 }], { until: 10.6 })/*close by the guard, clear of him*/
 girl.at(10.6, { yaw: 270 }).at(10.9, { pose: { lean: 0 } }).at(11.7, { pose: { lean: -9 } })
+// her footsteps, wherever she steps: soft, on the parquet and the grass alike
+girl.footsteps(['footstep-1', 'footstep-2', 'footstep-3'], { volume: 2.5 })
 
 // .. the riverbank, as Seurat painted it: everyone alive as it dissolves in ...............
 const lady = actor('lady', { part: 'figure', color: 'black', legColor: 'black', face: 'smile', hat: { part: 'hair', color: 'brown' } })
@@ -11099,8 +11101,9 @@ camera.at(END + 2, { position: { x: 51, z: -2, height: 11 }, target: { x: 54, z:
 
 sound.at(INTO - 0.4, 'whoosh', { volume: 0.4 }).at(OUT - 0.2, 'whoosh', { volume: 0.4 })
 sound.at(INTO, 'birds', { volume: 0.8, fadeIn: 1.2, until: OUT + 0.8, fadeOut: 1 })/*the riverbank, through the dissolve back*/
-// the gallery's murmur and footsteps under the salon, giving way to the birds through each dissolve
-sound.at(0, 'museum', { volume: 0.6, until: INTO + 0.8, fadeOut: 1.2 }).at(OUT - 0.4, 'museum', { volume: 0.6, fadeIn: 1, until: END + 2 })
+// the gallery's murmur and footsteps under the salon, rising as the camera pushes in and
+// giving way to the birds through each dissolve
+sound.at(0, 'museum', { volume: 0.25, fadeIn: 5, until: INTO + 0.8, fadeOut: 1.2 }).at(OUT - 0.4, 'museum', { volume: 0.25, fadeIn: 1, until: END + 2 })
 
 fade.out(END, END + 2)
 title(END, END + 2, 'The Salon')

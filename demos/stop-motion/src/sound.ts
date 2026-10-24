@@ -1,6 +1,6 @@
 import { isPlatformFile, SOUND_FILES } from '../../brick-shared/drive';
 import { listShipped, shippedLister, shippedOf, type ResourceLister } from '../../brick-shared/shipped';
-import { filmLengthOf, filmTimeOf, type Film, type StageCamera } from './film';
+import { filmLengthOf, filmTimeOf, soundCuesOf, type Film, type StageCamera } from './film';
 import type { Point, SoundCue } from './recorder';
 import { inView } from './screen';
 
@@ -54,7 +54,7 @@ export const listShippedSounds = (resources: ResourceLister): Promise<ReadonlyMa
 
 
 /** the names of the sounds a film's cues play */
-export const soundsOf = (film: Film): ReadonlySet<string> => new Set((film.scene.sounds ?? []).map(cue => cue.name));
+export const soundsOf = (film: Film): ReadonlySet<string> => new Set(soundCuesOf(film).map(cue => cue.name));
 
 /** the sounds a film plays that `buffers` lacks (their files could not be read), by
  *  name: what a film plays and exports without */
@@ -143,7 +143,7 @@ export const scheduleMix = (context: BaseAudioContext, film: Film, buffers: Soun
   };
 
   const sources: AudioBufferSourceNode[] = [];
-  for(const cue of film.scene.sounds ?? []) {
+  for(const cue of soundCuesOf(film)) {
     const buffer = buffers.get(cue.name);
     if(!buffer) continue/*not decoded: its file could not be read*/;
     const start = filmTimeOf(film, cue.time);

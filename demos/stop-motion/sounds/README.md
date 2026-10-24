@@ -17,6 +17,9 @@ band a car radio plays.
 | `birds` | the first 10 s of `birds-isaiah658.ogg`, [Ambient Bird Sounds](https://opengameart.org/content/ambient-bird-sounds) | isaiah658 |
 | `bump` | `impactSoft_medium_000.ogg`, Impact Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
 | `engine` | `engineCircular_000.ogg`, Sci-fi Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
+| `footstep-1` | `footstep_carpet_003.ogg`, Impact Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
+| `footstep-2` | `footstep_carpet_000.ogg`, Impact Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
+| `footstep-3` | `footstep_carpet_001.ogg`, Impact Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
 | `meow` | `Meow.ogg`, [Meow](https://opengameart.org/content/meow) | IgnasD |
 | `museum` | 29 s to the end of [Museum Gallery ambience soft walla calm steps](https://freesound.org/people/visionear/sounds/563379/) | visionear |
 | `purr` | `cat_purractive_loop.wav`, [Cat Purr & Meow](https://opengameart.org/content/cat-purr-meow) | Kerzoven |

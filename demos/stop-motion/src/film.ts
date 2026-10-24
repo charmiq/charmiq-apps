@@ -1,4 +1,4 @@
-import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title, TransitionShape } from './recorder';
+import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
 import { feetInto, gaitMoveOf, jitter, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
@@ -81,7 +81,10 @@ export type FilmFrame = Readonly<{
  *  reaches into the set there (studs), when one does */
 export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; into?: number; }>;
 
-export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>; }>;
+export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>; footsteps?: ReadonlyArray<SoundCue>; }>;
+
+/** every sound a film plays: the scene's own, and the footsteps its figures' steps make */
+export const soundCuesOf = (film: Film): ReadonlyArray<SoundCue> => [...(film.scene.sounds ?? []), ...(film.footsteps ?? [])];
 
 /** a frame as a studio's reel takes it (SEE: Brick Studio's loadReel) */
 export type ReelFrame = Readonly<{
@@ -231,12 +234,36 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     const set = setAt(scene.sets, time);
     frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: seen(scene.camera), views, fade, ...((fade > 0) ? fading : {}), ...(transition ? { transition } : {}), ...(title ? { title } : {}), ...((Object.keys(steps).length > 0) ? { steps } : {}) });
   }
-  if(!scene.views.some(view => view.plan)) return { scene, frames };
+  const footsteps = footstepsOf(scene, clicked);
+  const stepped = (footsteps.length > 0) ? { footsteps } : {};
+  if(!scene.views.some(view => view.plan)) return { scene, frames, ...stepped };
 
   // each plan over the area it names, or over all the film shows
   const shown = scene.views.some(view => view.plan && !view.plan.area) ? planArea(scene, frames) : undefined/*every plan names its area*/;
   const plans = new Map(scene.views.flatMap(view => view.plan ? [[view.name, { plan: view.plan.area ?? shown! }] as const] : []));
-  return { scene, frames: frames.map(frame => ({ ...frame, views: Object.fromEntries(scene.views.map(view => [view.name, plans.get(view.name) ?? frame.views[view.name]])) })) };
+  return { scene, frames: frames.map(frame => ({ ...frame, views: Object.fromEntries(scene.views.map(view => [view.name, plans.get(view.name) ?? frame.views[view.name]])) })), ...stepped };
+};
+
+/** the footsteps a film's figures make (`a.footsteps`): a sound where each foot is set
+ *  down within the span its footsteps name, following the figure, one of their sounds
+ *  each step and never the same twice running (picked by the actor and the step, the
+ *  same every run); none for an actor that lays no steps (it clicks onto no studs) */
+const footstepsOf = (scene: Recorded, clicked: ReadonlyMap<string, Clicked>): ReadonlyArray<SoundCue> => {
+  const cues: SoundCue[] = [];
+  for(const actor of scene.actors) {
+    const landed = clicked.get(actor.name)?.landed;
+    if(!actor.footsteps || !landed) continue;
+    let last: string | undefined;
+    [...landed].sort((a, b) => a - b).forEach((time, step) => {
+      const footsteps = actor.footsteps!.find(each => (time >= each.from) && (time < (each.to ?? scene.length)));
+      if(!footsteps || (time >= scene.length)) return;
+      const choices = (footsteps.sounds.length > 1) ? footsteps.sounds.filter(sound => sound !== last) : footsteps.sounds;
+      const name = choices[Math.min(choices.length - 1, Math.floor(((jitter(`${actor.name}|footstep|${step}`) + 1) / 2) * choices.length))];
+      last = name;
+      cues.push({ time, name, volume: footsteps.volume, actor: actor.name });
+    });
+  }
+  return cues.sort((a, b) => a.time - b.time);
 };
 
 // == Shots =======================================================================

@@ -722,6 +722,9 @@ export class Clicked {
    *  moved: settled once they hold SETTLE_SECONDS */
   private keyedOff: Stance | undefined;
   private stillFrom: number | undefined;
+  /** each moment a foot of its was set down, as its moves were begun and laid */
+  // SEE: film.ts footstepsOf
+  public readonly landed: number[] = [];
   /** where its keys last moved it, when, and the pace they carried it there at */
   private moved: Readonly<{ x: number; z: number; time: number; pace: number; }> | undefined;
 
@@ -761,6 +764,7 @@ export class Clicked {
     if(!this.laid.has(walk)) {
       const from = this.stance ?? this.keyedStance(channels, surfaceAt) ?? { x: walk.points[0].x, z: walk.points[0].z, yaw: channels.yaw ?? 0, level: channels.height ?? 0, studded: false };
       const moves = layWalk(walk, from, surfaceAt, this.climb, this.figure);
+      for(const move of moves) this.land(move, walk.shape ?? WALK);
       this.laid.set(walk, { moves, last: moves[moves.length - 1]?.to ?? (from.studded ? { ...from, ...clickedNear(from.x, from.z, from.yaw) } : from) });
     }
     const { moves, last } = this.laid.get(walk)!;
@@ -801,9 +805,9 @@ export class Clicked {
     const [along, across] = [(dx * fx) + (dz * fz), (dx * rx) + (dz * rz)];
     const ahead = crowding && level && (turnBy === 0) && (along > (1 - TIE)) && (Math.abs(across) < TIE);
     const step = { ...stance, x: stance.x + Math.round(fx), z: stance.z + Math.round(fz) };
-    this.moving = turnOnly ? { kind: 'turn', from: stance, to: turnedOn(stance, turnBy), start: time, end: time + TURN_SECONDS, foot: (turnBy < 0) ? 'left' : 'right' }
+    this.begin(turnOnly ? { kind: 'turn', from: stance, to: turnedOn(stance, turnBy), start: time, end: time + TURN_SECONDS, foot: (turnBy < 0) ? 'left' : 'right' }
       : ahead ? { kind: 'step', from: stance, to: step, start: time, end: this.stepEnd(time, pace, along), foot: this.lead = (this.lead === 'left') ? 'right' : 'left' }
-      : { kind: 'hop', from: stance, to, start: time, end: time + HOP_SECONDS, foot: 'left' };
+      : { kind: 'hop', from: stance, to, start: time, end: time + HOP_SECONDS, foot: 'left' });
     return applied(channels, standing(stance));
   }
 
@@ -825,16 +829,30 @@ export class Clicked {
     const [dx, dz] = stance ? [keyed.x - stance.x, keyed.z - stance.z] : [0, 0], apart = Math.hypot(dx, dz);
     if(!stance || stance.studded || (Math.abs(keyed.level - stance.level) >= ON_SURFACE) || (apart > OFF_REACH)) { this.stance = keyed; return applied(channels, standing(keyed)); }
     const turnBy = wrapped(keyed.yaw - stance.yaw);
-    if(Math.abs(turnBy) > ((crowding || settled) ? OFF_TURN : OFF_STAND_TURN)) this.moving = { kind: 'turn', from: stance, to: turnedOn(stance, turnBy), start: time, end: time + (TURN_SECONDS * Math.max(1, Math.abs(turnBy) / 90)), foot: (turnBy < 0) ? 'left' : 'right' };
+    if(Math.abs(turnBy) > ((crowding || settled) ? OFF_TURN : OFF_STAND_TURN)) this.begin({ kind: 'turn', from: stance, to: turnedOn(stance, turnBy), start: time, end: time + (TURN_SECONDS * Math.max(1, Math.abs(turnBy) / 90)), foot: (turnBy < 0) ? 'left' : 'right' });
     else if((apart >= (1 - TIE)) || (settled && (apart > PAST_STUD))) {
       const from = crowding ? { ...stance, yaw: keyed.yaw }/*a turn under OFF_TURN taken by the step*/ : stance;
       const [fx, fz] = forwardOf(from.yaw), along = ((dx * fx) + (dz * fz)) / apart, length = Math.min(1, apart);
       const foot = this.lead = (this.lead === 'left') ? 'right' : 'left';
-      this.moving = (crowding || (Math.abs(along) >= Math.SQRT1_2))
+      this.begin((crowding || (Math.abs(along) >= Math.SQRT1_2))
         ? { kind: 'step', from, to: { ...from, x: stance.x + ((dx / apart) * length), z: stance.z + ((dz / apart) * length) }, start: time, end: this.stepEnd(time, pace, apart), foot }
-        : { kind: 'hop', from: stance, to: { ...keyed, yaw: stance.yaw }, start: time, end: time + HOP_SECONDS, foot: 'left' };
+        : { kind: 'hop', from: stance, to: { ...keyed, yaw: stance.yaw }, start: time, end: time + HOP_SECONDS, foot: 'left' });
     }
     return applied(channels, standing(stance));
+  }
+
+  /** a hop, a turn or a step between walks, under way from now */
+  private begin(move: Move): void {
+    this.moving = move;
+    this.land(move, WALK);
+  }
+
+  /** where a move sets a foot down (seconds): a step's leading heel at its gait's
+   *  heel-on, a hop's landing and a turn's free foot at their ends; a weight shift's
+   *  feet stay planted */
+  private land(move: Move, shape: GaitShape): void {
+    if(move.kind === 'shift') return;
+    this.landed.push((move.kind === 'step') ? (move.start + (strideOf(shape, move).heelOn * (move.end - move.start))) : move.end);
   }
 
   /** how fast its keys carry it (studs a second): over the span since they last moved

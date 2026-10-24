@@ -39,6 +39,10 @@ export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
  *  time; at a volume (1 as recorded); from where an actor stands in the picture
  *  when it follows one (SEE: sound.ts) */
 export type SoundCue = Readonly<{ time: number; name: string; volume: number; until?: number; actor?: string; fadeIn?: number; fadeOut?: number; line?: number; }>;
+/** the sounds a figure's steps play (`a.footsteps`): one of `sounds` where each heel
+ *  lands, never the same twice running, at its volume, from `from` until `to` (the
+ *  film's end when left out) */
+export type Footsteps = Readonly<{ sounds: ReadonlyArray<string>; volume: number; from: number; to?: number; line?: number; }>;
 
 /** a walk: its span (seconds), the points it walks through (studs), how far its arms
  *  swing when it names that (its gait's otherwise) and it leans (degrees), the foot it
@@ -120,6 +124,8 @@ export type RecordedActor = Readonly<{
   /** its walks, in time order, when it walks: laid as steps where it clicks onto studs
    *  (SEE: steps.ts), its span `glide` the walk where it does not */
   walks?: ReadonlyArray<Walk>;
+  /** what its steps sound like, when they sound (SEE: film.ts footstepsOf) */
+  footsteps?: ReadonlyArray<Footsteps>;
   line?: number;
 }>;
 
@@ -266,7 +272,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
   // .. Recording .................................................................
   // what the scene declares, as it declares it
   const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, sky: undefined as Sky | undefined };
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; drawn?: Drawn; }>();
   /** the views that are plans, each with the area it names, if any */
@@ -342,7 +348,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
     if(actors.some(each => each.name === name)) fail(`actor '${String(name)}' is declared twice`);
     if(actors.length >= MAX_ACTORS) fail(`a scene holds at most ${MAX_ACTORS} actors`);
     if((typeof source !== 'object') || (source === null)) fail(`actor '${String(name)}' names what it is: { component }, { part, color } or { placed: { x, z, level } }`);
-    const entry: Entry = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], walks: [], faces: [], hands: [], reactions: [], looks: [], spans: [], line: callerLine() };
+    const entry: Entry = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], walks: [], footsteps: [], faces: [], hands: [], reactions: [], looks: [], spans: [], line: callerLine() };
     actors.push(entry);
     const handle = {
       name,
@@ -495,6 +501,21 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
       /** one of the studio's sounds from `time`, from where the actor stands in the
        *  picture (SEE: cue) */
       sound: (time: unknown, named: unknown, options?: unknown) => { cue(`${String(name)}.sound`, time, named, options, name as string); return handle; },
+      /** a footstep where each of its heels lands as it steps, a figure's laid steps
+       *  (SEE: film.ts footstepsOf): one of `sounds` each step, at its volume, from
+       *  `from` until `to` */
+      footsteps: (sounds: unknown, options?: unknown) => {
+        const what = `${String(name)}.footsteps`;
+        const named = Array.isArray(sounds) ? sounds : [sounds];
+        if((named.length < 1) || ((typeof sounds !== 'string') && !Array.isArray(sounds))) fail(`${what} takes a sound or a list of sounds`);
+        for(const each of named) playable(what, each);
+        const { volume = 1, from = 0, to } = optionsOf(options, what);
+        if(!isFiniteNumber(volume) || (volume < 0) || (volume > MAX_VOLUME)) fail(`${what}'s volume is a number from 0 to ${MAX_VOLUME}`);
+        const [start, end] = [toTime(from, what), (to === undefined) ? undefined : toTime(to, what)];
+        if((end !== undefined) && (end <= start)) fail(`${what} ends after it starts`);
+        entry.footsteps.push({ sounds: named as string[], volume: volume as number, from: start, ...((end !== undefined) ? { to: end } : {}), line: callerLine() });
+        return handle;
+      },
       /** rides another actor: stands at `offset` (studs east and north, plates up) in
        *  its frame, turned with it */
       ride: (parent: unknown, offset: unknown) => {
@@ -666,8 +687,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
     counted();
     const at = toTime(time, what);
     const call = `${what}(${at})`;
-    const file = (typeof name === 'string') && /^charmiq:\/\/file\/[^/?#\s]+$/.test(name);
-    if(!file && !shipped.includes(name as string)) fail(`${call} plays a Platform file by its URI (charmiq://file/<assetId>)${(shipped.length > 0) ? ` or a sound Stop Motion ships: ${shipped.join(', ')}` : ''}`);
+    playable(call, name);
     const { volume = 1, until, fadeIn, fadeOut } = ((typeof options === 'object') && (options !== null)) ? options as Record<string, unknown> : {};
     if(!isFiniteNumber(volume) || (volume < 0) || (volume > MAX_VOLUME)) fail(`${call}'s volume is a number from 0 to ${MAX_VOLUME}`);
     const end = (until === undefined) ? undefined : toTime(until, what);
@@ -677,6 +697,11 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
       time: at, name: name as string, volume: volume as number, ...((end !== undefined) ? { until: end } : {}), ...((actor !== undefined) ? { actor } : {}),
       ...(fadeIn ? { fadeIn: fadeIn as number } : {}), ...(fadeOut ? { fadeOut: fadeOut as number } : {}), line: callerLine(),
     });
+  };
+  /** refuses a sound that is neither a Platform file's URI nor one Stop Motion ships */
+  const playable = (call: string, name: unknown) => {
+    const file = (typeof name === 'string') && /^charmiq:\/\/file\/[^/?#\s]+$/.test(name);
+    if(!file && !shipped.includes(name as string)) fail(`${call} plays a Platform file by its URI (charmiq://file/<assetId>)${(shipped.length > 0) ? ` or a sound Stop Motion ships: ${shipped.join(', ')}` : ''}`);
   };
   /** the studio's sounds at their times, following no actor */
   const sound = { at: (time: unknown, name: unknown, options?: unknown) => { cue('sound.at', time, name, options); return sound; } };
@@ -1236,10 +1261,10 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
   return {
     title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...(settings.sky ? { sky: settings.sky } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
-    actors: actors.map(({ name, source, ride, keys, walks, faces, hands, reactions, looks, ground, still, drawn, spans, line }) => ({
+    actors: actors.map(({ name, source, ride, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, drawn, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
       ...((reactions.length > 0) ? { reactions } : {}), ...((looks.length > 0) ? { looks: looks.map(look => ({ ...look, to: look.to ?? settings.length! })) } : {}), ...(ground ? { ground } : {}),
-      ...(still ? { still } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((line !== undefined) ? { line } : {}),
+      ...(still ? { still } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((footsteps.length > 0) ? { footsteps } : {}), ...((line !== undefined) ? { line } : {}),
     })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()), ...(cameras.get('main')!.drawn ? { drawn: cameras.get('main')!.drawn } : {}) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans, drawn }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(drawn ? { drawn } : {}), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),

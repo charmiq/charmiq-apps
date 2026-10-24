@@ -1,4 +1,4 @@
-import type { Film } from './film';
+import { soundCuesOf, type Film } from './film';
 import { missingSounds, scheduleMix, type SoundBuffers } from './sound';
 import type { Studios } from './studios';
 
@@ -51,7 +51,7 @@ export const exportFilm = async (film: Film, studios: Studios, sounds: SoundBuff
   let sound: Readonly<{ source: InstanceType<Mediabunny['AudioBufferSource']>; mixed: AudioBuffer; }> | undefined;
   let withoutSound: string | undefined;
   const missing = missingSounds(film, sounds);
-  if(sounds && (sounds.size > 0) && ((film.scene.sounds?.length ?? 0) > 0)) {
+  if(sounds && (sounds.size > 0) && (soundCuesOf(film).length > 0)) {
     if(!(await canEncodeAudio('aac', { numberOfChannels: CHANNELS, sampleRate: SAMPLE_RATE }))) withoutSound = 'This browser encodes no AAC sound';
     else {
       const mixing = new OfflineAudioContext(CHANNELS, Math.ceil((film.frames.length / fps) * SAMPLE_RATE), SAMPLE_RATE);

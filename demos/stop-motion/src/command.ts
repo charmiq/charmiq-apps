@@ -66,6 +66,10 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
             time: thousandths(time), name, volume, ...((until !== undefined) ? { until: thousandths(until) } : {}), ...((actor !== undefined) ? { actor } : {}),
             ...((fadeIn !== undefined) ? { fadeIn: thousandths(fadeIn) } : {}), ...((fadeOut !== undefined) ? { fadeOut: thousandths(fadeOut) } : {}),
           })) } : {}),
+          ...(film.footsteps ? { footsteps: [...new Set(film.footsteps.map(cue => cue.actor!))].map(actor => {
+            const steps = film.footsteps!.filter(cue => cue.actor === actor);
+            return { actor, steps: steps.length, from: thousandths(steps[0].time), to: thousandths(steps[steps.length - 1].time), sounds: [...new Set(steps.map(cue => cue.name))] };
+          }) } : {}),
           ...(sizes ? { close: closePairs(film, sizes).map(pair => ({ actors: pair.actors, frame: pair.frame, time: thousandths(pair.time), gap: hundredths(pair.gap) })) } : {}),
           ...(staged ? { camera: cameraProblems(staged.film, staged.sizes, staged.parts).map(problemReport) } : {}),
           ...((staged && (staged.avoided.length > 0)) ? { avoided: staged.avoided.map(({ from, to, kept, view }) => ({ from: thousandths(from), to: thousandths(to), kept: hundredths(kept), ...((view !== undefined) ? { view } : {}) })) } : {}),

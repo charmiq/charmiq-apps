@@ -85,7 +85,7 @@ export const rowsOf = (film: Film, close: ReadonlyArray<ClosePair>, known: Sound
       };
     }),
     ...(scene.sets ? [setRow(scene.sets, length)] : []),
-    ...(scene.sounds ? [soundRow(film, scene.sounds, length, known)] : []),
+    ...((scene.sounds || film.footsteps) ? [soundRow(film, scene.sounds ?? [], length, known)] : []),
     fadeRow(scene.fade),
     ...(scene.speed ? [speedRow(scene.speed)] : []),
     ...((scene.titles.length > 0) ? [titleRow(scene.titles)] : []),
@@ -133,14 +133,21 @@ const soundRow = (film: Film, cues: ReadonlyArray<SoundCue>, length: number, kno
   return {
     name: 'Sound', color: '--brick-orange', track: { kind: 'sounds' },
     keys: cues.filter(cue => spanOf(cue) === undefined).map(cue => ({ time: cue.time, title: `Sound "${known.label(cue.name)}" at ${seconds2(cue.time)}`, chips: said(cue), ...reading(cue) })),
-    bands: cues.flatMap(cue => {
+    bands: [...cues.flatMap(cue => {
       const to = spanOf(cue);
       if(to === undefined) return [];
       return [{ from: cue.time, to, label: known.label(cue.name), kind: 'sound' as const, cue, title: `Sound "${known.label(cue.name)}"`, chips: [`${seconds2(cue.time)} – ${seconds2(to)}`, ...((cue.until !== undefined) ? ['over and over'] : []), ...said(cue)], ...reading(cue) }];
-    }),
+    }), ...footstepBands(film)],
     notches: [],
   };
 };
+
+/** each figure's footsteps as one band from its first to its last, saying how many and
+ *  what they sound like; no cue, so never dragged: they follow the figure's steps */
+const footstepBands = (film: Film): Row['bands'] => [...new Set((film.footsteps ?? []).map(cue => cue.actor!))].map(actor => {
+  const steps = film.footsteps!.filter(cue => cue.actor === actor);
+  return { from: steps[0].time, to: steps[steps.length - 1].time, label: `${actor}'s footsteps`, kind: 'sound' as const, title: `Footsteps of ${actor}`, chips: [`${steps.length} steps`, [...new Set(steps.map(cue => cue.name))].join(', '), `follows ${actor}`] };
+});
 
 /** what a sound's file standing says: being read, or why it is not heard */
 const readingSaid = (reading: SoundReading | undefined): ReadonlyArray<string> =>
