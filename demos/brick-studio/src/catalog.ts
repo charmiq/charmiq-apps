@@ -54,6 +54,10 @@ export type CatalogPart = Readonly<{
   /** the sides at rotation 0 whose studs carry a component each (SEE: grid.ts Side
    *  faces), each measured by tools/pack-parts.ts */
   faces?: ReadonlyArray<Face>;
+  /** the level above its bottom a part sits on the studs beneath at, for a part that
+   *  hangs below where it rests (a vintage fender's rounded ends ride over its tire):
+   *  it is held through the cells it fills from that level (SEE: check.ts) */
+  rests?: number;
 }>;
 
 /** a side of a part, named at rotation 0: north is +z, east +x */
@@ -167,6 +171,8 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'slope-33-3x4', ldraw: '3297',   kind: 'slope' },
   { key: 'slope-65-2x1', ldraw: '60481a', kind: 'slope' },
   { key: 'slope-65-2x2', ldraw: '3678b',  kind: 'slope' },
+  { key: 'slope-31-1x1', ldraw: '35338',  kind: 'slope' },
+  { key: 'slope-31-1x2', ldraw: '85984',  kind: 'slope' },
 
   { key: 'round-brick-1x1', ldraw: '3062b', kind: 'round' },
   { key: 'round-brick-2x2', ldraw: '3941',  kind: 'round' },
@@ -246,6 +252,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'tooth-plate-1x1', ldraw: '15070', kind: 'detail' },
   { key: 'taxi-tile-1x2',   ldraw: '3069bp11', kind: 'detail' },
   { key: 'taxi-brick-1x4',  ldraw: '3010p11',  kind: 'detail' },
+  { key: 'roof-curved-4x6', ldraw: '98281', kind: 'detail' },
 
   { key: 'curve-2x1',       ldraw: '11477', kind: 'curve' },
   { key: 'curve-3x1',       ldraw: '50950', kind: 'curve' },
@@ -256,6 +263,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'curve-6x2',       ldraw: '44126', kind: 'curve' },
   { key: 'curve-8x2',       ldraw: '42918', kind: 'curve' },
   { key: 'curve-top-2x2',   ldraw: '30602', kind: 'curve' },
+  { key: 'curve-top-2x4',   ldraw: '6081',  kind: 'curve' },
   { key: 'inverted-curve-2x1', ldraw: '24201', kind: 'inverted' },
   { key: 'inverted-curve-4x1', ldraw: '13547', kind: 'inverted' },
   { key: 'inverted-curve-6x1', ldraw: '42023', kind: 'inverted' },
@@ -313,8 +321,14 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
     '1 71 -50 5 0 0 0 1 0 1 0 -1 0 0 42610.dat', '1 0 -50 5 0 0 0 1 0 1 0 -1 0 0 50951.dat',
     '1 71 50 5 0 0 0 -1 0 1 0 1 0 0 42610.dat',  '1 0 50 5 0 0 0 -1 0 1 0 1 0 0 50951.dat',
   ], wheels: { radius: 19/*the tire's (50951)*/, turning: [[0, 1], [2, 3]] } },
+  { key: 'wheels-6x3-large', ldraw: '2926', kind: 'vehicle', pieces: [
+    '1 71 -47.5 5 0 0 0 1 0 1 0 -1 0 0 11208.dat', '1 0 -47.5 5 0 0 0 1 0 1 0 -1 0 0 11209.dat',
+    '1 71 47.5 5 0 0 0 -1 0 1 0 1 0 0 11208.dat',  '1 0 47.5 5 0 0 0 -1 0 1 0 1 0 0 11209.dat',
+  ], wheels: { radius: 26.3/*the tire's (11209)*/, turning: [[0, 1], [2, 3]] } },
   { key: 'mudguard-4x3',    ldraw: '28326', kind: 'mudguard' },
+  { key: 'mudguard-round-4x3', ldraw: '35789', kind: 'mudguard', rests: 2/*the plates at its inner ends: its rounded face's skirts hang below*/ },
   { key: 'windscreen-2x6x2', ldraw: '4176', kind: 'windscreen' },
+  { key: 'windscreen-3x4',  ldraw: '35243', kind: 'windscreen' },
   // a figure is a torso in the placement's color with its arms, yellow hands and a
   // smiling yellow head, on blue hips and legs, as the library's torso assembly
   // (973c01) and hips and legs (21019bpde7) put them together. It poses: each arm
@@ -485,6 +499,7 @@ export const COLORS: ReadonlyArray<CatalogColor> = [
 
   { key: 'chrome-silver', code: 383, finish: 'chrome' },
   { key: 'pearl-gold',    code: 297, finish: 'pearl' },
+  { key: 'flat-silver',   code: 315, finish: 'pearl' },
 
   { key: 'trans-clear',      code: 47, transparent: true },
   { key: 'trans-red',        code: 36, transparent: true },
@@ -493,6 +508,7 @@ export const COLORS: ReadonlyArray<CatalogColor> = [
   { key: 'trans-green',      code: 34, transparent: true },
   { key: 'trans-light-blue', code: 43, transparent: true },
   { key: 'trans-dark-blue',  code: 33, transparent: true },
+  { key: 'trans-brown',      code: 40, transparent: true },
 ];
 
 // == Search ======================================================================

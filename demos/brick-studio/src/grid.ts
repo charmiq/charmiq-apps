@@ -121,18 +121,23 @@ export type PartLine = Transform & Readonly<{ ldraw: string; colorCode: number; 
 
 // == Catalog lookup ==============================================================
 const partsByKey = new Map(CATALOG.map(part => [part.key, part]));
-const partsByLDraw = new Map(CATALOG.map(part => [part.ldraw.toLowerCase(), part]));
+/** the parts of each file, in catalog order: several parts assemble different pieces on
+ *  one file (an axle plate under small wheels or big) */
+const partsByLDraw = CATALOG.reduce((byFile, part) => byFile.set(part.ldraw.toLowerCase(), [...(byFile.get(part.ldraw.toLowerCase()) ?? []), part]), new Map<string, ReadonlyArray<CatalogPart>>());
 const colorsByKey = new Map(COLORS.map(color => [color.key, color]));
 const colorsByCode = new Map(COLORS.map(color => [color.code, color]));
 
 export const getPart = (key: string): CatalogPart | undefined => partsByKey.get(key);
-export const getPartByLDraw = (ldraw: string): CatalogPart | undefined => partsByLDraw.get(ldraw.toLowerCase());
+/** the first catalog part of a file */
+export const getPartByLDraw = (ldraw: string): CatalogPart | undefined => partsByLDraw.get(ldraw.toLowerCase())?.[0];
+/** every catalog part of a file, in catalog order */
+export const getPartsByLDraw = (ldraw: string): ReadonlyArray<CatalogPart> => partsByLDraw.get(ldraw.toLowerCase()) ?? [];
 export const getColor = (key: string) => colorsByKey.get(key);
 export const getColorByCode = (code: number) => colorsByCode.get(code);
 export const getColorValue = (code: number): string | undefined => COLOR_VALUES[code];
 
 /** the measured shape of a catalog part */
-export const getShape = (part: CatalogPart): PartShape => ({ part, ...PART_GEOMETRY[part.ldraw] });
+export const getShape = (part: CatalogPart): PartShape => ({ part, ...PART_GEOMETRY[part.key] });
 
 // == Rotation ====================================================================
 const isRotation = (value: number): value is Rotation => (ROTATIONS as readonly number[]).includes(value);
@@ -205,7 +210,7 @@ type Levels = Map<string/*x,z*/, Array<[number, number]>>;
  *  never decides where the part stands */
 const posed = (shape: PartShape, posing: Posing): Readonly<{ fill: ReadonlyArray<Fill>; lift: number; }> => {
   const { pose } = posing;
-  const geometry = POSE_GEOMETRY[shape.part.ldraw]/*by contract*/;
+  const geometry = POSE_GEOMETRY[shape.part.key]/*by contract*/;
   const gear = SLOTS_IN_ORDER.flatMap(slot => {
     const held = posing[slot] && heldOf(posing[slot]);
     return held ? [geometry.gear[slot][gearKey(held.accessory, held.grip)][String(pose?.[SLOT_LIMB[slot]] ?? 0)]] : [];
@@ -234,7 +239,7 @@ const posed = (shape: PartShape, posing: Posing): Readonly<{ fill: ReadonlyArray
  *  left out. It never rises: its base stands where it stands */
 const hinged = (shape: PartShape, angle: number): ReadonlyArray<Fill> => {
   if(angle === 0) return shape.fill;
-  const geometry = HINGE_GEOMETRY[shape.part.ldraw]/*by contract*/;
+  const geometry = HINGE_GEOMETRY[shape.part.key]/*by contract*/;
   const standing = levelsOf(shape.fill);
   const left = subtract(standing, levelsOf(geometry.top['0']));
   const shared = intersect(standing, levelsOf(geometry.base));
@@ -513,7 +518,7 @@ export const hingeMotion = (shape: PartShape, placement: Placement): Transform =
  *  up: the top's x along the map's x, its north the map's up, its up out of the face */
 export const mountFrame = (shape: PartShape, placement: Placement, slot: MountSlot): Transform => {
   if(slot === 'top') return hingeMotion(shape, placement);
-  const face = FACE_GEOMETRY[shape.part.ldraw]?.[slot]!/*by contract*/;
+  const face = FACE_GEOMETRY[shape.part.key]?.[slot]!/*by contract*/;
   return compose(ownTransform(shape, placement), { matrix: ON_FACE[slot], position: face.origin });
 };
 
@@ -534,12 +539,12 @@ export const mountedCopy = (shape: PartShape, placement: Placement, slot: MountS
  *  studs with the hinge at 0 (SEE: HINGE_GEOMETRY), at the level of the top's studs;
  *  a face's on its map, at level 0 */
 export const slotStuds = (shape: PartShape, placement: Placement, slot: MountSlot): ReadonlyArray<Readonly<{ x: number; z: number; level: number; }>> =>
-  (slot === 'top') ? topStuds(shape, placement) : FACE_GEOMETRY[shape.part.ldraw]![slot]!.studs.map(([x, z]) => ({ x, z, level: 0 }))/*by contract*/;
+  (slot === 'top') ? topStuds(shape, placement) : FACE_GEOMETRY[shape.part.key]![slot]!.studs.map(([x, z]) => ({ x, z, level: 0 }))/*by contract*/;
 
 /** where a hinge's carry may stand with the hinge at 0: each of its top's studs'
  *  cells, at the level of the top's studs */
 export const topStuds = (shape: PartShape, placement: Placement): ReadonlyArray<Readonly<{ x: number; z: number; level: number; }>> =>
-  HINGE_GEOMETRY[shape.part.ldraw]/*by contract*/.studs.map(cell => {
+  HINGE_GEOMETRY[shape.part.key]/*by contract*/.studs.map(cell => {
     const [x, z] = placeCell(shape, placement, cell);
     return { x, z, level: placement.level + (shape.top ?? shape.height) };
   });

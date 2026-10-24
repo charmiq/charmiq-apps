@@ -4,8 +4,9 @@ import { mountedComponent, READ_IN_PART, type Model } from './model';
 // checks a build on the grid. A part fills the cells and levels its shape measures
 // (SEE: parts.generated.ts `fill`). Two parts collide when they fill the same cell
 // at the same level. A part connects to a part directly above it where one of its
-// top studs lies under a cell that part fills from its bottom level; a part at
-// level 0 stands on the ground. A glass pane fills nothing and is held by the frame
+// top studs lies under a cell that part fills from its bottom level (from the level
+// it rests at, for a part hanging below it); a part resting at level 0 stands on the
+// ground. A glass pane fills nothing and is held by the frame
 // at its own position; two panes in one frame collide. A part with no chain of
 // connections to the ground floats. A carrier's mount (a hinge's carry, a side
 // face's) fills the cells its turned cells overlap (SEE: grid.ts Mounts): it never
@@ -78,8 +79,9 @@ const checkWhole = (model: Model): CheckResult => {
   const bottoms = new Map<string, number>();
   placements.forEach((placement, index) => {
     const shape = getShape(getPart(placement.part)!/*by contract*/);
+    const resting = restingLevel(placement);
     for(const { x, z, bottom } of filledCells(shape, placement)) {
-      if(bottom === placement.level) bottoms.set(cellKey(x, z, placement.level), index)/*an open underside holds nothing*/;
+      if(bottom === resting) bottoms.set(cellKey(x, z, resting), index)/*an open underside holds nothing*/;
     }
   });
 
@@ -98,7 +100,7 @@ const checkWhole = (model: Model): CheckResult => {
 
   // reach every part from the ground
   const grounded = new Set<number>();
-  const queue = placements.flatMap((placement, index) => ((placement.level === 0) && !getPart(placement.part)!.frame/*by contract*/) ? [index] : []);
+  const queue = placements.flatMap((placement, index) => ((restingLevel(placement) === 0) && !getPart(placement.part)!.frame/*by contract*/) ? [index] : []);
   for(const index of queue) grounded.add(index);
   while(queue.length > 0) {
     const index = queue.pop()!;
@@ -121,6 +123,10 @@ const checkWhole = (model: Model): CheckResult => {
 
 /** what fills cells in a check: a placement's own part, or one of its mounts */
 type Body = Readonly<{ placement: number; mount?: Mount; cells: ReadonlyArray<FilledCell>; }>;
+
+/** the level a placement rests on the studs beneath at: its bottom, or the level above
+ *  it its part names, for a part hanging below where it rests (SEE: catalog.ts rests) */
+const restingLevel = (placement: Placement): number => placement.level + (getPart(placement.part)!.rests ?? 0)/*by contract*/;
 
 /** each pair of bodies that fill one cell at one level, once, in the order found, a
  *  body against the first at the cell it may meet: a body's own cells never pair,

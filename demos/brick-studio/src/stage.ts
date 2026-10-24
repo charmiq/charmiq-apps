@@ -505,7 +505,7 @@ const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
   const colorCode = getColor(standing.color)!.code;
   return {
     anchor: [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
-    size: { ...(POSE_GEOMETRY[catalogPart.ldraw]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height },
+    size: { ...(POSE_GEOMETRY[catalogPart.key]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height },
     poses: !!catalogPart.limbs,
     clicks: !!catalogPart.limbs || (catalogPart.kind === 'creature'),
     faces: catalogPart.facePiece !== undefined,

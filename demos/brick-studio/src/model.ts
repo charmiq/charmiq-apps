@@ -1,7 +1,7 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { isSkyLine, skyLine, skyOf, type Sky } from '../../brick-shared/sky';
 import { type CatalogPart, type FigureFace, ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_FACES } from './catalog';
-import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getShape, gridPosition, isInheritedColor, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
+import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getPartsByLDraw, getShape, gridPosition, type PartShape, isInheritedColor, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 import { isPictureLine, pictureOf, type Picture } from './picture';
 import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, type Pose, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER } from './pose';
@@ -814,9 +814,9 @@ const absorbPieces = (placements: Placement[], others: OtherPart[], otherSpans: 
   });
   const taken = new Set<number>();
   let undecided = false;
-  /** the first line in the text that is the piece, or undefined when none is or the
-   *  look ran out (`undecided`) */
-  const take = (piece: PartLine, owner: number | undefined): number | undefined => {
+  /** the first line in the text that is the piece, taken unless only `seen`, or
+   *  undefined when none is or the look ran out (`undecided`) */
+  const take = (piece: PartLine, owner: number | undefined, seen = false): number | undefined => {
     let looked = 0;
     let found: Readonly<{ index: number; bucket: Untaken; }> | undefined;
     for(const key of nearKeys(piece, owner)) {
@@ -827,7 +827,7 @@ const absorbPieces = (placements: Placement[], others: OtherPart[], otherSpans: 
         if(sameLine(others[index], piece)) { found = { index, bucket: bucket! }; break; }
       }
     }
-    if(found) found.bucket.remove(found.index);
+    if(found && !seen) found.bucket.remove(found.index);
     return found?.index;
   };
   const pieceSpans = placements.map((placement, placementIndex) => {
@@ -845,9 +845,20 @@ const absorbPieces = (placements: Placement[], others: OtherPart[], otherSpans: 
       indices.forEach(index => taken.add(index));
       return indices.map(index => otherSpans[index]);
     } /* else -- its pieces where it puts them */
-    const [, ...pieces] = placedLines(getShape(part), placement, getColor(placement.color)!.code/*by contract*/);
-    return pieces.flatMap(piece => {
-      const index = take(piece, owners?.placements[placementIndex]);
+    // of the parts assembled on its file, the one whose pieces lie there most (the first
+    // in the catalog when none do), its line read through that part's own base: bigger
+    // wheels stand its file higher
+    const owner = owners?.placements[placementIndex];
+    const asPart = (each: CatalogPart): Placement => ({ ...placement, part: each.key, level: placement.level + getShape(part).base - getShape(each).base });
+    const piecesOf = (each: CatalogPart) => placedLines(getShape(each), asPart(each), getColor(placement.color)!.code/*by contract*/).slice(1);
+    const alike = getPartsByLDraw(part.ldraw).filter(each => each.pieces && !each.limbs && !each.hinge && sameFootprint(getShape(each), getShape(part)));
+    const assembled = alike.reduce((best, each) => {
+      const found = piecesOf(each).filter(piece => take(piece, owner, true) !== undefined).length;
+      return (found > best.found) ? { part: each, found } : best;
+    }, { part, found: -1 }).part;
+    placements[placementIndex] = asPart(assembled);
+    return piecesOf(assembled).flatMap(piece => {
+      const index = take(piece, owner);
       if(index === undefined) return []/*missing: written whole again*/;
       taken.add(index);
       return [otherSpans[index]];
@@ -859,6 +870,9 @@ const absorbPieces = (placements: Placement[], others: OtherPart[], otherSpans: 
   if(owners) removeTaken(owners.others);
   return { pieceSpans, undecided };
 };
+
+/** whether two shapes stand on one footprint: a line reads to the same cells as either */
+const sameFootprint = (a: PartShape, b: PartShape): boolean => (a.width === b.width) && (a.depth === b.depth) && (a.origin[0] === b.origin[0]) && (a.origin[1] === b.origin[1]);
 
 /** a posable part's pose read from its pieces (SEE: pose.ts): the hips in whichever
  *  catalog color they are (the legs color), then each limb's pivot piece at each angle a

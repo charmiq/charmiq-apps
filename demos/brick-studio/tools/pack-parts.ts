@@ -616,16 +616,19 @@ if(JSON.stringify(JSON.parse(nextManifest).bundle?.resources) !== JSON.stringify
 writeFileSync(MANIFEST, nextManifest);
 
 // .. Facts .......................................................................
-const measured = Object.fromEntries(CATALOG.filter(part => !part.frame).map(part => [part.ldraw, measurePart(library, part)]));
+// each part's facts by its name: parts assembled on one file (a holder under different
+// wheels) measure apart
+const measured = Object.fromEntries(CATALOG.filter(part => !part.frame).map(part => [part.key, measurePart(library, part)]));
 // a pane takes its frame's grid shape and fills nothing: it sits in the frame's
 // opening, dropped to the frame's sill
-const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.ldraw, { ...measured[part.frame], studs: [], fill: [], drop: paneDrop(library, part.ldraw, part.frame) }]] : [])) };
+const frameKey = (frame: string): string => CATALOG.find(other => other.ldraw === frame)!.key/*by contract: a catalog frame*/;
+const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.key, { ...measured[frameKey(part.frame)], studs: [], fill: [], drop: paneDrop(library, part.ldraw, part.frame) }]] : [])) };
 // each posable part's fill by pose, in its standing frame
-const poses = Object.fromEntries(CATALOG.filter(part => part.limbs).map(part => [part.ldraw, measurePose(library, part, measured[part.ldraw])]));
+const poses = Object.fromEntries(CATALOG.filter(part => part.limbs).map(part => [part.key, measurePose(library, part, measured[part.key])]));
 // each hinge's base and top, the top at every angle, in its standing frame
-const hinges = Object.fromEntries(CATALOG.filter(part => part.hinge).map(part => [part.ldraw, measureHinge(library, part, measured[part.ldraw])]));
+const hinges = Object.fromEntries(CATALOG.filter(part => part.hinge).map(part => [part.key, measureHinge(library, part, measured[part.key])]));
 // each side face a part offers
-const faces = Object.fromEntries(CATALOG.filter(part => part.faces).map(part => [part.ldraw, measureFaces(library, part)]));
+const faces = Object.fromEntries(CATALOG.filter(part => part.faces).map(part => [part.key, measureFaces(library, part)]));
 
 // every color the packed parts are drawn in: the catalog's, and each fixed color a
 // packed file draws a face or subfile in (a face's print, a piece's rim)
@@ -653,14 +656,14 @@ const facts = [
   ' *  the part\'s bottom, the top-stud cells and the filled cells ([x, z, bottom level,',
   ' *  top level exclusive]), all at rotation 0, the `top` level of its top studs when',
   ' *  the part reaches above them (a wheel set\'s tires), a glass pane\'s `drop` (LDU) below its',
-  ' *  frame\'s origin and the side a curve `descends` to, keyed by LDraw file stem */',
+  ' *  frame\'s origin and the side a curve `descends` to, keyed by catalog part name */',
   `export const PART_GEOMETRY: Readonly<Record<string, Readonly<{ width: number; depth: number; height: number; origin: readonly [number, number]; base: number; studs: ReadonlyArray<readonly [number, number]>; fill: ReadonlyArray<readonly [number, number, number, number]>; top?: number; drop?: number; descends?: 'north' | 'south' | 'east' | 'west'; }>>> = ${JSON.stringify(geometry)};`,
   '',
   '/** each posable part\'s fill by pose, in its standing frame (the standing footprint\'s',
   ' *  minimum corner and its bottom; a raised limb reaches past them): the cells its body',
   ' *  and every piece no limb moves fill (`core`), and each limb\'s at every angle, each with',
   ' *  how high its lowest point lies above the standing bottom (plates), and each accessory\'s',
-  ' *  by slot at every angle of the limb it turns with (`gear`), keyed by LDraw file stem. A',
+  ' *  by slot at every angle of the limb it turns with (`gear`), keyed by catalog part name. A',
   ' *  pose fills their union and stands on its lowest point (SEE: grid.ts posed). Its `body`',
   ' *  is what it measures standing, nothing worn: studs across (x) and along (z)',
   ' *  (SEE: stage.ts partActor) */',
@@ -670,7 +673,7 @@ const facts = [
   '',
   '/** each hinge\'s fill in its standing frame: its base\'s (its own body and every piece',
   ' *  but its top) and its top\'s at every angle, and the cells of its top\'s studs at 0',
-  ' *  (what a carry stands on), keyed by LDraw file stem. A turned hinge fills their',
+  ' *  (what a carry stands on), keyed by catalog part name. A turned hinge fills their',
   ' *  union (SEE: grid.ts hinged) */',
   `export const HINGE_GEOMETRY: Readonly<Record<string, Readonly<{ base: ReadonlyArray<readonly [number, number, number, number]>; top: Readonly<Record<string, ReadonlyArray<readonly [number, number, number, number]>>>; studs: ReadonlyArray<readonly [number, number]>; }>>> = ${JSON.stringify(hinges)};`,
   '',
@@ -678,7 +681,7 @@ const facts = [
   ' *  in the part\'s frame at rotation 0: its origin (LDU: the left edge of the cell of',
   ' *  the leftmost stud in the row nearest the top, as seen from outside, the bottom of',
   ' *  that row, on the plane its studs stand on) and its studs\' cells on the map (x',
-  ' *  right, z up), keyed by LDraw file stem */',
+  ' *  right, z up), keyed by catalog part name */',
   `export const FACE_GEOMETRY: Readonly<Record<string, Readonly<Partial<Record<'north' | 'east' | 'south' | 'west', Readonly<{ origin: readonly [number, number, number]; studs: ReadonlyArray<readonly [number, number]>; }>>>>>> = ${JSON.stringify(faces)};`,
   '',
   '/** the resource holding each LDraw file stem not built into the Application (its',
@@ -696,7 +699,7 @@ writeFileSync(join(SOURCE_DIR, 'parts.generated.ts'), facts);
 console.log(`Packed ${CATALOG.length} parts (${files.size} files): ${(pack.length / 1024).toFixed(0)} KB built in, ${families.length} families read when shown.`);
 for(const [family, size] of familySizes) console.log(`  ${familyResource(family).padEnd(30)} ${(size / 1024).toFixed(0).padStart(5)} KB`);
 for(const part of CATALOG) {
-  const g = geometry[part.ldraw];
+  const g = geometry[part.key];
   const box = g.fill.every(([, , bottom, top]) => (bottom === 0) && (top === g.height)) && (g.fill.length === (g.width * g.depth));
   console.log(`  ${part.key.padEnd(22)} ${part.ldraw.padEnd(6)} ${g.width}x${g.depth}x${g.height}  origin ${g.origin}  studs ${g.studs.length}  ${box ? 'box' : `fill ${JSON.stringify(g.fill)}`}`);
 }
