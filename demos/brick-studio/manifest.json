@@ -578,11 +578,11 @@
       },
       {
         "name": "describeStage",
-        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, whether the studio holds a build of its own, and its build's sets",
+        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, whether the studio holds a build of its own, its build's sets, and the actor it follows through the film (follow), while it follows one",
         "inputSchema": { "type": "object", "properties": {} },
         "outputSchema": {
           "type": "object",
-          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" }, "sets": { "type": "array", "items": { "type": "string" }, "description": "The build's sets by name, the first first" } },
+          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" }, "sets": { "type": "array", "items": { "type": "string" }, "description": "The build's sets by name, the first first" }, "followed": { "type": "string", "description": "The actor followed through the film, its ghosts and path drawn" } },
           "required": ["stage", "staged", "left", "build", "sets"]
         }
       },
@@ -677,6 +677,20 @@
           "required": ["reel", "frame"]
         },
         "outputSchema": { "type": "object", "properties": { "shown": { "type": "integer" }, "image": { "description": "The frame captured (an ImageBitmap), when capture was given" } }, "required": ["shown"] }
+      },
+      {
+        "name": "follow",
+        "description": "Follow an actor through the staged reel, for Applications: at each frame shown live, the actor's ghosts at each drawing within before and after seconds (cool behind, warm ahead, fainter further off) and its path through its hips with its keys marked, never in a capture or a thumbnail. Without an actor, follow no one. Staging again follows no one",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "actor":  { "type": "string", "description": "The cast actor to follow; leave it out to follow no one" },
+            "before": { "type": "number", "description": "Seconds of ghosts behind the frame shown, 0 to 10 (2)" },
+            "after":  { "type": "number", "description": "Seconds of ghosts ahead of the frame shown, 0 to 10 (2)" },
+            "keys":   { "type": "array", "items": { "type": "number" }, "description": "The film's seconds of the actor's keys, marked on its path" }
+          }
+        },
+        "outputSchema": { "type": "object", "properties": { "followed": { "type": ["string", "null"] }, "ghosts": { "type": "integer" } }, "required": ["followed", "ghosts"] }
       },
       {
         "name": "thumbnail",

@@ -327,6 +327,7 @@ export class CommandSurface {
       },
       loadReel: async ({ reel, from, frames }: { reel?: unknown; from?: unknown; frames?: unknown; }) => this.stage.loadReel(reel, from, frames),
       show: async ({ reel, frame, capture, playing }: { reel?: unknown; frame?: unknown; capture?: unknown; playing?: unknown; }) => this.stage.showReel(reel, frame, capture, playing),
+      follow: async ({ actor, before, after, keys }: { actor?: unknown; before?: unknown; after?: unknown; keys?: unknown; }) => this.stage.follow((actor === undefined) ? undefined : { actor, before, after, keys }),
       thumbnail: async ({ reel, frame, width, height, view }: { reel?: unknown; frame?: unknown; width?: unknown; height?: unknown; view?: unknown; }) => ({ image: await this.stage.thumbnail(reel, frame, width, height, view) }),
       storyboard: async ({ reel, frames, view }: { reel?: unknown; frames?: unknown; view?: unknown; }) => this.stage.storyboard(reel, frames, view),
       frame: async ({ set, actors, camera, capture }: { set?: unknown; actors?: unknown; camera?: unknown; capture?: unknown; }) => {

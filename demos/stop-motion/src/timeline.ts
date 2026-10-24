@@ -80,6 +80,9 @@ export type TimelineHost = Readonly<{
   viewed: (span: Readonly<{ from: number; to: number; }>) => void;
   /** shapes how an actor walks (its walk's band double-clicked: SEE gait-view.ts) */
   gait: (actor: string) => void;
+  /** follows an actor through the film in the studios, its ghosts and path drawn (its
+   *  row's name pressed); none to follow no one */
+  followActor: (actor: string | undefined) => void;
 }>;
 
 /** the film's sounds as the timeline draws them: their lengths and names, and each
@@ -120,6 +123,9 @@ export class Timeline {
   private modifier = false;
   private focusedKey: HTMLElement | undefined;
   private pinned: Moment | undefined;
+  /** the actor followed in the studios, while one is, and each actor's row name */
+  private followed: string | undefined;
+  private actorNames = new Map<string, HTMLElement>();
   /** the inspector's update waiting to run, while one waits */
   private updating: number | undefined;
   /** the marks lit, and the frame the inspector shows */
@@ -229,10 +235,18 @@ export class Timeline {
   public show(film: Film | undefined, close: ReadonlyArray<ClosePair> = []): void {
     if(film !== this.film) { this.pictures.clear(); this.waiting = undefined; this.pinned = undefined; }
     this.film = film;
+    if(this.followed && !film?.scene.actors.some(actor => actor.name === this.followed)) this.followActor(undefined)/*no longer in the film*/;
     this.close = close;
     this.layout();
     this.follow()/*the lanes laid out anew*/;
     this.update();
+  }
+
+  /** follows an actor in the studios, its row's name pressed (none: no one) */
+  private followActor(actor: string | undefined): void {
+    this.followed = actor;
+    for(const [name, element] of this.actorNames) element.setAttribute('aria-pressed', String(name === actor));
+    this.host.followActor(actor);
   }
 
   /** lets a pinned moment go: the film's sheet again */
@@ -274,6 +288,7 @@ export class Timeline {
     const document = this.root.ownerDocument;
     this.root.classList.toggle('is-empty', !film);
     this.laid = [];
+    this.actorNames.clear();
     if(!film) { this.scroller.replaceChildren(); this.place(); return; }
     const { scene } = film;
     // the lanes run in the film's own time; a mark stands where its scene time shows
@@ -450,6 +465,18 @@ export class Timeline {
     const name = element(document, 'span', 'row-name');
     name.append(Object.assign(element(document, 'b', 'row-swatch'), { ariaHidden: 'true' }), document.createTextNode(row.name));
     if(row.note) name.append(Object.assign(element(document, 'small', 'row-note'), { textContent: row.note }));
+    if(row.track.kind === 'actor') {
+      // pressed, the studios follow the actor: its ghosts and path about each frame
+      const actor = row.track.name;
+      name.classList.add('row-name--actor');
+      Object.assign(name, { tabIndex: 0, title: `Show ${actor}'s ghosts and path in the studio (press again, or Escape, to let go)` });
+      name.setAttribute('role', 'button');
+      name.setAttribute('aria-pressed', String(this.followed === actor));
+      const press = () => this.followActor((this.followed === actor) ? undefined : actor);
+      name.addEventListener('click', press);
+      name.addEventListener('keydown', event => { if((event.key === 'Enter') || (event.key === ' ')) { event.preventDefault(); event.stopPropagation()/*not the timeline's play*/; press(); } });
+      this.actorNames.set(actor, name);
+    } /* else -- the camera's, the sets', the sounds' and the film's rows follow no one */
 
     // bands sharing a span stack in tiers, the row as tall as they need
     const lane = element(document, 'div', 'lane');
@@ -717,7 +744,7 @@ export class Timeline {
       Home: () => this.host.seek(0),
       End: () => this.host.seek(film.frames.length - 1),
       ' ': () => this.host.toggle(),
-      Escape: () => this.unpin(),
+      Escape: () => { if(this.pinned) this.unpin(); else if(this.followed) this.followActor(undefined); },
       '=': () => this.zoomBy(ZOOM_STEP), '+': () => this.zoomBy(ZOOM_STEP),
       '-': () => this.zoomBy(1 / ZOOM_STEP), '_': () => this.zoomBy(1 / ZOOM_STEP),
       '\\': () => this.fit(),

@@ -60,6 +60,7 @@ export interface StudioCommands {
   stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
   show(args: object): Promise<Readonly<{ shown: number; image?: ImageBitmap; }>>;
+  follow(args: object): Promise<Readonly<{ followed: string | null; ghosts: number; }>>;
   thumbnail(args: object): Promise<Readonly<{ image: ImageBitmap; }>>;
   storyboard(args: object): Promise<Readonly<{ shown: number; }>>;
   getModel(args: object): Promise<Readonly<{ ldraw?: string; nextLine?: number; conflict?: string; }>>;
@@ -287,6 +288,16 @@ export class Studios {
     const staged = this.ready();
     if(!staged) return/*nothing staged: the state says why*/;
     staged.screens.forEach((screen, at) => { screen.show({ reel: staged.reels[at], frame: index, playing }).catch(error => this.refused(staged, error)); });
+  }
+
+  /** follows an actor through the film on every screen: its ghosts and path about each
+   *  frame shown live, its keys (the film's seconds) marked (SEE: Brick Studio's
+   *  follow); none to follow no one. A studio that cannot follows no one: the ghosts
+   *  are the person's aid, never the film's */
+  public follow(follow: Readonly<{ actor: string; keys: ReadonlyArray<number>; }> | undefined): void {
+    const staged = this.ready();
+    if(!staged) return/*nothing staged: the state says why*/;
+    for(const screen of staged.screens) screen.follow(follow ?? {}).catch(error => console.warn('stop-motion: a studio follows no one:', error));
   }
 
   /** a frame of `film` drawn whole (fade and title included) on the main screen at a

@@ -437,6 +437,13 @@
   cursor: default;
 }
 
+// an actor's name presses to follow it in the studios: its ghosts and path drawn
+.row-name--actor {
+  cursor: pointer;
+  &:hover { color: var(--row); }
+  &[aria-pressed="true"] { color: var(--row); box-shadow: inset 3px 0 0 var(--row); }
+}
+
 .row-swatch {
   flex: none;
   width: 9px;

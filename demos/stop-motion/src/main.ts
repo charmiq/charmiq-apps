@@ -11,7 +11,7 @@ import { PickDialog } from '../../brick-shared/pick-dialog';
 import { exportFilmCommands } from './command';
 import { Director } from './director';
 import { exportFilm, fileName, save } from './export';
-import { filmLengthOf, type Film, type Paint } from './film';
+import { filmLengthOf, filmTimeOf, type Film, type Paint } from './film';
 import { FilmDialog } from './film-dialog';
 import { filmPartsOf, Films } from './films';
 import { GaitView } from './gait-view';
@@ -155,6 +155,7 @@ const timeline = new Timeline(element('timeline'), {
   sounds: () => soundsKnown, fixed: cue => fixedWhy(cue), moveSound: (cue, time) => moveSound(cue, time),
   viewed: span => strip.setSpan(span)/*the picture track frames it*/,
   gait: actor => { gaitView.choose(actor); showGait(true); },
+  followActor: actor => { followed = actor; follow(); },
 }, inspector);
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack(), (from, to) => timeline.showSpan(from, to));
 const gaitView = new GaitView(element('gait'), { write: (name, keys) => writeGait(name, keys), seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), rewind: index => player.seek(index), loop: span => player.loopSpan(span), close: () => showGait(false) });
@@ -178,12 +179,22 @@ let editorsRefused: string | undefined;
 let exporting: { cancelled: boolean; stop: () => void; } | undefined;
 
 // == Film ========================================================================
+/** the actor the studios follow through the film (its row's name pressed), while one is */
+let followed: string | undefined;
+/** tells the studios whom to follow: the actor followed, with its keys at the film's
+ *  times, or no one. A film staged again follows no one until told */
+const follow = () => {
+  const actor = followed && film?.scene.actors.find(each => each.name === followed);
+  studios.follow(actor ? { actor: actor.name, keys: [...new Set(actor.keys.map(key => key.time))].map(time => filmTimeOf(film!, time)) } : undefined);
+};
+
 const showFilm = (next: Film) => {
   film = next;
   soundtrack.setFilm(next);
   learnSounds(next);
   player.setFilm(next);
   showTimeline();
+  follow()/*staged again, the studios follow no one until told*/;
   strip.show(next);
   gaitView.setFilm(next);
   showSheet();

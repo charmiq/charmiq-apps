@@ -11,7 +11,7 @@ import { CATALOG, resourceFamily, type Finish } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
 import { drawnLines, partCount, type Model } from './model';
-import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type Point, type ShownActors, type StageCamera, type StageLight, type ViewCamera } from './stage';
+import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type GhostPath, type Point, type ShownActors, type StageCamera, type StageLight, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { AutoFocus } from './render/autofocus';
@@ -63,6 +63,53 @@ const DROP_MS = 340/*ms*/;
 const DROP_STAGGER_MS = 22/*ms*/;
 const DROP_STAGGER_MAX_MS = 700/*ms*/;
 const VIEW_MS = 520/*ms*/;
+/** how far the camera swings down round what it looks at (radians from straight
+ *  down): over a build never below the baseplate; over a stage the person holds, all
+ *  but straight up, so it looks up at what stands above it */
+const BUILD_MAX_POLAR = Math.PI * 0.495, HELD_MAX_POLAR = Math.PI * 0.97;
+/** a followed actor's ghosts: outlines round each of its pieces and its silhouette, red
+ *  behind the frame shown and green ahead of it, most opaque beside it and fading to the
+ *  faintest at the end of their reach; its path through its hips, and its keys marked on
+ *  it (pixels across) */
+const GHOST_NEAREST = 0.9, GHOST_FAINTEST = 0.15;
+const GHOST_PATH = 0xffe04d, GHOST_KEY_SIZE = 9;
+/** a ghost piece drawn as its number (red and green), its outline's opacity (blue) and
+ *  whether it is ahead of the frame shown (alpha 1) or behind (alpha 0.5), every pixel's
+ *  nearest */
+const GHOST_PIECE_VERTEX = `
+void main() {
+  vec4 at = vec4(position, 1.0);
+  #ifdef USE_INSTANCING
+  at = instanceMatrix * at;
+  #endif
+  gl_Position = projectionMatrix * modelViewMatrix * at;
+}`;
+const GHOST_PIECE_FRAGMENT = `
+uniform vec4 piece;
+void main() { gl_FragColor = piece; }`;
+/** the outlines: wherever a pixel's piece differs from a neighbor's (a piece's edge, or
+ *  the ghost's silhouette against nothing), in the color and opacity of the nearer of the
+ *  two in time, red behind and green ahead; nothing elsewhere */
+const GHOST_OUTLINE_VERTEX = `
+varying vec2 at;
+void main() { at = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+const GHOST_OUTLINE_FRAGMENT = `
+uniform sampler2D pieces;
+uniform vec2 texel;
+varying vec2 at;
+void main() {
+  vec4 here = texture2D(pieces, at), nearest = vec4(0.0);
+  for(int side = 0; side < 4; side++) {
+    vec2 step = (side == 0) ? vec2(texel.x, 0.0) : (side == 1) ? vec2(-texel.x, 0.0) : (side == 2) ? vec2(0.0, texel.y) : vec2(0.0, -texel.y);
+    vec4 there = texture2D(pieces, at + step);
+    if(any(greaterThan(abs(here.rg - there.rg), vec2(0.5 / 255.0)))) {
+      vec4 nearer = (here.b >= there.b) ? here : there;
+      if(nearer.b > nearest.b) nearest = nearer;
+    }
+  }
+  if(nearest.b <= 0.0) discard;
+  gl_FragColor = vec4((nearest.a > 0.75) ? AHEAD : BEHIND, nearest.b);
+}`;
 /** how long a requested frame waits for the browser's animation frame before it is
  *  drawn anyway: a frame scrolled out of view gets none, and a command waiting for
  *  the studio to settle (a Charm's edit, a film's frame) would never answer */
@@ -217,6 +264,20 @@ export class Viewer {
   private studGeometry: THREE.BufferGeometry | undefined;
 
   private readonly parts = new THREE.Group();
+  /** a followed actor's path, over the stage while the person works, and whether its
+   *  ghosts are drawn: never in a capture, a thumbnail, a transition's picture or the path
+   *  tracer's (SEE: showGhosts). The ghosts' pieces stand in a scene of their own, drawn
+   *  as numbers and outlined over the frame (SEE: outlineGhosts) */
+  private readonly ghosts = new THREE.Group();
+  private readonly ghostPieces = Object.assign(new THREE.Scene(), { userData: { ghosts: 1 } });
+  private ghostTarget: THREE.WebGLRenderTarget | undefined;
+  private readonly ghostOutline = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+    uniforms: { pieces: { value: null }, texel: { value: new THREE.Vector2() } },
+    vertexShader: GHOST_OUTLINE_VERTEX, fragmentShader: GHOST_OUTLINE_FRAGMENT, transparent: true, depthTest: false, depthWrite: false,
+    defines: { BEHIND: 'vec3(1.0, 0.23, 0.23)', AHEAD: 'vec3(0.23, 1.0, 0.42)' }/*red behind, green ahead*/,
+  }));
+  private readonly ghostOutlineScene = Object.assign(new THREE.Scene(), { userData: { ghosts: 1 } });
+  private readonly ghostOutlineCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private model: Model | undefined;
   private staging: Staging | undefined;
   /** whether the person holds the view over the stage (SEE: holdView), and where it
@@ -266,13 +327,14 @@ export class Viewer {
     this.sun.shadow.normalBias = 0.02;
     this.sun.shadow.radius = 4;
     this.scene.add(this.sun, this.sun.target, this.sky);
-    this.scene.add(this.parts, this.pictures.group);
+    this.scene.add(this.parts, this.pictures.group, this.ghosts);
+    this.ghostOutlineScene.add(this.ghostOutline);
     this.effects = new Effects(this.renderer, this.scene, this.camera);
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.maxPolarAngle = Math.PI * 0.495/*never below the baseplate*/;
+    this.controls.maxPolarAngle = BUILD_MAX_POLAR;
     this.controls.minDistance = 2;
     this.controls.maxDistance = 600;
     this.controls.addEventListener('start', () => { this.tween?.resolve(); this.tween = undefined; })/*a drag ends a move, settling its command*/;
@@ -746,9 +808,10 @@ export class Viewer {
     if(!inView) void this.setView(this.getView(), true);
   }
 
-  /** moves the camera as the keys say until they say stand (SEE: Walk) */
+  /** moves the camera as the keys say until they say stand (SEE: Walk): over a stage
+   *  only while the person holds the view */
   public walk(walk: Walk): void {
-    if(this.staging) return/*the stage's camera stands*/;
+    if(this.staging && !this.viewHeld) return/*the stage's camera stands*/;
     const stopping = !isStanding(this.walking) && isStanding(walk);
     this.walking = walk;
     if(stopping) this.pivotOnView();
@@ -769,6 +832,8 @@ export class Viewer {
   public holdView(held: boolean): void {
     this.viewHeld = held && !!this.staging;
     this.controls.enabled = !this.staging || this.viewHeld;
+    this.controls.maxPolarAngle = this.viewHeld ? HELD_MAX_POLAR : BUILD_MAX_POLAR;
+    if(!this.viewHeld) this.walking = STANDING/*the film's camera stands*/;
     this.requestFrame();
   }
   /** whether the person holds the view over the stage (SEE: holdView) */
@@ -822,6 +887,81 @@ export class Viewer {
     this.pose(actors, overlay, set);
   }
 
+  /** draws a followed actor's ghosts, each its lines and how far from the frame shown
+   *  (seconds, back before 0): outlines round each piece and its silhouette, as `blend`
+   *  outlined a fitted figure over a filmed frame, red behind and green ahead, fainter
+   *  toward the end of `reach`, nothing filled so what stands behind shows; and its path through its hips,
+   *  its keys marked, seen through the set. None (and no path) clears them. A part not
+   *  yet built is left out of a ghost (the actor shown builds its own) */
+  public showGhosts(ghosts: ReadonlyArray<Readonly<{ lines: ReadonlyArray<PartLine>; offset: number; }>>, path: GhostPath | undefined, reach: Readonly<{ before: number; after: number; }>): void {
+    this.clearGhosts();
+    let numbered = 0;
+    for(const { lines, offset } of ghosts) {
+      const items = this.itemsOf(lines.filter(isDrawable).map(line => renderItem(line, lineKey(line)))).filter(item => this.geometries.has(item.geometry));
+      const span = (offset < 0) ? reach.before : reach.after;
+      const near = (span > 0) ? Math.max(0, 1 - (Math.abs(offset) / span)) : 1;
+      const opacity = GHOST_FAINTEST + ((GHOST_NEAREST - GHOST_FAINTEST) * near);
+      // each piece its own number, so an outline runs round each and between ghosts
+      for(const item of items) {
+        numbered++;
+        const piece = new THREE.Vector4((numbered % 256) / 255, Math.floor(numbered / 256) / 255, opacity, (offset < 0) ? 0.5 : 1);
+        const material = new THREE.ShaderMaterial({ uniforms: { piece: { value: piece } }, vertexShader: GHOST_PIECE_VERTEX, fragmentShader: GHOST_PIECE_FRAGMENT });
+        const mesh = new THREE.InstancedMesh(this.geometries.get(item.geometry)!, material, 1);
+        mesh.setMatrixAt(0, item.matrix);
+        mesh.frustumCulled = false;
+        this.ghostPieces.add(mesh);
+      }
+    }
+    if(path) {
+      const line = new THREE.LineBasicMaterial({ color: GHOST_PATH, transparent: true, opacity: 0.9, depthTest: false });
+      for(const run of path.runs.filter(each => each.length > 1)) this.ghosts.add(Object.assign(new THREE.Line(new THREE.BufferGeometry().setFromPoints(run.map(scenePoint)), line), { renderOrder: 1 }));
+      if(path.keys.length > 0) this.ghosts.add(Object.assign(new THREE.Points(new THREE.BufferGeometry().setFromPoints(path.keys.map(scenePoint)), new THREE.PointsMaterial({ color: GHOST_PATH, size: GHOST_KEY_SIZE, sizeAttenuation: false, depthTest: false })), { renderOrder: 1 }));
+    }
+    this.requestFrame();
+  }
+
+  /** takes the ghosts down, freeing what they alone hold: their materials and the
+   *  path's geometry (the parts' geometries are the studio's) */
+  private clearGhosts(): void {
+    for(const child of [...this.ghosts.children, ...this.ghostPieces.children]) {
+      const shape = child as THREE.Mesh | THREE.Line | THREE.Points;
+      (Array.isArray(shape.material) ? shape.material : [shape.material]).forEach(material => material.dispose());
+      if(!(child instanceof THREE.InstancedMesh)) shape.geometry.dispose();
+    }
+    this.ghosts.clear();
+    this.ghostPieces.clear();
+  }
+
+  /** outlines the ghosts over the frame just drawn: their pieces drawn unseen as numbers,
+   *  then white wherever two neighboring pixels' numbers differ. None while they are
+   *  hidden (a picture made for the film) or there are none */
+  private outlineGhosts(): void {
+    if(!this.ghosts.visible || (this.ghostPieces.children.length < 1)) return;
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const target = this.ghostTarget ??= new THREE.WebGLRenderTarget(1, 1, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, generateMipmaps: false });
+    if((target.width !== size.x) || (target.height !== size.y)) target.setSize(size.x, size.y);
+    const [clearColor, clearAlpha, autoClear] = [this.renderer.getClearColor(new THREE.Color()), this.renderer.getClearAlpha(), this.renderer.autoClear];
+    this.renderer.setRenderTarget(target);
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.clear();
+    this.renderer.render(this.ghostPieces, this.camera);
+    this.renderer.setRenderTarget(null);
+    this.renderer.setClearColor(clearColor, clearAlpha);
+    const material = this.ghostOutline.material;
+    material.uniforms.pieces.value = target.texture;
+    (material.uniforms.texel.value as THREE.Vector2).set(1 / size.x, 1 / size.y);
+    this.renderer.autoClear = false;
+    this.renderer.render(this.ghostOutlineScene, this.ghostOutlineCamera);
+    this.renderer.autoClear = autoClear;
+  }
+
+  /** runs `work` with the ghosts hidden: a picture made for the film never shows them */
+  private unghosted<T>(work: () => T): T {
+    const shown = this.ghosts.visible;
+    this.ghosts.visible = false;
+    try { return work(); } finally { this.ghosts.visible = shown; }
+  }
+
   /** a frame's picture `width` by `height`, its fade and title drawn over it. Its
    *  parts are built first, unseen, and the studio settled on the frame it shows; then
    *  the frame is drawn, copied and the frame shown put back in one task, so the screen
@@ -839,7 +979,7 @@ export class Viewer {
     this.look(camera);
     staging.leaving = leaving;
     this.pose(actors, overlay, set);
-    this.renderNow();
+    this.unghosted(() => this.renderNow());
     this.drawPicture(picture.getContext('2d')!, overlay, width, height);
 
     this.toEye(shown.eye);
@@ -853,6 +993,8 @@ export class Viewer {
    *  that size from then on, the canvas showing it whole */
   public async capture(width: number, height: number): Promise<ImageBitmap> {
     if(!this.staging) throw new Error('nothing is staged');
+    const ghosted = this.ghosts.visible;
+    this.ghosts.visible = false/*a capture is the film's: no ghost drawn while it settles*/;
     try {
       this.drawStageAt(width, height);
       await this.whenSettled();
@@ -862,7 +1004,9 @@ export class Viewer {
       this.drawPicture(picture.getContext('2d')!, overlay, width, height);
       return await createImageBitmap(picture);
     } finally {
-      if(this.heldEye) { this.toEye(this.heldEye); this.heldEye = undefined/*the person's view again*/; this.requestFrame(); }
+      this.ghosts.visible = ghosted;
+      if(this.heldEye) { this.toEye(this.heldEye); this.heldEye = undefined/*the person's view again*/; }
+      this.requestFrame();
     }
   }
 
@@ -871,11 +1015,13 @@ export class Viewer {
     const staging = this.staging;
     if(!staging) return/*nothing staged*/;
     this.staging = undefined;
+    this.clearGhosts();
     [this.viewHeld, this.heldEye] = [false, undefined]/*the build's own view*/;
     this.aim(staging.before.position, staging.before.target, staging.before.fov)/*level and unshifted again*/;
     this.useLens({})/*the look's own focus again*/;
     this.useLight({})/*the look's own light again*/;
     this.stageSky = undefined/*each set's own again*/;
+    this.controls.maxPolarAngle = BUILD_MAX_POLAR;
     this.controls.enabled = true;
     this.controls.update();
     this.renderer.setPixelRatio(screenPixelRatio());
@@ -1029,6 +1175,7 @@ export class Viewer {
     this.drawLeaving();
     this.effects.focus(this.lens());
     this.effects.render();
+    this.outlineGhosts();
   }
 
   /** the shot a transition leaves, drawn apart as its picture before the frame's:
@@ -1054,7 +1201,7 @@ export class Viewer {
     if(elsewhere) this.draw(staging.sets[leaving.set], actors, false);
     this.look(leaving.camera);
     this.effects.focus(this.lens());
-    this.effects.render();
+    this.unghosted(() => this.effects.render());
     picture.getContext('2d')!.drawImage(this.canvas, 0, 0);
     if(elsewhere) this.draw(staging.sets[staging.standing], staging.actors, false);
     this.toEye(shown);
@@ -1245,7 +1392,7 @@ export class Viewer {
       this.lastWalk = now;
       moving = true;
     } /* else -- standing */
-    if(!this.staging && this.controls.update()) moving = true/*damping; a stage's camera stands where its frame puts it*/;
+    if((!this.staging || this.viewHeld) && this.controls.update()) moving = true/*damping; a stage's camera stands where its frame puts it unless the person holds the view*/;
 
     // dropping parts
     if(this.drops.length > 0) {
@@ -1375,7 +1522,7 @@ export class Viewer {
     this.drawLeaving();
     const refocused = this.autoFocus.takeMoved()/*told once, whichever draws the frame*/;
     const tracer = this.tracing();
-    if(!tracer) { this.effects.render(); return false; }
+    if(!tracer) { this.effects.render(); this.outlineGhosts(); return false; }
 
     if(this.pathTraceStale) {
       const { plate, free } = this.tracedBaseplate();

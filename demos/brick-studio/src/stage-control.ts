@@ -5,7 +5,7 @@ import { skyFrom } from '../../brick-shared/sky';
 import type { Build } from './build';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, cameraOf, captureOf, castOf, floorOf, lightOf, marksOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
+import { boardsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -94,6 +94,8 @@ export class StageControl {
   private holds = false;
   private sets: ReadonlyArray<string> = [];
   private edits = 0;
+  /** the actor followed through the film, while one is (SEE: follow) */
+  private followed: Follow | undefined;
   /** the reel's frame last shown, and whether the film said it plays */
   private shownFrame = 0;
   private playing = false;
@@ -112,11 +114,12 @@ export class StageControl {
 
   // == Stage =====================================================================
   /** whether a stage is shown, whether the person went back to the build since the
-   *  last stage call, whether the studio holds a build of its own, and its sets */
+   *  last stage call, whether the studio holds a build of its own, its sets, and the
+   *  actor it follows through the film, while it follows one */
   public async describe() {
     await this.build.whenReady();
     this.tellBuild()/*the stream says the same from now on*/;
-    return { stage: STAGE_VERSION, staged: !!this.cast, left: this.left, build: this.holds, sets: this.sets };
+    return { stage: STAGE_VERSION, staged: !!this.cast, left: this.left, build: this.holds, sets: this.sets, ...(this.followed ? { followed: this.followed.actor } : {}) };
   }
 
   /** the screen's state, from now on */
@@ -149,6 +152,7 @@ export class StageControl {
     this.marks = marked;
     this.wanted = undefined/*a frame of the reel before*/;
     this.left = false;
+    this.followed = undefined/*the film follows its actor again once staged*/;
     [this.shownFrame, this.playing] = [0, false];
     this.viewer.useSky(skied)/*before the first set is shown under it*/;
     this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged), keep === true);
@@ -182,6 +186,17 @@ export class StageControl {
   public unstage(): Readonly<{ staged: false; }> {
     this.end();
     return { staged: false };
+  }
+
+  /** follows an actor through the film shown: at each frame shown live, its ghosts at
+   *  each drawing within its seconds back and ahead and its path through its hips, its
+   *  keys marked (SEE: stage.ts Follow); none to follow no one. Answers the actor
+   *  followed and how many ghosts the frame shown has */
+  public follow(input: unknown): Readonly<{ followed: string | null; ghosts: number; }> {
+    const cast = this.cast;
+    if(!cast && (input !== undefined) && (input !== null)) throw new Error('nothing is staged to follow an actor through');
+    this.followed = cast && followOf(cast, input);
+    return { followed: this.followed?.actor ?? null, ghosts: this.ghost() };
   }
 
   // == Reel ======================================================================
@@ -323,6 +338,7 @@ export class StageControl {
     const picture = this.pictureOf(loaded, shot, undefined);
     this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving));
     this.shownFrame = frame;
+    this.ghost();
     this.showControls();
     void this.viewer.whenSettled().then(() => { if((this.reel === loaded) && (this.applied === applied)) this.publish({ kind: 'staged', reel, frame }); });
   }
@@ -370,6 +386,16 @@ export class StageControl {
     this.publish(this.left ? { kind: 'left' } : { kind: 'none' });
   }
 
+  /** draws the followed actor's ghosts and path about the frame shown live (none while
+   *  no actor is followed or no reel is loaded); answers how many ghosts */
+  private ghost(): number {
+    const loaded = this.reel, cast = this.cast, follow = this.followed;
+    if(!loaded || !cast || !follow) { this.viewer.showGhosts([], undefined, { before: 0, after: 0 }); return 0; }
+    const ghosts = ghostsOf(loaded.frames, loaded.header.fps, this.shownFrame, follow);
+    this.viewer.showGhosts(ghosts.map(({ shot, offset }) => ({ lines: shotLines(cast, [shot]), offset })), pathOf(cast, loaded.frames, loaded.header.fps, this.shownFrame, follow), follow);
+    return ghosts.length;
+  }
+
   /** tells the film whether the studio holds a build and its sets, when either
    *  changed */
   private tellBuild(): void {
@@ -392,12 +418,13 @@ export class StageControl {
     this.state.next({ ...this.state.value, asks: this.asks, asked });
   }
 
-  /** the keys the film's controls take full screen: Space plays or pauses, the arrows
-   *  step a frame (a second with Shift) */
+  /** the keys the film's controls take full screen: Space plays or pauses (unless the
+   *  person holds the view: then it lifts the camera), the arrows step a frame (a second
+   *  with Shift) */
   private key(event: KeyboardEvent): void {
     const header = this.reel?.header;
     if(!header || !isFullScreen(this.studio) || event.altKey || event.ctrlKey || event.metaKey) return;
-    if(event.key === ' ') this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' });
+    if(event.key === ' ') { if(this.viewer.isViewHeld) return/*the camera's: up*/; this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' }); }
     else if((event.key === 'ArrowLeft') || (event.key === 'ArrowRight')) {
       const step = (event.shiftKey ? header.fps : 1) * ((event.key === 'ArrowLeft') ? -1 : 1);
       this.ask({ kind: 'seek', frame: Math.max(0, Math.min(header.length - 1, this.shownFrame + step)) });

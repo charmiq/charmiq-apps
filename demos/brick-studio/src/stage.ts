@@ -64,6 +64,15 @@ export const MAX_TITLE = 200/*characters*/;
 export const MAX_PATHS = 256;
 export const MAX_PATH_POINTS = 7_200;
 export const MAX_MARK_POINTS = 50_000;
+/** the most seconds a followed actor's ghosts reach back or ahead, and the most of its
+ *  keys marked on its path */
+export const MAX_GHOST_SECONDS = 10;
+export const MAX_FOCUS_KEYS = 2_000;
+/** the seconds a focus reaches each way when it names none */
+const DEFAULT_GHOST_SECONDS = 2;
+/** a figure's hips over its soles (plates): 1.4 studs, its legs as Stop Motion
+ *  measures them; anything else's middle is half its height */
+const FIGURE_HIP = 3.5;
 /** the longest mark label */
 const MAX_LABEL = 40/*characters*/;
 /** the most frames a storyboard shows, and its longest caption */
@@ -571,6 +580,73 @@ export type ShownActors = Readonly<{ lines: ReadonlyArray<PartLine>; parts: numb
 export const NO_ACTORS: ShownActors = { lines: [], parts: 0 };
 export const shownActors = (cast: Cast, shots: ReadonlyArray<Shot>): ShownActors =>
   ({ lines: shotLines(cast, shots), parts: shots.reduce((total, shot) => total + cast.actors.get(shot.name)!/*by contract: shotsOf*/.parts, 0) });
+
+// -- Ghosts ----------------------------------------------------------------------
+/** an actor followed through the film: its ghosts reach `before` and `after` seconds
+ *  about the frame shown, and its path marks its keys (the film's seconds) */
+export type Follow = Readonly<{ actor: string; before: number; after: number; keys: ReadonlyArray<number>; }>;
+/** the followed actor at another frame: its shot, and how far from the frame shown
+ *  (seconds; back before 0) */
+export type Ghost = Readonly<{ shot: Shot; offset: number; }>;
+/** the followed actor's path: its hips at every frame it is seen on the set shown, in
+ *  runs broken where it is not, and its hips at each of its keys */
+export type GhostPath = Readonly<{ runs: ReadonlyArray<ReadonlyArray<Point>>; keys: ReadonlyArray<Point>; }>;
+
+/** what a follow call gives, or none to follow no one */
+export const followOf = (cast: Cast, input: unknown): Follow | undefined => {
+  if((input === undefined) || (input === null)) return undefined;
+  const { actor, before = DEFAULT_GHOST_SECONDS, after = DEFAULT_GHOST_SECONDS, keys = [] } = (typeof input === 'object') ? input as Record<string, unknown> : {};
+  if((typeof actor !== 'string') || !cast.actors.has(actor)) throw new Error('follow.actor names an actor the stage casts');
+  for(const reach of [before, after]) if(!isFiniteNumber(reach) || (reach < 0) || (reach > MAX_GHOST_SECONDS)) throw new Error(`follow.before and follow.after are seconds, 0 to ${MAX_GHOST_SECONDS}`);
+  if(!Array.isArray(keys) || (keys.length > MAX_FOCUS_KEYS) || !keys.every(time => isFiniteNumber(time) && (time >= 0))) throw new Error('follow.keys are the times of the actor\'s keys, seconds from 0');
+  return { actor, before: before as number, after: after as number, keys: [...keys] as number[] };
+};
+
+/** the followed actor's ghosts about frame `index`: its shot at each drawing (a frame
+ *  whose shot differs from the frame's before, so a drawing held on twos is one) within
+ *  its seconds back and ahead, on the set the frame shows; never the drawing shown,
+ *  nowhere it is unseen */
+export const ghostsOf = (frames: ReadonlyArray<ReelFrame>, fps: number, index: number, follow: Follow): ReadonlyArray<Ghost> => {
+  const shown = frames[index];
+  if(!shown) return [];
+  const drawing = (shot: Shot | undefined) => shot && JSON.stringify(shot);
+  const own = drawing(followedShot(shown, shown.set, follow));
+  const [first, last] = [Math.max(0, index - Math.round(follow.before * fps)), Math.min(frames.length - 1, index + Math.round(follow.after * fps))];
+  const ghosts: Ghost[] = [];
+  let before: string | undefined;
+  for(let at=first; at<=last; at++) {
+    const shot = followedShot(frames[at], shown.set, follow), drawn = drawing(shot);
+    const fresh = (drawn !== undefined) && (drawn !== before);
+    before = drawn;
+    if(fresh && (at !== index) && (drawn !== own)) ghosts.push({ shot: shot!, offset: (at - index) / fps });
+  }
+  return ghosts;
+};
+
+/** the followed actor's path through the reel: its hips (a figure's FIGURE_HIP over its
+ *  soles, anything else's half its height) at every frame it is seen on the set frame
+ *  `index` shows, a point where they move, and its hips at each key's frame */
+export const pathOf = (cast: Cast, frames: ReadonlyArray<ReelFrame>, fps: number, index: number, follow: Follow): GhostPath => {
+  const shown = frames[index];
+  if(!shown) return { runs: [], keys: [] };
+  const actor = cast.actors.get(follow.actor)!/*by contract: followOf*/;
+  const hipOf = ({ position }: Shot): Point => ({ x: position.x, z: position.z, height: position.height + (actor.poses ? FIGURE_HIP : (actor.size.height / 2)) });
+  const runs: Point[][] = [];
+  let run: Point[] | undefined;
+  for(const frame of frames) {
+    const shot = followedShot(frame, shown.set, follow);
+    if(!shot) { run = undefined; continue; }
+    const hip = hipOf(shot), last = run?.[run.length - 1];
+    if(!run) runs.push(run = []);
+    if(!last || (last.x !== hip.x) || (last.z !== hip.z) || (last.height !== hip.height)) run.push(hip);
+  }
+  const keys = follow.keys.flatMap(time => { const shot = followedShot(frames[Math.round(time * fps)], shown.set, follow); return shot ? [hipOf(shot)] : []; });
+  return { runs, keys };
+};
+
+/** the followed actor's shot in a frame standing `set`; none where it is unseen there */
+const followedShot = (frame: ReelFrame | undefined, set: number, follow: Follow): Shot | undefined =>
+  (frame && (frame.set === set)) ? frame.shots.find(shot => shot.name === follow.actor) : undefined;
 
 /** where a shot puts an actor's frame: its anchor at the shot's position, turned
  *  about it */
