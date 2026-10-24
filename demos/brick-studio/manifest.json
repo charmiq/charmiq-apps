@@ -402,7 +402,7 @@
       },
       {
         "name": "addPicture",
-        "description": "Stand a picture from the Drive in a set: a billboard, a poster, a painted backdrop, or flat as a rug. It fills nothing (it never collides and the check passes it by)",
+        "description": "Stand a picture from the Drive in a set: a billboard, a poster, a painted backdrop, or flat as a rug. Its panel collides with a part it stands inside (refused, and the check names it): hang an upright one in a free stud row, such as the row before a wall's face, or stand it on a top; lay a flat one on a top, where parts may stand on it",
         "inputSchema": {
           "type": "object",
           "properties": {

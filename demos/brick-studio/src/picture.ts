@@ -77,3 +77,13 @@ export const pictureLine = (picture: Picture): string => [
 
 /** whether a size (studs) is one a picture takes */
 export const isSize = (value: number): boolean => Number.isFinite(value) && (value >= MIN_PICTURE) && (value <= MAX_PICTURE);
+
+// == Footprint ===================================================================
+/** a picture's footprint as turned, in studs east and north of its south-west corner:
+ *  upright, its width along its stud row and that one row across; flat, its width by
+ *  `height` */
+export const pictureFootprint = (picture: Picture, height: number): readonly [number, number] => {
+  const quarter = (picture.rotation === 90) || (picture.rotation === 270);
+  if(picture.flat) return quarter ? [height, picture.width] : [picture.width, height];
+  return quarter ? [1, picture.width] : [picture.width, 1];
+};

@@ -26,6 +26,8 @@ const MAX_LEVEL = 600/*plates*/;
 const BESIDE_GAP = 2/*studs*/;
 /** a component's name: its file is `<name>.ldr` */
 const COMPONENT_NAME = /^[a-z][a-z0-9-]{0,39}$/;
+/** a refused picture's heading, saying where one hangs clear */
+const PICTURE_INSIDE = 'The picture would stand inside these parts (an upright picture hangs in a free stud row, such as the row before a wall; a flat one lies on a top):';
 
 // == Types =======================================================================
 /** why the model shown changed: the first load, a change to the app-content, a change
@@ -173,8 +175,7 @@ export class Build {
       // already in the build was most likely added by an earlier call (one whose answer
       // was lost), and one listed twice is a slip: each is named as such, not as a
       // collision
-      const before = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
-      const introduced = checkModel(next).collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`) && (pair.a !== pair.b)/*a repeat, named below*/);
+      const introduced = introducedCollisions(model, next);
       const existing = new Set([...model.placements.filter((_, index) => model.placementPlaced?.[index] === undefined).map(describePlacement), ...(model.copies ?? []).map(describeCopy)]);
       const listed = new Set<string>();
       const placed: string[] = [], repeated: string[] = [];
@@ -376,13 +377,21 @@ export class Build {
 
   // ------------------------------------------------------------------------------
   /** stands a picture in a set (SEE: picture.ts), its line after the set's parts, and
-   *  shows the set; answers the picture as written */
+   *  shows the set; answers the picture as written. A picture that would stand inside a
+   *  part is refused, nothing written */
   public async addPicture(given: unknown, set?: unknown): Promise<Picture> {
     await this.whenReady();
     const picture = toPicture(given);
     if(typeof picture === 'string') throw new BuildError(picture);
     let target: string | undefined;
-    await this.bridge.edit(text => { const { layout, name } = editable(text, set); target = name; return [appendLines(layout, [pictureLine(picture)], false)]; });
+    await this.bridge.edit(text => {
+      const { model, layout, name } = editable(text, set);
+      target = name;
+      const change = appendLines(layout, [pictureLine(picture)], false);
+      const inside = introducedCollisions(model, readWhole(applyChanges(text, [change]), name)).map(pair => pair.b/*the part*/);
+      if(inside.length > 0) throw new BuildError(['Nothing was added.', ...refusal(PICTURE_INSIDE, inside)].join('\n'));
+      return [change];
+    });
     this.showNamed(target);
     return picture;
   }
@@ -929,6 +938,13 @@ const writtenAsGiven = (model: Model): boolean => ((model.components?.length ?? 
 const describeItem = (item: Placement | Copy): string => ('component' in item) ? describeCopy(item) : describePlacement(item);
 
 /** one section of a refusal: its heading and a bounded list, or nothing */
+/** the collisions a build `next` holds that `model`, the build it replaces, does not,
+ *  but a part repeating itself (named apart by its caller) */
+const introducedCollisions = (model: Model, next: Model): CheckResult['collisions'] => {
+  const before = new Set(checkModel(model).collisions.map(pair => `${pair.a}|${pair.b}`));
+  return checkModel(next).collisions.filter(pair => !before.has(`${pair.a}|${pair.b}`) && (pair.a !== pair.b)/*a repeat*/);
+};
+
 const refusal = (heading: string, lines: ReadonlyArray<string>): string[] =>
   (lines.length < 1) ? [] : [heading, ...lines.slice(0, MAX_LISTED), ...((lines.length > MAX_LISTED) ? [`and ${lines.length - MAX_LISTED} more`] : [])];
 

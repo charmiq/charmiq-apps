@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import { pictureLine, type Picture } from '../picture';
+import { pictureFootprint, pictureLine, type Picture } from '../picture';
 import type { Pixels } from './panorama';
 
 // the pictures a set stands, drawn: each a panel its size in studs, its image on its
@@ -122,9 +122,7 @@ export class PictureStand {
     back.rotation.y = Math.PI/*facing away*/;
     for(const mesh of [shown, back]) { mesh.castShadow = mesh.receiveShadow = true; }
     object.add(shown, ...(picture.flat ? [] : [back]));
-    // its footprint as turned: across and along (studs east and north)
-    const quarter = (picture.rotation === 90) || (picture.rotation === 270);
-    const [east, north] = picture.flat ? (quarter ? [height, width] : [width, height]) : (quarter ? [1, width] : [width, 1]);
+    const [east, north] = pictureFootprint(picture, height);
     const bottom = picture.level * PLATE;
     object.position.set(picture.x + (east / 2), picture.flat ? (bottom + FLAT_LIFT) : (bottom + (height / 2)), -(picture.z + (north / 2)));
     if(picture.flat) object.rotation.set(-Math.PI / 2, -(picture.rotation * Math.PI) / 180, 0, 'YXZ')/*laid flat, its top north, then turned as upright*/;

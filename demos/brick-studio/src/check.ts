@@ -1,5 +1,6 @@
-import { carriedCells, carriedPartCells, cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, mountsOf, studCells, type Copy, type FilledCell, type Mount, type Placement } from './grid';
+import { carriedCells, carriedPartCells, cellKey, filledCells, frameKey, getColorByCode, getPart, getShape, mountsOf, studCells, LDU_PER_PLATE, LDU_PER_STUD, type Copy, type FilledCell, type Mount, type Placement } from './grid';
 import { mountedComponent, READ_IN_PART, type Model } from './model';
+import { pictureFootprint, type Picture } from './picture';
 
 // checks a build on the grid. A part fills the cells and levels its shape measures
 // (SEE: parts.generated.ts `fill`). Two parts collide when they fill the same cell
@@ -11,7 +12,10 @@ import { mountedComponent, READ_IN_PART, type Model } from './model';
 // connections to the ground floats. A carrier's mount (a hinge's carry, a side
 // face's) fills the cells its turned cells overlap (SEE: grid.ts Mounts): it never
 // collides with its own carrier, it collides with the carrier's other mounts and with
-// everything else, and only its carrier holds it
+// everything else, and only its carrier holds it. A picture's panel (SEE: picture.ts)
+// collides with a part it stands inside: upright, a part filling a cell of its stud row
+// within its height; flat, a part filling a cell beneath it through its level. It is
+// never held or floating
 // ********************************************************************************
 // == Types =======================================================================
 export type CheckResult = Readonly<{
@@ -28,6 +32,8 @@ export type CheckResult = Readonly<{
 // == Constants ===================================================================
 /** the most parts a result or a refusal names in each list (the counts stay exact) */
 export const MAX_LISTED = 12;
+/** the plates a stud of height measures: a picture's height is in studs */
+const PLATES_PER_STUD = LDU_PER_STUD / LDU_PER_PLATE;
 
 // == Check =======================================================================
 /** each model's check, made once: a set read once is checked once (SEE: model.ts
@@ -73,6 +79,27 @@ const checkWhole = (model: Model): CheckResult => {
       for(const [other, part] of pairs) collisions.push({ a: inMount(other), b: inMount(part) });
     }
   });
+  // each picture against each body it stands inside (SEE: insidePicture)
+  if((model.pictures?.length ?? 0) > 0) {
+    const columns = new Map<string, Array<Readonly<{ body: number; cell: FilledCell; }>>>();
+    bodies.forEach((body, at) => {
+      for(const cell of body.cells) {
+        const key = cellKey(cell.x, cell.z, 0/*the column*/);
+        const column = columns.get(key);
+        if(column) column.push({ body: at, cell }); else columns.set(key, [{ body: at, cell }]);
+      }
+    });
+    for(const picture of model.pictures!) {
+      const inside = new Set<number>();
+      for(const [x, z] of pictureCells(picture)) {
+        for(const { body, cell } of columns.get(cellKey(x, z, 0/*the column*/)) ?? []) {
+          if(inside.has(body) || !insidePicture(picture, cell)) continue;
+          inside.add(body);
+          collisions.push({ a: describePicture(picture), b: bodyName(bodies[body]) });
+        }
+      }
+    }
+  } /* else -- no pictures */
 
   // .. Connections ...............................................................
   // the placement whose bottom covers each cell at each level
@@ -148,6 +175,26 @@ const overlapping = (bodies: ReadonlyArray<Body>): Array<readonly [number, numbe
     }
   });
   return [...pairs.values()];
+};
+
+/** the stud cells a picture's panel passes over or through. With no height its height
+ *  follows its image, which the check does not read: it takes what the panel covers
+ *  whatever the image, its first plate upright and its first stud row flat */
+const pictureCells = (picture: Picture): ReadonlyArray<readonly [number, number]> => {
+  const [east, north] = pictureFootprint(picture, picture.height ?? (picture.flat ? 1 : (1 / PLATES_PER_STUD)));
+  const cells: Array<readonly [number, number]> = [];
+  for(let x=0; x<Math.ceil(east); x++) for(let z=0; z<Math.ceil(north); z++) cells.push([picture.x + x, picture.z + z]);
+  return cells;
+};
+
+/** whether a picture's panel stands inside a part filling a cell it passes, from
+ *  `bottom` to `top`: upright, the part fills the cell within the panel's height; flat,
+ *  it fills the cell through the picture's level (a part standing on the picture stands
+ *  on the studs beneath it) */
+const insidePicture = (picture: Picture, { bottom, top }: FilledCell): boolean => {
+  if(picture.flat) return (bottom < picture.level) && (top > picture.level);
+  const panelTop = picture.level + ((picture.height ?? (1 / PLATES_PER_STUD)) * PLATES_PER_STUD);
+  return (bottom < panelTop) && (top > picture.level);
 };
 
 /** a mount in one line: a hinge's carry by its hinge, a face's by its face, e.g.
@@ -230,6 +277,11 @@ export const describePlaced = (model: Model, index: number): string => {
 /** a copy in one line, e.g. `tower at x 0 z 0 level 0 rotation 90` */
 export const describeCopy = (copy: Copy): string =>
   `${copy.component} at x ${copy.x} z ${copy.z} level ${copy.level}` + ((copy.rotation !== 0) ? ` rotation ${copy.rotation}` : '');
+
+/** a picture in one line, e.g. `picture night-watch at x -8 z 19 level 24`, or `picture
+ *  charmiq://file/rug at x 0 z 0 level 3 rotation 90 flat` */
+export const describePicture = (picture: Picture): string =>
+  `picture ${picture.image} at x ${picture.x} z ${picture.z} level ${picture.level}` + ((picture.rotation !== 0) ? ` rotation ${picture.rotation}` : '') + (picture.flat ? ' flat' : '');
 
 /** a placement in one line, e.g. `brick-2x4 red at x 3 z 4 level 6 rotation 90`, or
  *  `hinge-1x2 red at x 0 z 4 level 3 angle 60 carrying lid` */
