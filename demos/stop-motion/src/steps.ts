@@ -51,8 +51,12 @@ const BETWEEN_SAMPLES = 8;
 const HOP_SECONDS = 0.35;
 const TURN_SECONDS = 0.3;
 const STEP_SECONDS = 0.35;
-/** the quickest a crowd walker's step takes, catching up a walker keyed faster (seconds) */
+/** the quickest a step between walks takes, catching up a walker keyed faster, and the
+ *  slowest, a walker keyed at a crawl (seconds); how long keys hold before a figure is
+ *  no longer carried at their pace (seconds) */
 const QUICKEST_STEP = 0.12;
+const SLOWEST_STEP = 1;
+const PACE_HOLD = 0.5;
 /** how far past a stud's middle (studs) or a quarter's (degrees) where an actor is
  *  keyed must lie before it moves on: so a nudge on a boundary moves nothing */
 const PAST_STUD = 0.1;
@@ -64,6 +68,18 @@ const UPRIGHT = 30;
 /** off studs, the turn a path's leg must ask before a figure turns to it (degrees):
  *  less, its step takes it */
 const OFF_TURN = 5;
+/** off studs, the turn a standing figure's keys must ask before it turns on a foot
+ *  (degrees): an idle's sway (9 at most) stays a sway */
+const OFF_STAND_TURN = 20;
+/** off studs, the farthest a standing figure's keys may lie from where it stands for
+ *  its feet to take it there (studs): keyed farther at once (a cut, a new place), it
+ *  stands there afresh */
+const OFF_REACH = 4;
+/** how little keys move from one frame to the next to hold (studs, degrees), and how
+ *  long they hold to have settled (seconds): an idle's sway, still only at its turns,
+ *  never settles */
+const SETTLED = 1e-3;
+const SETTLE_SECONDS = 0.2;
 /** on studs, how far a point may lie from where a figure stands clicked in for that
  *  to be nearest it (studs): half a stud each way, and a hair */
 const NEAREST = 0.5 + 1e-9;
@@ -213,7 +229,7 @@ export const standingOn = (surfaceAt: SurfaceAt, stance: Pick<Stance, 'x' | 'z' 
 /** where an actor clicking onto studs faces at a yaw, and its right, on the ground (x
  *  east, z north): a catalog part faces south at yaw 0, its own front as Brick Studio
  *  places it, so it faces the heading 180 past its yaw */
-const FRONT = 180;
+export const FRONT = 180;
 const forwardOf = (yaw: number): readonly [number, number] => { const angle = (yaw + FRONT) * (Math.PI / 180); return [Math.sin(angle), Math.cos(angle)]; };
 const rightOf = (yaw: number): readonly [number, number] => { const angle = (yaw + FRONT) * (Math.PI / 180); return [Math.cos(angle), -Math.sin(angle)]; };
 
@@ -702,6 +718,12 @@ export class Clicked {
   private walked: Walk | undefined;
   /** the foot its last step in a crowd led with */
   private lead: Foot = 'right';
+  /** where its keys stood it the frame before, off studs, and since when they have not
+   *  moved: settled once they hold SETTLE_SECONDS */
+  private keyedOff: Stance | undefined;
+  private stillFrom: number | undefined;
+  /** where its keys last moved it, when, and the pace they carried it there at */
+  private moved: Readonly<{ x: number; z: number; time: number; pace: number; }> | undefined;
 
   public constructor(private readonly walks: ReadonlyArray<Walk>, private readonly climb: number | undefined, private readonly figure: boolean, private readonly crowding: ReadonlyArray<readonly [number, number]> = [], private readonly drawing?: Drawing) {}
 
@@ -752,17 +774,19 @@ export class Clicked {
   }
 
   private standing(channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
-    if((channels.visible ?? 1) < 0.5) { this.stance = this.moving = undefined; return { ...channels }/*unseen: clicked in afresh where it shows again*/; }
+    if((channels.visible ?? 1) < 0.5) { this.stance = this.moving = this.keyedOff = this.stillFrom = this.moved = undefined; return { ...channels }/*unseen: clicked in afresh where it shows again*/; }
+    const pace = this.paceAt(channels, time);
     if(this.moving) {
       const { start, end } = this.moving;
-      if(time < end) return applied(channels, posedAt(this.moving, this.drawnAt(this.moving, time, WALK), this.figure, NO_GAIT, !!this.drawing));
+      if(time < end) return applied(channels, posedAt(this.moving, this.drawnAt(this.moving, time, WALK), this.figure, (this.moving.kind === 'step') ? CROWD_GAIT : NO_GAIT, !!this.drawing));
       this.stance = this.moving.to;
       this.moving = undefined;
     }
     const keyed = this.keyedStance(channels, surfaceAt);
-    if(!keyed?.studded) { this.stance = undefined; return { ...channels }; }
     const crowding = this.figure && this.crowding.some(([from, to]) => (time >= from) && (time <= to));
     const standing = (at: Stance) => crowding ? { set: { ...stood(at).set, 'pose.leftLeg': 0, 'pose.rightLeg': 0 }, add: {} } : stood(at);
+    if(keyed && !keyed.studded && this.figure) return this.offStuds(channels, keyed, time, pace, standing, crowding);
+    if(!keyed?.studded) { this.stance = undefined; return { ...channels }; }
     const stance = this.stance;
     if(!stance) { this.stance = { ...keyed, ...clickedNear(keyed.x, keyed.z, keyed.yaw) }; return applied(channels, standing(this.stance)); }
     const turnBy = (Math.abs(wrapped(keyed.yaw - stance.yaw)) > (45 + PAST_QUARTER)) ? (quarterOf(stance.yaw + wrapped(keyed.yaw - stance.yaw)) - stance.yaw) : 0;
@@ -778,9 +802,60 @@ export class Clicked {
     const ahead = crowding && level && (turnBy === 0) && (along > (1 - TIE)) && (Math.abs(across) < TIE);
     const step = { ...stance, x: stance.x + Math.round(fx), z: stance.z + Math.round(fz) };
     this.moving = turnOnly ? { kind: 'turn', from: stance, to: turnedOn(stance, turnBy), start: time, end: time + TURN_SECONDS, foot: (turnBy < 0) ? 'left' : 'right' }
-      : ahead ? { kind: 'step', from: stance, to: step, start: time, end: time + Math.max(QUICKEST_STEP, STEP_SECONDS / Math.max(1, along - 0.5)), foot: this.lead = (this.lead === 'left') ? 'right' : 'left' }
+      : ahead ? { kind: 'step', from: stance, to: step, start: time, end: this.stepEnd(time, pace, along), foot: this.lead = (this.lead === 'left') ? 'right' : 'left' }
       : { kind: 'hop', from: stance, to, start: time, end: time + HOP_SECONDS, foot: 'left' };
     return applied(channels, standing(stance));
+  }
+
+  /** a figure standing off studs (a tiled floor), its feet making every move as a walk's
+   *  do there: turning on a foot to a heading its keys ask more than its turn of (a crowd
+   *  walker OFF_TURN, any other OFF_STAND_TURN, so an idle's sway stays a sway); else,
+   *  once its keys lie a stud or more off, a step of a stud toward them, quicker the
+   *  further it falls behind: a crowd walker's facing its way, any other's facing as it
+   *  stands, forward or back, and a hop where they lie to its side; once its keys
+   *  settle, the rest of the turn past OFF_TURN and the rest of the way past PAST_STUD;
+   *  standing where it stood between, never carried along. Keyed onto another level or
+   *  farther than OFF_REACH, it stands where it is keyed afresh */
+  private offStuds(channels: Readonly<Record<string, number>>, keyed: Stance, time: number, pace: number, standing: (at: Stance) => Posed, crowding: boolean): Record<string, number> {
+    const stance = this.stance, before = this.keyedOff;
+    this.keyedOff = keyed;
+    const still = !!before && (Math.abs(wrapped(keyed.yaw - before.yaw)) < SETTLED) && (Math.hypot(keyed.x - before.x, keyed.z - before.z) < SETTLED);
+    this.stillFrom = still ? (this.stillFrom ?? time) : undefined;
+    const settled = (this.stillFrom !== undefined) && ((time - this.stillFrom) >= SETTLE_SECONDS);
+    const [dx, dz] = stance ? [keyed.x - stance.x, keyed.z - stance.z] : [0, 0], apart = Math.hypot(dx, dz);
+    if(!stance || stance.studded || (Math.abs(keyed.level - stance.level) >= ON_SURFACE) || (apart > OFF_REACH)) { this.stance = keyed; return applied(channels, standing(keyed)); }
+    const turnBy = wrapped(keyed.yaw - stance.yaw);
+    if(Math.abs(turnBy) > ((crowding || settled) ? OFF_TURN : OFF_STAND_TURN)) this.moving = { kind: 'turn', from: stance, to: turnedOn(stance, turnBy), start: time, end: time + (TURN_SECONDS * Math.max(1, Math.abs(turnBy) / 90)), foot: (turnBy < 0) ? 'left' : 'right' };
+    else if((apart >= (1 - TIE)) || (settled && (apart > PAST_STUD))) {
+      const from = crowding ? { ...stance, yaw: keyed.yaw }/*a turn under OFF_TURN taken by the step*/ : stance;
+      const [fx, fz] = forwardOf(from.yaw), along = ((dx * fx) + (dz * fz)) / apart, length = Math.min(1, apart);
+      const foot = this.lead = (this.lead === 'left') ? 'right' : 'left';
+      this.moving = (crowding || (Math.abs(along) >= Math.SQRT1_2))
+        ? { kind: 'step', from, to: { ...from, x: stance.x + ((dx / apart) * length), z: stance.z + ((dz / apart) * length) }, start: time, end: this.stepEnd(time, pace, apart), foot }
+        : { kind: 'hop', from: stance, to: { ...keyed, yaw: stance.yaw }, start: time, end: time + HOP_SECONDS, foot: 'left' };
+    }
+    return applied(channels, standing(stance));
+  }
+
+  /** how fast its keys carry it (studs a second): over the span since they last moved
+   *  it, so a film on twos, its keys held a frame, reads its true pace; nothing once
+   *  they have held PACE_HOLD */
+  private paceAt(channels: Readonly<Record<string, number>>, time: number): number {
+    const [x, z] = [channels.x ?? 0, channels.z ?? 0], moved = this.moved;
+    if(!moved) { this.moved = { x, z, time, pace: 0 }; return 0; }
+    const apart = Math.hypot(x - moved.x, z - moved.z);
+    if(apart < SETTLED) return ((time - moved.time) > PACE_HOLD) ? 0 : moved.pace;
+    this.moved = { x, z, time, pace: apart / Math.max(time - moved.time, TIE) };
+    return this.moved.pace;
+  }
+
+  /** when a step taken at `time` ends: as long as its pace takes over a stud (from
+   *  QUICKEST_STEP to SLOWEST_STEP), so a walker steps through its walk and never stands
+   *  between steps; STEP_SECONDS once its keys have stopped; quicker the further
+   *  `behind` (studs) its keys have left it */
+  private stepEnd(time: number, pace: number, behind: number): number {
+    const own = (pace > 0) ? Math.min(SLOWEST_STEP, 1 / pace) : STEP_SECONDS;
+    return time + Math.max(QUICKEST_STEP, own / Math.max(1, behind - 0.5));
   }
 
   /** where the actor's keys stand it, upright on a surface, studded or not; none in
@@ -796,6 +871,8 @@ export class Clicked {
 
 /** a gait adding nothing (a hop or a turn between walks) */
 const NO_GAIT = { arms: 0, lean: 0 };
+/** a crowd walker's step between walks: its arms swinging as the built-in walk's */
+const CROWD_GAIT = { arms: WALK.arms, lean: 0 };
 
 /** an actor's values with a pose's: what it sets in place, what it adds over them */
 const applied = (channels: Readonly<Record<string, number>>, posed: Posed): Record<string, number> => {

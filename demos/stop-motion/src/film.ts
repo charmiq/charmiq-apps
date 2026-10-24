@@ -1,5 +1,5 @@
 import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, Span, Target, Title, TransitionShape } from './recorder';
-import { feetInto, gaitMoveOf, jitter, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, HANG } from './steps';
+import { feetInto, gaitMoveOf, jitter, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -605,7 +605,7 @@ const looking = (actor: RecordedActor, time: number, step: number, placed: Map<s
     return at && (Math.hypot(at.x - standing.position.x, at.z - standing.position.z) <= look.within);
   });
   const at = active && target(active)!;
-  const facing = headings.get(actor.name)! + (standing.pose?.twist ?? 0)/*the head turns over its twisted torso*/;
+  const facing = headings.get(actor.name)! + FRONT + (standing.pose?.twist ?? 0)/*its front, a catalog part's 180 past its yaw; the head turns over its twisted torso*/;
   const wanted = (active && at) ? Math.max(-active.max, Math.min(active.max, wrapped((Math.atan2(at.x - standing.position.x, at.z - standing.position.z) * (180 / Math.PI)) - facing))) : 0;
   const before = looked.get(actor.name) ?? { angle: 0, engaged: 0 };
   const angle = before.angle + Math.max(-LOOK_RATE * step, Math.min(LOOK_RATE * step, wanted - before.angle));

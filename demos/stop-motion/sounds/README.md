@@ -14,10 +14,9 @@ band a car radio plays.
 
 | Sound | From | By |
 |---|---|---|
+| `birds` | the first 10 s of `birds-isaiah658.ogg`, [Ambient Bird Sounds](https://opengameart.org/content/ambient-bird-sounds) | isaiah658 |
 | `bump` | `impactSoft_medium_000.ogg`, Impact Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
-| `door-open` | `doorOpen_1.ogg`, RPG Audio ([kenney.nl](https://www.kenney.nl)) | Kenney |
 | `engine` | `engineCircular_000.ogg`, Sci-fi Sounds ([kenney.nl](https://www.kenney.nl)) | Kenney |
-| `fanfare` | `Sax jingles/jingles_SAX00.ogg`, Music Jingles ([kenney.nl](https://www.kenney.nl)) | Kenney |
 | `meow` | `Meow.ogg`, [Meow](https://opengameart.org/content/meow) | IgnasD |
 | `purr` | `cat_purractive_loop.wav`, [Cat Purr & Meow](https://opengameart.org/content/cat-purr-meow) | Kerzoven |
 | `radio` | [Short Elevator Music Loop](https://freesound.org/s/659889/), the whole loop | BlondPanda |

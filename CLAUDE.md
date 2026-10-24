@@ -15,7 +15,7 @@ Apps embedded by the CharmIQ platform via an app iframe. No `package.json` or `t
 
 ## Example films
 
-- **Every new Brick Studio or Stop Motion feature lands in the example films in the same change.** The films a person meets first are Stop Motion's starter scene (`demos/stop-motion/src/films.ts` `STARTER_SCENE`), *The Homecoming* (`demos/stop-motion/Studio.md`) and *The Shortcut* (`demos/stop-motion/README.md`). Each one uses every feature where the film has a place for it (a sky over the street, a gait for the walkers, a sound on the cut), so the defaults show what the apps can do. A feature that needs the viewer's own files (a picture from their Drive) is shown in the scene's comments, saying how to add one. A feature is not done until the films show it.
+- **Every new Brick Studio or Stop Motion feature lands in the example films in the same change.** The films a person meets first are Stop Motion's starter scene (`demos/stop-motion/src/films.ts` `STARTER_SCENE`), *The Salon* (`demos/stop-motion/Studio.md`) and *The Shortcut* (`demos/stop-motion/README.md`). Each one uses every feature where the film has a place for it (a sky over the street, a gait for the walkers, a sound on the cut), so the defaults show what the apps can do. A feature that needs the viewer's own files (a picture from their Drive) is shown in the scene's comments, saying how to add one. A feature is not done until the films show it.
 
 ## Tests
 

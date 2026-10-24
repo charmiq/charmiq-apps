@@ -958,6 +958,14 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
   };
 
   const SIDE_BY_SIDE = 2.8, NOSE_TO_TAIL = 2;
+  /** the longest a crowd's walker waits to set off (seconds); how far it turns
+   *  toward what it stops for (degrees, the rest its head's) and how fast (degrees a
+   *  second) */
+  const SET_OFF = 1.2;
+  /** how long a crowd walks before its first frame (seconds): every walker set off and
+   *  up to its pace there */
+  const PREROLL = 4;
+  const FACE_MOST = 110, FACE_RATE = 220;
   type Walker = { entry: Entry; handle: unknown; personality: Personality; direction: 1 | -1; partner?: number; gait: Gait; seed: string; };
   type Crowd = Readonly<{ what: string; line?: number; path: Path; width: number; walkers: ReadonlyArray<Walker>; from: number; to?: number; stops: ReadonlyArray<Readonly<{ x: number; z: number; }>>; reacts: ReadonlyArray<Readonly<{ at: number; where: Readonly<{ x: number; z: number; }>; within: number; look: Target; lasting: number; }>>; go?: number; seed: unknown; }>;
   const crowds: Crowd[] = [];
@@ -1027,7 +1035,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
     const { path, walkers, width } = crowd;
     const fps = settings.fps, dt = 1 / fps;
     const [first, last] = [frameOf(crowd.from), frameOf(crowd.to ?? settings.length!)];
-    const next = random(`${String(crowd.seed)} walk`);
+    const next = random(`${String(crowd.seed)} walk`), setOff = random(`${String(crowd.seed)} set off`)/*its own, so the rest of the walk draws as it did*/;
     const edge = Math.max(0, (width / 2) - 1);
     const rightOf = (direction: number) => direction * Math.min(edge, width / 4)/*its side of the path, keeping right*/;
     const states = walkers.map((walker, index) => {
@@ -1036,7 +1044,8 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
       const pairSide = (partner === undefined) ? 0 : ((partner > index) ? 1 : -1);
       return {
         along: (walker.direction > 0) ? path.total * ahead : path.total * (1 - ahead), side: rightOf(walker.direction) + (pairSide * 1.2), lane: rightOf(walker.direction) + (pairSide * 1.2),
-        pace: 0, covered: 0, swing: 0, heldUntil: walker.personality.waits ? (crowd.go ?? (crowd.from + 3 + (5 * next()))) : -1,
+        pace: 0, covered: 0, swing: 0, heldUntil: walker.personality.waits ? (crowd.go ?? (crowd.from + 3 + (5 * next()))) : (crowd.from - PREROLL + (SET_OFF * setOff()))/*one after another, never in step, all under way by the crowd's first frame*/,
+        facing: undefined as Readonly<{ x: number; z: number; until: number; }> | undefined, turned: 0,
         nextPause: walker.personality.pause ? crowd.from + (walker.personality.pause * next()) : Infinity, lookingUp: false,
         visited: new Set<number>(), reacted: new Set<number>(), passing: false,
       };
@@ -1045,14 +1054,15 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
     const frames = walkers.map(() => [] as Array<Record<string, number>>);
     const gaits = walkers.map(() => [] as Array<Record<string, number>>), poses = walkers.map(() => [] as Array<Record<string, number>>);
     const paused = (t: number, index: number) => states[index].heldUntil > t;
-    for(let frame=first; frame<=last; frame++) {
-      const t = frame / fps;
+    // walked from PREROLL before its first frame, so each walker is under way there
+    for(let frame=(first - Math.round(PREROLL * fps)); frame<=last; frame++) {
+      const t = frame / fps, seen = (frame >= first);
       walkers.forEach((walker, index) => {
         const state = states[index], me = walker.personality;
         const place = alongPath(path, state.along);
         // what holds it: an event near it, a stop it reaches, a pause, its wait
         crowd.reacts.forEach((event, number) => {
-          if(state.reacted.has(number) || (t < event.at)) return;
+          if(!seen || state.reacted.has(number) || (t < event.at)) return;
           state.reacted.add(number);
           const distance = Math.hypot(place.x - event.where.x, place.z - event.where.z);
           if(distance > event.within) return;
@@ -1068,7 +1078,8 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
           if(next() > 0.7) return/*it walks on past this one*/;
           const lasting = 2 + (2 * next());
           state.heldUntil = t + lasting;
-          walker.entry.looks.push({ from: t, to: t + lasting, target: { point: { x: stop.x, z: stop.z, height: 8 } }, within: 400, max: 80, ...((crowd.line !== undefined) ? { line: crowd.line } : {}) });
+          state.facing = { x: stop.x, z: stop.z, until: t + lasting };
+          if((t + lasting) > crowd.from) walker.entry.looks.push({ from: Math.max(t, crowd.from), to: t + lasting, target: { point: { x: stop.x, z: stop.z, height: 8 } }, within: 400, max: 80, ...((crowd.line !== undefined) ? { line: crowd.line } : {}) });
         });
         if(t >= state.nextPause) { state.heldUntil = t + 1.5 + next(); state.nextPause = t + (me.pause! * (0.6 + (0.8 * next()))); state.lookingUp = true; }
         if(!paused(t, index)) state.lookingUp = false;
@@ -1110,7 +1121,15 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
         if((state.along > (path.total + 0.5)) || (state.along < -0.5)) { state.along = (walker.direction > 0) ? -0.5 : path.total + 0.5; state.visited.clear(); visible = 0/*round to the start again, unseen*/; }
         const place = alongPath(path, state.along);
         const heading = place.heading * (Math.PI / 180);
-        frames[index].push({ x: place.x + (Math.cos(heading) * state.side), z: place.z - (Math.sin(heading) * state.side), yaw: place.heading + ((walker.direction > 0) ? 0 : 180) + FIGURE_FACING/*a walker is a figure*/, visible });
+        const [x, z] = [place.x + (Math.cos(heading) * state.side), place.z - (Math.sin(heading) * state.side)];
+        const way = place.heading + ((walker.direction > 0) ? 0 : 180) + FIGURE_FACING/*a walker is a figure*/;
+        // turned toward what it stops for while it stands there, and back to its way
+        // after: a figure faces south at yaw 0, so it faces (dx, dz) at atan2(dx, dz) - 180
+        const facing = (state.facing && (t < state.facing.until)) ? state.facing : undefined;
+        const wanted = facing ? Math.max(-FACE_MOST, Math.min(FACE_MOST, nearestTurn((Math.atan2(facing.x - x, facing.z - z) * (180 / Math.PI)) - 180, way) - way)) : 0;
+        state.turned += Math.max(-FACE_RATE * dt, Math.min(FACE_RATE * dt, wanted - state.turned));
+        if(!seen) return/*walked before the crowd's first frame*/;
+        frames[index].push({ x, z, yaw: way + state.turned, visible });
         // its gait (the glide a walker clicking onto studs steps in place of), and what it
         // does besides: looking up, a radio held up
         const { 'pose.lean': lean, ...gait } = gaitAt(walker.gait, state.covered, Math.max(0, Math.min(1, state.swing)));
