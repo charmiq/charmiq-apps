@@ -35,7 +35,7 @@ Each part fills the cells and levels measured from its shape: a corner brick lea
 
 ## The Parts
 
-- **Building:** bricks, plates and tiles in the common sizes; slopes at 45, 33 and 65 degrees, inverted slopes, ridges and roof corners; corner bricks and plates, wedge plates, round bricks, plates, a tile and a cone; arches; curved slopes and inverted curves; cones, dishes, a dome and a half cylinder; windows and a door frame, with glass panes that sit in the windows.
+- **Building:** bricks, plates and tiles in the common sizes, and bricks embossed with masonry; slopes at 45, 33 and 65 degrees, inverted slopes, ridges and roof corners; corner bricks and plates, wedge plates, round bricks, plates, a tile and a cone; arches, among them a tall one for an arched window; curved slopes and inverted curves; cones, dishes, a dome and a half cylinder; windows and a door frame, with glass panes that sit in the windows.
 - **Landscaping and detail:** trees, a bush, leafy plants, bamboo, grass, flower and leaf plates, a rock, crystals, fences, tall bricks, a round pillar, log bricks, panels, headlight and grille bricks, round, rounded, corner and swirled tiles, a curved roof, and a brick and a tile printed TAXI.
 - **Creatures,** from cats and dogs to a cow, an octopus and two snakes.
 - **Vehicles:** wheel sets for a car four studs wide (a toy kart) or six (a car beside figures), and six wide on big wheels (a vintage car, as The Shortcut's cabs are); mudguards whose wells the tires run inside, rounded fenders among them; windscreens with room behind their glass for a steering wheel and a driver's hands; and a steering wheel. A rounded fender hangs below where it rests: its row names the level its inner ends sit on the floor plates at, and it is held there.
@@ -51,14 +51,14 @@ Each part fills the cells and levels measured from its shape: a corner brick lea
 
 **Side faces.** A brick with studs on a side carries one component on each studded face (`sides`): headlights and a grille on a car, a sign on a wall, lamps on a post. Build the detail flat as a component, then mount it. Faces are named as the brick stands at rotation 0 (`north`, `east`, `south`, `west`) and turn with it. Each face has its own map, seen from outside: x runs right and z up, and x 0, z 0 is the cell of its first stud (the leftmost in its row nearest the top). The component stands on that map as a copy stands on the grid, covering at least one stud, its plate against the face and its top facing out; seen from outside, it looks as it does from above, its north up. A mount collides where it reaches, with the brick's other mounts too but never with the brick, is held by its brick alone, and is removed with it. A component's own bricks carry on their faces too, one deep, as its hinges do: a store's sign band carries its signs, and a sign carries nothing. In LDraw each mount is the component's line right after the brick's lines.
 
-Twenty-one solid colors, three metal ones (`chrome-silver`, a bright satin mirror for a grille or a bumper; `pearl-gold` and `flat-silver`, a soft sheen for a radiator or a rim) and eight see-through ones (`trans-`, `trans-brown` a tinted windscreen's), which refract light at the Plastic look and up.
+Twenty-two solid colors, three metal ones (`chrome-silver`, a bright satin mirror for a grille or a bumper; `pearl-gold` and `flat-silver`, a soft sheen for a radiator or a rim) and eight see-through ones (`trans-`, `trans-brown` a tinted windscreen's), which refract light at the Plastic look and up.
 
 The building parts come with the Studio. Every other family (vehicles, figures, nature, details, and each creature) is read the first time a build shows one of its parts, and a part's shape is built the first time it is shown, so a big catalog never slows the Studio down. While a family loads the status says so (*loading vehicles…*). A family that cannot be read is named in the status with the parts it leaves unshown, and a Retry; the build itself never changes.
 
 
 ## The Ground
 
-The swatch beside the save and open buttons colors the baseplate: grass, a road, sand. The color is part of the build, a `0 !BRICKSTUDIO GROUND green` line at the top of its LDraw that other LDraw tools pass by, so it is saved with designs and undone like any edit, and it stays that color in a dark theme. Theme returns the baseplate to the theme's color. Parts still stand on it at level 0. A ground change the build cannot take (one it shows but does not edit) says *ground not changed* in the status, the reason on hover.
+The swatch beside the save and open buttons colors the baseplate: grass, a road, sand. The color is part of the build, a `0 !BRICKSTUDIO GROUND green` line at the top of its LDraw that other LDraw tools pass by, so it is saved with designs and undone like any edit, and it stays that color in a dark theme. Theme returns the baseplate to the theme's color. **Smooth** draws it without studs, a road or a tabletop (`0 !BRICKSTUDIO GROUND light-gray SMOOTH`), and stays as another color is chosen; a sidewalk of plates beside it keeps its own studs. Parts still stand on it at level 0. A ground change the build cannot take (one it shows but does not edit) says *ground not changed* in the status, the reason on hover.
 
 ## The Sky
 
@@ -184,7 +184,7 @@ A Charm drives the Studio through these:
 | `renameSet` / `removeSet` | renames a set, or removes it and everything in it (never the last; removing the first makes the next the first) |
 | `clear` | removes every part, copy, further set and component, and any file the build carries, keeping the first set's name and ground; with `set`, empties that set alone; with `expect`, only while the build is still that text |
 | `check` | lists collisions and floating parts, for a build changed some other way |
-| `setGround` | colors the baseplate, as the swatch does |
+| `setGround` | colors the baseplate, studded or `smooth`, as the swatch does |
 | `addPicture` | stands a picture from the Drive in a set (SEE: *Pictures*), answering its place among the set's pictures |
 | `listPictures` | a set's pictures, in order, each as `addPicture` takes it |
 | `removePicture` | removes a set's picture by its place in `listPictures` |

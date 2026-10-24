@@ -127,6 +127,8 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'brick-1x12', ldraw: '6112', kind: 'brick' },
   { key: 'brick-1x16', ldraw: '2465', kind: 'brick' },
   { key: 'brick-2x10', ldraw: '3006', kind: 'brick' },
+  { key: 'masonry-brick-1x2', ldraw: '98283', kind: 'brick' },
+  { key: 'masonry-brick-1x4', ldraw: '15533', kind: 'brick' },
 
   { key: 'plate-1x1', ldraw: '3024',  kind: 'plate' },
   { key: 'plate-1x2', ldraw: '3023b', kind: 'plate' },
@@ -183,6 +185,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
 
   { key: 'arch-1x4', ldraw: '3659', kind: 'arch' },
   { key: 'arch-1x6', ldraw: '3455', kind: 'arch' },
+  { key: 'arch-1x6x2', ldraw: '3307', kind: 'arch' },
 
   { key: 'corner-brick-2x2', ldraw: '2357', kind: 'corner' },
   { key: 'corner-plate-2x2', ldraw: '2420', kind: 'corner' },
@@ -489,6 +492,7 @@ export const COLORS: ReadonlyArray<CatalogColor> = [
   { key: 'pink',         code: 5 },
   { key: 'tan',          code: 19 },
   { key: 'brown',        code: 70 },
+  { key: 'very-light-gray', code: 151 },
   { key: 'light-gray',   code: 71 },
   { key: 'dark-gray',    code: 72 },
   { key: 'dark-red',     code: 320 },

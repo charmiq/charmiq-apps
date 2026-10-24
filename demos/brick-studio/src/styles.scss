@@ -148,6 +148,20 @@
   background: var(--baseplate);
 }
 
+// the Smooth checkbox under the colors: checked, the ground has no studs
+.ground-smooth {
+  @extend %mono-caps;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: var(--ink);
+  cursor: pointer;
+
+  &:has(input:disabled) { opacity: 0.4; cursor: default; }
+}
+
 // == Sky =========================================================================
 // the swatch shows the set's sky (its gradient, a picture's mark over it), else a
 // cloud on the theme's backdrop; its panel picks the kind and its values

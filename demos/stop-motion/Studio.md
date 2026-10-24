@@ -79,7 +79,7 @@ theme: charmiq:none
 1 0 40 -56 100 1 0 0 0 1 0 0 0 1 3022.dat
 0 FILE garage.set.ldr
 0 !BRICKSTUDIO SET Garage
-0 !BRICKSTUDIO GROUND tan
+0 !BRICKSTUDIO GROUND tan SMOOTH
 1 15 -110 -24 -110 1 0 0 0 1 0 0 0 1 3005.dat
 1 15 -110 -24 -90 1 0 0 0 1 0 0 0 1 3005.dat
 1 15 -110 -24 -70 1 0 0 0 1 0 0 0 1 3005.dat

@@ -53,7 +53,7 @@ export type Defined = Readonly<{ name: string; size: string; parts: number; copi
 export type DefinedFromDesign = Defined & Readonly<{ leftOut: number; otherSets?: number; }>;
 /** a set as listSets tells it: its name, its parts (its copies' included), copies and
  *  steps, and its ground when it names one */
-export type SetSummary = Readonly<{ name: string; parts: number; copies: number; steps: number; ground?: string; sky?: Sky; }>;
+export type SetSummary = Readonly<{ name: string; parts: number; copies: number; steps: number; ground?: string; smoothGround?: true; sky?: Sky; }>;
 
 // == Class =======================================================================
 export class Build {
@@ -345,14 +345,17 @@ export class Build {
     return removed;
   }
 
-  /** colors a set's baseplate (a catalog color that is not see-through), or returns
-   *  it to the theme's (`undefined`), and shows the set */
-  public async setGround(color: unknown, set?: unknown): Promise<string | undefined> {
+  /** colors a set's baseplate (a catalog color that is not see-through), studded or
+   *  `smooth` (a road, a tabletop: parts still stand on it at level 0), or returns it to
+   *  the theme's (`undefined`), and shows the set */
+  public async setGround(color: unknown, set?: unknown, smooth: unknown = false): Promise<string | undefined> {
     await this.whenReady();
     if((color !== undefined) && ((typeof color !== 'string') || !getColor(color))) throw new BuildError(`unknown color '${String(color)}' (listParts names the colors)`);
     if((color !== undefined) && getColor(color)!.transparent) throw new BuildError('The ground cannot be see-through.');
+    if(typeof smooth !== 'boolean') throw new BuildError('A ground\'s smooth is true or false.');
+    if(smooth && (color === undefined)) throw new BuildError('A smooth ground names its color: the theme\'s baseplate is studded.');
     let target: string | undefined;
-    await this.bridge.edit(text => { const { layout, name } = editable(text, set); target = name; return groundEdit(layout, color); });
+    await this.bridge.edit(text => { const { layout, name } = editable(text, set); target = name; return groundEdit(layout, color, smooth); });
     this.showNamed(target);
     return color;
   }
@@ -566,7 +569,7 @@ const setNames = (model: Model): ReadonlyArray<string> => model.sets?.map(each =
 /** a set as listSets tells it: its name, its parts, copies and steps, its ground and its sky */
 const setSummary = (name: string, model: Model): SetSummary => ({
   name, parts: partCount(model), copies: model.placed?.length ?? 0/*every line placing a component*/, steps: stepCount(model),
-  ...((model.ground !== undefined) ? { ground: model.ground } : {}), ...((model.sky !== undefined) ? { sky: model.sky } : {}),
+  ...((model.ground !== undefined) ? { ground: model.ground } : {}), ...(model.smoothGround ? { smoothGround: true as const } : {}), ...((model.sky !== undefined) ? { sky: model.sky } : {}),
 });
 
 /** the file of the set a model is, when the build holds more than one (the main set's

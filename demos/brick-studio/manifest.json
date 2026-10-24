@@ -293,7 +293,7 @@
         "outputSchema": {
           "type": "object",
           "properties": {
-            "sets":  { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "parts": { "type": "integer" }, "copies": { "type": "integer" }, "steps": { "type": "integer" }, "ground": { "type": "string" }, "sky": { "type": "object", "description": "Its sky, when it has one (setSky)" } }, "required": ["name", "parts", "copies", "steps"] } },
+            "sets":  { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "parts": { "type": "integer" }, "copies": { "type": "integer" }, "steps": { "type": "integer" }, "ground": { "type": "string" }, "smoothGround": { "type": "boolean", "description": "true when its ground is smooth (setGround)" }, "sky": { "type": "object", "description": "Its sky, when it has one (setSky)" } }, "required": ["name", "parts", "copies", "steps"] } },
             "shown": { "type": "string", "description": "The set the studio shows" }
           },
           "required": ["sets", "shown"]
@@ -312,7 +312,7 @@
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "name": { "type": "string" }, "parts": { "type": "integer" }, "copies": { "type": "integer" }, "steps": { "type": "integer" }, "ground": { "type": "string" } },
+          "properties": { "name": { "type": "string" }, "parts": { "type": "integer" }, "copies": { "type": "integer" }, "steps": { "type": "integer" }, "ground": { "type": "string" }, "smoothGround": { "type": "boolean" } },
           "required": ["name", "parts", "copies", "steps"]
         }
       },
@@ -385,17 +385,18 @@
       },
       {
         "name": "setGround",
-        "description": "Color a set's baseplate (grass, a road, sand) instead of covering it with plates. Any catalog color that is not see-through; omit the color for the theme's",
+        "description": "Color a set's baseplate (grass, a road, sand) instead of covering it with plates. Any catalog color that is not see-through; omit the color for the theme's. smooth: true draws it without studs (a road, a tabletop); parts still stand on it at level 0",
         "inputSchema": {
           "type": "object",
           "properties": {
             "color": { "type": "string", "description": "Catalog color, e.g. green" },
+            "smooth": { "type": "boolean", "description": "true for a ground without studs (a road, a tabletop); it names its color" },
             "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" }
           }
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "ground": { "type": "string", "description": "The color, or theme" }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
+          "properties": { "ground": { "type": "string", "description": "The color, or theme" }, "smooth": { "type": "boolean", "description": "true when the ground is smooth" }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
           "required": ["ground"]
         }
       },

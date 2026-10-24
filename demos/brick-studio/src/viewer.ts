@@ -191,6 +191,8 @@ export class Viewer {
   /** the baseplate's color: the build's ground when it names one, else the theme's */
   private themeBaseplate = '';
   private ground: string | undefined/*hex*/;
+  /** whether the baseplate is drawn without studs (the build's ground is smooth) */
+  private smoothGround = false;
 
   /** each part's geometry and its prints', built the first time a build shows the part */
   private readonly geometries = new Map<string/*ldraw or print key*/, THREE.BufferGeometry>();
@@ -564,6 +566,7 @@ export class Viewer {
     this.autoFocus.forget()/*what lies at the middle may change*/;
     const ground = (model.ground === undefined) ? undefined : getColorValue(getColor(model.ground)!.code/*by contract*/);
     this.setGround(ground);
+    this.smoothGround = !!model.smoothGround/*the baseplate drawn next follows it*/;
     this.showSky(this.staging ? (this.stageSky ?? model.sky) : model.sky);
     this.pictures.show(model.pictures ?? []);
     const kept = this.staging ? this.setMeshes.get(model) : undefined;
@@ -1096,7 +1099,7 @@ export class Viewer {
    *  tracedStudCells); and what to free once the tracer holds its copy */
   private tracedBaseplate(): Readonly<{ plate: THREE.Object3D | undefined; free: () => void; }> {
     const plate = this.baseplate;
-    if(!plate || !this.studGeometry) return { plate, free: () => undefined };
+    if(!plate || !this.studGeometry || (plate.userData as { smooth: boolean; }).smooth) return { plate, free: () => undefined }/*none, or a smooth slab*/;
     const area = plate.userData as Readonly<{ minX: number; minZ: number; width: number; depth: number; }>;
     const cells = tracedStudCells(area, this.partBoxes().map(box => ({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z })));
     if(!cells) return { plate, free: () => undefined }/*every stud*/;
@@ -1154,8 +1157,8 @@ export class Viewer {
     if(partial !== this.pastBaseplate) { this.pastBaseplate = partial; this.onPartsChanged?.(); }
 
     if(this.baseplate) {
-      const current = this.baseplate.userData as { minX: number; minZ: number; width: number; depth: number; };
-      if((current.minX === minX) && (current.minZ === minZ) && (current.width === width) && (current.depth === depth)) return/*unchanged*/;
+      const current = this.baseplate.userData as { minX: number; minZ: number; width: number; depth: number; smooth: boolean; };
+      if((current.minX === minX) && (current.minZ === minZ) && (current.width === width) && (current.depth === depth) && (current.smooth === this.smoothGround)) return/*unchanged*/;
       this.scene.remove(this.baseplate);
       // the slab's own geometry, and the studs' instances (their stud geometry is shared)
       this.baseplate.traverse((object: THREE.Object3D) => {
@@ -1165,16 +1168,19 @@ export class Viewer {
     } /* else -- first baseplate */
 
     const plate = new THREE.Group();
-    plate.userData = { minX, minZ, width, depth };
+    plate.userData = { minX, minZ, width, depth, smooth: this.smoothGround };
     const slab = new THREE.Mesh(new THREE.BoxGeometry(width, BASEPLATE_THICKNESS, depth), this.baseplateMaterial);
     slab.position.set(minX + (width / 2), -BASEPLATE_THICKNESS / 2, minZ + (depth / 2));
     slab.receiveShadow = true;
-    const studs = new THREE.InstancedMesh(this.studGeometry, this.baseplateMaterial, width * depth);
-    const matrix = new THREE.Matrix4();
-    let index = 0;
-    for(let z=0; z<depth; z++) for(let x=0; x<width; x++) studs.setMatrixAt(index++, matrix.makeTranslation(minX + x + 0.5, 0, minZ + z + 0.5));
-    studs.receiveShadow = true;
-    plate.add(slab, studs);
+    plate.add(slab);
+    if(!this.smoothGround) {
+      const studs = new THREE.InstancedMesh(this.studGeometry, this.baseplateMaterial, width * depth);
+      const matrix = new THREE.Matrix4();
+      let index = 0;
+      for(let z=0; z<depth; z++) for(let x=0; x<width; x++) studs.setMatrixAt(index++, matrix.makeTranslation(minX + x + 0.5, 0, minZ + z + 0.5));
+      studs.receiveShadow = true;
+      plate.add(studs);
+    } /* else -- a smooth ground: its slab alone */
     this.baseplate = plate;
     this.scene.add(plate);
 

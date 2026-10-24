@@ -4,7 +4,9 @@ import { getColor, getColorValue } from './grid';
 import type { Model } from './model';
 
 // the ground swatch: a tag in the build's ground color that opens a menu of the
-// catalog's colors and the theme's. Choosing one edits the build (its ground line);
+// catalog's colors and the theme's, and Smooth, for a ground without studs (a road): a
+// color chosen keeps the ground smooth or studded, the theme's is studded. Choosing
+// edits the build (its ground line);
 // the swatch follows the build, never the click, so a change from anywhere shows. A
 // change the build refuses is reported (`onRefused`), its reason with it, for the
 // latest choice alone: an older choice refused after a newer one landed says nothing
@@ -19,6 +21,7 @@ export type GroundControlElements = Readonly<{
 // == Class =======================================================================
 export class GroundControl {
   private ground: string | undefined/*catalog color key*/;
+  private smooth = false;
   /** counts the choices made, so only the latest one's refusal is reported */
   private choices = 0;
 
@@ -27,6 +30,7 @@ export class GroundControl {
     menu.append(
       ...COLORS.filter(color => !color.transparent).map(color => this.choice(color.key, color.key.replace(/-/g, ' '), getColorValue(color.code))),
       this.choice(undefined, 'Theme', undefined),
+      this.smoothToggle(),
     );
     button.addEventListener('click', () => this.toggle());
     document.addEventListener('pointerdown', event => { if(!root.contains(event.target as Node)) this.close(); });
@@ -37,6 +41,7 @@ export class GroundControl {
   /** shows the ground of a build whose text is new */
   public show(model: Model): void {
     this.ground = model.ground;
+    this.smooth = !!model.smoothGround;
     this.render();
   }
 
@@ -63,15 +68,28 @@ export class GroundControl {
     item.ariaLabel = label;
     if(value) item.style.setProperty('--swatch', value);
     if(key === undefined) item.textContent = label;
-    item.addEventListener('click', () => {
-      this.close();
-      const choice = ++this.choices;
-      this.build.setGround(key, this.build.shownSet()).catch(error => {
-        console.warn('brick-studio: the ground could not be changed:', error);
-        if(choice === this.choices) this.onRefused((error instanceof Error) ? error.message : String(error))/*a later choice owns the status otherwise*/;
-      });
-    });
+    item.addEventListener('click', () => { this.close(); this.change(key, (key !== undefined) && this.smooth); });
     return item;
+  }
+
+  /** the Smooth checkbox: a ground without studs, for a ground that names its color */
+  private smoothToggle(): HTMLLabelElement {
+    const label = document.createElement('label');
+    label.className = 'ground-smooth';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.addEventListener('change', () => { if(this.ground !== undefined) this.change(this.ground, box.checked); });
+    label.append(box, ' Smooth');
+    return label;
+  }
+
+  /** edits the build's ground, reporting its refusal for the latest choice alone */
+  private change(key: string | undefined, smooth: boolean): void {
+    const choice = ++this.choices;
+    this.build.setGround(key, this.build.shownSet(), smooth).catch(error => {
+      console.warn('brick-studio: the ground could not be changed:', error);
+      if(choice === this.choices) this.onRefused((error instanceof Error) ? error.message : String(error))/*a later choice owns the status otherwise*/;
+    });
   }
 
   // == Render ====================================================================
@@ -80,9 +98,12 @@ export class GroundControl {
     const value = (this.ground === undefined) ? undefined : getColorValue(getColor(this.ground)!.code/*by contract*/);
     if(value) button.style.setProperty('--swatch', value);
     else button.style.removeProperty('--swatch')/*the theme's baseplate*/;
-    button.title = button.ariaLabel = `Ground: ${(this.ground ?? 'theme').replace(/-/g, ' ')}`;
+    button.title = button.ariaLabel = `Ground: ${(this.ground ?? 'theme').replace(/-/g, ' ')}${this.smooth ? ', smooth' : ''}`;
     for(const item of menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')) {
       item.setAttribute('aria-checked', String(item.dataset.ground === (this.ground ?? '')));
     }
+    const smooth = menu.querySelector<HTMLInputElement>('.ground-smooth input')!;
+    smooth.checked = this.smooth;
+    smooth.disabled = (this.ground === undefined)/*the theme's baseplate is studded*/;
   }
 }

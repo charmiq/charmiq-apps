@@ -206,9 +206,9 @@ const closure = (library: string, name: string, seen: Set<string>): void => {
 // == Measure =====================================================================
 const isWhole = (value: number): boolean => Math.abs(value - Math.round(value)) < EPSILON;
 
-/** the grid lines (LDU along one axis, every stud) a part lies on: the extent grown
- *  out to the lines its own top studs sit between, where they fix them (a wheel set's
- *  tires reach half a stud past its plate's cells); otherwise its own extent when that
+/** the grid lines (LDU along one axis, every stud) a part lies on: an assembled part's
+ *  extent grown out to the lines its own file's top studs sit between, where they fix
+ *  them (a wheel set's tires reach half a stud past its plate's cells); otherwise its own extent when that
  *  is whole studs, or the extent grown out to the lines its base sits on (a tree's
  *  foliage overhangs its base). A base an odd number of studs wide centers on a cell,
  *  an even one on a cell corner */
@@ -246,7 +246,7 @@ const bodyOfAssembly = (library: string, part: CatalogPart): Readonly<{ body: Me
 
   const triangles = bodies.flatMap(body => body.triangles);
   const points = triangles.flat();
-  return { studTop: crown.minY, ...(((crown === bodies[0]) && (crown.studs.length > 0)) ? { ownStud: crown.studs[0] } : {}), body: {
+  return { studTop: crown.minY, ...((part.pieces && (crown === bodies[0]) && (crown.studs.length > 0)) ? { ownStud: crown.studs[0] } : {}), body: {
     minX: minOf(points.map(([x]) => x)), maxX: maxOf(points.map(([x]) => x)),
     minY: minOf(points.map(([, y]) => y)), maxY: maxOf(points.map(([, y]) => y)),
     minZ: minOf(points.map(([, , z]) => z)), maxZ: maxOf(points.map(([, , z]) => z)),

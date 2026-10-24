@@ -149,6 +149,9 @@ export type Model = Readonly<{
   unwritable?: string;
   /** the baseplate's color (a catalog color), when the build names one */
   ground?: string;
+  /** a ground without studs (a road, a tabletop), when its line says SMOOTH: parts
+   *  still stand on it at level 0 */
+  smoothGround?: true;
   /** the set's sky, when its sky line names one Brick Studio reads (SEE: sky.ts) */
   sky?: Sky;
   /** the pictures standing in the set, in the order their lines are written, when it
@@ -226,6 +229,8 @@ const DATA_START = '0 !DATA ';
 const DATA_LINE = '0 !:';
 /** Brick Studio's meta-command naming the baseplate's color */
 const GROUND_META = ['0', '!BRICKSTUDIO', 'GROUND'] as const;
+/** the ground line's word for a ground without studs */
+const GROUND_SMOOTH = 'SMOOTH';
 /** Brick Studio's meta-command naming a set: the rest of its line is the name */
 const SET_META = /^0\s+!BRICKSTUDIO\s+SET\s+(\S.*)$/i;
 const SET_LINE = '0 !BRICKSTUDIO SET';
@@ -494,7 +499,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
   const copySteps: number[] = [];
   const stepSpans: Span[] = [];
   let step = 0;
-  let ground: Readonly<{ color: string; span: Span; }> | undefined/*the first ground line naming a ground color*/;
+  let ground: Readonly<{ color: string; smooth: boolean; span: Span; }> | undefined/*the first ground line naming a ground color*/;
   let sky: Readonly<{ sky: Sky | undefined; span: Span; }> | undefined/*the first sky line, read or not*/;
   const pictures: Array<Readonly<{ picture: Picture; span: Span; }>> = [];
 
@@ -542,8 +547,8 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
       const fields = line.trim().split(/\s+/);
       if(isMain && isStepLine(fields)) { step++; stepSpans.push({ from, to }); continue; }
       if(isMain && !ground) {
-        const color = groundColorOf(fields);
-        if(color) ground = { color, span: { from, to } }/*kept in the header as written*/;
+        const named = groundOf(fields);
+        if(named) ground = { ...named, span: { from, to } }/*kept in the header as written*/;
       } /* else -- the first names the ground */
       if(isMain && !sky && isSkyLine(fields)) sky = { sky: skyOf(fields), span: { from, to } }/*kept in the header as written*/;
       if(isMain && isPictureLine(fields)) {
@@ -667,7 +672,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
     ...(several ? { sets: file.sets.map(({ name, file: setFile }) => ({ name, file: setFile })) } : {}),
     header: (header.length > 0) ? header : DEFAULT_HEADER, placements, others,
     ...(truncated ? { truncated } : {}),
-    ...(ground ? { ground: ground.color } : {}),
+    ...(ground ? { ground: ground.color, ...(ground.smooth ? { smoothGround: true as const } : {}) } : {}),
     ...(sky?.sky ? { sky: sky.sky } : {}),
     ...((pictures.length > 0) ? { pictures: pictures.map(each => each.picture) } : {}),
     ...((components.length > 0) ? { components: components.map(({ nested: _, undecided: __, mountLines: ___, ...component }) => component) } : {}),
@@ -1042,12 +1047,13 @@ const sameLine = (a: PartLine, b: PartLine): boolean =>
 /** whether a line is LDraw's `0 STEP` meta-command */
 const isStepLine = (fields: ReadonlyArray<string>): boolean => (fields.length === 2) && (fields[0] === '0') && (fields[1].toUpperCase() === 'STEP');
 
-/** the ground color a line names, when it is the ground meta-command naming a
- *  catalog color that is not see-through */
-const groundColorOf = (fields: ReadonlyArray<string>): string | undefined => {
-  if((fields.length !== 4) || GROUND_META.some((word, index) => fields[index].toUpperCase() !== word)) return undefined;
+/** the ground a line names, when it is the ground meta-command naming a catalog
+ *  color that is not see-through, and SMOOTH after it for a ground without studs */
+const groundOf = (fields: ReadonlyArray<string>): Readonly<{ color: string; smooth: boolean; }> | undefined => {
+  if(((fields.length !== 4) && (fields.length !== 5)) || GROUND_META.some((word, index) => fields[index].toUpperCase() !== word)) return undefined;
+  if((fields.length === 5) && (fields[4].toUpperCase() !== GROUND_SMOOTH)) return undefined;
   const color = getColor(fields[3].toLowerCase());
-  return (color && !color.transparent) ? color.key : undefined;
+  return (color && !color.transparent) ? { color: color.key, smooth: fields.length === 5 } : undefined;
 };
 
 /** the steps as counted, numbered from 1 in order: a count no part or copy has is no step */
@@ -1337,11 +1343,11 @@ export const clearEdits = (layout: ModelLayout): ContentChange[] => {
   ];
 };
 
-/** the edit that sets a model's ground color, or returns it to the theme's
- *  (`undefined`): the ground line is replaced or removed, or a new one goes before the
- *  first part. An empty text gains the header first */
-export const groundEdit = (layout: ModelLayout, color: string | undefined): ContentChange[] =>
-  headerLineEdit(layout, layout.ground, (color === undefined) ? undefined : [...GROUND_META, color].join(' '));
+/** the edit that sets a model's ground color, smooth or studded, or returns it to the
+ *  theme's (`undefined`): the ground line is replaced or removed, or a new one goes
+ *  before the first part. An empty text gains the header first */
+export const groundEdit = (layout: ModelLayout, color: string | undefined, smooth = false): ContentChange[] =>
+  headerLineEdit(layout, layout.ground, (color === undefined) ? undefined : [...GROUND_META, color, ...(smooth ? [GROUND_SMOOTH] : [])].join(' '));
 
 /** the edit that sets a model's sky, or returns it to the theme's backdrop
  *  (`undefined`): its sky line (read or not) is replaced or removed, or a new one goes
