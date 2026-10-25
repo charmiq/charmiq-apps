@@ -14,8 +14,10 @@ import { pictureFootprint, type Picture } from './picture';
 // collides with its own carrier, it collides with the carrier's other mounts and with
 // everything else, and only its carrier holds it. A picture's panel (SEE: picture.ts)
 // collides with a part it stands inside: upright, a part filling a cell of its stud row
-// within its height; flat, a part filling a cell beneath it through its level. It is
-// never held or floating. A pinned part (SEE: pin.ts) is held where it stands, a copy
+// within its height; flat, a part filling a cell beneath it through its level. It
+// collides with a picture sharing its plane where they cross (two panels in one plane
+// flicker over each other): upright, in one stud row; flat, on one level. It is never
+// held or floating. A pinned part (SEE: pin.ts) is held where it stands, a copy
 // of a component whole, and holds what its studs hold; it still collides
 // ********************************************************************************
 // == Types =======================================================================
@@ -107,6 +109,7 @@ const checkWhole = (model: Model): CheckResult => {
         }
       }
     }
+    for(const [first, second] of coplanarPictures(model.pictures!)) collisions.push({ a: describePicture(first), b: describePicture(second) });
   } /* else -- no pictures */
 
   // .. Connections ...............................................................
@@ -236,6 +239,41 @@ const insidePicture = (picture: Picture, { bottom, top }: FilledCell): boolean =
   return (bottom < panelTop) && (top > picture.level);
 };
 
+/** every two pictures sharing a plane and crossing in it, the earlier first: upright,
+ *  standing in one stud row (facing either way) with their spans along it and their
+ *  heights crossing; flat, lying on one level with their footprints crossing. A picture
+ *  in the row before another stands in front of it, as a poster on a billboard does */
+export const coplanarPictures = (pictures: ReadonlyArray<Picture>): ReadonlyArray<readonly [Picture, Picture]> => {
+  const panels = pictures.map(panelOf);
+  const pairs: Array<readonly [Picture, Picture]> = [];
+  panels.forEach((first, at) => {
+    for(let next=at+1; next<panels.length; next++) {
+      const second = panels[next];
+      if((first.plane === second.plane) && (first.across[0] < second.across[1]) && (second.across[0] < first.across[1]) && (first.up[0] < second.up[1]) && (second.up[0] < first.up[1])) pairs.push([pictures[at], pictures[next]]);
+    }
+  });
+  return pairs;
+};
+
+/** the level an upright picture's top reaches (its height is in studs); none for a flat
+ *  one, or one whose height follows its image */
+export const pictureTop = (picture: Picture): number | undefined =>
+  (picture.flat || (picture.height === undefined)) ? undefined : picture.level + (picture.height * PLATES_PER_STUD);
+
+/** a picture's panel as its plane names it (upright, its stud row; flat, its level) and
+ *  its extent in that plane: along the row and up, or east and north */
+const panelOf = (picture: Picture): Readonly<{ plane: string; across: readonly [number, number]; up: readonly [number, number]; }> => {
+  const height = picture.height ?? (picture.flat ? 1 : (1 / PLATES_PER_STUD))/*what the check takes of a panel following its image (SEE: pictureCells)*/;
+  const [east, north] = pictureFootprint(picture, height);
+  if(picture.flat) return { plane: `flat ${picture.level}`, across: [picture.x, picture.x + east], up: [picture.z, picture.z + north] };
+  const alongX = (picture.rotation === 0) || (picture.rotation === 180)/*facing south or north*/;
+  return {
+    plane: alongX ? `row z ${picture.z}` : `row x ${picture.x}`,
+    across: alongX ? [picture.x, picture.x + east] : [picture.z, picture.z + north],
+    up: [picture.level, picture.level + (height * PLATES_PER_STUD)],
+  };
+};
+
 // == Holding =====================================================================
 /** the level a placement rests on the studs beneath at: its bottom, or the level above
  *  it its part names, for a part hanging below where it rests (SEE: catalog.ts rests) */
@@ -347,6 +385,8 @@ export const describeCopy = (copy: Copy): string =>
  *  charmiq://file/rug at x 0 z 0 level 3 rotation 90 flat` */
 export const describePicture = (picture: Picture): string =>
   `picture ${picture.image} at x ${picture.x} z ${picture.z} level ${picture.level}` + ((picture.rotation !== 0) ? ` rotation ${picture.rotation}` : '') + (picture.flat ? ' flat' : '');
+/** whether a collision names a picture (SEE: describePicture), rather than a part */
+export const isPictureName = (named: string): boolean => named.startsWith('picture ');
 
 /** a placement in one line, e.g. `brick-2x4 red at x 3 z 4 level 6 rotation 90`, or
  *  `hinge-1x2 red at x 0 z 4 level 3 angle 60 carrying lid` */

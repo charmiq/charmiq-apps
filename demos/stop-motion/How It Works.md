@@ -153,6 +153,7 @@ A Charm sees stills, never playback, so the film is also read as it looks. Stagi
 | File | Purpose |
 |---|---|
 | [`Studio.md`](charmiq://./Studio.md) | the studio as one page, no words: the screen and the scene side by side over the timeline, on a bench of studs, its film the salon (a gallery and the painting a girl steps into, two sets) |
+| [`scenes`](charmiq://./scenes/) | films Stop Motion ships, each one film file (its sets and its scene) the studio opens: The Grand Staircase (a mansion's hall, and Van Gogh's Starry Night a page boy steps into) |
 | [`manifest.json`](charmiq://./manifest.json) | scopes, the import map and the command surface |
 | [`src/main.ts`](charmiq://./src/main.ts) | entry point: the scene, the studios, the playhead, the timeline and the picture track, wired |
 | [`src/director.ts`](charmiq://./src/director.ts) | each scene run into a film and staged; the latest scene is the one the studios show |

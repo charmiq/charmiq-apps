@@ -2,7 +2,7 @@ import type { ContentChange } from '../../../shared/charmiq';
 import { isImageName } from '../../brick-shared/shipped';
 import { drawnSky, skyFrom, type Sky } from '../../brick-shared/sky';
 import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_FACES, type CatalogPart, type Slot } from './catalog';
-import { checkModel, describeCopy, describePlaced, describePlacement, filledBy, occupiedCells, pinsOf, sameTarget, targetOf, MAX_LISTED, type CheckResult, type PinTarget } from './check';
+import { checkModel, describeCopy, describePicture, describePlaced, describePlacement, filledBy, isPictureName, pictureTop, occupiedCells, pinsOf, sameTarget, targetOf, MAX_LISTED, type CheckResult, type PinTarget } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
 import { addSetEdits, appendLines, applyChanges, carriesComponents, clearEdits, clearSetEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, parseSets, partCount, placedPartCount, placementLines, removeSetEdits, renameSetEdits, sameSetName, serializeModel, setLines, skyEdit, stepCount, type Model, type ModelLayout, type SetSection, EMPTY_MODEL, MAIN_SET, MAX_PARTS, MAX_SET_NAME, MAX_SETS, READ_IN_PART } from './model';
@@ -29,6 +29,9 @@ const BESIDE_GAP = 2/*studs*/;
 const COMPONENT_NAME = /^[a-z][a-z0-9-]{0,39}$/;
 /** a refused picture's heading, saying where one hangs clear */
 const PICTURE_INSIDE = 'The picture would stand inside these parts (an upright picture hangs in a free stud row, such as the row before a wall; a flat one lies on a top):';
+const PICTURES_INSIDE = 'The pictures would stand inside these parts (an upright picture hangs in a free stud row, such as the row before a wall; a flat one lies on a top):';
+const PICTURE_OVER = 'The picture would share its plane with these pictures, which would flicker over each other (its height is in studs, 2.5 plates each; hang it beside them, above them, or in the stud row before them):';
+const PICTURES_OVER = 'The pictures would share their planes with these pictures, which would flicker over each other (a height is in studs, 2.5 plates each; hang each beside them, above them, or in the stud row before them):';
 
 // == Types =======================================================================
 /** why the model shown changed: the first load, a change to the app-content, a change
@@ -414,24 +417,39 @@ export class Build {
   }
 
   // ------------------------------------------------------------------------------
-  /** stands a picture in a set (SEE: picture.ts), its line after the set's parts, and
-   *  shows the set; answers the picture as written. A picture that would stand inside a
-   *  part is refused, nothing written */
-  public async addPicture(given: unknown, set?: unknown): Promise<Picture> {
+  /** stands a picture in a set (SEE: picture.ts), or several in one write, their lines
+   *  after the set's parts, and shows the set; answers the picture as written, or each
+   *  in the order given. Pictures that would stand inside a part, or share a plane with
+   *  a picture where they cross, are refused whole, nothing written */
+  public async addPicture(given: unknown, set?: unknown): Promise<Picture | ReadonlyArray<Picture>> {
     await this.whenReady();
-    const picture = toPicture(given);
-    if(typeof picture === 'string') throw new BuildError(picture);
+    const several = Array.isArray(given);
+    if(several && (given.length < 1)) throw new BuildError('picture is a picture, or a list of at least one');
+    const pictures = (several ? given : [given]).map((each, index) => {
+      const picture = toPicture(each);
+      if(typeof picture === 'string') throw new BuildError(several ? `picture[${index}]: ${picture}` : picture);
+      return picture;
+    });
     let target: string | undefined;
     await this.bridge.edit(text => {
       const { model, layout, name } = editable(text, set);
       target = name;
-      const change = appendLines(layout, [pictureLine(picture)], false);
-      const inside = introducedCollisions(model, readWhole(applyChanges(text, [change]), name)).map(pair => pair.b/*the part*/);
-      if(inside.length > 0) throw new BuildError(['Nothing was added.', ...refusal(PICTURE_INSIDE, inside)].join('\n'));
+      const change = appendLines(layout, pictures.map(pictureLine), false);
+      const introduced = introducedCollisions(model, readWhole(applyChanges(text, [change]), name));
+      const overs = introduced.filter(pair => isPictureName(pair.b)), insides = introduced.filter(pair => !isPictureName(pair.b));
+      const tops = new Map((model.pictures ?? []).map(picture => [describePicture(picture), pictureTop(picture)]));
+      const over = (pair: Readonly<{ a: string; b: string; }>) => {
+        const top = tops.get(pair.a) ?? tops.get(pair.b);
+        const standing = tops.has(pair.a) ? pair.a : pair.b/*the picture the set holds, else the later of two given*/;
+        const reach = (top === undefined) ? '' : `, its top at level ${top}`;
+        return several ? `${(standing === pair.a) ? pair.b : pair.a} over ${standing}${reach}` : `${standing}${reach}`;
+      };
+      const lines = [...refusal(several ? PICTURES_INSIDE : PICTURE_INSIDE, insides.map(pair => several ? `${pair.a} inside ${pair.b}` : pair.b/*the part*/)), ...refusal(several ? PICTURES_OVER : PICTURE_OVER, overs.map(over))];
+      if(lines.length > 0) throw new BuildError(['Nothing was added.', ...lines].join('\n'));
       return [change];
     });
     this.showNamed(target);
-    return picture;
+    return several ? pictures : pictures[0];
   }
 
   /** removes a set's picture by its place among the set's pictures (0 the first, as

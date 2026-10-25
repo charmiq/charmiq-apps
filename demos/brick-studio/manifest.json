@@ -457,25 +457,49 @@
       },
       {
         "name": "addPicture",
-        "description": "Stand a picture from the Drive in a set: a billboard, a poster, a painted backdrop, or flat as a rug. Its panel collides with a part it stands inside (refused, and the check names it): hang an upright one in a free stud row, such as the row before a wall's face, or stand it on a top; lay a flat one on a top, where parts may stand on it",
+        "description": "Stand a picture from the Drive in a set (a billboard, a poster, a painted backdrop, or flat as a rug), or several in one write: picture a list, refused whole when one is. Its panel collides with a part it stands inside, and with a picture in its plane where they cross (two panels in one stud row, or flat on one level, flicker over each other); refused, and the check names it: hang an upright one in a free stud row, such as the row before a wall's face, beside or above the pictures there (or in the row before one, to stand in front), or stand it on a top; lay a flat one on a top, where parts may stand on it. Its width and height are studs where its level is plates (2.5 plates a stud): the answer names the level its top reaches",
         "inputSchema": {
           "type": "object",
           "properties": {
             "picture": {
-              "type": "object",
-              "description": "The picture: an image from the Drive placed as a part is",
-              "properties": {
-                "image":    { "type": "string", "description": "A picture from the Drive (charmiq://file/...), or one Brick Studio ships, by name (listPictures names them)" },
-                "x":        { "type": "integer", "description": "The south-west corner of its footprint, studs east" },
-                "z":        { "type": "integer", "description": "The south-west corner of its footprint, studs north" },
-                "level":    { "type": "integer", "description": "Its bottom, in plates above the baseplate" },
-                "rotation": { "type": "integer", "enum": [0, 90, 180, 270], "description": "Clockwise seen from above; upright at 0 it faces south" },
-                "width":    { "type": "number", "minimum": 1, "maximum": 64, "description": "Studs" },
-                "height":   { "type": "number", "minimum": 1, "maximum": 64, "description": "Studs; the image's own shape when left out" },
-                "flat":     { "type": "boolean", "description": "Lying on its level, its top edge north at rotation 0, rather than standing" },
-                "fit":      { "type": "string", "enum": ["cover", "contain", "stretch"], "description": "cover fills it, cropping the overflow (the default); contain shows the image whole; stretch fills it with the whole image" }
-              },
-              "required": ["image", "x", "z", "level", "width"]
+              "description": "The picture (an image from the Drive placed as a part is), or a list of pictures written in one write",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "image":    { "type": "string", "description": "A picture from the Drive (charmiq://file/...), or one Brick Studio ships, by name (listPictures names them)" },
+                    "x":        { "type": "integer", "description": "The south-west corner of its footprint, studs east" },
+                    "z":        { "type": "integer", "description": "The south-west corner of its footprint, studs north" },
+                    "level":    { "type": "integer", "description": "Its bottom, in plates above the baseplate" },
+                    "rotation": { "type": "integer", "enum": [0, 90, 180, 270], "description": "Clockwise seen from above; upright at 0 it faces south" },
+                    "width":    { "type": "number", "minimum": 1, "maximum": 64, "description": "Studs" },
+                    "height":   { "type": "number", "minimum": 1, "maximum": 64, "description": "Studs, as width is (2.5 plates a stud: 16 studs high rises 40 levels); the image's own shape when left out" },
+                    "flat":     { "type": "boolean", "description": "Lying on its level, its top edge north at rotation 0, rather than standing" },
+                    "fit":      { "type": "string", "enum": ["cover", "contain", "stretch"], "description": "cover fills it, cropping the overflow (the default); contain shows the image whole; stretch fills it with the whole image" }
+                  },
+                  "required": ["image", "x", "z", "level", "width"]
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 200,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "image":    { "type": "string", "description": "A picture from the Drive (charmiq://file/...), or one Brick Studio ships, by name (listPictures names them)" },
+                      "x":        { "type": "integer", "description": "The south-west corner of its footprint, studs east" },
+                      "z":        { "type": "integer", "description": "The south-west corner of its footprint, studs north" },
+                      "level":    { "type": "integer", "description": "Its bottom, in plates above the baseplate" },
+                      "rotation": { "type": "integer", "enum": [0, 90, 180, 270], "description": "Clockwise seen from above; upright at 0 it faces south" },
+                      "width":    { "type": "number", "minimum": 1, "maximum": 64, "description": "Studs" },
+                      "height":   { "type": "number", "minimum": 1, "maximum": 64, "description": "Studs, as width is (2.5 plates a stud: 16 studs high rises 40 levels); the image's own shape when left out" },
+                      "flat":     { "type": "boolean", "description": "Lying on its level, its top edge north at rotation 0, rather than standing" },
+                      "fit":      { "type": "string", "enum": ["cover", "contain", "stretch"], "description": "cover fills it, cropping the overflow (the default); contain shows the image whole; stretch fills it with the whole image" }
+                    },
+                    "required": ["image", "x", "z", "level", "width"]
+                  }
+                }
+              ]
             },
             "set": { "type": "string", "description": "The set to act on, by name (listSets names them): needed when the build has more than one" }
           },
@@ -483,7 +507,12 @@
         },
         "outputSchema": {
           "type": "object",
-          "properties": { "picture": { "type": "object", "description": "The picture as written" }, "index": { "type": "integer", "description": "Its place among the set's pictures (removePicture takes it)" }, "set": { "type": "string", "description": "The set acted on, when the build has more than one" } },
+          "properties": {
+            "picture": { "description": "The picture as written, or each in the order given" },
+            "index": { "description": "Its place among the set's pictures (removePicture takes it), or each one's", "oneOf": [{ "type": "integer" }, { "type": "array", "items": { "type": "integer" } }] },
+            "top": { "description": "The level an upright picture's top reaches (plates), or each one's (null for a flat one, or one taking its image's shape); absent when none has one", "oneOf": [{ "type": "number" }, { "type": "array", "items": { "type": ["number", "null"] } }] },
+            "set": { "type": "string", "description": "The set acted on, when the build has more than one" }
+          },
           "required": ["picture", "index"]
         }
       },
