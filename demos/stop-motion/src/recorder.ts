@@ -116,9 +116,9 @@ export type RecordedActor = Readonly<{
   reactions?: ReadonlyArray<Reaction>;
   /** where it looks, when it looks anywhere */
   looks?: ReadonlyArray<Look>;
-  /** its height follows the ground under it, stepping up at most `step` plates (SEE:
-   *  studios.ts grounds) */
-  ground?: Readonly<{ step: number; }>;
+  /** its height follows the ground under it, stepping up at most `step` plates, first
+   *  standing on the surface nearest `start` plates when it names one (SEE: ground.ts) */
+  ground?: Readonly<{ step: number; start?: number; }>;
   /** it stands as keyed alone: no figure's idling where nothing else moves it, no boil */
   still?: true;
   /** how it is drawn, when it says (the scene's otherwise) */
@@ -281,7 +281,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   // .. Recording .................................................................
   // what the scene declares, as it declares it
   const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, skies: [] as Array<{ given: unknown; line?: number; }> };
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; drawn?: Drawn; }>();
   /** the views that are plans, each with the area it names, if any */
@@ -500,11 +500,13 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
       /** its height follows the ground under it: what it is keyed is then plates above
        *  the surface it stands on, stepping up onto one at most `step` plates (3, a
        *  brick) above where it stands, down onto any below; before one higher its height
-       *  holds (its keys still move it on) */
+           *  holds (its keys still move it on). Named, `start` is a level it first stands
+       *  near: the surface under it nearest that level (a figure on a gallery) */
       ground: (options: unknown = {}) => {
-        const step = optionsOf(options, `${String(name)}.ground`).step ?? 3;
+        const { step = 3, start } = optionsOf(options, `${String(name)}.ground`);
         if(!isFiniteNumber(step) || (step < 0) || (step > MAX_STEP)) fail(`${String(name)}.ground's step is plates, 0 to ${MAX_STEP}`);
-        entry.ground = { step: step as number };
+        if((start !== undefined) && (!isFiniteNumber(start) || (start < 0))) fail(`${String(name)}.ground's start is the plates it first stands at, from 0`);
+        entry.ground = { step: step as number, ...((start !== undefined) ? { start: start as number } : {}) };
         return handle;
       },
       /** stands as keyed alone: a figure never idles where nothing else moves it, and

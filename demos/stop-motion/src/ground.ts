@@ -11,7 +11,9 @@ import { type Surface, type SurfaceAt, BASEPLATE } from './steps';
 // height holds, as at a wall (its keys still move it on: the ground sets heights
 // alone). Where it is first shown, and shown again after it was
 // hidden (it never walked there), it starts as on the baseplate: the highest surface
-// within its step of 0, else the lowest under it. The surfaces an actor that clicks onto
+// within its step of 0, else the lowest under it; one naming a level to start at (a
+// gallery's, as its builder laid it) starts on the surface under it nearest that level,
+// the higher of two as near. The surfaces an actor that clicks onto
 // studs stands on are asked the same way, cell by cell around where its keys put it
 // each frame (its steps, turns and hops stray no further), each surface studded or not
 // ********************************************************************************
@@ -54,19 +56,25 @@ export const groundsOf = async (film: Film, sizes: Readonly<Record<string, Size>
 
   // followed frame by frame
   return new Map(following.map((actor, index) => {
-    const step = actor.ground!.step;
+    const { step, start } = actor.ground!;
     let level = 0, fresh = true;
     const levels = keys[index].map(key => {
       const under = (key === undefined) ? undefined : surfaces.get(key);
       if(!under || (under.length < 1)) { fresh = true; return level; }
       const within = under.filter(surface => surface <= ((fresh ? 0 : level) + step));
-      level = (within.length > 0) ? Math.max(...within) : fresh ? under[0]/*shown where nothing is within its step: the lowest under it*/ : level/*a wall: where it stood*/;
+      if(fresh && (start !== undefined)) level = nearest(under, start);
+      else level = (within.length > 0) ? Math.max(...within) : fresh ? under[0]/*shown where nothing is within its step: the lowest under it*/ : level/*a wall: where it stood*/;
       fresh = false;
       return level;
     });
     return [actor.name, levels] as const;
   }));
 };
+
+/** of the surfaces under an actor (lowest first), the nearest a level, the higher of
+ *  two as near */
+const nearest = (under: ReadonlyArray<number>, level: number): number =>
+  under.reduce((best, surface) => (Math.abs(surface - level) <= Math.abs(best - level)) ? surface : best);
 
 // == Surfaces ====================================================================
 /** the surfaces in each cell of each set an actor that clicks onto studs (`clicks`)
