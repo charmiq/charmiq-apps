@@ -182,12 +182,12 @@ A Charm drives the Studio through these:
 | `listSets` | the build's sets, each with its parts, copies, steps and ground, and the set shown |
 | `addSet` | adds a set and shows it: empty, or a copy of another (`from`) |
 | `renameSet` / `removeSet` | renames a set, or removes it and everything in it (never the last; removing the first makes the next the first) |
-| `clear` | removes every part, copy, further set and component, and any file the build carries, keeping the first set's name and ground; with `set`, empties that set alone; with `expect`, only while the build is still that text |
+| `clear` | removes every part, copy, picture, further set and component, and any file the build carries, keeping the first set's name and ground; with `set`, empties that set alone, its pictures too; with `expect`, only while the build is still that text |
 | `check` | lists collisions and floating parts, for a build changed some other way |
 | `setGround` | colors the baseplate, studded or `smooth`, as the swatch does |
 | `addPicture` | stands a picture from the Drive in a set (SEE: *Pictures*), answering its place among the set's pictures |
 | `listPictures` | a set's pictures, in order, each as `addPicture` takes it |
-| `removePicture` | removes a set's picture by its place in `listPictures` |
+| `removePicture` | removes a set's picture by its place in `listPictures`, or several in one write (`index` a list of places) |
 | `setSky` | puts a sky behind a set, as the sky swatch does: generated (`horizon`, `zenith`, `clouds`, `seed`) or a Drive picture (`image`), with `lights`; none for the theme's backdrop. A generated sky is written whole, each value it names none of its default |
 | `setView` | turns the camera and frames the build |
 | `lookAround` | shows the build from all four sides at once, so one screenshot sees every side, on a sheet that says the Charm is looking and carries a Back to the build button; the button, a click, a key or the next change closes it |

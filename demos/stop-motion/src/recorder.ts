@@ -4,9 +4,12 @@ import type { GaitShape } from './steps';
 
 // the scene recorder: runs a scene's code and records what it declares as plain
 // data: the scene's settings, each actor's keys and the camera's, the fade, the
-// titles and the sounds, every function of time sampled once per frame. It runs inside a Worker
-// (SEE: scene-runner.ts), so `record` is self-contained: it reaches nothing outside
-// its own body but the language's globals, and is shipped as its own source text
+// titles and the sounds, every function of time sampled once per frame. `recordCode`
+// runs inside a Worker (SEE: scene-runner.ts), so it is self-contained: it reaches
+// nothing outside its own body but the Worker's globals, and is shipped as its own
+// source text. What brick-shared's readers check (the sky, in Brick Studio's words) it
+// keeps as the scene wrote it, with its line, and `readRecorded` reads it on the page;
+// `record` is the two
 // ********************************************************************************
 // == Types =======================================================================
 /** how a value eases into a key from the key before it */
@@ -180,6 +183,9 @@ export type Recorded = Readonly<{
 
 /** a scene that failed to run: why, and the line of the scene it failed on */
 export type SceneError = Readonly<{ message: string; line?: number; }>;
+/** a scene as its Worker records it: each sky the scene gives as it wrote it, with its
+ *  line, for `readRecorded` to read */
+export type RecordedCode = Omit<Recorded, 'sky'> & Readonly<{ skies?: ReadonlyArray<Readonly<{ given: unknown; line?: number; }>>; }>;
 
 // == Cast ========================================================================
 /** what an actor is cast as, in a few words: its component, its part in its color, or
@@ -196,7 +202,10 @@ export const castAs = (source: Readonly<Record<string, unknown>>): Readonly<{ wo
 /** runs a scene's code and records it, its sounds Platform files (by URI) or named
  *  from the `shipped` sounds; throws a SceneError-shaped error for a scene that
  *  fails or declares something no film can show */
-export const record = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape): Recorded => {
+export const record = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape): Recorded => readRecorded(recordCode(code, shipped, builtIn));
+
+/** a scene recorded as its Worker records it (SEE: the header) */
+export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape): RecordedCode => {
   // .. Limits ....................................................................
   const MAX_LENGTH = 120/*seconds*/;
   const MAX_FPS = 60;
@@ -271,7 +280,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
 
   // .. Recording .................................................................
   // what the scene declares, as it declares it
-  const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, sky: undefined as Sky | undefined };
+  const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, skies: [] as Array<{ given: unknown; line?: number; }> };
   type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; drawn?: Drawn; }>();
@@ -301,7 +310,12 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
     if(drawn !== undefined) settings.drawn = drawnOf(drawn, 'drawn');
     if(boil !== undefined) settings.boil = unitOf(boil, 'boil')/*0 to 1*/;
     if(light !== undefined) settings.light = lightOf(light);
-    if(sky !== undefined) { const read = skyFrom(sky); settings.sky = (typeof read === 'string') ? fail(read) : read; }
+    if(sky !== undefined) {
+      // kept as written, for the page to read (SEE: readRecorded): it crosses to the page as data
+      let given: unknown;
+      try { given = structuredClone(sky); } catch { fail('A sky is plain data: { horizon, zenith, clouds, seed } or { image }, with lights'); }
+      settings.skies.push({ given, line: callerLine() });
+    }
     if(title !== undefined) settings.title = String(title);
     if(fps !== undefined) { if(!Number.isInteger(fps) || ((fps as number) < 1) || ((fps as number) > MAX_FPS)) fail(`fps is a whole number from 1 to ${MAX_FPS}`); settings.fps = fps as number; }
     if(length !== undefined) { settings.length = toTime(length, 'length'); if(settings.length <= 0) fail('length must be more than 0 seconds'); }
@@ -1259,7 +1273,7 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
    *  exactly where a cut jumps */
   const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
   return {
-    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...(settings.sky ? { sky: settings.sky } : {}),
+    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
     actors: actors.map(({ name, source, ride, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, drawn, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
@@ -1270,4 +1284,17 @@ export const record = (code: string, shipped: ReadonlyArray<string> = [], builtI
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans, drawn }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(drawn ? { drawn } : {}), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
     fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), ...((soundCues.length > 0) ? { sounds: byTime(soundCues) } : {}), ...((gaits.size > 0) ? { gaits: [...gaits].map(([name, { keys, line }]) => ({ name, keys, shape: shapeOf(keys), ...((line !== undefined) ? { line } : {}) })) } : {}), ...((speedKeys.length > 0) ? { speed: byTime(speedKeys) } : {}), logs,
   };
+};
+
+/** a scene its Worker recorded, as a film reads it: each sky the scene gave read in
+ *  Brick Studio's words (SEE: brick-shared/sky.ts), the last standing; throws as
+ *  `record` does, naming the line of a sky not in them */
+export const readRecorded = ({ skies, ...recorded }: RecordedCode): Recorded => {
+  let sky: Sky | undefined;
+  for(const { given, line } of skies ?? []) {
+    const read = skyFrom(given);
+    if(typeof read === 'string') throw Object.assign(new Error(read), { sceneLine: line });
+    sky = read;
+  }
+  return { ...recorded, ...(sky ? { sky } : {}) };
 };

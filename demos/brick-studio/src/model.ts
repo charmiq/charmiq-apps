@@ -1310,9 +1310,9 @@ export const removeSetEdits = (text: string, file: FileLayout, set: SetSection):
   return [...deleteLines([...own, ...next.pieces]), { from: start.to, to: start.to, insert: ended + END_MARKER + file.lineBreak }];
 };
 
-/** the edits that empty a set: its part, copy and step lines removed, its name,
- *  ground and other lines kept */
-export const clearSetEdits = (layout: ModelLayout): ContentChange[] => deleteLines([...layout.parts, ...layout.steps]);
+/** the edits that empty a set: its part, copy, step and picture lines removed, its
+ *  name, ground and other lines kept */
+export const clearSetEdits = (layout: ModelLayout): ContentChange[] => deleteLines([...layout.parts, ...layout.steps, ...(layout.pictures ?? [])]);
 
 /** the file a set Brick Studio adds is written to: its name in lower case, every
  *  other character a dash, then SET_FILE; numbered when a section has it */
@@ -1325,14 +1325,15 @@ const setFileName = (file: FileLayout, name: string): string => {
 };
 
 // ................................................................................
-/** the edits that remove every part, copy, further set, component and data section,
- *  keeping the main model's other lines (its header, its name, the ground): the build
+/** the edits that remove every part, copy, picture, further set, component and data
+ *  section, keeping the main model's other lines (its header, its name, the ground and
+ *  sky): the build
  *  is left as Brick Studio writes one whole, its main model's file line first and its
  *  end marker last. An empty text stays empty */
 export const clearEdits = (layout: ModelLayout): ContentChange[] => {
   const { file } = layout;
   if(file.length < 1) return [];
-  const removed = [...layout.parts, ...layout.steps, ...file.sets.slice(1).flatMap(set => set.pieces), ...file.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...file.data];
+  const removed = [...layout.parts, ...layout.steps, ...(layout.pictures ?? []), ...file.sets.slice(1).flatMap(set => set.pieces), ...file.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...file.data];
   // the main model's end, after the lines before it are removed
   const end = layout.end - removed.filter(span => span.to <= layout.end).reduce((total, span) => total + (span.to - span.from), 0);
   const lead = layout.endsLine ? '' : file.lineBreak/*the last line is unfinished*/;

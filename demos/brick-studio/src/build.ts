@@ -321,11 +321,11 @@ export class Build {
   }
 
   // ------------------------------------------------------------------------------
-  /** removes every part, copy, further set and component the build holds as the
-   *  edit applies to it, its main set's header (its name and ground) kept; or, given
-   *  `set`, that set's parts, copies and steps alone (the components every set shares
-   *  kept), and shows it. Refused whole when `expected` is given and the build is no
-   *  longer that text */
+  /** removes every part, copy, picture, further set and component the build holds as
+   *  the edit applies to it, its main set's header (its name, ground and sky) kept; or,
+   *  given `set`, that set's parts, copies, steps and pictures alone (the components
+   *  every set shares kept), and shows it; answers the parts removed. Refused whole
+   *  when `expected` is given and the build is no longer that text */
   public async clear(expected?: string, set?: unknown): Promise<number> {
     await this.whenReady();
     let removed = 0;
@@ -397,21 +397,26 @@ export class Build {
   }
 
   /** removes a set's picture by its place among the set's pictures (0 the first, as
-   *  listPictures lists them), and shows the set; answers the picture removed */
-  public async removePicture(index: unknown, set?: unknown): Promise<Picture> {
+   *  listPictures lists them), or several by their places in one write, and shows the
+   *  set; answers the picture removed, or each removed in the order named */
+  public async removePicture(index: unknown, set?: unknown): Promise<Picture | ReadonlyArray<Picture>> {
     await this.whenReady();
-    let removed: Picture | undefined;
+    const places = Array.isArray(index) ? index : [index];
+    let removed: Picture[] = [];
     let target: string | undefined;
     await this.bridge.edit(text => {
       const { model, layout, name } = editable(text, set);
       const count = model.pictures?.length ?? 0;
-      if(!Number.isInteger(index) || ((index as number) < 0) || ((index as number) >= count)) throw new BuildError((count < 1) ? 'The set has no pictures.' : `picture is 0 to ${count - 1}, its place as listPictures lists it`);
+      if(count < 1) throw new BuildError('The set has no pictures.');
+      if((places.length < 1) || !places.every(place => Number.isInteger(place) && ((place as number) >= 0) && ((place as number) < count))) throw new BuildError(`picture is 0 to ${count - 1}, its place as listPictures lists it`);
+      const twice = places.find((place, at) => places.indexOf(place) !== at);
+      if(twice !== undefined) throw new BuildError(`Each picture is named once: ${String(twice)} is named twice`);
       target = name;
-      removed = model.pictures![index as number];
-      return deleteLines([layout.pictures![index as number]]);
+      removed = places.map(place => model.pictures![place as number]);
+      return deleteLines(places.map(place => layout.pictures![place as number]));
     });
     this.showNamed(target);
-    return removed!;
+    return Array.isArray(index) ? removed : removed[0];
   }
 
   // ------------------------------------------------------------------------------
