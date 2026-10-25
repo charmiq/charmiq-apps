@@ -2,7 +2,7 @@ import { button, DesignDialog, paragraph, showError } from '../../brick-shared/d
 import { displayName } from '../../brick-shared/designs';
 import type { Design } from '../../brick-shared/drive';
 
-import { UnsavedChanges, type Films } from './films';
+import { unsavedLoss, unsavedState, UnsavedChanges, type Films } from './films';
 
 // the film's save and open dialog over the family's (SEE: brick-shared/design-dialog.ts):
 // a save writes the film (its set and its scene) under the name given; a film picked
@@ -67,19 +67,19 @@ export class FilmDialog extends DesignDialog {
   private confirmOpen(design: Design): void {
     const message = paragraph('designs-message');
     const open = button('Open', 'designs-primary', 'button', () => void this.open(design, true, message, open));
-    this.showForm('Open film', `Open "${displayName(design)}"? ${this.unsavedChanges()} are lost.`, message, [button('Cancel', 'designs-secondary', 'button', () => this.reopen()), open], open);
+    this.showForm('Open film', `Open "${displayName(design)}"? ${this.unsavedChanges('opening')}`, message, [button('Cancel', 'designs-secondary', 'button', () => this.reopen()), open], open);
   }
 
   /** asks before a new film loses unsaved changes */
   private confirmNew(): void {
     const message = paragraph('designs-message');
     const clear = button('New film', 'designs-primary', 'button', () => void this.run(message, [clear], async () => { await this.films.clear(true); this.dialog.close(); }));
-    this.showForm('New film', `Clear the set and the scene? ${this.unsavedChanges()} are lost.`, message, [button('Cancel', 'designs-secondary', 'button', () => this.dialog.close()), clear], clear);
+    this.showForm('New film', `Clear the set and the scene? ${this.unsavedChanges('clearing')}`, message, [button('Cancel', 'designs-secondary', 'button', () => this.dialog.close()), clear], clear);
   }
 
-  /** what the film's unsaved changes are called */
-  private unsavedChanges(): string {
+  /** what the film's unsaved changes are, and that `doing` loses them */
+  private unsavedChanges(doing: string): string {
     const name = this.films.state.name;
-    return (name !== undefined) ? `The changes to "${name}"` : 'The film\'s unsaved changes';
+    return `${unsavedState(name)}, and ${doing} loses ${unsavedLoss(name)}.`;
   }
 }

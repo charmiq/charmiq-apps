@@ -183,13 +183,13 @@
       },
       {
         "name": "openFilm",
-        "description": "Open a film from the Drive (its uri from listFilms, or its name): its set into the main Brick Studio's build and its scene into the scene.js tab. A plain design opens its set alone, the scene kept. Refused while the film has unsaved changes unless discard is true",
+        "description": "Open a film from the Drive (its uri from listFilms, or its name): its set into the main Brick Studio's build and its scene into the scene.js tab. A plain design opens its set alone, the scene kept. Refused while the film has unsaved changes (the document never saved it, or it has changes since it was saved) unless discard is true",
         "inputSchema": {
           "type": "object",
           "properties": {
             "uri":     { "type": "string" },
             "name":    { "type": "string" },
-            "discard": { "type": "boolean", "description": "Lose the film's unsaved changes" }
+            "discard": { "type": "boolean", "description": "Go on without saving the film's unsaved changes" }
           }
         },
         "outputSchema": {
@@ -200,10 +200,10 @@
       },
       {
         "name": "newFilm",
-        "description": "Start a new film: the main Brick Studio's build cleared (its ground kept) and a starter scene in the scene.js tab. Refused while the film has unsaved changes unless discard is true; save the film first to keep it",
+        "description": "Start a new film: the main Brick Studio's build cleared (its ground kept) and a starter scene in the scene.js tab. Refused while the film has unsaved changes (the document never saved it, or it has changes since it was saved) unless discard is true; save the film first to keep it",
         "inputSchema": {
           "type": "object",
-          "properties": { "discard": { "type": "boolean", "description": "Lose the film's unsaved changes" } }
+          "properties": { "discard": { "type": "boolean", "description": "Go on without saving the film's unsaved changes" } }
         },
         "outputSchema": { "type": "object", "properties": { "cleared": { "type": "boolean" } }, "required": ["cleared"] }
       },

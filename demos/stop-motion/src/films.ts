@@ -88,6 +88,11 @@ type Own = Readonly<{ design: Design; folder?: Folder; }>;
 /** a new film or an opened one refused, the film having unsaved changes */
 export class UnsavedChanges extends DesignError {}
 
+/** what a film's unsaved changes are, said (`name` its file's, none when the document
+ *  never saved it), and what going on without saving loses: the film, or its changes */
+export const unsavedState = (name: string | undefined): string => (name !== undefined) ? `"${name}" has changes since it was saved` : 'The film in this document has never been saved';
+export const unsavedLoss = (name: string | undefined): 'it' | 'them' => (name !== undefined) ? 'them' : 'it';
+
 // == Class =======================================================================
 export class Films {
   /** the family's design store, with the films' words */
@@ -268,7 +273,7 @@ export class Films {
     const { changed, set, scene } = await this.look();
     if(!changed) return { ...((set !== undefined) ? { set } : {}), scene };
     const name = this.file.value.name;
-    throw new UnsavedChanges(`${(name !== undefined) ? `"${name}"` : 'The film'} has unsaved changes: save it first, or discard them.`);
+    throw new UnsavedChanges(`${unsavedState(name)}: save it first, or discard ${unsavedLoss(name)}.`);
   }
 }
 

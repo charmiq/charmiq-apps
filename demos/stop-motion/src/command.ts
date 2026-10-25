@@ -196,7 +196,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
 const discarding = async <T>(change: () => Promise<T>): Promise<T> => {
   try { return await change(); }
   catch(failure) {
-    if(failure instanceof UnsavedChanges) throw new Error(`${failure.message} Pass discard: true to lose them.`);
+    if(failure instanceof UnsavedChanges) throw new Error(`${failure.message} Pass discard: true to go on without saving.`);
     throw failure;
   }
 };

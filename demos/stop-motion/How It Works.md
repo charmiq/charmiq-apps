@@ -90,7 +90,7 @@ A film is saved to your Drive as one file: the main studio's build (the set), th
 
 The scene is written into the code editor's tab named `scene.js` as it stands then (a tab renamed from it is left alone; with none, a new one). With no code editor, Open and New change nothing. If the scene cannot be written once the set has changed, Stop Motion says so and the film shows unsaved changes.
 
-The bar says the film's name and whether it has changed since it was saved or opened. New and Open read the film as it stands just before changing it and ask first rather than lose unsaved changes; a set that cannot be read counts as changed, and an edit made in the studio after that read stops the change with nothing replaced. Save, Open and New run one at a time, in the order asked; a Drive that does not answer within 30 seconds is refused, so the next one runs. Stop Motion is between the two parts: it reads and writes the studio's build and the code block's scene, and nothing else.
+The bar says the film's name and whether it has changed since it was saved or opened. New and Open read the film as it stands just before changing it and ask first rather than lose unsaved changes: a film the document has never saved, or changes since it was saved, each said as it is; a set that cannot be read counts as changed, and an edit made in the studio after that read stops the change with nothing replaced. Save, Open and New run one at a time, in the order asked; a Drive that does not answer within 30 seconds is refused, so the next one runs. Stop Motion is between the two parts: it reads and writes the studio's build and the code block's scene, and nothing else.
 
 
 ## The Sound
@@ -141,7 +141,7 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 | `openFilm` | opens a film by `uri` or `name`: its set into the studio, its scene into the code block (a plain design, its set alone) |
 | `newFilm` | clears the set and starts a new scene |
 
-`openFilm` and `newFilm` refuse while the film has unsaved changes unless given `discard: true`; save the film first to keep it.
+`openFilm` and `newFilm` refuse while the film has unsaved changes (the document never saved it, or it has changes since it was saved) unless given `discard: true`; save the film first to keep it.
 
 A Charm can also stage a still without a film: Brick Studio's own `stage` and `frame` commands put actors anywhere.
 
