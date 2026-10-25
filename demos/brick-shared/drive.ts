@@ -30,30 +30,38 @@ export type Folder = Readonly<{ id: string | undefined; name: string; }>;
 /** a file in the Drive a listing counts: its file name (with its extension) and its
  *  uri */
 export type DriveFile = Readonly<{ fileName: string; uri: string; }>;
-/** a saved design: a Source document named `.ldr` */
+/** a saved design: a Source document named `.ldr`, or a file of that name (an LDraw
+ *  file a repository keeps, which the Drive holds as a file of no named type: read-only */
+// SEE: isReadOnlyDesign
 export type Design = DriveFile;
-/** which entries a listing counts as its files: those whose uri starts so (a Source
- *  document, a file) and whose name ends in one of the extensions */
-export type FileKind = Readonly<{ uriPrefix: string; extensions: ReadonlyArray<string>; }>;
+/** which entries a listing counts as its files: those whose uri starts with one of the
+ *  prefixes (a Source document, a file) and whose name ends in one of the extensions */
+export type FileKind = Readonly<{ uriPrefixes: ReadonlyArray<string>; extensions: ReadonlyArray<string>; }>;
 /** a page of what a folder holds: its folders and its files of a kind, and how many
  *  entries the page read (every other entry included), which the next page starts
  *  after */
 export type FolderListing = Readonly<{ folders: ReadonlyArray<Folder>; files: ReadonlyArray<DriveFile>; read: number; hasMore: boolean; }>;
 
 // == Kinds =======================================================================
-/** designs: Source documents named `.ldr` */
-export const DESIGNS: FileKind = { uriPrefix: SOURCE_URI, extensions: [DESIGN_EXTENSION] };
+/** designs: Source documents named `.ldr`, and files of that name */
+export const DESIGNS: FileKind = { uriPrefixes: [SOURCE_URI, FILE_URI], extensions: [DESIGN_EXTENSION] };
 /** sounds: audio files, by the extensions a browser decodes */
-export const SOUND_FILES: FileKind = { uriPrefix: FILE_URI, extensions: ['.aac', '.flac', '.m4a', '.mp3', '.oga', '.ogg', '.opus', '.wav', '.webm'] };
+export const SOUND_FILES: FileKind = { uriPrefixes: [FILE_URI], extensions: ['.aac', '.flac', '.m4a', '.mp3', '.oga', '.ogg', '.opus', '.wav', '.webm'] };
 /** pictures: image files, by the extensions a browser decodes */
-export const PICTURE_FILES: FileKind = { uriPrefix: FILE_URI, extensions: ['.avif', '.gif', '.jpeg', '.jpg', '.png', '.webp'] };
+export const PICTURE_FILES: FileKind = { uriPrefixes: [FILE_URI], extensions: ['.avif', '.gif', '.jpeg', '.jpg', '.png', '.webp'] };
+
+/** whether a design is a file a repository keeps (read-only: a save writes a design of
+ *  its own), rather than a Source document */
+export const isReadOnlyDesign = (design: Design): boolean => design.uri.startsWith(FILE_URI);
 
 /** whether a value names a Platform file (`charmiq://file/...`) */
 export const isPlatformFile = (uri: unknown): uri is string => (typeof uri === 'string') && PLATFORM_FILE.test(uri);
 
 type Entry = Readonly<{ name: string; uri: string; }>;
 type Listing = Readonly<{ entries: ReadonlyArray<Entry>; hasMore: boolean; }>;
-type Read = Readonly<{ content: string; nextRead?: Readonly<Record<string, unknown>>; }>;
+/** a read's answer: text, its lines counted (a file's bytes come as base64 instead,
+ *  counting none) */
+type Read = Readonly<{ content: string; totalLines?: number; nextRead?: Readonly<Record<string, unknown>>; }>;
 /** a binary file's read: its bytes as base64 */
 type BinaryRead = Readonly<{ content: string; contentType: string; }>;
 type Created = Readonly<{ uri: string; }>;
@@ -90,7 +98,7 @@ export class Drive {
   }
 
   /** the design a document is, by its uri (from a listing): refused when the
-   *  document is not a design (a Source document named `.ldr`) */
+   *  document is not a design (a Source document or a file named `.ldr`) */
   public async design(uri: string): Promise<Design> {
     const { name } = await this.call<Readonly<{ name: string; }>>('describe_file', { uri });
     const [design] = asFile(DESIGNS)({ name, uri });
@@ -109,9 +117,11 @@ export class Drive {
     return Uint8Array.from(atob(content), character => character.charCodeAt(0)).buffer;
   }
 
-  /** a design's LDraw text, exactly as saved, every page of it */
+  /** a design's LDraw text, exactly as saved, every page of it; refused for a file the
+   *  Drive reads as bytes (not UTF-8 text) */
   public async read(design: Design): Promise<string> {
     let page = await this.call<Read>('read_file', { uri: design.uri });
+    if(isReadOnlyDesign(design) && (page.totalLines === undefined)) throw new Error(`${design.fileName} is not LDraw text.`);
     let text = page.content;
     while(page.nextRead) {
       page = await this.call<Read>('read_file', page.nextRead);
@@ -164,4 +174,4 @@ const asFolder = ({ name, uri }: Entry): Folder[] =>
 
 /** a listed entry as a file of the kind, when it is one */
 const asFile = (kind: FileKind) => ({ name, uri }: Entry): DriveFile[] =>
-  (uri.startsWith(kind.uriPrefix) && kind.extensions.some(extension => name.toLowerCase().endsWith(extension))) ? [{ fileName: name, uri }] : [];
+  (kind.uriPrefixes.some(prefix => uri.startsWith(prefix)) && kind.extensions.some(extension => name.toLowerCase().endsWith(extension))) ? [{ fileName: name, uri }] : [];

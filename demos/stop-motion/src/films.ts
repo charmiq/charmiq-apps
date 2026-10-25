@@ -2,7 +2,7 @@ import { BehaviorSubject, type Observable } from 'rxjs';
 
 import type { DocumentState } from '../../brick-shared/app-state';
 import { DesignError, DesignStore, displayName, type Saved } from '../../brick-shared/designs';
-import type { Design, Drive, Folder } from '../../brick-shared/drive';
+import { isReadOnlyDesign, type Design, type Drive, type Folder } from '../../brick-shared/drive';
 
 import type { Director } from './director';
 import { readFilmFile, writeFilmFile } from './film-file';
@@ -126,8 +126,9 @@ export class Films {
    *  over it. An edit made while the Drive writes is told unsaved */
   public save(name?: string, replace = false): Promise<Saved> { return this.exclusive(() => this.saveNow(name, replace)); }
   /** saves the film over its own file once the app state has told it; none when the
-   *  film has no file of its own (its name is asked for then) */
-  public saveOver(): Promise<Saved | undefined> { return this.exclusive(() => this.own ? this.saveNow(undefined, false) : Promise.resolve(undefined)); }
+   *  film has no file of its own, or its file is one a repository keeps (its name is
+   *  asked for then) */
+  public saveOver(): Promise<Saved | undefined> { return this.exclusive(() => (this.own && !isReadOnlyDesign(this.own.design)) ? this.saveNow(undefined, false) : Promise.resolve(undefined)); }
   private async saveNow(name: string | undefined, replace: boolean): Promise<Saved> {
     const own = this.own;
     const write = (name !== undefined) ? (text: () => Promise<string>) => this.store.write(name, replace, text, own?.design)

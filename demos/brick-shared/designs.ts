@@ -1,5 +1,5 @@
 import type { DocumentState } from './app-state';
-import { DESIGN_EXTENSION, DESIGNS, DRIVE_PAGE, type Design, type Drive, type DriveFile, type FileKind, type Folder, type FolderListing } from './drive';
+import { isReadOnlyDesign, DESIGN_EXTENSION, DESIGNS, DRIVE_PAGE, type Design, type Drive, type DriveFile, type FileKind, type Folder, type FolderListing } from './drive';
 
 // the Brick family's saved designs in the Drive: what a design's name may be, which
 // folder designs go to, and saving and reading a design's LDraw text there. What the
@@ -106,7 +106,8 @@ export class DesignStore {
   // == Write & Read ==============================================================
   /** saves LDraw text as a design in the folder. A design of that name already there
    *  is refused (DesignExists) unless `replace` says to write over it, or it is `own`
-   *  (the design being saved again) */
+   *  (the design being saved again); one a repository keeps is refused whatever is said
+   *  (it is read-only) */
   public async write(name: string, replace: boolean, text: () => string | Promise<string>/*read once the name is clear*/, own?: Design): Promise<SavedInFolder> {
     const clean = this.designName(name);
     await this.ready;
@@ -114,6 +115,7 @@ export class DesignStore {
     const folder = this.folder;
     const { found: existing, unseen } = await this.find(folder, clean);
     if(!existing && unseen) throw new DesignError(`Too many ${this.words.noun}s in ${folder.name} have names like "${clean}" to tell whether one is named "${clean}". Save under a more distinctive name.`)/*a save never risks a duplicate*/;
+    if(existing && isReadOnlyDesign(existing)) throw new DesignError(readOnlyIn(existing, folder));
     if(existing && !replace && (existing.uri !== own?.uri)) throw new DesignExists(displayName(existing), folder, this.words.noun);
 
     const changed = existing ? await this.drive.overwrite(existing, ldraw) : true/*created*/;
@@ -121,8 +123,10 @@ export class DesignStore {
     return { name: displayName(design), design, folder, replaced: !!existing, changed };
   }
 
-  /** saves LDraw text over a design wherever it is, `folder` the one it is known in */
+  /** saves LDraw text over a design wherever it is, `folder` the one it is known in;
+   *  refused for one a repository keeps */
   public async rewrite(design: Design, text: () => string | Promise<string>, folder?: Folder): Promise<Saved> {
+    if(isReadOnlyDesign(design)) throw new DesignError(readOnlyOwn(design));
     const changed = await this.drive.overwrite(design, await text());
     return { name: displayName(design), design, ...(folder ? { folder } : {}), replaced: true, changed };
   }
@@ -179,6 +183,11 @@ export class DesignStore {
 // == Util ========================================================================
 /** a file's name without its extension: a design's as the person named it */
 export const displayName = (file: DriveFile): string => file.fileName.replace(/\.[^./]+$/, '');
+
+/** why a design a repository keeps is never written over: in its folder, or as the one
+ *  a save would write over */
+export const readOnlyIn = (design: Design, folder: Folder): string => `"${displayName(design)}" in ${folder.name} is a file its repository keeps, which is read-only: save under another name or in another folder.`;
+export const readOnlyOwn = (design: Design): string => `"${displayName(design)}" is a file its repository keeps, which is read-only: name it to save it as your own.`;
 
 const isFolder = (value: unknown): value is Folder =>
   (typeof value === 'object') && (value !== null) && (typeof (value as Folder).name === 'string') &&
