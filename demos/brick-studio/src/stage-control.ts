@@ -1,11 +1,12 @@
 import { BehaviorSubject, type Observable } from 'rxjs';
 
+import type { PoseBottoms } from '../../brick-shared/rise';
 import { skyFrom } from '../../brick-shared/sky';
 
 import type { Build } from './build';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
+import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -41,9 +42,10 @@ export type StageElements = Readonly<{
 }>;
 
 /** what a stage call answers: the actors cast, those among them with wheels to roll,
- *  those that pose (figures) and those that click onto studs, those refused with why,
- *  each cast actor's box, and the reel's number when one is staged */
-export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
+ *  those that pose (figures) and what a figure's rise is measured from, those that
+ *  click onto studs, those refused with why, each cast actor's box, and the reel's
+ *  number when one is staged */
+export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
 /** what a frame call answers: how many actors it shows, and the frame captured when
  *  one is asked for */
 export type Framed = Readonly<{ shown: number; image?: ImageBitmap; }>;
@@ -163,7 +165,8 @@ export class StageControl {
     this.showControls();
     this.publish({ kind: 'staged', ...(this.reel ? { reel: this.reel.id } : {}) });
     const [wheeled, figures, clicks] = (['rolls', 'poses', 'clicks'] as const).map(can => [...cast.actors].filter(([, actor]) => actor[can]).map(([name]) => name));
-    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((figures.length > 0) ? { figures } : {}), ...((clicks.length > 0) ? { clicks } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
+    const bottoms = bottomsOf(cast);
+    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((figures.length > 0) ? { figures } : {}), ...(bottoms ? { bottoms } : {}), ...((clicks.length > 0) ? { clicks } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
   }
 
   /** what stands at points and across segments of a set as a stage of those sets and

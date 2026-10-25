@@ -1,3 +1,5 @@
+import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
+
 import { toGear, toPosing } from './build';
 import { getStageFace, ALL_FACES, type CatalogPart } from './catalog';
 import { occupiedCells } from './check';
@@ -166,6 +168,12 @@ type Actor = Readonly<{
   anchor: readonly [number, number, number];
   size: Size;
   poses: boolean;
+  /** how far a frame's pose raises its lowest point over its soles (plates; SEE:
+   *  brick-shared/rise.ts): a shot's position is its lowest point, so a seated figure
+   *  sits where it is placed. 0 for what never poses */
+  rise: (pose: Pose | undefined) => number;
+  /** what its rise is measured from: a figure's (every figure is one shape) */
+  bottoms?: PoseBottoms;
   /** it clicks onto studs: a figure or a creature (on studs it stands on them, a stud
    *  at a time) */
   clicks: boolean;
@@ -398,10 +406,12 @@ const partPiece = (set: Model, index: number, at: string): Piece | string => {
   const shape = getShape(catalogPart);
   const [width, depth] = footprint(shape, placement.rotation);
   const standing = { ...placement, x: 0, z: 0, level: 0, rotation: 0 } as const;
-  const lift = (ldrawPosition(shape, { ...standing, pose: undefined })[1] - ldrawPosition(shape, standing)[1]) / LDU_PER_PLATE/*its pose's: a posed part's level is its posed bottom*/;
+  const lift = (ldrawPosition(shape, { ...standing, pose: undefined })[1] - ldrawPosition(shape, standing)[1]) / LDU_PER_PLATE/*its pose's, in whole levels: a posed part's level is its posed bottom*/;
+  const actor = partActor(catalogPart, standing);
   return {
-    at, actor: partActor(catalogPart, standing),
-    rest: { position: { x: placement.x + (width / 2), z: placement.z + (depth / 2), height: placement.level + lift }, turn: { yaw: placement.rotation, pitch: 0, roll: 0 }, ...(placement.pose ? { pose: placement.pose } : {}) },
+    at, actor,
+    // its soles where the set draws them, raised to its lowest point as a shot names it
+    rest: { position: { x: placement.x + (width / 2), z: placement.z + (depth / 2), height: placement.level + lift + actor.rise(undefined) }, turn: { yaw: placement.rotation, pitch: 0, roll: 0 }, ...(placement.pose ? { pose: placement.pose } : {}) },
     placements: [index], others: [],
   };
 };
@@ -464,6 +474,7 @@ const copyActor = (set: Model, rotation: Rotation, parts: ReadonlyArray<Placemen
     anchor: [0, 0, 0],
     size,
     poses: false,
+    rise: () => 0,
     clicks: false,
     holds: false,
     faces: false,
@@ -485,6 +496,7 @@ const componentActor = (set: Model, component: Component): Actor => {
     anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
     size: { width: maxX - minX, depth: maxZ - minZ, height },
     poses: false,
+    rise: () => 0,
     clicks: false,
     holds: false,
     faces: false,
@@ -505,6 +517,15 @@ const filledBy = (set: Model, parts: ReadonlyArray<Placement>): Footprint => {
 /** the level the tallest of some parts reaches (tires above the studs included) */
 const tallestTop = (parts: ReadonlyArray<Placement>): number => Math.max(...parts.map(placement => placement.level + getShape(getPart(placement.part)!/*by contract*/).height));
 
+/** a posable part's bodies' lowest points over its soles at each measured angle
+ *  (SEE: brick-shared/rise.ts), from its pose geometry; none for a part that never poses */
+export const poseBottomsOf = (part: string): PoseBottoms | undefined => {
+  const geometry = POSE_GEOMETRY[part];
+  if(!geometry) return undefined;
+  const limbs = Object.fromEntries(Object.entries(geometry.limbs).map(([limb, angles]) => [limb, Object.fromEntries(Object.entries(angles).map(([angle, body]) => [angle, body.bottom]))]));
+  return { core: geometry.core.bottom, limbs };
+};
+
 /** a catalog part's actor, `standing` as dressed at the origin unturned: a frame's pose
  *  over its own (each limb a frame names, the rest as it stands) and its face in place
  *  of its own, for that frame */
@@ -512,10 +533,13 @@ const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
   const shape = getShape(catalogPart);
   const origin = ldrawPosition(shape, { ...standing, pose: undefined })/*as it stands unposed: a pose turns limbs about their own pivots*/;
   const colorCode = getColor(standing.color)!.code;
+  const bottoms = poseBottomsOf(catalogPart.key);
   return {
     anchor: [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
     size: { ...(POSE_GEOMETRY[catalogPart.key]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height },
     poses: !!catalogPart.limbs,
+    rise: pose => bottoms ? poseRise(bottoms, { ...standing.pose, ...pose }) : 0,
+    ...(bottoms ? { bottoms } : {}),
     clicks: !!catalogPart.limbs || (catalogPart.kind === 'creature'),
     faces: catalogPart.facePiece !== undefined,
     rolls: !!catalogPart.wheels,
@@ -538,6 +562,9 @@ const carriesComponents = (catalogPart: CatalogPart): string => `${catalogPart.k
 
 /** each cast actor's box, by name */
 export const sizesOf = (cast: Cast): Readonly<Record<string, Size>> => Object.fromEntries([...cast.actors].map(([name, actor]) => [name, actor.size]));
+/** what the cast's figures' rise is measured from (every figure is one shape); none
+ *  when it casts none */
+export const bottomsOf = (cast: Cast): PoseBottoms | undefined => [...cast.actors.values()].find(actor => actor.bottoms)?.bottoms;
 
 // == Frame =======================================================================
 // the frame call: each actor's shot, the camera, and the size a frame is captured at
@@ -630,7 +657,7 @@ export const pathOf = (cast: Cast, frames: ReadonlyArray<ReelFrame>, fps: number
   const shown = frames[index];
   if(!shown) return { runs: [], keys: [] };
   const actor = cast.actors.get(follow.actor)!/*by contract: followOf*/;
-  const hipOf = ({ position }: Shot): Point => ({ x: position.x, z: position.z, height: position.height + (actor.poses ? FIGURE_HIP : (actor.size.height / 2)) });
+  const hipOf = ({ position, pose }: Shot): Point => ({ x: position.x, z: position.z, height: position.height + (actor.poses ? (FIGURE_HIP - actor.rise(pose)) : (actor.size.height / 2)) });
   const runs: Point[][] = [];
   let run: Point[] | undefined;
   for(const frame of frames) {
@@ -648,11 +675,11 @@ export const pathOf = (cast: Cast, frames: ReadonlyArray<ReelFrame>, fps: number
 const followedShot = (frame: ReelFrame | undefined, set: number, follow: Follow): Shot | undefined =>
   (frame && (frame.set === set)) ? frame.shots.find(shot => shot.name === follow.actor) : undefined;
 
-/** where a shot puts an actor's frame: its anchor at the shot's position, turned
- *  about it */
-const actorTransform = (actor: Actor, { position, turn }: Shot): Transform => {
+/** where a shot puts an actor's frame: its anchor, raised to its lowest point at the
+ *  shot's pose, at the shot's position, turned about it */
+const actorTransform = (actor: Actor, { position, turn, pose }: Shot): Transform => {
   const { matrix, position: at } = turnedAt(position, turn);
-  const [ax, ay, az] = actor.anchor;
+  const [ax, ay, az] = [actor.anchor[0], actor.anchor[1] - (actor.rise(pose) * LDU_PER_PLATE)/*LDraw's y runs down*/, actor.anchor[2]];
   const turned = [0, 1, 2].map(row => (matrix[row * 3] * ax) + (matrix[(row * 3) + 1] * ay) + (matrix[(row * 3) + 2] * az));
   return { matrix, position: [at[0] - turned[0], at[1] - turned[1], at[2] - turned[2]] };
 };

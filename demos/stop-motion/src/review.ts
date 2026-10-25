@@ -34,6 +34,9 @@ const FOOTING_GAP = 0.25;
 /** how deep a figure's feet go into the set before it shows (studs: about a plate), past
  *  a walker's toe brushing a tread's edge */
 const FOOTING_DEEP = 0.3;
+/** how long a figure not stepping floats before it shows (seconds), past a keyed jump's
+ *  flight */
+const FLOATING_LONG = 1;
 
 // == Types =======================================================================
 /** what the studio's probe answered for a frame: the part its camera stands inside,
@@ -42,9 +45,12 @@ export type PartFinding = Readonly<{ inside?: string; hidden?: string; }>;
 /** a span (seconds) the camera stands inside something, or something hides its target
  *  from it: a part, or an actor by name */
 export type CameraProblem = Readonly<{ from: number; to: number; kind: 'inside' | 'hidden'; by: string; }>;
-/** a span (seconds) a figure's feet stand in the set (`into`) or, as it steps, out over
- *  nothing (`above`), and the most they reach (studs) */
-export type FootingProblem = Readonly<{ actor: string; from: number; to: number; kind: 'into' | 'above'; most: number; }>;
+/** a span (seconds) a figure's feet stand in the set (`into`), as it steps out over
+ *  nothing (`above`), or as it stands, sits or poses its lowest point over what is under
+ *  it (`floating`), and the most they reach (studs) */
+export type FootingProblem = Readonly<{ actor: string; from: number; to: number; kind: FootingKind; most: number; }>;
+/** how a figure's footing goes wrong (SEE: FootingProblem) */
+export type FootingKind = 'into' | 'above' | 'floating';
 /** which way a subject moves on the screen over a few frames */
 export type Moving = 'left' | 'right' | 'up' | 'down' | 'still';
 /** a side of a cut: its frame and shot, its subject, where that stands on the screen
@@ -117,16 +123,17 @@ const problemAt = (film: Film, sizes: Readonly<Record<string, Size>>, frame: Fil
 
 // == Footing =====================================================================
 /** where each figure's feet go wrong, as the film staged on the set's surfaces
- *  measures them (SEE: film.ts Feet): in the set (a walk through a landing),
- *  or out over nothing (off a gallery's edge); each a span of the frames it holds
- *  over, a pause between steps within it, and the most it reaches: feet in the set only
- *  where they go a plate deep (a toe brushing a tread's edge is a walk's own). A film
- *  made without the set's surfaces measures none */
+ *  measures them (SEE: film.ts Feet): in the set (a walk through a landing), out over
+ *  nothing (off a gallery's edge), or resting in the air (a sitter over its seat); each
+ *  a span of the frames it holds over, a pause between steps within it, and the most it
+ *  reaches: feet in the set only where they go a plate deep (a toe brushing a tread's
+ *  edge is a walk's own), a figure in the air only held there a second (a jump flies).
+ *  A film made without the set's surfaces measures none */
 export const footingProblems = (film: Film): ReadonlyArray<FootingProblem> => {
-  const spans: Array<{ actor: string; from: number; to: number; kind: 'into' | 'above'; most: number; }> = [];
+  const spans: Array<{ actor: string; from: number; to: number; kind: FootingKind; most: number; }> = [];
   film.frames.forEach((frame, index) => {
     for(const [actor, step] of Object.entries(frame.feet ?? {})) {
-      for(const kind of ['into', 'above'] as const) {
+      for(const kind of ['into', 'above', 'floating'] as const) {
         const reach = step[kind];
         if(reach === undefined) continue;
         const open = spans.find(span => (span.actor === actor) && (span.kind === kind) && ((frame.time - span.to) <= FOOTING_GAP));
@@ -135,7 +142,7 @@ export const footingProblems = (film: Film): ReadonlyArray<FootingProblem> => {
       }
     }
   });
-  return spans.filter(span => (span.kind === 'above') || (span.most >= FOOTING_DEEP));
+  return spans.filter(span => (span.kind === 'above') || ((span.kind === 'into') && (span.most >= FOOTING_DEEP)) || ((span.kind === 'floating') && ((span.to - span.from) >= FLOATING_LONG)));
 };
 
 // == Screen ======================================================================

@@ -10938,8 +10938,8 @@ const salon = [sitter, companion, copyist, gentleman, boy, sister, guard]
 
 // the couple on the bench, facing the Night Watch: turning to each other, his hands on
 // his knees and hers pointing it out, their arms never still
-sitter.at(0, { x: -3, z: 21, height: 3, yaw: 180, pose: { leftLeg: 90, rightLeg: 90, leftArm: 20, rightArm: 20 } })
-companion.at(0, { x: 0.5, z: 21, height: 3, yaw: 180, pose: { leftLeg: 90, rightLeg: 90, leftArm: 30, rightArm: 10 } })
+sitter.at(0, { x: -3, z: 21, height: 5, yaw: 180, pose: { leftLeg: 90, rightLeg: 90, leftArm: 20, rightArm: 20 } })
+companion.at(0, { x: 0.5, z: 21, height: 5, yaw: 180, pose: { leftLeg: 90, rightLeg: 90, leftArm: 30, rightArm: 10 } })
          .at(1.8, { pose: { rightArm: 10 } }).at(2.6, { pose: { rightArm: 120 } }).at(4.2, { pose: { rightArm: 120 } }).at(5, { pose: { rightArm: 10 } })
 sitter.wobble('pose.leftArm', 8, { rate: 0.35 })
 sitter.wobble('pose.rightArm', 10, { rate: 0.3 })
@@ -11037,14 +11037,14 @@ beau.wobble('pose.rightArm', 25, { rate: 0.9 })
 beau.wobble('pose.leftArm', 18, { rate: 0.8 })
 beau.idle({ energy: 0.8 })
 // a woman reading on the grass, an angler at the water, a nurse resting, a rower idling
-reader.at(0, { x: 72, z: 22, height: -2, yaw: 180, pose: { leftLeg: 90, rightLeg: 90, leftArm: 60, rightArm: 60 } })
+reader.at(0, { x: 72, z: 22, height: 0, yaw: 180, pose: { leftLeg: 90, rightLeg: 90, leftArm: 60, rightArm: 60 } })
 reader.wobble('pose.head', 30, { rate: 0.5 })
 reader.wobble('pose.leftArm', 18, { rate: 0.8 })
 reader.wobble('pose.rightArm', 18, { rate: 0.9 })/*turning the pages*/
 angler.at(0, { x: 90, z: 28, yaw: 180, pose: { rightArm: 70, leftArm: 60 } })
 angler.wobble('pose.rightArm', 15, { rate: 0.5 })
 angler.wobble('pose.leftArm', 10, { rate: 0.4 })
-nurse.at(0, { x: 114, z: 2, yaw: 90, height: -2, pose: { leftLeg: 90, rightLeg: 90 } })
+nurse.at(0, { x: 114, z: 2, yaw: 90, height: 0, pose: { leftLeg: 90, rightLeg: 90 } })
 nurse.wobble('pose.leftArm', 22, { rate: 0.7 })
 nurse.wobble('pose.rightArm', 22, { rate: 0.6 })
 nurse.wobble('pose.head', 35, { rate: 0.4 })

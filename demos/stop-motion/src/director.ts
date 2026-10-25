@@ -53,7 +53,7 @@ export class Director {
   private async stageLatest(): Promise<void> {
     const take = this.latest;
     if(!take) return/*no scene has run yet: its run stages it*/;
-    await this.studios.stage(take.scene, facts => Object.values(facts).some(each => (typeof each === 'function')/*surfaces*/ || ((each?.size ?? 0) > 0)) ? filmOf(take.scene, facts) : take.first);
+    await this.studios.stage(take.scene, facts => Object.values(facts).some(each => (typeof each === 'function')/*surfaces*/ || ((each !== undefined) && ('size' in each) && (each.size > 0))/*a figure's bottoms measure the footing clicks already change*/) ? filmOf(take.scene, facts) : take.first);
     if(this.latest !== take) return/*a newer scene*/;
     this.host.show((this.studios.film?.scene === take.scene) ? this.studios.film : take.first);
   }

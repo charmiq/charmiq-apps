@@ -1,3 +1,5 @@
+import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
+
 import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
 import { feetAbove, feetInto, gaitMoveOf, jitter, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
@@ -25,6 +27,9 @@ const INTO_SET = 0.01;
 /** how far a walker's feet stand over the set before they are over nothing (studs): a
  *  brick, past what a hop lifts them */
 const OVER_NOTHING = 1.2;
+/** how far a figure not stepping rests over what is under it before it floats (studs):
+ *  half a plate, past a sole's rounding */
+const FLOATING = 0.2;
 
 const DEFAULT_TARGET: Point = { x: 0, z: 0, height: 4 };
 const DEFAULT_ORBIT = { angle: 30, distance: 40, height: 30 };
@@ -84,10 +89,10 @@ export type FilmFrame = Readonly<{
   feet?: Readonly<Record<string, Feet>>;
 }>;
 /** how far a figure's feet reach into the set (studs: standing in a tread, walking
- *  through a landing), and, as it steps, how far they stand over nothing (walked off a
- *  gallery's edge); a keyed figure in the air may be meant (a jump), so standing over
- *  nothing is measured only while it steps */
-export type Feet = Readonly<{ into?: number; above?: number; }>;
+ *  through a landing), as it steps how far they stand over nothing (walked off a
+ *  gallery's edge), and as it stands, sits or poses how far its lowest point rests
+ *  over what is under it (`floating`: a sitter keyed over its seat) */
+export type Feet = Readonly<{ into?: number; above?: number; floating?: number; }>;
 /** a walker's move under way in a frame (SEE: FilmFrame.steps) */
 export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; }>;
 
@@ -131,12 +136,13 @@ type Local = Readonly<{ channels: Readonly<Record<string, number>>; }>;
  *  Rest) */
 export type Rest = Readonly<{ position: Point; turn: Turn; pose?: Readonly<Record<string, number>>; }>;
 /** what the stage answers of a scene's cast, and the ground under it: the actors with
- *  wheels to roll (`wheeled`), those that pose (`figures`), those that click onto studs
+ *  wheels to roll (`wheeled`), those that pose (`figures`) and what their rise is
+ *  measured from (`bottoms`: SEE brick-shared/rise.ts), those that click onto studs
  *  (`clicks`), where each actor cast from a piece of the set stood (`rests`), the
  *  surface under each actor following the ground at each frame (`grounds`, plates;
  *  SEE: groundsOf), and the surfaces in each cell of each set an actor clicking onto
  *  studs stands on (`surfaces`; SEE: surfacesOf; the baseplate alone when none) */
-export type StageFacts = Readonly<{ wheeled?: ReadonlySet<string>; figures?: ReadonlySet<string>; clicks?: ReadonlySet<string>; rests?: ReadonlyMap<string, Rest>; grounds?: ReadonlyMap<string, ReadonlyArray<number>>; surfaces?: (set: string | undefined) => SurfaceAt; }>;
+export type StageFacts = Readonly<{ wheeled?: ReadonlySet<string>; figures?: ReadonlySet<string>; bottoms?: PoseBottoms; clicks?: ReadonlySet<string>; rests?: ReadonlyMap<string, Rest>; grounds?: ReadonlyMap<string, ReadonlyArray<number>>; surfaces?: (set: string | undefined) => SurfaceAt; }>;
 /** an actor where it stands in one frame */
 type Placed = Readonly<{ position: Point; matrix: ReadonlyArray<number>; visible: boolean; pose?: Readonly<Record<string, number>>; }>;
 
@@ -154,7 +160,7 @@ type Placed = Readonly<{ position: Point; matrix: ReadonlyArray<number>; visible
  *  a frame at a time by the scene's boil (SEE: boiled). Throws, naming the scene's
  *  line, when an actor rides in a circle or leaves the stage's reach */
 export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
-  const { wheeled = new Set<string>(), figures = new Set<string>(), clicks = new Set<string>(), rests = new Map<string, Rest>(), grounds = new Map<string, ReadonlyArray<number>>(), surfaces = () => BASEPLATE } = facts;
+  const { wheeled = new Set<string>(), figures = new Set<string>(), bottoms, clicks = new Set<string>(), rests = new Map<string, Rest>(), grounds = new Map<string, ReadonlyArray<number>>(), surfaces = () => BASEPLATE } = facts;
   const order = rideOrder(scene.actors).map(actor => ({ ...actor, spans: actor.spans.filter(span => (!span.figure || figures.has(actor.name))/*a figure's alone*/ && (!span.glide || !clicks.has(actor.name) || !!actor.ride)/*a walk stepped*/) }));
   // where a figure's arms hang: as the gait its walks take, else the scene's own walk
   const sceneHang = scene.gaits?.find(gait => gait.name === 'walk')?.shape.hang ?? HANG;
@@ -199,10 +205,15 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       const local = stepping ? { channels: stepping.at(grounded.channels, time, surfaces(setAt(scene.sets, time))) } : grounded;
       const under = stepping?.moveAt(time), standingOn = surfaces(setAt(scene.sets, time));
       if(under) steps[actor.name] = { move: gaitMoveOf(under.move), u: under.u, ...((under.walk.gait !== undefined) ? { gait: under.walk.gait } : {}) };
-      // a figure clicking onto studs, shown and on its feet: its feet against the set
+      // a figure clicking onto studs, shown: its feet against the set (its soles its
+      // pose's rise below its height, its lowest point) and, not stepping, its lowest
+      // point over what is under it, as it would stand there
       if(stepping && figures.has(actor.name) && ((local.channels.visible ?? 1) >= 0.5)) {
-        const into = feetInto(local.channels, standingOn), above = under ? feetAbove(local.channels, standingOn) : 0;
-        if((into > INTO_SET) || (above > OVER_NOTHING)) feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}) };
+        const rise = bottoms ? poseRise(bottoms, poseOf(local.channels)) : 0;
+        const soles = { ...local.channels, height: (local.channels.height ?? 0) - rise };
+        const into = feetInto(soles, standingOn), above = under ? feetAbove(soles, standingOn) : 0;
+        const floating = under ? 0 : feetAbove({ ...local.channels, 'pose.leftLeg': 0, 'pose.rightLeg': 0 }, standingOn);
+        if((into > INTO_SET) || (above > OVER_NOTHING) || (floating > FLOATING)) feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}) };
       } /* else -- riding, unseen, or not a figure on studs */
       const own = placedOf(local);
       const parent = actor.ride && placed.get(actor.ride.parent);
@@ -446,7 +457,7 @@ const TILT: ReadonlyArray<readonly [string, number]> = [['pitch', 0.8], ['roll',
 
 /** an actor as its own values place it */
 const placedOf = ({ channels }: Local): Placed => {
-  const pose = Object.fromEntries(Object.entries(channels).filter(([channel]) => channel.startsWith('pose.')).map(([channel, angle]) => [channel.slice('pose.'.length), angle]));
+  const pose = poseOf(channels);
   return {
     position: { x: channels.x ?? 0, z: channels.z ?? 0, height: channels.height ?? 0 },
     matrix: rotation({ yaw: channels.yaw ?? 0, pitch: channels.pitch ?? 0, roll: channels.roll ?? 0 }),
@@ -454,6 +465,10 @@ const placedOf = ({ channels }: Local): Placed => {
     ...((Object.keys(pose).length > 0) ? { pose } : {}),
   };
 };
+
+/** a figure's pose among an actor's values: each limb's angle, by limb */
+const poseOf = (channels: Readonly<Record<string, number>>): Readonly<Record<string, number>> =>
+  Object.fromEntries(Object.entries(channels).filter(([channel]) => channel.startsWith('pose.')).map(([channel, angle]) => [channel.slice('pose.'.length), angle]));
 
 /** a rider where what it rides puts it: its offset and its own position in the
  *  ridden actor's frame, its own turn after the ridden actor's */

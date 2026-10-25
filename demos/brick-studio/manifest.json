@@ -697,6 +697,7 @@
             "actors":  { "type": "array", "items": { "type": "string" } },
             "wheeled": { "type": "array", "description": "The actors with wheels, which frame's rolled turns", "items": { "type": "string" } },
             "figures": { "type": "array", "description": "The actors that pose (figures), which frame's pose turns", "items": { "type": "string" } },
+            "bottoms": { "type": "object", "description": "What a figure's rise is measured from: its core's lowest point over its soles and each limb's at each 15-degree angle (plates). A figure's position is its lowest point; its soles stand its pose's rise below it", "properties": { "core": { "type": "number" }, "limbs": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "number" } } } }, "required": ["core", "limbs"] },
             "clicks":  { "type": "array", "description": "The actors that click onto studs (figures and creatures): on studs they stand on them, a stud at a time", "items": { "type": "string" } },
             "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
             "sizes":   { "type": "object", "description": "Each actor's box, unturned and unposed: studs across (x), studs along (z), plates up; a figure's as it measures, hands included (3.12 by 1.85 studs), never the whole cells it reaches into", "additionalProperties": { "type": "object", "properties": { "width": { "type": "number" }, "depth": { "type": "number" }, "height": { "type": "number" } }, "required": ["width", "depth", "height"] } },
@@ -781,7 +782,7 @@
       },
       {
         "name": "frame",
-        "description": "Show one moment of the staged scene: each actor where its shot puts it (any others hidden), through a camera. An actor's position is the middle of the bottom of its footprint; yaw turns it clockwise seen from above, pitch raises its south side (a figure's front), roll its west side; a figure's pose takes any angle; rolled turns its wheels as the actor having rolled that many studs along its own north. capture answers the frame as an image, for Applications",
+        "description": "Show one moment of the staged scene: each actor where its shot puts it (any others hidden), through a camera. An actor's position is the middle of the bottom of its footprint, a figure's at its lowest point (a seated figure's seat, as a build places it); yaw turns it clockwise seen from above, pitch raises its south side (a figure's front), roll its west side; a figure's pose takes any angle; rolled turns its wheels as the actor having rolled that many studs along its own north. capture answers the frame as an image, for Applications",
         "inputSchema": {
           "type": "object",
           "properties": {

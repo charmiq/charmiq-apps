@@ -1,6 +1,7 @@
 import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rxjs';
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
+import type { PoseBottoms } from '../../brick-shared/rise';
 import { clearanceOf, type Avoided, type Probe } from './clearance';
 import { planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type Paint, type Rest, type StageFacts } from './film';
 import { groundsOf, surfacesOf, type GroundProbe, type SurfaceProbe } from './ground';
@@ -57,7 +58,7 @@ export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
   probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; }>>;
   stage$(): Observable<ScreenState>;
-  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
+  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
   show(args: object): Promise<Readonly<{ shown: number; image?: ImageBitmap; }>>;
   follow(args: object): Promise<Readonly<{ followed: string | null; ghosts: number; }>>;
@@ -262,7 +263,7 @@ export class Studios {
       // the film with its wheels, each actor clicking onto studs on the surfaces it
       // stands near, its camera cleared, loaded on every screen; an actor the stage
       // refused is left out of every frame (the sheet says why)
-      const facts = { wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), clicks: new Set(answer.clicks ?? []), rests: restsOf(answer), grounds };
+      const facts = { wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), ...(answer.bottoms ? { bottoms: answer.bottoms } : {}), clicks: new Set(answer.clicks ?? []), rests: restsOf(answer), grounds };
       const surfaces = (facts.clicks.size > 0) ? await surfacesOf(filmFor(facts), facts.clicks, surfaceProbe) : undefined;
       const { film, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), probe);
       const cast = new Set(answer.actors);

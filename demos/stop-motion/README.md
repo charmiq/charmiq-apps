@@ -8642,7 +8642,7 @@ scene({ title: 'The Shortcut', fps: 24 })
 // .. the cast ..........................................................................
 const car = actor('car', { component: 'car' })
 const driver = actor('driver', { part: 'figure', color: 'blue', face: 'grin', hat: { part: 'construction-helmet', color: 'yellow' } })
-driver.ride(car, { x: 0, z: 0.5, height: 5 })
+driver.ride(car, { x: 0, z: 0.5, height: 7 })
 const cat = actor('cat', { part: 'cat', color: 'orange' })
 const foreman = actor('foreman', { part: 'figure', color: 'orange', legColor: 'dark-gray', face: 'scowl', hat: { part: 'construction-helmet', color: 'white' } })
 
@@ -9023,7 +9023,7 @@ workers.forEach((wk, i) => wk.path(0, END, (u, t) => {
 const cabs = [{ x: 4, z: -18, v: 9 }, { x: 12, z: -63, v: 9.5 }].map((c, i) => {
   const taxi = actor('taxi-' + (i + 1), { component: 'taxi' })
   const cabbie = actor('cabbie-' + (i + 1), { part: 'figure', color: i ? 'dark-red' : 'white', face: i ? 'beard' : 'moustache' })
-  cabbie.ride(taxi, { x: 0, z: 0.5, height: 5 })
+  cabbie.ride(taxi, { x: 0, z: 0.5, height: 7 })
   cabbie.path(0, END, (u, t) => ({ pose: { leftLeg: 90, rightLeg: 90, leftArm: 55 + (5 * noise((t * 0.7) + (i * 5))), rightArm: 50 + (5 * noise((t * 0.8) + (i * 7))), head: (i ? -20 : 15) + (35 * glance(t, 30 + (i * 11), 0.3)) } }))
   taxi.at(0, { x: c.x, z: c.z, height: ROAD, yaw: 180 }).at(END, { z: c.z + (c.v * END) }, 'linear')
   taxi.sound(0, 'engine', { until: END, volume: 0.2 })
