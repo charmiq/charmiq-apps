@@ -119,9 +119,11 @@ export class EditorWrapper {
     this.cm?.addKeyMap({ ...keys });
   }
 
-  /** lays the editor out again (its lines measured anew, as after its text's size changes) */
-  public refresh(): void {
-    this.cm?.refresh();
+  /** draws the editor's text at a size (pixels), its lines measured anew */
+  public setTextSize(size: number): void {
+    if(!this.cm) return;
+    this.cm.getWrapperElement().style.fontSize = `${size}px`;
+    this.cm.refresh();
   }
 
   /** set a single CodeMirror option */

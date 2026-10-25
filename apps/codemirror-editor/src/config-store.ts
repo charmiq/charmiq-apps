@@ -1,6 +1,7 @@
 import type { AppStateAPI } from '../../../shared/charmiq';
 
 import type { TabSlug } from './tab-types';
+import { textSizeOf, DEFAULT_TEXT_SIZE } from './text-size';
 
 // owns editor configuration and tab metadata persisted via appState. All
 // reads/writes go through here — nobody else touches appState directly. Tab
@@ -18,6 +19,8 @@ export interface EditorConfig {
   lineWrapping: boolean;
   smartIndent: boolean;
   indentWithTabs: boolean;
+  /** the text's size, pixels (SEE: text-size.ts) */
+  textSize: number;
   maxTabs: number/*0 = unlimited*/;
 }
 
@@ -46,6 +49,7 @@ const DEFAULT_CONFIG: Readonly<EditorConfig> = {
   lineWrapping: false,
   smartIndent: true,
   indentWithTabs: false,
+  textSize: DEFAULT_TEXT_SIZE,
   maxTabs: 0/*0 = unlimited*/
 };
 
@@ -197,6 +201,13 @@ export class ConfigStore {
           configChanged = true;
         } /* else -- missing or invalid key/value */
       }
+
+      // the text's size, a whole number of pixels within reach
+      const textSize = textSizeOf(state.config.textSize);
+      if((textSize !== undefined) && (textSize !== this.config.textSize)) {
+        this.config.textSize = textSize;
+        configChanged = true;
+      } /* else -- missing, out of reach or unchanged */
 
       // maxTabs (0 or undefined = unlimited)
       if(typeof state.config.maxTabs === 'number') {

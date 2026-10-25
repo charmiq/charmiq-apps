@@ -31,8 +31,9 @@ const start = async () => {
     DEFAULT_MODE
   );
 
-  // the viewer's text size, and the keys an editor zooms by
-  const textSize = new TextSize(() => editorWrapper.refresh());
+  // the document's text size, its menus' rows and the keys an editor zooms by
+  const textSize = new TextSize(size => editorWrapper.setTextSize(size), size => void configStore.updateEditorConfig('textSize', size));
+  textSize.show(config.textSize);
   textSize.init();
   editorWrapper.addKeys(textSize.keys());
 
@@ -57,6 +58,7 @@ const start = async () => {
     editorWrapper.setOption('lineWrapping', cfg.lineWrapping);
     editorWrapper.setOption('smartIndent', cfg.smartIndent);
     editorWrapper.setOption('indentWithTabs', cfg.indentWithTabs);
+    textSize.show(cfg.textSize);
     toolbar.syncUI();
     toolbar.renderTabs()/*maxTabs may have changed*/;
   });

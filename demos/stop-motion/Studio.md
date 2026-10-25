@@ -11115,6 +11115,7 @@ title(END, END + 2, 'The Salon')
     "lineWrapping": false,
     "smartIndent": true,
     "indentWithTabs": false,
+    "textSize": 12,
     "maxTabs": 1
   },
   "tabModes": {

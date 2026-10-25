@@ -333,7 +333,7 @@ body {
 .CodeMirror {
   height: 100% !important;
   font-family: 'JetBrains Mono', monospace;
-  font-size: var(--editor-text-size, 14px)/*the viewer's (SEE: text-size.ts)*/;
+  font-size: 14px/*until the viewer's own is drawn (SEE: text-size.ts)*/;
   line-height: 1.6;
 }
 
