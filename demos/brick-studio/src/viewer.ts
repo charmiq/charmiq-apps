@@ -64,10 +64,13 @@ const DROP_MS = 340/*ms*/;
 const DROP_STAGGER_MS = 22/*ms*/;
 const DROP_STAGGER_MAX_MS = 700/*ms*/;
 const VIEW_MS = 520/*ms*/;
-/** how far the camera swings down round what it looks at (radians from straight
- *  down): over a build never below the baseplate; over a stage the person holds, all
- *  but straight up, so it looks up at what stands above it */
-const BUILD_MAX_POLAR = Math.PI * 0.495, HELD_MAX_POLAR = Math.PI * 0.97;
+/** how far the camera swings round under what it looks at (radians from straight
+ *  down): all but straight up, so it looks up at what stands above it (a chandelier
+ *  from the floor of its hall), as far as keeps it FLOOR_CLEARANCE over the baseplate
+ *  (SEE: limitLookUp) */
+const MAX_POLAR = Math.PI * 0.97;
+/** how far over the baseplate's top the camera always stands (studs: a plate) */
+const FLOOR_CLEARANCE = 0.4;
 /** a followed actor's ghosts: outlines round each of its pieces and its silhouette, red
  *  behind the frame shown and green ahead of it, most opaque beside it and fading to the
  *  faintest at the end of their reach; its path through its hips, and its keys marked on
@@ -337,7 +340,6 @@ export class Viewer {
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.08;
-    this.controls.maxPolarAngle = BUILD_MAX_POLAR;
     this.controls.minDistance = 2;
     this.controls.maxDistance = 600;
     this.controls.addEventListener('start', () => { this.tween?.resolve(); this.tween = undefined; })/*a drag ends a move, settling its command*/;
@@ -762,7 +764,7 @@ export class Viewer {
     to.radius = framing.radius;
     this.controls.target.copy(framing.target);
     this.camera.position.copy(framing.target).add(new THREE.Vector3().setFromSpherical(to));
-    this.controls.update();
+    this.updateControls();
     this.requestFrame();
   }
 
@@ -789,7 +791,7 @@ export class Viewer {
     } finally {
       this.camera.position.copy(position);
       this.controls.target.copy(target);
-      this.controls.update();
+      this.updateControls();
       this.resize()/*the canvas's own size*/;
     }
     return images;
@@ -836,12 +838,27 @@ export class Viewer {
   public holdView(held: boolean): void {
     this.viewHeld = held && !!this.staging;
     this.controls.enabled = !this.staging || this.viewHeld;
-    this.controls.maxPolarAngle = this.viewHeld ? HELD_MAX_POLAR : BUILD_MAX_POLAR;
     if(!this.viewHeld) this.walking = STANDING/*the film's camera stands*/;
     this.requestFrame();
   }
   /** whether the person holds the view over the stage (SEE: holdView) */
   public get isViewHeld(): boolean { return this.viewHeld; }
+
+  /** the controls moved on (damping, a drag, a zoom), the camera never swinging so far
+   *  under its target as to stand below the floor (SEE: limitLookUp); whether it moved */
+  private updateControls(): boolean {
+    this.limitLookUp();
+    return this.controls.update();
+  }
+
+  /** the steepest the camera may look up at its target from where it stands: round
+   *  under it as far as keeps it FLOOR_CLEARANCE over the baseplate at its distance
+   *  (its height is the target's plus its distance times the cosine of its angle), all
+   *  but straight up at most */
+  private limitLookUp(): void {
+    const reach = (FLOOR_CLEARANCE - this.controls.target.y) / Math.max(this.camera.position.distanceTo(this.controls.target), 1e-6);
+    this.controls.maxPolarAngle = (reach <= -1) ? MAX_POLAR : Math.min(MAX_POLAR, Math.acos(Math.min(1, reach)));
+  }
 
   /** shows a stage's first set in place of the build, its baseplate covering at least
    *  `floor`, no actor shown yet, the parts of its other sets built unseen so a frame
@@ -1038,9 +1055,8 @@ export class Viewer {
     this.useLens({})/*the look's own focus again*/;
     this.useLight({})/*the look's own light again*/;
     this.stageSky = undefined/*each set's own again*/;
-    this.controls.maxPolarAngle = BUILD_MAX_POLAR;
     this.controls.enabled = true;
-    this.controls.update();
+    this.updateControls();
     this.renderer.setPixelRatio(screenPixelRatio());
     this.canvas.style.objectFit = this.overlayCanvas.style.objectFit = '';
     this.overlayStale = true;
@@ -1409,7 +1425,7 @@ export class Viewer {
       this.lastWalk = now;
       moving = true;
     } /* else -- standing */
-    if((!this.staging || this.viewHeld) && this.controls.update()) moving = true/*damping; a stage's camera stands where its frame puts it unless the person holds the view*/;
+    if((!this.staging || this.viewHeld) && this.updateControls()) moving = true/*damping; a stage's camera stands where its frame puts it unless the person holds the view*/;
 
     // dropping parts
     if(this.drops.length > 0) {
@@ -1477,7 +1493,7 @@ export class Viewer {
     const hit = this.firstMet(ahead);
     if(!hit) return/*looking at the sky: the point stays*/;
     this.controls.target.copy(camera).addScaledVector(ahead, clamp(camera.distanceTo(hit), this.controls.minDistance, distance));
-    this.controls.update();
+    this.updateControls();
     this.requestFrame();
   }
 
