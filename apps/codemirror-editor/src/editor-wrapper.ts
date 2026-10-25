@@ -114,6 +114,16 @@ export class EditorWrapper {
     this.known = changes.apply(this.known);
   }
 
+  /** adds keys to the editor's keymap, each a CodeMirror key name and what it does */
+  public addKeys(keys: Readonly<Record<string, () => void>>): void {
+    this.cm?.addKeyMap({ ...keys });
+  }
+
+  /** lays the editor out again (its lines measured anew, as after its text's size changes) */
+  public refresh(): void {
+    this.cm?.refresh();
+  }
+
   /** set a single CodeMirror option */
   public setOption(key: string, value: any): void {
     this.cm?.setOption(key, value);

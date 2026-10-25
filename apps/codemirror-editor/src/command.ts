@@ -2,6 +2,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import { DEFAULT_MODE } from './config-store';
 import type { ContentBridge } from './content-bridge';
 import type { EditorWrapper } from './editor-wrapper';
+import { replaced } from './replace';
 import type { TabManager } from './tab-manager';
 import type { TabId } from './tab-types';
 
@@ -60,6 +61,11 @@ export class CommandSurface {
         const resolved = this.tabManager.resolveTabId(tabId);
         if(resolved === null) throw new Error(`No tab matches '${tabId ?? ''}'.`);
         return this.editText(from, to, text, measured, resolved);
+      },
+      replaceText: ({ edits, tabId }: { edits?: unknown; tabId?: string; }) => {
+        const resolved = this.tabManager.resolveTabId(tabId);
+        if(resolved === null) throw new Error(`No tab matches '${tabId ?? ''}'.`);
+        return this.replaceText(Array.isArray(edits) ? edits : [], resolved);
       },
 
       listTabs: () => this.tabManager.listTabs(),
@@ -131,6 +137,16 @@ export class CommandSurface {
     const targetId = tabId || this.tabManager.getActiveTabId();
     if(!targetId) throw new Error('No tab is open.');
     await this.tabManager.editText(targetId, from, to, text, measured);
+  }
+
+  /** replaces the text each edit finds, once each, in order (SEE: replace.ts), as one
+   *  range edit measured on the tab's text as it is now; answers how many edits it made */
+  private async replaceText(edits: ReadonlyArray<unknown>, tabId: TabId): Promise<Readonly<{ replaced: number; }>> {
+    const measured = this.getText(tabId);
+    if(measured === null) throw new Error('No tab is open.');
+    const range = replaced(measured, edits);
+    if(range) await this.tabManager.editText(tabId, range.from, range.to, range.insert, measured);
+    return { replaced: edits.length };
   }
 
   private switchTab(tabId: TabId): boolean {

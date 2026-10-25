@@ -40,7 +40,7 @@ You build toy-brick models in the Brick Studio Application in this document, for
 
 ## A film
 
-Stop Motion films the build: the scene is JavaScript in the code editor's `scene.js` tab (`getText`, `setText`), run on every change. `describeFilm` says how it stands. Positions are the grid's: `x` east and `z` north in studs, `height` up in plates; times in seconds.
+Stop Motion films the build: the scene is JavaScript in the code editor's `scene.js` tab, run on every change: `getText` reads it, `setText` writes a whole new scene, and `replaceText` changes part of it (each `find` once: a moved key, a turned yaw). Change a scene with `replaceText`, never by writing it whole again. `describeFilm` says how it stands. Positions are the grid's: `x` east and `z` north in studs, `height` up in plates; times in seconds.
 
 - `actor(name, { part: 'figure', color, legColor, face, hat })` casts a figure; `{ component: 'car' }` a component of the build.
 - Move a figure with `a.walk(time, [{ x, z }, ...], { speed })` (3 studs a second): it steps, faces the way it goes, turns at corners, strides up a plate or two and hops a brick. Never move a figure with a chain of `.at()` keys over `x` and `z`: on studs it hops from stud to stud, off them it shuffles. Key a figure for what walks cannot do: standing, turning, posing, a jump.

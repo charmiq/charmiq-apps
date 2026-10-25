@@ -214,6 +214,31 @@ body {
   padding: 8px 14px;
 }
 
+.text-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text-size-button {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--gray-300);
+  border-radius: 4px;
+  background: white;
+  color: var(--gray-700);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.text-size-value {
+  min-width: 22px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--gray-700);
+}
+
 .settings-number-label {
   font-size: 13px;
   color: var(--gray-700);
@@ -308,7 +333,7 @@ body {
 .CodeMirror {
   height: 100% !important;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
+  font-size: var(--editor-text-size, 14px)/*the viewer's (SEE: text-size.ts)*/;
   line-height: 1.6;
 }
 

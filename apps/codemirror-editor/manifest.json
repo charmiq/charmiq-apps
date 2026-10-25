@@ -47,7 +47,7 @@
       },
       {
         "name": "setText",
-        "description": "Replace the text content of the specified tab or the active tab",
+        "description": "Replace the whole text of the specified tab or the active tab: for a new text. To change part of a tab (a key, a few lines), replaceText sends only what changes",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -70,6 +70,34 @@
             "tabId": { "type": "string", "description": "ID of the tab to edit (defaults to active tab)" }
           },
           "required": ["from", "to", "text", "measured"]
+        }
+      },
+      {
+        "name": "replaceText",
+        "description": "Change part of a tab's text by the text itself: each edit's find text, exactly once in the tab as the edits before it left it, replaced in order by its replace text, the whole call refused (nothing changed) when one is not there once (include more of the text around it). Send only what changes: a moved key, a turned yaw, a few lines; getText first when you do not hold the tab's text",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "edits": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "find":    { "type": "string", "description": "The exact text to replace: it must occur exactly once" },
+                  "replace": { "type": "string", "description": "The text that replaces it; empty deletes it" }
+                },
+                "required": ["find", "replace"]
+              }
+            },
+            "tabId": { "type": "string", "description": "ID of the tab to edit (defaults to active tab)" }
+          },
+          "required": ["edits"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "replaced": { "type": "integer", "description": "How many edits were made" } },
+          "required": ["replaced"]
         }
       },
       {

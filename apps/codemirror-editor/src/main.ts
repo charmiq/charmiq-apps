@@ -4,6 +4,7 @@ import { ConfigStore, DEFAULT_MODE } from './config-store';
 import { ContentBridge } from './content-bridge';
 import { EditorWrapper } from './editor-wrapper';
 import { TabManager } from './tab-manager';
+import { TextSize } from './text-size';
 import { Toolbar } from './toolbar';
 
 // entry point — creates all modules, wires dependencies, starts discovery
@@ -29,6 +30,11 @@ const start = async () => {
     config,
     DEFAULT_MODE
   );
+
+  // the viewer's text size, and the keys an editor zooms by
+  const textSize = new TextSize(() => editorWrapper.refresh());
+  textSize.init();
+  editorWrapper.addKeys(textSize.keys());
 
   // the user's changes go to the active tab's live text, which sends them and keeps
   // them through everyone else's; undo and redo are its own
