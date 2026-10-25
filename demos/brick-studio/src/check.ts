@@ -15,7 +15,8 @@ import { pictureFootprint, type Picture } from './picture';
 // everything else, and only its carrier holds it. A picture's panel (SEE: picture.ts)
 // collides with a part it stands inside: upright, a part filling a cell of its stud row
 // within its height; flat, a part filling a cell beneath it through its level. It is
-// never held or floating
+// never held or floating. A pinned part (SEE: pin.ts) is held where it stands, a copy
+// of a component whole, and holds what its studs hold; it still collides
 // ********************************************************************************
 // == Types =======================================================================
 export type CheckResult = Readonly<{
@@ -27,7 +28,14 @@ export type CheckResult = Readonly<{
   /** the build was read only in part (SEE: READ_IN_PART): the check covers what
    *  was read */
   truncated: boolean;
+  /** the parts pins hold, and the pins naming a cell no part fills, when any */
+  pinned?: number;
+  strayPins?: number;
 }>;
+
+/** what a pin holds: a part of the set's own, or a component's line (a copy), every
+ *  part it places */
+export type PinTarget = Readonly<{ placement: number; }> | Readonly<{ placed: number; }>;
 
 // == Constants ===================================================================
 /** the most parts a result or a refusal names in each list (the counts stay exact) */
@@ -125,9 +133,10 @@ const checkWhole = (model: Model): CheckResult => {
     }
   });
 
-  // reach every part from the ground
+  // reach every part from the ground, and from every part pinned where it stands
   const grounded = new Set<number>();
-  const queue = placements.flatMap((placement, index) => ((restingLevel(placement) === 0) && !getPart(placement.part)!.frame/*by contract*/) ? [index] : []);
+  const pins = pinsOf(model);
+  const queue = placements.flatMap((placement, index) => ((((restingLevel(placement) === 0) && !getPart(placement.part)!.frame/*by contract*/)) || pins.placements.has(index)) ? [index] : []);
   for(const index of queue) grounded.add(index);
   while(queue.length > 0) {
     const index = queue.pop()!;
@@ -145,15 +154,14 @@ const checkWhole = (model: Model): CheckResult => {
   return {
     parts: placements.length + carried.reduce((total, component) => total + component.placements.length, 0), collisions, floating,
     unchecked: model.others.length + carried.reduce((total, component) => total + component.others.length, 0), truncated: !!model.truncated,
+    ...((pins.placements.size > 0) ? { pinned: pins.placements.size } : {}), ...((pins.stray > 0) ? { strayPins: pins.stray } : {}),
   };
 };
 
+// == Collisions ==================================================================
+// -- Bodies ----------------------------------------------------------------------
 /** what fills cells in a check: a placement's own part, or one of its mounts */
 type Body = Readonly<{ placement: number; mount?: Mount; cells: ReadonlyArray<FilledCell>; }>;
-
-/** the level a placement rests on the studs beneath at: its bottom, or the level above
- *  it its part names, for a part hanging below where it rests (SEE: catalog.ts rests) */
-const restingLevel = (placement: Placement): number => placement.level + (getPart(placement.part)!.rests ?? 0)/*by contract*/;
 
 /** each pair of bodies that fill one cell at one level, once, in the order found, a
  *  body against the first at the cell it may meet: a body's own cells never pair,
@@ -177,31 +185,12 @@ const overlapping = (bodies: ReadonlyArray<Body>): Array<readonly [number, numbe
   return [...pairs.values()];
 };
 
-/** the stud cells a picture's panel passes over or through. With no height its height
- *  follows its image, which the check does not read: it takes what the panel covers
- *  whatever the image, its first plate upright and its first stud row flat */
-const pictureCells = (picture: Picture): ReadonlyArray<readonly [number, number]> => {
-  const [east, north] = pictureFootprint(picture, picture.height ?? (picture.flat ? 1 : (1 / PLATES_PER_STUD)));
-  const cells: Array<readonly [number, number]> = [];
-  for(let x=0; x<Math.ceil(east); x++) for(let z=0; z<Math.ceil(north); z++) cells.push([picture.x + x, picture.z + z]);
-  return cells;
-};
-
-/** whether a picture's panel stands inside a part filling a cell it passes, from
- *  `bottom` to `top`: upright, the part fills the cell within the panel's height; flat,
- *  it fills the cell through the picture's level (a part standing on the picture stands
- *  on the studs beneath it) */
-const insidePicture = (picture: Picture, { bottom, top }: FilledCell): boolean => {
-  if(picture.flat) return (bottom < picture.level) && (top > picture.level);
-  const panelTop = picture.level + ((picture.height ?? (1 / PLATES_PER_STUD)) * PLATES_PER_STUD);
-  return (bottom < panelTop) && (top > picture.level);
-};
-
 /** a mount in one line: a hinge's carry by its hinge, a face's by its face, e.g.
  *  `grille on the south face of brick-1x2-side-studs white at x 4 z 6 level 0` */
 const mountName = (model: Model, placement: number, mount: Mount): string =>
   (mount.slot === 'top') ? describeIn(model, placement) : `${mount.copy.component} on the ${mount.slot} face of ${describeIn(model, placement)}`;
 
+// -- Glass -----------------------------------------------------------------------
 /** each pane's frame, the frame part at the pane's own position (a pane with none
  *  floats), and each pane a frame holds after its first, with that first: two panes
  *  in one frame collide */
@@ -222,6 +211,79 @@ const framed = (placements: ReadonlyArray<Placement>): Readonly<{ panes: Map<num
     else crowded.push([first, index]);
   });
   return { panes, crowded };
+};
+
+// -- Pictures --------------------------------------------------------------------
+// a picture's panel against the parts it stands inside (SEE: checkWhole)
+
+/** the stud cells a picture's panel passes over or through. With no height its height
+ *  follows its image, which the check does not read: it takes what the panel covers
+ *  whatever the image, its first plate upright and its first stud row flat */
+const pictureCells = (picture: Picture): ReadonlyArray<readonly [number, number]> => {
+  const [east, north] = pictureFootprint(picture, picture.height ?? (picture.flat ? 1 : (1 / PLATES_PER_STUD)));
+  const cells: Array<readonly [number, number]> = [];
+  for(let x=0; x<Math.ceil(east); x++) for(let z=0; z<Math.ceil(north); z++) cells.push([picture.x + x, picture.z + z]);
+  return cells;
+};
+
+/** whether a picture's panel stands inside a part filling a cell it passes, from
+ *  `bottom` to `top`: upright, the part fills the cell within the panel's height; flat,
+ *  it fills the cell through the picture's level (a part standing on the picture stands
+ *  on the studs beneath it) */
+const insidePicture = (picture: Picture, { bottom, top }: FilledCell): boolean => {
+  if(picture.flat) return (bottom < picture.level) && (top > picture.level);
+  const panelTop = picture.level + ((picture.height ?? (1 / PLATES_PER_STUD)) * PLATES_PER_STUD);
+  return (bottom < panelTop) && (top > picture.level);
+};
+
+// == Holding =====================================================================
+/** the level a placement rests on the studs beneath at: its bottom, or the level above
+ *  it its part names, for a part hanging below where it rests (SEE: catalog.ts rests) */
+const restingLevel = (placement: Placement): number => placement.level + (getPart(placement.part)!.rests ?? 0)/*by contract*/;
+
+// -- Pins ------------------------------------------------------------------------
+/** what each of a model's pins holds (undefined for a pin naming a cell no part
+ *  fills), the parts they hold, and how many hold nothing: a part filling the pin's
+ *  cell, its mounts' cells its own, or the whole line placing it when a component's
+ *  line places it */
+export const pinsOf = (model: Model): Readonly<{ targets: ReadonlyArray<PinTarget | undefined>; placements: ReadonlySet<number>; stray: number; }> => {
+  const pins = model.pins ?? [];
+  if(pins.length < 1) return { targets: [], placements: new Set(), stray: 0 };
+  const filled = filledBy(model);
+  const targets = pins.map(({ x, z, level }) => targetOf(model, filled.get(cellKey(x, z, level))));
+  const lines = new Set(targets.flatMap(target => ((target !== undefined) && ('placed' in target)) ? [target.placed] : []));
+  const placements = new Set(model.placements.flatMap((_, index) => {
+    const line = model.placementPlaced?.[index];
+    return (((line !== undefined) && lines.has(line)) || targets.some(target => (target !== undefined) && ('placement' in target) && (target.placement === index))) ? [index] : [];
+  }));
+  return { targets, placements, stray: targets.filter(target => target === undefined).length };
+};
+
+/** what a pin naming a placement's cell holds: the placement, or the component's
+ *  line placing it */
+export const targetOf = (model: Model, placement: number | undefined): PinTarget | undefined => {
+  if(placement === undefined) return undefined;
+  const line = model.placementPlaced?.[placement];
+  return (line === undefined) ? { placement } : { placed: line };
+};
+
+/** whether two pins hold the same thing */
+export const sameTarget = (a: PinTarget | undefined, b: PinTarget | undefined): boolean =>
+  (a !== undefined) && (b !== undefined) && (('placement' in a) ? (('placement' in b) && (a.placement === b.placement)) : (('placed' in b) && (a.placed === b.placed)));
+
+// == Cells =======================================================================
+// the cells parts fill: the check's, and every edit's or mark's that finds a part by
+// a cell
+
+/** the placement that fills each cell of a model, its mounts' cells its own */
+export const filledBy = (model: Model): ReadonlyMap<string, number> => {
+  const filled = new Map<string, number>();
+  model.placements.forEach((placement, index) => {
+    for(const { x, z, bottom, top } of occupiedCells(model, placement)) {
+      for(let level=bottom; level<top; level++) filled.set(cellKey(x, z, level), index);
+    }
+  });
+  return filled;
 };
 
 /** the cells a placement takes in a build: its part's, then its mounts' (SEE:
@@ -251,12 +313,15 @@ export const reportCheck = (result: CheckResult) => ({
   floating: result.floating.length,
   ...((result.floating.length > 0) ? { floatingParts: result.floating.slice(0, MAX_LISTED) } : {}),
   ...((result.unchecked > 0) ? { unchecked: result.unchecked } : {}),
+  ...(result.pinned ? { pinned: result.pinned } : {}),
+  ...(result.strayPins ? { strayPins: result.strayPins } : {}),
   ...(result.truncated ? { truncated: TRUNCATED } : {}),
 });
 
 /** what a build read only in part means, model-facing */
 export const TRUNCATED = `${READ_IN_PART} This covers that part alone.`;
 
+// == Descriptions ================================================================
 /** a model's placement in one line, naming the line placing it in a component */
 export const describeIn = (model: Model, index: number): string => {
   const owner = model.placementPlaced?.[index];

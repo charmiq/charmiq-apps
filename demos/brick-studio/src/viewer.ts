@@ -22,6 +22,7 @@ import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
 import { applyGlass, applyMetal, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
 import { PictureFiles, PictureStand } from './render/pictures';
+import { PinMarks } from './render/pins';
 import { SkyBackdrop } from './render/sky';
 import { createStudio, type Studio } from './render/studio';
 
@@ -220,6 +221,8 @@ export class Viewer {
   private readonly backdrop: SkyBackdrop;
   /** the pictures standing in the set (SEE: render/pictures.ts) */
   private readonly pictures: PictureStand;
+  /** the marks over the set's pinned parts, in the build view alone (SEE: render/pins.ts) */
+  private readonly pinMarks = new PinMarks(scenePoint);
   private stageSky: Sky | undefined/*each set's own*/;
   /** the build's focus: what lies at the middle of the picture, found once the view
    *  rests (SEE: render/autofocus.ts) */
@@ -327,7 +330,7 @@ export class Viewer {
     this.sun.shadow.normalBias = 0.02;
     this.sun.shadow.radius = 4;
     this.scene.add(this.sun, this.sun.target, this.sky);
-    this.scene.add(this.parts, this.pictures.group, this.ghosts);
+    this.scene.add(this.parts, this.pictures.group, this.ghosts, this.pinMarks.group);
     this.ghostOutlineScene.add(this.ghostOutline);
     this.effects = new Effects(this.renderer, this.scene, this.camera);
 
@@ -631,6 +634,7 @@ export class Viewer {
     this.smoothGround = !!model.smoothGround/*the baseplate drawn next follows it*/;
     this.showSky(this.staging ? (this.stageSky ?? model.sky) : model.sky);
     this.pictures.show(model.pictures ?? []);
+    this.pinMarks.show(this.staging ? undefined : model)/*a stage marks none*/;
     const kept = this.staging ? this.setMeshes.get(model) : undefined;
     const setItems = kept ? [] : renderItems(model)/*a set kept is built*/;
     const actorItems = actors.lines.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));

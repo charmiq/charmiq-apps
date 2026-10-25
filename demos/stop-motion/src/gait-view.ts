@@ -229,7 +229,7 @@ export class GaitView {
   // goes in, its frames, how far at most and in which move, the worst frame to seek
   private showCheck() {
     const walker = this.walker, frames = this.film?.frames ?? [];
-    const into = frames.flatMap(frame => { const step = (walker !== undefined) ? frame.steps?.[walker] : undefined; return step?.into ? [{ index: frame.index, into: step.into, move: step.move }] : []; });
+    const into = frames.flatMap(frame => { const step = (walker !== undefined) ? frame.steps?.[walker] : undefined, reach = (walker !== undefined) ? frame.feet?.[walker]?.into : undefined; return (step && reach) ? [{ index: frame.index, into: reach, move: step.move }] : []; });
     this.check.hidden = (walker === undefined);
     this.check.classList.toggle('is-into', into.length > 0);
     if(into.length < 1) { this.check.textContent = 'Its feet stay out of the set'; delete this.check.dataset.frame; this.check.disabled = true; return; }

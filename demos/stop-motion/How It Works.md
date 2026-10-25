@@ -128,7 +128,7 @@ A Charm writes the scene in the code editor's `scene.js` tab, then works the fil
 
 | Command | Does |
 |---|---|
-| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, its sounds, every two actors that come within 2 studs, where the camera stands inside a part or an actor or has its target hidden, where an avoiding camera was drawn in, and its log, or the scene's mistake and its line; and the sounds Stop Motion ships |
+| `describeFilm` | the studios and editors found, whether the scene is staged, and the film: title, seconds, fps, frames, actors, views, its shots (each with the set it starts on), its set keys, its sounds, every two actors that come within 2 studs, where the camera stands inside a part or an actor or has its target hidden, where an avoiding camera was drawn in, where a figure's feet go into the set or, as it steps, out over nothing (`footing`), and its log, or the scene's mistake and its line; and the sounds Stop Motion ships |
 | `seek` | shows a moment (`time` in seconds, or `frame` from 0) in the studios, answering once the studio has drawn it, so a screenshot sees it |
 | `play`, `pause` | the transport |
 | `storyboard` | shows up to 12 moments at once on a sheet over the main studio, each captioned with its time and shot (the middle of each shot when no `times` or `frames` are given), through a `view` when named: a screenshot of the studio reads them all. The film's next move closes it |

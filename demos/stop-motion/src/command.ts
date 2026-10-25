@@ -8,7 +8,7 @@ import { UnsavedChanges, type Films } from './films';
 import { closePairs, closest, isSized, type Size } from './measure';
 import type { Player } from './player';
 import type { Point, SceneError } from './recorder';
-import { cameraProblems, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type PartFinding } from './review';
+import { cameraProblems, footingProblems, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type PartFinding } from './review';
 import type { ScreenBox } from './screen';
 import type { Board, StageState } from './studios';
 
@@ -72,6 +72,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
           }) } : {}),
           ...(sizes ? { close: closePairs(film, sizes).map(pair => ({ actors: pair.actors, frame: pair.frame, time: thousandths(pair.time), gap: hundredths(pair.gap) })) } : {}),
           ...(staged ? { camera: cameraProblems(staged.film, staged.sizes, staged.parts).map(problemReport) } : {}),
+          ...(staged ? { footing: footingProblems(staged.film).map(({ actor, from, to, kind, most }) => ({ actor, from: thousandths(from), to: thousandths(to), kind, most: hundredths(most) })) } : {}),
           ...((staged && (staged.avoided.length > 0)) ? { avoided: staged.avoided.map(({ from, to, kept, view }) => ({ from: thousandths(from), to: thousandths(to), kept: hundredths(kept), ...((view !== undefined) ? { view } : {}) })) } : {}),
           ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
         } : {}),

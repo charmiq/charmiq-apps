@@ -4,6 +4,7 @@ import { type CatalogPart, type FigureFace, ACCESSORIES, COLORS, DEFAULT_FIGURE_
 import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getPartsByLDraw, getShape, gridPosition, type PartShape, isInheritedColor, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 import { isPictureLine, pictureOf, type Picture } from './picture';
+import { isPinLine, pinOf, type Pin } from './pin';
 import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posedPieces, type Pose, LIMBS, POSE_ANGLES, SLOTS_IN_ORDER } from './pose';
 
 // the build as LDraw text. A model is a flat LDraw file: comment lines are kept as
@@ -24,8 +25,9 @@ import { accessoryLine, hingePieces, limbLines, normalizePose, pieceLines, posed
 // order; a step with no parts is no step. A `0 !BRICKSTUDIO GROUND <color>` line in
 // the main file colors the baseplate (LDraw's form for a program's own meta-command:
 // other LDraw tools pass it by), a `0 !BRICKSTUDIO SKY ...` line names its sky
-// (SEE: brick-shared/sky.ts) and each `0 !BRICKSTUDIO PICTURE ...` line a picture
-// standing in it (SEE: picture.ts). A build holds one set or more, each an arrangement on
+// (SEE: brick-shared/sky.ts), each `0 !BRICKSTUDIO PICTURE ...` line a picture
+// standing in it (SEE: picture.ts) and each `0 !BRICKSTUDIO PIN ...` line a part pinned
+// where it stands (SEE: pin.ts). A build holds one set or more, each an arrangement on
 // its own baseplate sharing the build's components: the main model is the first, and
 // a section holding a `0 !BRICKSTUDIO SET <name>` line is another, read as a main
 // model is (its own steps and ground) and never a component. A Model is one set
@@ -90,6 +92,8 @@ export type ModelLayout = Readonly<{
   sky?: Span;
   /** each picture line Brick Studio reads, in the order of `pictures` */
   pictures?: ReadonlyArray<Span>;
+  /** each pin line Brick Studio reads, in the order of `pins` */
+  pins?: ReadonlyArray<Span>;
   /** the first `0 STEP` line after the model's last part, when it ends in steps:
    *  parts added to the last step go before it */
   trailingStep?: Span;
@@ -157,6 +161,9 @@ export type Model = Readonly<{
   /** the pictures standing in the set, in the order their lines are written, when it
    *  has any Brick Studio reads (SEE: picture.ts) */
   pictures?: ReadonlyArray<Picture>;
+  /** the cells whose parts are pinned where they stand, in the order their lines are
+   *  written, when it has any Brick Studio reads (SEE: pin.ts) */
+  pins?: ReadonlyArray<Pin>;
   /** the components the file defines, and the copies its main model places; each
    *  placement's copy (an index into `copies`), or undefined for a part of its own */
   components?: ReadonlyArray<Component>;
@@ -502,6 +509,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
   let ground: Readonly<{ color: string; smooth: boolean; span: Span; }> | undefined/*the first ground line naming a ground color*/;
   let sky: Readonly<{ sky: Sky | undefined; span: Span; }> | undefined/*the first sky line, read or not*/;
   const pictures: Array<Readonly<{ picture: Picture; span: Span; }>> = [];
+  const pins: Array<Readonly<{ pin: Pin; span: Span; }>> = [];
 
   // a submodel's parts take the step of the line that places it: walk() counts
   // `0 STEP` lines in the main file alone
@@ -555,6 +563,10 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
         const picture = pictureOf(fields);
         if(picture) pictures.push({ picture, span: { from, to } });
       } /* else -- no picture, or one Brick Studio cannot read: kept as written */
+      if(isMain && isPinLine(fields)) {
+        const pin = pinOf(fields);
+        if(pin) pins.push({ pin, span: { from, to } });
+      } /* else -- no pin, or one Brick Studio cannot read: kept as written */
       if(fields[0] !== '1') {
         if(isMain && (line.trim().length > 0) && !line.trim().startsWith('0 FILE')) header.push(line.trimEnd());
         continue;
@@ -675,6 +687,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
     ...(ground ? { ground: ground.color, ...(ground.smooth ? { smoothGround: true as const } : {}) } : {}),
     ...(sky?.sky ? { sky: sky.sky } : {}),
     ...((pictures.length > 0) ? { pictures: pictures.map(each => each.picture) } : {}),
+    ...((pins.length > 0) ? { pins: pins.map(each => each.pin) } : {}),
     ...((components.length > 0) ? { components: components.map(({ nested: _, undecided: __, mountLines: ___, ...component }) => component) } : {}),
     ...((colored.size > 0) ? { carried: [...colored.values()] } : {}),
     ...((copies.length > 0) ? { copies, placementCopies } : {}),
@@ -685,7 +698,7 @@ const readSet = (read: Files, set: SetSection | undefined): Model => {
     ...withData,
     ...(uneditable ? { uneditable } : { layout: {
       placements: placementSpans, others: otherSpans, pieces: pieceSpans, placed: placedSpans, parts, steps: stepSpans,
-      ...(ground ? { ground: ground.span } : {}), ...(sky ? { sky: sky.span } : {}), ...((pictures.length > 0) ? { pictures: pictures.map(each => each.span) } : {}), ...(trailingStep ? { trailingStep } : {}),
+      ...(ground ? { ground: ground.span } : {}), ...(sky ? { sky: sky.span } : {}), ...((pictures.length > 0) ? { pictures: pictures.map(each => each.span) } : {}), ...((pins.length > 0) ? { pins: pins.map(each => each.span) } : {}), ...(trailingStep ? { trailingStep } : {}),
       end, endsLine: (end < file.length) || file.endsWithBreak, file,
     } }),
     ...((steps.count > 1) ? { steps } : {}),
@@ -1271,10 +1284,10 @@ export const addSetEdits = (file: FileLayout, name: string, lines: ReadonlyArray
   newSectionEdits(file, sectionText(file, [`0 FILE ${setFileName(file, name)}`, `${SET_LINE} ${name}`, ...lines]));
 
 /** a set's lines that a copy of it takes, as written and in order: its ground, its
- *  sky, its pictures, its part and copy lines and its steps (its header comments and
- *  name line left) */
+ *  sky, its pictures, its pins, its part and copy lines and its steps (its header
+ *  comments and name line left) */
 export const setLines = (text: string, layout: ModelLayout): string[] =>
-  [...(layout.ground ? [layout.ground] : []), ...(layout.sky ? [layout.sky] : []), ...(layout.pictures ?? []), ...layout.parts, ...layout.steps].sort((a, b) => a.from - b.from).map(({ from, to }) => text.slice(from, to).replace(/[\r\n]+$/, ''));
+  [...(layout.ground ? [layout.ground] : []), ...(layout.sky ? [layout.sky] : []), ...(layout.pictures ?? []), ...(layout.pins ?? []), ...layout.parts, ...layout.steps].sort((a, b) => a.from - b.from).map(({ from, to }) => text.slice(from, to).replace(/[\r\n]+$/, ''));
 
 /** the edits that rename a set: its name line rewritten, or one written for a main
  *  model that names none (after its `0 FILE` line, else before a flat file's first
@@ -1310,9 +1323,9 @@ export const removeSetEdits = (text: string, file: FileLayout, set: SetSection):
   return [...deleteLines([...own, ...next.pieces]), { from: start.to, to: start.to, insert: ended + END_MARKER + file.lineBreak }];
 };
 
-/** the edits that empty a set: its part, copy, step and picture lines removed, its
- *  name, ground and other lines kept */
-export const clearSetEdits = (layout: ModelLayout): ContentChange[] => deleteLines([...layout.parts, ...layout.steps, ...(layout.pictures ?? [])]);
+/** the edits that empty a set: its part, copy, step, picture and pin lines removed,
+ *  its name, ground and other lines kept */
+export const clearSetEdits = (layout: ModelLayout): ContentChange[] => deleteLines([...layout.parts, ...layout.steps, ...(layout.pictures ?? []), ...(layout.pins ?? [])]);
 
 /** the file a set Brick Studio adds is written to: its name in lower case, every
  *  other character a dash, then SET_FILE; numbered when a section has it */
@@ -1325,15 +1338,15 @@ const setFileName = (file: FileLayout, name: string): string => {
 };
 
 // ................................................................................
-/** the edits that remove every part, copy, picture, further set, component and data
- *  section, keeping the main model's other lines (its header, its name, the ground and
+/** the edits that remove every part, copy, picture, pin, further set, component and
+ *  data section, keeping the main model's other lines (its header, its name, the ground and
  *  sky): the build
  *  is left as Brick Studio writes one whole, its main model's file line first and its
  *  end marker last. An empty text stays empty */
 export const clearEdits = (layout: ModelLayout): ContentChange[] => {
   const { file } = layout;
   if(file.length < 1) return [];
-  const removed = [...layout.parts, ...layout.steps, ...(layout.pictures ?? []), ...file.sets.slice(1).flatMap(set => set.pieces), ...file.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...file.data];
+  const removed = [...layout.parts, ...layout.steps, ...(layout.pictures ?? []), ...(layout.pins ?? []), ...file.sets.slice(1).flatMap(set => set.pieces), ...file.components.flatMap(({ span, repeats }) => [span, ...repeats]), ...file.data];
   // the main model's end, after the lines before it are removed
   const end = layout.end - removed.filter(span => span.to <= layout.end).reduce((total, span) => total + (span.to - span.from), 0);
   const lead = layout.endsLine ? '' : file.lineBreak/*the last line is unfinished*/;

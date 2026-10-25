@@ -28,6 +28,12 @@ const JUMP_ACROSS = 1 / 3;
 const MOTION_FRAMES = 3;
 /** a subject moving less than this share of the screen over MOTION_FRAMES is still */
 const STILL = 0.01;
+/** the longest a figure's footing goes unmeasured (seconds: a pause between its steps)
+ *  and its span still runs on */
+const FOOTING_GAP = 0.25;
+/** how deep a figure's feet go into the set before it shows (studs: about a plate), past
+ *  a walker's toe brushing a tread's edge */
+const FOOTING_DEEP = 0.3;
 
 // == Types =======================================================================
 /** what the studio's probe answered for a frame: the part its camera stands inside,
@@ -36,6 +42,9 @@ export type PartFinding = Readonly<{ inside?: string; hidden?: string; }>;
 /** a span (seconds) the camera stands inside something, or something hides its target
  *  from it: a part, or an actor by name */
 export type CameraProblem = Readonly<{ from: number; to: number; kind: 'inside' | 'hidden'; by: string; }>;
+/** a span (seconds) a figure's feet stand in the set (`into`) or, as it steps, out over
+ *  nothing (`above`), and the most they reach (studs) */
+export type FootingProblem = Readonly<{ actor: string; from: number; to: number; kind: 'into' | 'above'; most: number; }>;
 /** which way a subject moves on the screen over a few frames */
 export type Moving = 'left' | 'right' | 'up' | 'down' | 'still';
 /** a side of a cut: its frame and shot, its subject, where that stands on the screen
@@ -104,6 +113,29 @@ const problemAt = (film: Film, sizes: Readonly<Record<string, Size>>, frame: Fil
     .flatMap(([name, box]) => { const at = segmentEnters(box, position, target); return ((at !== undefined) && (at < 1)) ? [[name, at] as const] : []; })
     .sort((a, b) => a[1] - b[1])[0];
   return hiding ? { kind: 'hidden', by: hiding[0] } : undefined;
+};
+
+// == Footing =====================================================================
+/** where each figure's feet go wrong, as the film staged on the set's surfaces
+ *  measures them (SEE: film.ts Feet): in the set (a walk through a landing),
+ *  or out over nothing (off a gallery's edge); each a span of the frames it holds
+ *  over, a pause between steps within it, and the most it reaches: feet in the set only
+ *  where they go a plate deep (a toe brushing a tread's edge is a walk's own). A film
+ *  made without the set's surfaces measures none */
+export const footingProblems = (film: Film): ReadonlyArray<FootingProblem> => {
+  const spans: Array<{ actor: string; from: number; to: number; kind: 'into' | 'above'; most: number; }> = [];
+  film.frames.forEach((frame, index) => {
+    for(const [actor, step] of Object.entries(frame.feet ?? {})) {
+      for(const kind of ['into', 'above'] as const) {
+        const reach = step[kind];
+        if(reach === undefined) continue;
+        const open = spans.find(span => (span.actor === actor) && (span.kind === kind) && ((frame.time - span.to) <= FOOTING_GAP));
+        if(open) { [open.to, open.most] = [frameEnd(film, index), Math.max(open.most, reach)]; continue; }
+        spans.push({ actor, from: frame.time, to: frameEnd(film, index), kind, most: reach });
+      }
+    }
+  });
+  return spans.filter(span => (span.kind === 'above') || (span.most >= FOOTING_DEEP));
 };
 
 // == Screen ======================================================================

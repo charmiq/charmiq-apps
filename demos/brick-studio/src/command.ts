@@ -6,7 +6,7 @@ import type { Design } from '../../brick-shared/drive';
 import { linesOf, type Build } from './build';
 import type { Designs } from './designs';
 import { partsByKind, searchCatalog, type CatalogPart, ACCESSORIES, CATALOG, COLORS, FIGURE_FACES, FRAME_FACES } from './catalog';
-import { checkModel, reportCheck, MAX_LISTED, TRUNCATED } from './check';
+import { checkModel, pinsOf, reportCheck, MAX_LISTED, TRUNCATED } from './check';
 import type { FidelityControl } from './fidelity-control';
 import { filledCells, footprintSize, getColorByCode, getPart, getShape, type PartShape, BASEPLATE_MARGIN, BASEPLATE_MAX, BASEPLATE_MIN, MAX_COORDINATE } from './grid';
 import type { LookAround } from './look-around';
@@ -37,7 +37,8 @@ const GRID = [
   'x runs east, z north, level up. A cell is one stud; a level is one plate (a brick is 3 levels tall).',
   'A part\'s x, z is the south-west corner of its footprint and level is its bottom. A part standing on another starts where that part ends: its level plus its height (on a plate at level 1, a figure stands at level 2).',
   'At rotation 0 a part spans width along x and depth along z; rotation 90, 180 or 270 turns it clockwise seen from above (90 and 270 swap width and depth).',
-  'A part holds the part above it where its top studs lie under that part. Tiles have no top studs; a slope has studs only along its high row (a 31-degree slope has none). A part whose row says it rests at a level hangs below where it rests (a fender\'s rounded ends ride over its tire): it is held by the studs under the cells it fills from that level above its bottom.',
+  'A part holds the part above it where its top studs lie under that part. Tiles have no top studs; a slope has studs only along its high row (a 31-degree slope has none). A part whose row says it rests at a level hangs below where it rests (a fender\'s rounded ends ride over its tire): it is held by the studs under the cells it fills from that level above its bottom. Touching at a side holds nothing.',
+  'A pinned part is held where it stands though nothing holds it up, and holds what its studs hold: pin what the design means to float (a brick flying from an explosion, a fake ceiling a chandelier hangs from, a false wall) with addParts pinned: true or pinParts, a copy of a component whole. It still collides. Hold what should stand the real way instead: a floor laid into its wall\'s courses.',
   'listParts names every part by kind; findParts gives the rows of the parts you will use (call it before placing a part whose size or fills you do not know). Each part row reads: name, then width x depth x height (studs, studs, levels), then which way a slope or curve descends at rotation 0.',
   'A name\'s third number counts bricks (brick-1x1x3 is 9 levels tall); the row gives every height in levels.',
   'A part that does not fill its whole box ends its row with fills: its cells at rotation 0, rows from north to south separated by /, cells west to east separated by commas; # fills the part\'s full height, . is empty, and a-b fills levels a up to but not including b counted from the part\'s bottom (an arch\'s span, an inverted slope\'s underside). Other parts fill their whole box.',
@@ -117,16 +118,20 @@ export class CommandSurface {
           if(!owned.has(line)) owned.set(line, []);
           owned.get(line)!.push(index);
         });
+        // a part or a line pinned where it stands says so (SEE: pin.ts)
+        const pins = pinsOf(model).placements;
+        const pinned = (held: boolean) => held ? { pinned: true as const } : {};
+        const copyPinned = (copy: number) => model.placements.some((_, index) => (model.placementCopies?.[index] === copy) && pins.has(index));
         const entries = [
-          ...model.placements.flatMap((placement, index) => (model.placementPlaced?.[index] === undefined) ? [steps ? { ...placement, step: steps.placements[index] } : placement] : []),
-          ...(model.copies ?? []).map((copy, index) => steps ? { ...copy, step: steps.copies[index] } : copy),
+          ...model.placements.flatMap((placement, index) => (model.placementPlaced?.[index] === undefined) ? [{ ...placement, ...(steps ? { step: steps.placements[index] } : {}), ...pinned(pins.has(index)) }] : []),
+          ...(model.copies ?? []).map((copy, index) => ({ ...copy, ...(steps ? { step: steps.copies[index] } : {}), ...pinned(copyPinned(index)) })),
           ...(model.placed ?? []).flatMap(({ component, colorCode, copy, carried }, line) => {
             if((copy !== undefined) || carried) return []/*listed as a copy, or with the hinge carrying it*/;
             const color = getColorByCode(colorCode)?.key;
             const parts = owned.get(line) ?? [];
             const cell = parts.flatMap(index => filledCells(getShape(getPart(model.placements[index].part)!/*by contract*/), model.placements[index]))[0]/*the first part that fills one: glass fills none*/;
             const step = steps?.placements[parts[0]];
-            return [{ component, ...(color ? { color } : {}), ...(cell ? { at: { x: cell.x, z: cell.z, level: cell.bottom } } : {}), ...((step !== undefined) ? { step } : {}) }];
+            return [{ component, ...(color ? { color } : {}), ...(cell ? { at: { x: cell.x, z: cell.z, level: cell.bottom } } : {}), ...((step !== undefined) ? { step } : {}), ...pinned(parts.some(index => pins.has(index))) }];
           }),
         ];
         const start = pageStart(from);
@@ -199,6 +204,16 @@ export class CommandSurface {
           removed: result.removed,
           ...((result.empty.length > 0) ? { empty: result.empty } : {}),
           ...((result.unsupported.length > 0) ? { unsupported: result.unsupported.length, unsupportedParts: result.unsupported.slice(0, MAX_LISTED) } : {}),
+          ...this.report(edited),
+        };
+      },
+      pinParts: async ({ at, pinned, set }: { at?: unknown; pinned?: unknown; set?: unknown; }) => {
+        const result = await this.build.pin(Array.isArray(at) ? at : [], pinned ?? true, set);
+        const edited = this.build.getModel()/*the set the edit landed in, shown: taken before drawing lets the person show another*/;
+        await this.viewer.whenSettled();
+        return {
+          [(pinned === false) ? 'unpinnedParts' : 'pinnedParts']: result.parts,
+          ...((result.empty.length > 0) ? { empty: result.empty } : {}),
           ...this.report(edited),
         };
       },

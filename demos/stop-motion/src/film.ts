@@ -1,5 +1,5 @@
 import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
-import { feetInto, gaitMoveOf, jitter, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
+import { feetAbove, feetInto, gaitMoveOf, jitter, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -22,6 +22,9 @@ const MAX_HEIGHT = 2_000;
 /** how far a foot may reach into the set before a frame says so (studs): a hair, as a
  *  sole resting on a surface rounds */
 const INTO_SET = 0.01;
+/** how far a walker's feet stand over the set before they are over nothing (studs): a
+ *  brick, past what a hop lifts them */
+const OVER_NOTHING = 1.2;
 
 const DEFAULT_TARGET: Point = { x: 0, z: 0, height: 4 };
 const DEFAULT_ORBIT = { angle: 30, distance: 40, height: 30 };
@@ -76,10 +79,17 @@ export type FilmFrame = Readonly<{
    *  keys it (SEE: steps.ts GaitMove), how far through it (0 to 1), and the scene's gait
    *  its walk takes (the built-in when none) */
   steps?: Readonly<Record<string, FrameStep>>;
+  /** each figure whose feet go wrong in this frame, by name, as the set's surfaces
+   *  measure them (SEE: Feet) */
+  feet?: Readonly<Record<string, Feet>>;
 }>;
-/** a walker's move under way in a frame (SEE: FilmFrame.steps), and how far a foot
- *  reaches into the set there (studs), when one does */
-export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; into?: number; }>;
+/** how far a figure's feet reach into the set (studs: standing in a tread, walking
+ *  through a landing), and, as it steps, how far they stand over nothing (walked off a
+ *  gallery's edge); a keyed figure in the air may be meant (a jump), so standing over
+ *  nothing is measured only while it steps */
+export type Feet = Readonly<{ into?: number; above?: number; }>;
+/** a walker's move under way in a frame (SEE: FilmFrame.steps) */
+export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; }>;
 
 export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>; footsteps?: ReadonlyArray<SoundCue>; }>;
 
@@ -171,7 +181,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
   let previous: ReadonlyMap<string, Placed> | undefined;
   for(let index=0; index<times.length; index++) {
     const time = times[index], at = time * scene.fps/*where it stands among the scene's own frames*/;
-    const placed = new Map<string, Placed>(), headings = new Map<string, number>(), steps: Record<string, FrameStep> = {};
+    const placed = new Map<string, Placed>(), headings = new Map<string, number>(), steps: Record<string, FrameStep> = {}, feet: Record<string, Feet> = {};
     for(const actor of order) {
       const cast = rests.get(actor.name);
       const castRest: Partial<Rest> | undefined = (actor.ride && cast) ? (cast.pose ? { pose: cast.pose } : undefined)/*a rider stands where it rides, in the pose it stood in*/ : cast;
@@ -187,8 +197,13 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       const grounded = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
       const stepping = clicked.get(actor.name);
       const local = stepping ? { channels: stepping.at(grounded.channels, time, surfaces(setAt(scene.sets, time))) } : grounded;
-      const under = stepping?.moveAt(time), into = (under && figures.has(actor.name)) ? feetInto(local.channels, surfaces(setAt(scene.sets, time))) : 0;
-      if(under) steps[actor.name] = { move: gaitMoveOf(under.move), u: under.u, ...((under.walk.gait !== undefined) ? { gait: under.walk.gait } : {}), ...((into > INTO_SET) ? { into } : {}) };
+      const under = stepping?.moveAt(time), standingOn = surfaces(setAt(scene.sets, time));
+      if(under) steps[actor.name] = { move: gaitMoveOf(under.move), u: under.u, ...((under.walk.gait !== undefined) ? { gait: under.walk.gait } : {}) };
+      // a figure clicking onto studs, shown and on its feet: its feet against the set
+      if(stepping && figures.has(actor.name) && ((local.channels.visible ?? 1) >= 0.5)) {
+        const into = feetInto(local.channels, standingOn), above = under ? feetAbove(local.channels, standingOn) : 0;
+        if((into > INTO_SET) || (above > OVER_NOTHING)) feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}) };
+      } /* else -- riding, unseen, or not a figure on studs */
       const own = placedOf(local);
       const parent = actor.ride && placed.get(actor.ride.parent);
       const standing = parent ? riding(parent, actor.ride!.offset, own) : own;
@@ -232,7 +247,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     const seen = (camera: RecordedCamera) => { const drawnTime = times[drawnFrame(camera.drawn, index)]; return cameraAt(camera, drawnTime * scene.fps, drawnTime, placed, headings); };
     const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, seen(view)]));
     const set = setAt(scene.sets, time);
-    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: seen(scene.camera), views, fade, ...((fade > 0) ? fading : {}), ...(transition ? { transition } : {}), ...(title ? { title } : {}), ...((Object.keys(steps).length > 0) ? { steps } : {}) });
+    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: seen(scene.camera), views, fade, ...((fade > 0) ? fading : {}), ...(transition ? { transition } : {}), ...(title ? { title } : {}), ...((Object.keys(steps).length > 0) ? { steps } : {}), ...((Object.keys(feet).length > 0) ? { feet } : {}) });
   }
   const footsteps = footstepsOf(scene, clicked);
   const stepped = (footsteps.length > 0) ? { footsteps } : {};

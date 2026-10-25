@@ -235,9 +235,11 @@ const rightOf = (yaw: number): readonly [number, number] => { const angle = (yaw
 
 /** how far a figure's feet reach into the set (studs; 0 when clear), its pose as `set`
  *  places it (its middle, heading, height in plates and legs): each sole's corners
- *  (its heel and toe, its inner and outer edge) against the surface under each, below
- *  its top by the least way out of it, up or across its cell; the figure's roll left
- *  out (a lean lifts a foot, never lowers one into the plate) */
+ *  (its heel and toe, its inner and outer edge) against the surfaces under each. A
+ *  corner over a surface at or below it stands in the air there (a floor under a
+ *  gallery); one with none under it is in the part whose top is the lowest above it,
+ *  below that top by the least way out, up or across its cell. The figure's roll is
+ *  left out (a lean lifts a foot, never lowers one into the plate) */
 export const feetInto = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number => {
   const [fx, fz] = forwardOf(set.yaw ?? 0), [rx, rz] = rightOf(set.yaw ?? 0), base = (set.height ?? 0) / PLATES_PER_STUD;
   let into = 0;
@@ -247,7 +249,9 @@ export const feetInto = (set: Readonly<Record<string, number>>, surfaceAt: Surfa
       const along = (a * cos) + (LEG * sin), up = base + LEG - ((LEG * cos) - (a * sin));
       const x = (set.x ?? 0) + (fx * along) + (rx * side * across * FOOT_EDGE), z = (set.z ?? 0) + (fz * along) + (rz * side * across * FOOT_EDGE);
       const [cx, cz] = [Math.floor(x), Math.floor(z)], topOf = (ax: number, az: number) => Math.max(0, ...surfaceAt(ax, az).map(surface => surface.height)) / PLATES_PER_STUD;
-      const top = topOf(cx, cz), below = top - up;
+      const heights = surfaceAt(cx, cz).map(surface => surface.height / PLATES_PER_STUD);
+      if((heights.length < 1) || heights.some(height => height <= (up + (ON_SURFACE / PLATES_PER_STUD)))) continue/*over a surface: in the air*/;
+      const top = Math.min(...heights), below = top - up;
       if(below <= into) continue/*clear, or no deeper*/;
       // across its cell only toward a side opening onto something lower: out of the part
       const sides = [[x - cx, -1, 0], [cx + 1 - x, 1, 0], [z - cz, 0, -1], [cz + 1 - z, 0, 1]].filter(([, dx, dz]) => topOf(cx + dx, cz + dz) < (top - 1e-9)).map(([distance]) => distance);
@@ -255,6 +259,25 @@ export const feetInto = (set: Readonly<Record<string, number>>, surfaceAt: Surfa
     }
   }
   return into;
+};
+
+/** how far a figure's feet stand over nothing (studs; 0 when one is on the set): the
+ *  least each sole's corners stand above the surface under each, its pose as `set`
+ *  places it (SEE: feetInto), so a walker held at a ledge's height out over the floor
+ *  says so where a hop's feet barely leave the studs */
+export const feetAbove = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number => {
+  const [fx, fz] = forwardOf(set.yaw ?? 0), [rx, rz] = rightOf(set.yaw ?? 0), base = (set.height ?? 0) / PLATES_PER_STUD;
+  let above = Infinity;
+  for(const [limb, side] of [['pose.leftLeg', -1], ['pose.rightLeg', 1]] as const) {
+    const leg = radians(set[limb] ?? 0), [cos, sin] = [Math.cos(leg), Math.sin(leg)];
+    for(const a of [-HEEL, TOE]) for(const across of [0.05, 0.95]) {
+      const along = (a * cos) + (LEG * sin), up = base + LEG - ((LEG * cos) - (a * sin));
+      const x = (set.x ?? 0) + (fx * along) + (rx * side * across * FOOT_EDGE), z = (set.z ?? 0) + (fz * along) + (rz * side * across * FOOT_EDGE);
+      const top = Math.max(0, ...surfaceAt(Math.floor(x), Math.floor(z)).filter(surface => surface.height <= ((up * PLATES_PER_STUD) + ON_SURFACE)).map(surface => surface.height)) / PLATES_PER_STUD;
+      above = Math.min(above, Math.max(0, up - top));
+    }
+  }
+  return above;
 };
 
 /** the quarter heading nearest a heading, unwrapped as it is (450 stays 450) */

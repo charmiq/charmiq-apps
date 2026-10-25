@@ -2,12 +2,13 @@ import type { ContentChange } from '../../../shared/charmiq';
 import { isImageName } from '../../brick-shared/shipped';
 import { drawnSky, skyFrom, type Sky } from '../../brick-shared/sky';
 import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_FACES, type CatalogPart, type Slot } from './catalog';
-import { checkModel, describeCopy, describePlaced, describePlacement, occupiedCells, MAX_LISTED, type CheckResult } from './check';
+import { checkModel, describeCopy, describePlaced, describePlacement, filledBy, occupiedCells, pinsOf, sameTarget, targetOf, MAX_LISTED, type CheckResult, type PinTarget } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
 import { addSetEdits, appendLines, applyChanges, carriesComponents, clearEdits, clearSetEdits, copiesOf, copyLine, mountLine, defineEdits, deleteLines, groundEdit, parseModel, parseSets, partCount, placedPartCount, placementLines, removeSetEdits, renameSetEdits, sameSetName, serializeModel, setLines, skyEdit, stepCount, type Model, type ModelLayout, type SetSection, EMPTY_MODEL, MAIN_SET, MAX_PARTS, MAX_SET_NAME, MAX_SETS, READ_IN_PART } from './model';
 import { maxOf, minOf } from './numbers';
 import { isSize, pictureLine, FITS, MAX_PICTURE, MIN_PICTURE, type Picture } from './picture';
+import { pinLine } from './pin';
 import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
 
 // owns the current build: the `model` app-content's text, as last seen. Every
@@ -149,13 +150,19 @@ export class Build {
 
   // == Edit ======================================================================
   /** adds parts and copies of components to a set's last building step, or as a new
-   *  step after it (`newStep`); refuses the whole batch when any item is invalid or
-   *  collides. Shows the set */
+   *  step after it (`newStep`), pinning each item marked `pinned` where it stands (SEE:
+   *  pin.ts); refuses the whole batch when any item is invalid or collides. Shows the
+   *  set */
   public async add(input: ReadonlyArray<unknown>, newStep: boolean, set?: unknown): Promise<Readonly<{ added: number; }>> {
     await this.whenReady();
     if(input.length < 1) throw new BuildError('No parts given.');
     if(input.length > MAX_BATCH) throw new BuildError(`At most ${MAX_BATCH} parts per call.`);
     const items = validItems(input, 'parts', true);
+    const pinning = input.map((item, index) => {
+      const { pinned } = (item ?? {}) as Record<string, unknown>;
+      if((pinned !== undefined) && (typeof pinned !== 'boolean')) throw new BuildError(`parts[${index}]: pinned is true or false`);
+      return pinned === true;
+    });
 
     let outcome = { added: 0 };
     let target: string | undefined;
@@ -191,7 +198,8 @@ export class Build {
       ].join('\n'));
 
       outcome = { added: items.length };
-      return [change];
+      const pins = pinLinesFor(model, next, items, pinning);
+      return [(pins.length > 0) ? appendLines(layout, [...lines, ...pins], newStep) : change];
     });
     this.showNamed(target);
     return outcome;
@@ -265,12 +273,7 @@ export class Build {
    *  removed. Names the parts the removal left floating (`unsupported`) */
   public async remove(cells: ReadonlyArray<unknown>, set?: unknown): Promise<Readonly<{ removed: ReadonlyArray<string>; empty: ReadonlyArray<string>; unsupported: ReadonlyArray<string>; }>> {
     await this.whenReady();
-    if(cells.length < 1) throw new BuildError('No cells given.');
-    const at = cells.map((cell, index) => {
-      const { x, z, level } = (cell ?? {}) as Record<string, unknown>;
-      if(!isInteger(x) || !isInteger(z) || !isInteger(level)) throw new BuildError(`at[${index}]: x, z and level must be integers.`);
-      return { x, z, level };
-    });
+    const at = cellsOf(cells);
 
     let outcome = { removed: [] as ReadonlyArray<string>, empty: [] as ReadonlyArray<string>, unsupported: [] as ReadonlyArray<string> };
     let target: string | undefined;
@@ -279,12 +282,7 @@ export class Build {
       target = name;
 
       // the placement that fills each cell, its mounts' cells its own
-      const filled = new Map<string, number>();
-      model.placements.forEach((placement, index) => {
-        for(const { x, z, bottom, top } of occupiedCells(model, placement)) {
-          for(let level=bottom; level<top; level++) filled.set(cellKey(x, z, level), index);
-        }
-      });
+      const filled = filledBy(model);
 
       const removing = new Set<number>();
       const empty: string[] = [];
@@ -305,7 +303,10 @@ export class Build {
       // component's definition is every line's, and is never edited here
       const placed = new Set([...removing].flatMap(index => model.placementPlaced?.[index] ?? []));
       const own = [...removing].filter(index => model.placementPlaced?.[index] === undefined);
-      const changes = deleteLines([...own.flatMap(index => [layout.placements[index], ...layout.pieces[index]]), ...[...placed].map(line => layout.placed[line])]);
+      // a pin goes with what it holds
+      const removed: PinTarget[] = [...own.map(placement => ({ placement })), ...[...placed].map(line => ({ placed: line }))];
+      const pins = pinsOf(model).targets.flatMap((pinned, index) => removed.some(each => sameTarget(each, pinned)) ? [layout.pins![index]] : []);
+      const changes = deleteLines([...own.flatMap(index => [layout.placements[index], ...layout.pieces[index]]), ...[...placed].map(line => layout.placed[line]), ...pins]);
 
       // what floats now that floated not before
       const floatingBefore = new Set(checkModel(model).floating);
@@ -315,6 +316,43 @@ export class Build {
         empty, unsupported: after.floating.filter(part => !floatingBefore.has(part)),
       };
       return changes;
+    });
+    this.showNamed(target);
+    return outcome;
+  }
+
+  /** pins the part filling each given cell of a set where it stands (SEE: pin.ts), a
+   *  component's line whole, or with `pinned` false unpins it; a part pinned already, or
+   *  not pinned, is left as it is. Names the parts pinned or unpinned and the cells no
+   *  part fills, and shows the set */
+  public async pin(cells: ReadonlyArray<unknown>, pinned: unknown = true, set?: unknown): Promise<Readonly<{ parts: ReadonlyArray<string>; empty: ReadonlyArray<string>; }>> {
+    await this.whenReady();
+    if(typeof pinned !== 'boolean') throw new BuildError('pinned is true or false');
+    const at = cellsOf(cells);
+    let outcome: Readonly<{ parts: ReadonlyArray<string>; empty: ReadonlyArray<string>; }> = { parts: [], empty: [] };
+    let target: string | undefined;
+    await this.bridge.edit(text => {
+      const { model, layout, name } = editable(text, set);
+      target = name;
+      const filled = filledBy(model);
+      const { targets } = pinsOf(model);
+      const empty: string[] = [];
+      const chosen: Array<Readonly<{ held: PinTarget; cell: Readonly<{ x: number; z: number; level: number; }>; }>> = [];
+      for(const cell of at) {
+        const held = targetOf(model, filled.get(cellKey(cell.x, cell.z, cell.level)));
+        if(!held) empty.push(`x ${cell.x} z ${cell.z} level ${cell.level}`);
+        else if(!chosen.some(each => sameTarget(each.held, held))) chosen.push({ held, cell });
+      }
+      const partName = (held: PinTarget) => ('placement' in held) ? describePlacement(model.placements[held.placement]) : describePlaced(model, held.placed);
+      const isPinned = (held: PinTarget) => targets.some(each => sameTarget(each, held));
+      if(pinned) {
+        const pinning = chosen.filter(each => !isPinned(each.held));
+        outcome = { parts: pinning.map(each => partName(each.held)), empty };
+        return (pinning.length > 0) ? [appendLines(layout, pinning.map(each => pinLine(each.cell)), false)] : [];
+      } /* else -- unpinning */
+      const released = chosen.filter(each => isPinned(each.held));
+      outcome = { parts: released.map(each => partName(each.held)), empty };
+      return deleteLines(targets.flatMap((each, index) => released.some(({ held }) => sameTarget(held, each)) ? [layout.pins![index]] : []));
     });
     this.showNamed(target);
     return outcome;
@@ -943,6 +981,30 @@ const writtenAsGiven = (model: Model): boolean => ((model.components?.length ?? 
 const describeItem = (item: Placement | Copy): string => ('component' in item) ? describeCopy(item) : describePlacement(item);
 
 /** one section of a refusal: its heading and a bounded list, or nothing */
+/** the cells a call names (each { x, z, level }), or why they are not */
+const cellsOf = (cells: ReadonlyArray<unknown>): ReadonlyArray<Readonly<{ x: number; z: number; level: number; }>> => {
+  if(cells.length < 1) throw new BuildError('No cells given.');
+  return cells.map((cell, index) => {
+    const { x, z, level } = (cell ?? {}) as Record<string, unknown>;
+    if(!isInteger(x) || !isInteger(z) || !isInteger(level)) throw new BuildError(`at[${index}]: x, z and level must be integers.`);
+    return { x, z, level };
+  });
+};
+
+/** the pin lines for a batch's items marked pinned, each naming the first cell the
+ *  item fills in the build the batch made (`next`): a copy by its first part */
+const pinLinesFor = (model: Model, next: Model, items: ReadonlyArray<Placement | Copy>, pinning: ReadonlyArray<boolean>): string[] => {
+  let copy = model.copies?.length ?? 0/*the batch's copies follow the build's*/;
+  return items.flatMap((item, index) => {
+    const placement = ('component' in item) ? next.placements.find((_, at) => next.placementCopies?.[at] === copy) : item;
+    if('component' in item) copy++;
+    if(!pinning[index] || !placement) return [];
+    const [cell] = occupiedCells(next, placement);
+    if(!cell) throw new BuildError(`Nothing was added. parts[${index}]: ${describeItem(item)} fills no cell to pin (glass is held by its frame).`);
+    return [pinLine({ x: cell.x, z: cell.z, level: cell.bottom })];
+  });
+};
+
 /** the collisions a build `next` holds that `model`, the build it replaces, does not,
  *  but a part repeating itself (named apart by its caller) */
 const introducedCollisions = (model: Model, next: Model): CheckResult['collisions'] => {

@@ -125,7 +125,9 @@ const showStatus = (model: Model) => {
     (result.floating.length > 0) ? `${result.floating.length} floating` : undefined,
     (result.unchecked > 0) ? `${result.unchecked} off grid` : undefined,
   ].filter(Boolean);
-  statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held'])].join(' · ');
+  // what pins hold, after whether the build holds: a pin is the designer's, never a fault
+  const pins = [result.pinned ? `${result.pinned} pinned` : undefined, result.strayPins ? `${plural(result.strayPins, 'pin')} on nothing` : undefined].filter(Boolean);
+  statusText.textContent = ((count < 1) && (notes.length < 1)) ? 'Empty' : [plural(count, 'part'), ...((notes.length > 0) ? notes : ['all held']), ...pins].join(' · ');
   status.classList.toggle('is-warning', !isSound(result) || build.isUncertain() || (builds > 1) || (unbuilt > 0) || (undrawn > 0) || !!groundRefused || !!skyRefused || viewer.skyUnread || (viewer.picturesUnread > 0) || !!model.uneditable || !!model.duplicated);
   status.title = [groundRefused, skyRefused, model.uneditable].filter(Boolean).join('\n')/*the reasons, on hover*/;
   retryButton.hidden = retrySep.hidden = (unbuilt < 1);

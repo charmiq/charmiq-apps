@@ -73,6 +73,10 @@ The swatch beside the ground's puts a sky behind the set, in place of the theme'
 Like the ground, the sky is the set's: a `0 !BRICKSTUDIO SKY ...` line in its header (`HORIZON #CFE2F3 ZENITH #4F87C7 CLOUDS 0.35 SEED 1`, or `IMAGE charmiq://file/...`, with `LIGHTS`), saved with designs, undone like any edit, kept by Clear and by a copy of the set. A line Brick Studio cannot read is kept as written and draws no sky. A sky change the build cannot take says *sky not changed* in the status.
 
 
+## Pins
+
+A pin holds a part where it stands though nothing holds it up, as a brick film's maker glues or wires one: a brick flying from an explosion, a fake ceiling a chandelier hangs from, a false wall standing in for a room's far side. A pinned part is held, and holds what its studs hold (the chandelier's chain under the pinned ceiling); it still collides. Your Charm pins with `addParts` (`pinned: true` on an item) or `pinParts` (any cell a part fills, a copy of a component whole; `pinned: false` unpins). Each pin is a `0 !BRICKSTUDIO PIN X 3 Z 4 LEVEL 6` line in the set naming a cell, saved with designs, undone like any edit, kept by a copy of the set, removed with the part it holds and emptied by Clear; a line Brick Studio cannot read is kept as written and pins nothing. The status counts the parts pinned (and any pin naming a cell no part fills), `listPlacedParts` marks each, and the build view marks each with a push pin over it; a stage, a film's frame and a picture made for one never show the marks.
+
 ## Pictures
 
 A set holds pictures: an image on a flat panel standing in it, as a billboard over a street, a poster on a wall, a painted backdrop behind a stage, or a rug on a floor. The image is one from your Drive, or a picture Brick Studio ships for its example films, by name (`see-america-montana`: every image in [`pictures`](charmiq://./pictures/README.md), where each one's source and rights are named); `listPictures` names the shipped ones, and a sky's `image` takes them too. Your Charm stands them (`addPicture`), placed as a part is: `x` and `z` the south-west corner of its footprint, `level` its bottom, `rotation` in quarter turns. Upright, a picture stands in the middle of a stud row as long as it is wide, facing south at rotation 0; flat, it lies on its level's studs, its top edge north. Its size is in studs, 1 to 64 either way; with no height it takes its image's own shape. The image covers the panel, its overflow cropped, unless the picture says *contain* (shown whole, the panel's gray round it) or *stretch*.
@@ -176,6 +180,7 @@ A Charm drives the Studio through these:
 | `listPlacedParts` | the parts and copies in the build with their positions, a page at a time (a line placing a component that is not a copy, by component, color and a cell it fills) |
 | `addParts` | places a batch of parts and copies of components, in the last step or (`newStep`) a new one, figures posed (`pose`), in their legs color (`legColor`), with a face (`face`), wearing a hat (`hat`) and holding things (`rightHand`, `leftHand`), hinges turned (`angle`) and carrying a component (`carry`), side faces carrying components (`sides`); a batch that would collide is refused; answers with the build's check |
 | `removeParts` | removes the part filling each given cell, and a removed window's glass (a cell of a copy, or of any line placing a component, removes that whole line); answers with the build's check and the parts left unsupported |
+| `pinParts` | pins the part filling each given cell where it stands (a copy whole), or unpins it (`pinned: false`); answers the parts pinned or unpinned, the cells no part fills and the check |
 | `defineComponent` | defines a component, or replaces its definition and so every copy |
 | `defineComponentFromDesign` | defines a component from a saved design (its `uri` from `listDesigns`, or its name), named after it |
 | `listComponents` | the components the build defines, their sizes and copies (by set, in a build of more than one); with `component`, that component's own parts where each stands in it as a copy holds them (a part in LDraw's inherited color listed as `inherited`), a page at a time: each the address `placed.inside` casts it by |
@@ -244,6 +249,7 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/ground-control.ts`](charmiq://./src/ground-control.ts) | the ground swatch and its colors |
 | [`src/sky-control.ts`](charmiq://./src/sky-control.ts) | the sky swatch and its panel |
 | [`src/picture.ts`](charmiq://./src/picture.ts) | a picture's words: its line read and written |
+| [`src/pin.ts`](charmiq://./src/pin.ts) | a pin's words: its line read and written (the marks over pinned parts are `render/pins.ts`) |
 | [`pictures`](charmiq://./pictures/README.md) | the pictures Brick Studio ships for its example films, and where each comes from |
 | [`src/sheet.ts`](charmiq://./src/sheet.ts) | the sheet over the stage: pictures in a grid, each captioned, for one screenshot |
 | [`src/look-around.ts`](charmiq://./src/look-around.ts) | the build from four sides at once, on the sheet |
