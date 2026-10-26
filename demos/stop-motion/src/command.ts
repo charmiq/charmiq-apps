@@ -5,11 +5,14 @@ import { DesignExists, displayName } from '../../brick-shared/designs';
 import type { Avoided } from './clearance';
 import { cameraShots, filmLengthOf, frameAtTime, setAt, shotAt, shotFrames, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
+import { MAX_AREA_CELLS, type CellArea } from './ground';
 import { closePairs, closest, isSized, overlapsOf, type Size } from './measure';
+import { motionOf, MOTION_CHANNELS } from './motion-read';
 import type { Player } from './player';
-import type { Point, SceneError } from './recorder';
+import type { Point, RecordedActor, SceneError } from './recorder';
 import { cameraProblems, footingProblems, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type PartFinding } from './review';
 import type { ScreenBox } from './screen';
+import type { Surface } from './steps';
 import type { Board, StageState } from './studios';
 
 // the Charm command surface (SEE: manifest.json `advertise`): what the film is, the
@@ -41,6 +44,8 @@ export type FilmHost = Readonly<{
   player: Player;
   /** resolves once the main studio has drawn a frame */
   shown: (index: number) => Promise<void>;
+  /** the surfaces over every cell of an area of a set, the film staged (SEE: ground.ts surfacesIn) */
+  surfaces: (set: string | undefined, area: CellArea) => Promise<ReadonlyArray<ReadonlyArray<ReadonlyArray<Surface>>>>;
   /** shows frames on the main studio's storyboard sheet, answering how many */
   storyboard: (frames: ReadonlyArray<Board>, view?: string) => Promise<number>;
   /** the film's files */
@@ -176,6 +181,25 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       return { cleared: true };
     },
 
+    motionOf: ({ actor, from, to, samples }: { actor?: unknown; from?: unknown; to?: unknown; samples?: unknown; }) => {
+      const film = filmOf(host);
+      const names = film.scene.actors.map(each => each.name);
+      const recorded = film.scene.actors.find(each => each.name === actor);
+      if(!recorded) throw new Error(`No actor '${String(actor)}' in the film (${names.join(', ')}).`);
+      if([from, to, samples].some(value => (value !== undefined) && ((typeof value !== 'number') || !Number.isFinite(value)))) throw new Error('from and to are seconds, samples a count.');
+      const [start, end] = [(from as number | undefined) ?? 0, (to as number | undefined) ?? film.scene.length];
+      if(end < start) throw new Error('to is after from.');
+      return motionReport(film, recorded, start, end, (samples as number | undefined) ?? 12);
+    },
+    surfaces: async ({ x, z, width, depth, time }: { x?: unknown; z?: unknown; width?: unknown; depth?: unknown; time?: unknown; }) => {
+      const film = reviewed(host).film;
+      if([x, z, width, depth].some(value => !Number.isInteger(value))) throw new Error('x and z are the area\'s south-west cell, width and depth its size, all whole studs.');
+      const area = { x: x as number, z: z as number, width: width as number, depth: depth as number };
+      if((area.width < 1) || (area.depth < 1) || ((area.width * area.depth) > MAX_AREA_CELLS)) throw new Error(`An area is 1 to ${MAX_AREA_CELLS} cells (64 by 64).`);
+      if((time !== undefined) && ((typeof time !== 'number') || (time < 0) || (time > film.scene.length))) throw new Error(`time is a moment of the film, 0 to ${film.scene.length} seconds.`);
+      const set = setAt(film.scene.sets, (time as number | undefined) ?? 0);
+      return { ...((set !== undefined) ? { set } : {}), ...surfacesReport(area, await host.surfaces(set, area)) };
+    },
     where: ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
       const film = filmOf(host);
       const at = film.frames[frameAt(film, time, frame)];
@@ -195,10 +219,29 @@ export const overlapsReport = (film: Film, sizes: Readonly<Record<string, Size>>
 
 /** describeFilm's footing, over the film staged on the set's surfaces */
 export const footingReport = (film: Film) =>
-  footingProblems(film).map(({ actor, from, to, kind, most, at, surface, by, lines, keys }) => ({
-    actor, from: thousandths(from), to: thousandths(to), kind, most: hundredths(most), at: rounded(at), ...((surface !== undefined) ? { surface: hundredths(surface) } : {}), by, lines,
+  footingProblems(film).map(({ actor, from, to, kind, most, at, surface, part, points, by, lines, keys, tilts, heldBack }) => ({
+    actor, from: thousandths(from), to: thousandths(to), kind, most: hundredths(most), at: rounded(at), ...((surface !== undefined) ? { surface: hundredths(surface) } : {}), ...((part !== undefined) ? { part } : {}), ...(points ? { points } : {}), by, lines,
     ...(keys ? { keys: keys.map(key => ({ time: thousandths(key.time), height: hundredths(key.height) })) } : {}),
+    ...(tilts ? { tilts: tilts.map(key => ({ time: thousandths(key.time), channel: key.channel, value: hundredths(key.value) })) } : {}), ...(heldBack ? { heldBack } : {}),
   }));
+
+/** motionOf's answer: an actor's motion read (SEE: motion-read.ts), rounded */
+export const motionReport = (film: Film, actor: RecordedActor, from: number, to: number, samples: number) => {
+  const read = motionOf(film, actor, from, to, samples);
+  return {
+    actor: read.actor,
+    samples: read.samples.map(({ time, frame, shown, ...at }) => ({ time: thousandths(time), frame, shown, ...Object.fromEntries(Object.entries(at).map(([key, value]) => [key, hundredths(value)])) })),
+    drivers: Object.fromEntries(MOTION_CHANNELS.map(channel => [channel, read.drivers[channel].map(({ from: spanFrom, to: spanTo, by, lines, heldBack }) => ({ from: thousandths(spanFrom), to: thousandths(spanTo), by, lines, ...((heldBack !== undefined) ? { heldBack: thousandths(heldBack) } : {}) }))])),
+  };
+};
+
+/** the surfaces over an area as a person reads a map: north up (a row a z, the
+ *  highest first), west on the left (a cell an x), each cell its surfaces' tops (plates)
+ *  lowest first joined by `/`, `-` where none */
+export const surfacesReport = (area: CellArea, rows: ReadonlyArray<ReadonlyArray<ReadonlyArray<Surface>>>) => ({
+  area, west: area.x, east: area.x + area.width - 1,
+  rows: rows.map((cells, row) => ({ z: area.z + row, cells: cells.map(surfaces => (surfaces.length > 0) ? surfaces.map(surface => hundredths(surface.height)).join('/') : '-').join(' ') })).reverse(),
+});
 
 /** describeFilm's close actors */
 export const closeReport = (film: Film, sizes: Readonly<Record<string, Size>>) =>

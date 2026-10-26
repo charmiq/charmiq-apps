@@ -1,6 +1,8 @@
-import { cameraShots, frameEnd, isReached, type Film, type FilmFrame, type StageCamera } from './film';
-import type { Point, RecordedCamera } from './recorder';
-import { avoidingAt, type PartFinding } from './review';
+import { cameraShots, frameEnd, isReached, pointIn, rotation, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING } from './film';
+import type { GroundProbe } from './ground';
+import type { Point, RecordedCamera, Span } from './recorder';
+import { avoidingAt, flying, pathAt, type PartFinding } from './review';
+import { lowestAbove, surfaceUnder, type SurfaceAt } from './steps';
 
 // the film's cameras against the set's parts, as the studio's probe answers them (SEE:
 // Brick Studio's probeStage): each frame's part a camera stands inside, and the first
@@ -15,7 +17,9 @@ import { avoidingAt, type PartFinding } from './review';
 // transition leaves on the same set is the film's camera held on: probed where it
 // stands, avoiding as the frame it last showed in did, and eased as one shot with the
 // frames before its cut, so neither it nor they jump. On another set it is that frame
-// held, its camera as that frame's was cleared
+// held, its camera as that frame's was cleared. Each figure's body is held against the
+// parts too, while it is in the air: a keyed flight through a bar, or how far it clears
+// one
 // ********************************************************************************
 // == Constants ===================================================================
 /** the shares of its distance to its target an avoiding camera is tried at, the
@@ -27,6 +31,28 @@ const EASE_SECONDS = 0.25;
 const PROBE_BATCH = 20_000;
 /** a share of the camera's distance kept as keyed */
 const KEPT = 1 - 1e-6;
+/** a figure's body as it is probed, each point named, unturned (studs across and along,
+ *  plates up from its soles): its middle from its hips to its head, 0.7 studs apart
+ *  lying down (a stud-wide bar crossed falls between none), and its waist's and chest's
+ *  front and back (a figure faces south at yaw 0: its front is south of its middle) */
+const BODY: ReadonlyArray<Readonly<{ name: string; at: Point; }>> = [
+  { name: 'hips', at: { x: 0, z: 0, height: 3.5 } }, { name: 'waist', at: { x: 0, z: 0, height: 5.25 } }, { name: 'chest', at: { x: 0, z: 0, height: 7 } },
+  { name: 'neck', at: { x: 0, z: 0, height: 8.75 } }, { name: 'head', at: { x: 0, z: 0, height: 10.5 } },
+  { name: 'waist front', at: { x: 0, z: -0.5, height: 5.25 } }, { name: 'waist back', at: { x: 0, z: 0.5, height: 5.25 } },
+  { name: 'chest front', at: { x: 0, z: -0.5, height: 7 } }, { name: 'chest back', at: { x: 0, z: 0.5, height: 7 } },
+];
+/** the ways out of a cell, each followed up to WAY_OUT cells for a point in a part:
+ *  up and down (plates), east and west, north and south (studs) */
+type Way = Readonly<{ axis: 'x' | 'z' | 'height'; sign: 1 | -1; }>;
+const WAYS: ReadonlyArray<Way> = [{ axis: 'height', sign: 1 }, { axis: 'height', sign: -1 }, { axis: 'x', sign: 1 }, { axis: 'x', sign: -1 }, { axis: 'z', sign: 1 }, { axis: 'z', sign: -1 }];
+const WAY_OUT = 4;
+const WAY_OUT_ASKS = WAYS.length * WAY_OUT;
+/** how wide the footprint a point's column is asked under is (studs): a hair, its own
+ *  column alone */
+const COLUMN_HAIR = 0.1;
+const STUDS_PER_PLATE = 0.4;
+/** how near two heights lie to count as one (plates) */
+const TOUCHING = 1e-9;
 
 // == Types =======================================================================
 /** asks the studio what stands at points and across segments of a set (the first
@@ -185,3 +211,146 @@ const isClear = (finding: PartFinding | undefined): boolean => (finding !== unde
 /** a share to the thousandth, so an eased share keys the same answer each time */
 const roundShare = (share: number): number => Math.round(share * 1000) / 1000;
 const keyOf = (track: number, frame: number, share: number): string => `${track}:${frame}:${share}`;
+
+// == Bodies ======================================================================
+/** the film with each figure's body held against the set's parts at each frame it is in
+ *  the air: its lowest point over what is under it (on its set's `surfaces`) past
+ *  film.ts FLOATING, or flying (SEE: review.ts flying). Its body's points (SEE: BODY),
+ *  turned as it stands, are asked of the probe set by set; the part holding most of
+ *  them is written on its feet with the points in it and how deep the deepest is, its
+ *  least way out of the part (SEE: wayOut). Over a keyed flight (a path keying its
+ *  height), each part whose top rises above both the surface under its takeoff and the
+ *  one under its landing is held against the body too: the body's least clearance over
+ *  that part's top (studs, below 0 through it), each point's part read from the ground
+ *  under it (`groundProbe`) or, within the part, from its way out (SEE: film.ts Feet
+ *  `through`, `clearance`). Only `figures` are held so, never one riding */
+export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, surfaces: (set: string | undefined) => SurfaceAt, probe: Probe, groundProbe: GroundProbe): Promise<Film> => {
+  const riders = new Set(film.scene.actors.filter(actor => actor.ride).map(actor => actor.name));
+  const aloft = (frame: FilmFrame, index: number, shot: Shot) => (lowestAbove({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set)) > FLOATING) || flying(film, shot.name, index);
+  const floors = new Map<Span, number | undefined>();
+  const bodies = film.frames.flatMap((frame, index) => frame.actors.filter(shot => figures.has(shot.name) && !riders.has(shot.name) && aloft(frame, index, shot)).map(shot => {
+    const flight = pathAt(film, shot.name, frame.time, ['height']);
+    if(flight && !floors.has(flight)) floors.set(flight, floorOf(film, surfaces, shot.name, flight));
+    const floor = flight && floors.get(flight);
+    return { index, set: frame.set, shot, points: bodyOf(shot), ...((floor !== undefined) ? { floor } : {}) };
+  }));
+
+  // each point's part, and for each point in one its least way out
+  const named = await partsAt(probe, bodies.flatMap(({ set, points }) => points.map(point => ({ set, point }))));
+  const partOf = (body: number, point: number) => named[(body * BODY.length) + point];
+  const inside = bodies.flatMap((body, at) => body.points.flatMap((point, index) => { const part = partOf(at, index); return (part !== null) ? [{ body: at, index, point, part }] : []; }));
+  const outs = await partsAt(probe, inside.flatMap(({ point }, at) => wayOutCells(point).map(cell => ({ set: bodies[inside[at].body].set, point: cell.point }))));
+  const ways = inside.map((each, at) => wayOut(each.point, each.part, outs.slice(at * WAY_OUT_ASKS, (at + 1) * WAY_OUT_ASKS)));
+
+  // over a keyed flight, the top of the part under each point not in one, above its floor
+  const over = bodies.flatMap((body, at) => (body.floor === undefined) ? [] : body.points.flatMap((point, index) => (partOf(at, index) === null) ? [{ body: at, point }] : []));
+  const tops = await topsAt(groundProbe, over.map(({ body, point }) => ({ set: bodies[body].set, point })));
+  const crossed = over.flatMap((each, at) => {
+    const floor = bodies[each.body].floor!, top = Math.max(-Infinity, ...tops[at].filter(height => (height <= (each.point.height + TOUCHING)) && (height > (floor + TOUCHING))));
+    return Number.isFinite(top) ? [{ ...each, top }] : [];
+  });
+  const crossedParts = await partsAt(probe, crossed.map(({ body, point, top }) => ({ set: bodies[body].set, point: { ...point, height: top - 0.5 } })));
+
+  const feet = new Map<number, Record<string, Feet>>();
+  const write = (index: number, name: string, wrong: Feet) => feet.set(index, { ...feet.get(index), [name]: { ...feet.get(index)?.[name], ...wrong } });
+  bodies.forEach((body, at) => {
+    const own = inside.map((each, which) => ({ ...each, way: ways[which] })).filter(each => each.body === at);
+    const counted = [...new Set(own.map(each => each.part))].map(part => own.filter(each => each.part === part)).sort((a, b) => b.length - a.length)[0];
+    if(counted) write(body.index, body.shot.name, { through: { part: counted[0].part, points: counted.map(each => BODY[each.index].name), depth: Math.max(...counted.map(each => each.way.depth)) } });
+    if(body.floor === undefined) return/*not a keyed flight*/;
+    const clearances = [
+      ...own.filter(each => each.way.top > (body.floor! + TOUCHING)).map(each => ({ part: each.part, studs: (each.point.height - each.way.top) * STUDS_PER_PLATE })),
+      ...crossed.flatMap((each, which) => ((each.body === at) && (crossedParts[which] !== null)) ? [{ part: crossedParts[which]!, studs: (each.point.height - each.top) * STUDS_PER_PLATE }] : []),
+    ].sort((a, b) => a.studs - b.studs);
+    if(clearances.length > 0) write(body.index, body.shot.name, { clearance: clearances[0] });
+  });
+  return { ...film, frames: film.frames.map((frame, index) => {
+    const found = feet.get(index);
+    if(!found) return frame;
+    return { ...frame, feet: { ...frame.feet, ...Object.fromEntries(Object.entries(found).map(([name, wrong]) => [name, { ...frame.feet?.[name], ...wrong }])) } };
+  }) };
+};
+
+/** a figure's body's points where it stands, turned as it is */
+const bodyOf = (shot: Shot): ReadonlyArray<Point> => {
+  const matrix = rotation(shot.turn);
+  return BODY.map(({ at }) => pointIn(shot.position, matrix, at));
+};
+
+/** the floor of a keyed flight (plates): the higher of the surfaces under the figure as
+ *  its path starts and as it ends; none when it is unseen at either */
+const floorOf = (film: Film, surfaces: (set: string | undefined) => SurfaceAt, name: string, flight: Span): number | undefined => {
+  const under = (index: number) => {
+    const frame = film.frames[index], shot = frame?.actors.find(each => each.name === name);
+    return shot && surfaceUnder({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set));
+  };
+  const first = film.frames.findIndex(frame => (frame.time * film.scene.fps) >= (flight.from - TOUCHING));
+  const next = film.frames.findIndex(frame => (frame.time * film.scene.fps) > (flight.to + TOUCHING));
+  const [takeoff, landing] = [under(first), under(((next < 0) ? film.frames.length : next) - 1)];
+  return ((takeoff === undefined) || (landing === undefined)) ? undefined : Math.max(takeoff, landing);
+};
+
+// .. Way Out .....................................................................
+/** a point's least way out of the part it stands in: up and down (plates), east,
+ *  west, north and south (studs), each followed a cell at a time up to WAY_OUT cells;
+ *  how deep it is (studs, the least of them; at least the nearest of the farthest
+ *  cells followed when none leaves the part) and the part's top over it (plates; at
+ *  least the farthest followed when the way up never leaves it) */
+const wayOut = (point: Point, part: string, found: ReadonlyArray<string | null>): Readonly<{ depth: number; top: number; }> => {
+  const out = WAYS.map((way, at) => {
+    const cells = Array.from({ length: WAY_OUT }, (_, k) => cellAlong(point, way, k + 1));
+    const leaving = cells.findIndex((_, k) => found[(at * WAY_OUT) + k] !== part);
+    const scale = (way.axis === 'height') ? STUDS_PER_PLATE : 1;
+    return { way, studs: cells[(leaving < 0) ? (WAY_OUT - 1) : leaving].distance * scale, left: leaving >= 0, plates: cells[(leaving < 0) ? (WAY_OUT - 1) : leaving].distance };
+  });
+  const left = out.filter(each => each.left);
+  const up = out.find(each => (each.way.axis === 'height') && (each.way.sign > 0))!;
+  return { depth: Math.min(...((left.length > 0) ? left : out).map(each => each.studs)), top: point.height + up.plates };
+};
+
+/** the cells a point's ways out cross, way by way and nearest first (SEE: WAYS) */
+const wayOutCells = (point: Point): ReadonlyArray<Readonly<{ point: Point; distance: number; }>> =>
+  WAYS.flatMap(way => Array.from({ length: WAY_OUT }, (_, k) => cellAlong(point, way, k + 1)));
+
+/** the `k`th cell from a point's own along a way out: its middle, and how far the point
+ *  lies from that cell's near side (in the way's units) */
+const cellAlong = (point: Point, way: Way, k: number): Readonly<{ point: Point; distance: number; }> => {
+  const at = point[way.axis], own = Math.floor(at);
+  const side = (way.sign > 0) ? (own + k) : (own - (k - 1));
+  return { point: { ...point, [way.axis]: side + (way.sign * 0.5) }, distance: Math.abs(side - at) };
+};
+
+// .. Probe .......................................................................
+/** what the probe names at each point, each asked on its own set, a batch at a time */
+const partsAt = async (probe: Probe, asked: ReadonlyArray<Readonly<{ set: string | undefined; point: Point; }>>): Promise<ReadonlyArray<string | null>> => {
+  const found: Array<string | null> = asked.map(() => null);
+  for(const [set, indices] of bySet(asked)) {
+    for(let from=0; from<indices.length; from+=PROBE_BATCH) {
+      const batch = indices.slice(from, from + PROBE_BATCH);
+      const answer = await probe(set, batch.map(index => asked[index].point), []);
+      batch.forEach((index, at) => { found[index] = answer.points[at]; });
+    }
+  }
+  return found;
+};
+
+/** the tops of the cells over each point's column (plates), each asked on its own set
+ *  under a footprint a hair across, a batch at a time */
+const topsAt = async (probe: GroundProbe, asked: ReadonlyArray<Readonly<{ set: string | undefined; point: Point; }>>): Promise<ReadonlyArray<ReadonlyArray<number>>> => {
+  const found: Array<ReadonlyArray<number>> = asked.map(() => []);
+  for(const [set, indices] of bySet(asked)) {
+    for(let from=0; from<indices.length; from+=PROBE_BATCH) {
+      const batch = indices.slice(from, from + PROBE_BATCH);
+      const answer = await probe(set, batch.map(index => ({ x: asked[index].point.x, z: asked[index].point.z, width: COLUMN_HAIR, depth: COLUMN_HAIR, yaw: 0 })));
+      batch.forEach((index, at) => { found[index] = answer[at]; });
+    }
+  }
+  return found;
+};
+
+/** each set's asks, by their indices */
+const bySet = (asked: ReadonlyArray<Readonly<{ set: string | undefined; }>>): ReadonlyMap<string | undefined, ReadonlyArray<number>> => {
+  const sets = new Map<string | undefined, number[]>();
+  asked.forEach((each, index) => { const listed = sets.get(each.set) ?? []; listed.push(index); sets.set(each.set, listed); });
+  return sets;
+};

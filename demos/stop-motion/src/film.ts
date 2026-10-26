@@ -1,7 +1,7 @@
 import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
 
 import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
-import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, surfaceUnder, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
+import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, lowestAbove, surfaceUnder, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -29,7 +29,10 @@ const INTO_SET = 0.01;
 const OVER_NOTHING = 1.2;
 /** how far a figure not stepping rests over what is under it before it floats (studs):
  *  half a plate, past a sole's rounding */
-const FLOATING = 0.2;
+export const FLOATING = 0.2;
+/** how far a figure tilts from upright before it is tipped (degrees): past any lean a
+ *  step or a turn gives it */
+const TIPPED = 45;
 
 const DEFAULT_TARGET: Point = { x: 0, z: 0, height: 4 };
 const DEFAULT_ORBIT = { angle: 30, distance: 40, height: 30 };
@@ -92,9 +95,14 @@ export type FilmFrame = Readonly<{
  *  through a landing), as it steps how far they stand over nothing (walked off a
  *  gallery's edge; never in a hop's flight), and as it stands, sits or poses how far
  *  its lowest point rests over what is under it (`floating`: a sitter keyed over its
- *  seat); and the top (plates) of the part its feet are in, else of what is under them
- *  (SEE: steps.ts feetIn, surfaceUnder) */
-export type Feet = Readonly<{ into?: number; above?: number; floating?: number; surface?: number; }>;
+ *  seat); how far it tilts from upright past TIPPED (`tipped`, degrees: lying, however
+ *  it moves); the part its body stands in while it is in the air, the body's points in
+ *  it and how deep the deepest is (`through`, studs: its least way out), and over a
+ *  keyed flight the body's least clearance over the top of a part it crosses
+ *  (`clearance`, studs, below 0 through it), as staging probes them (SEE: clearance.ts
+ *  bodiesThrough); and the top (plates) of the part its feet are in, else of what is
+ *  under them (SEE: steps.ts feetIn, surfaceUnder) */
+export type Feet = Readonly<{ into?: number; above?: number; floating?: number; tipped?: number; through?: Readonly<{ part: string; points: ReadonlyArray<string>; depth: number; }>; clearance?: Readonly<{ part: string; studs: number; }>; surface?: number; }>;
 /** a walker's move under way in a frame (SEE: FilmFrame.steps) */
 export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; }>;
 
@@ -208,16 +216,17 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       const under = stepping?.moveAt(time), standingOn = surfaces(setAt(scene.sets, time));
       if(under) steps[actor.name] = { move: gaitMoveOf(under.move), u: under.u, ...((under.walk.gait !== undefined) ? { gait: under.walk.gait } : {}) };
       // a figure clicking onto studs, shown: its feet against the set (its soles its
-      // pose's rise below its height, its lowest point) and, not stepping, its lowest
-      // point over what is under it, as it would stand there
+      // pose's rise below its height, its lowest point), not stepping its lowest point
+      // over what is under it, as it would stand there, and its tilt from upright
       if(stepping && figures.has(actor.name) && ((local.channels.visible ?? 1) >= 0.5)) {
         const rise = bottoms ? poseRise(bottoms, poseOf(local.channels)) : 0;
         const soles = { ...local.channels, height: (local.channels.height ?? 0) - rise };
         const { into, top } = feetIn(soles, standingOn), above = (under && !aloft(under.move, under.u, under.walk.shape)) ? feetAbove(soles, standingOn) : 0/*a hop's flight is in the air*/;
-        const floating = under ? 0 : feetAbove({ ...local.channels, 'pose.leftLeg': 0, 'pose.rightLeg': 0 }, standingOn);
-        if((into > INTO_SET) || (above > OVER_NOTHING) || (floating > FLOATING)) {
+        const floating = under ? 0 : lowestAbove(local.channels, standingOn);
+        const tipped = tiltOf({ pitch: local.channels.pitch ?? 0, roll: local.channels.roll ?? 0 });
+        if((into > INTO_SET) || (above > OVER_NOTHING) || (floating > FLOATING) || (tipped > TIPPED)) {
           const surface = (into > INTO_SET) ? top : surfaceUnder((floating > FLOATING) ? local.channels : soles, standingOn);
-          feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}), ...((surface !== undefined) ? { surface } : {}) };
+          feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}), ...((tipped > TIPPED) ? { tipped } : {}), ...((surface !== undefined) ? { surface } : {}) };
         }
       } /* else -- riding, unseen, or not a figure on studs */
       const own = placedOf(local);
@@ -477,15 +486,18 @@ const poseOf = (channels: Readonly<Record<string, number>>): Readonly<Record<str
 
 /** a rider where what it rides puts it: its offset and its own position in the
  *  ridden actor's frame, its own turn after the ridden actor's */
-const riding = (parent: Placed, offset: Point, own: Placed): Placed => {
-  const local = [(offset.x + own.position.x) * LDU_PER_STUD, -(offset.height + own.position.height) * LDU_PER_PLATE, (offset.z + own.position.z) * LDU_PER_STUD];
-  const moved = multiplyVector(parent.matrix, local);
-  return {
-    ...own,
-    position: { x: parent.position.x + (moved[0] / LDU_PER_STUD), z: parent.position.z + (moved[2] / LDU_PER_STUD), height: parent.position.height - (moved[1] / LDU_PER_PLATE) },
-    matrix: multiply(parent.matrix, own.matrix),
-    visible: parent.visible && own.visible,
-  };
+const riding = (parent: Placed, offset: Point, own: Placed): Placed => ({
+  ...own,
+  position: pointIn(parent.position, parent.matrix, { x: offset.x + own.position.x, z: offset.z + own.position.z, height: offset.height + own.position.height }),
+  matrix: multiply(parent.matrix, own.matrix),
+  visible: parent.visible && own.visible,
+});
+
+/** a point at an offset (studs across and along, plates up) in the frame of an actor
+ *  standing at `origin` turned by `matrix` (SEE: rotation) */
+export const pointIn = (origin: Point, matrix: ReadonlyArray<number>, offset: Point): Point => {
+  const moved = multiplyVector(matrix, [offset.x * LDU_PER_STUD, -offset.height * LDU_PER_PLATE, offset.z * LDU_PER_STUD]);
+  return { x: origin.x + (moved[0] / LDU_PER_STUD), z: origin.z + (moved[2] / LDU_PER_STUD), height: origin.height - (moved[1] / LDU_PER_PLATE) };
 };
 
 /** refuses a point past the stage's reach, naming the actor and the moment */
@@ -831,6 +843,11 @@ export const rotation = ({ yaw, pitch, roll }: Turn): number[] => {
   const rolled = [cr, -sr, 0, sr, cr, 0, 0, 0, 1];
   return multiply(multiply(yawed, pitched), rolled);
 };
+
+/** how far a turn tilts an actor's up from the world's (degrees, 0 to 180): its pitch
+ *  and roll together, whatever its yaw, so a pitch of -270 lies as one of 90 */
+export const tiltOf = ({ pitch, roll }: Pick<Turn, 'pitch' | 'roll'>): number =>
+  Math.acos(Math.max(-1, Math.min(1, Math.cos(radians(pitch)) * Math.cos(radians(roll))))) * (180 / Math.PI);
 
 /** the turn of a rotation (degrees): its pitch from its middle row's last, then its
  *  roll and yaw */

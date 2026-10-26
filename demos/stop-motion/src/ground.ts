@@ -90,6 +90,20 @@ export const surfacesOf = async (film: Film, clicks: ReadonlySet<string>, probe:
   const found = (asked.size > 0) ? await probeAll(probe, asked) : new Map<string, ReadonlyArray<Surface>>();
   return set => (x, z) => found.get(cellKey(set, x, z)) ?? BASEPLATE(x, z);
 };
+/** an area of a set (whole studs): its south-west corner and size */
+export type CellArea = Readonly<{ x: number; z: number; width: number; depth: number; }>;
+/** the most cells a read of an area asks */
+export const MAX_AREA_CELLS = 64 * 64;
+/** the surfaces over every cell of an area of a set, each lowest first: a row a z from
+ *  its south, each row's cells from its west. A read of where things are (a track, a
+ *  mat, a bar's top), not only of where actors stand */
+export const surfacesIn = async (probe: SurfaceProbe, set: string | undefined, area: CellArea): Promise<ReadonlyArray<ReadonlyArray<ReadonlyArray<Surface>>>> => {
+  const asked = new Map<string, Readonly<{ set: string | undefined; footprint: Footprint; }>>();
+  for(let z=area.z; z<(area.z + area.depth); z++) for(let x=area.x; x<(area.x + area.width); x++) asked.set(cellKey(set, x, z), { set, footprint: { x: x + 0.5, z: z + 0.5, width: 1, depth: 1, yaw: 0 } });
+  const found = await probeAll(probe, asked);
+  return Array.from({ length: area.depth }, (_, row) => Array.from({ length: area.width }, (_, column) => found.get(cellKey(set, area.x + column, area.z + row)) ?? []));
+};
+
 /** how many cells either way around where an actor stands its surfaces are asked */
 const NEAR = 1;
 const cellKey = (set: string | undefined, x: number, z: number): string => `${set ?? ''}|${x}|${z}`;

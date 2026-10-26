@@ -59,7 +59,7 @@ Stop Motion films the build: the scene is JavaScript in the code editor's `scene
 When the person says notes are waiting (a Review panel in the document), work through them:
 
 1. `listNotes({ status: 'open' })`. Take them in the order given, a shot at a time.
-2. For each, `showNote`, then look at what it points at: each mark names its frames, and what lies under it (the actors and parts under a stroke; a span's rows with what moves each actor and the scene lines). Measure it: `describeFilm` (its overlaps and footing over those frames and actors), `measure`, a `storyboard` of the span (through a plan view for where people go).
+2. For each, `showNote`, then take a screenshot of the Studio: the person's strokes are drawn on the picture, and the picture is the note (the actors a stroke names are a guess). Read the motion of what it points at with `motionOf` over the note's frames: where it is, how it is turned, and the scene line driving each value (a key holding its value back from later is the classic cause of a figure posed wrong all along). Measure it: `describeFilm` (its overlaps and footing over those frames and actors), `measure`, a `storyboard` of the span (through a plan view for where people go), and `surfaces` around it for where the set's track, mats and bars stand (a race off its track is in no measure but this map).
 3. Fix the cause in the scene with `replaceText`, then `describeFilm` again over the span.
 4. `replyToNote`: what was wrong, what you changed (the scene lines) and what you checked. It is then answered.
 5. A note you cannot fix (the set, a gait, something the tools cannot do): reply why and what the person can do, with `status: 'open'`.

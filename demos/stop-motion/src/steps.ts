@@ -309,6 +309,11 @@ export const feetAbove = (set: Readonly<Record<string, number>>, surfaceAt: Surf
   return above;
 };
 
+/** how far a figure's lowest point stands over what is under it (studs), its place,
+ *  heading and height as `set` gives them and its legs straight down (SEE: feetAbove):
+ *  a figure standing, sitting or posing as it would stand there */
+export const lowestAbove = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number => feetAbove({ ...set, 'pose.leftLeg': 0, 'pose.rightLeg': 0 }, surfaceAt);
+
 /** the quarter heading nearest a heading, unwrapped as it is (450 stays 450) */
 export const quarterOf = (yaw: number): number => Math.round(yaw / 90) * 90;
 

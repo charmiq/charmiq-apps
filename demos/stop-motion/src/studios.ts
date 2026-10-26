@@ -2,9 +2,9 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { PoseBottoms } from '../../brick-shared/rise';
-import { clearanceOf, type Avoided, type Probe } from './clearance';
+import { bodiesThrough, clearanceOf, type Avoided, type Probe } from './clearance';
 import { planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type Paint, type Rest, type StageFacts } from './film';
-import { groundsOf, surfacesOf, type GroundProbe, type SurfaceProbe } from './ground';
+import { groundsOf, surfacesIn, surfacesOf, type CellArea, type GroundProbe, type SurfaceProbe } from './ground';
 import type { Size } from './measure';
 import type { Recorded } from './recorder';
 import type { PartFinding } from './review';
@@ -19,7 +19,7 @@ import type { PartFinding } from './review';
 // marks when the scene has a plan view, and each actor following the ground stood on
 // it; SEE: ground.ts), then the film made with the wheels the stage
 // found, its camera held against the set's parts (drawn in where it avoids them; SEE:
-// clearance.ts), loaded on every screen a page at a time; the stage's sizes of the
+// clearance.ts) and each figure's body in the air held against them, loaded on every screen a page at a time; the stage's sizes of the
 // actors and the parts each frame's camera meets are kept for measuring and review. A
 // plan's camera path is dashed where its camera stands inside a part. A frame is then a number sent to each screen, and each studio's
 // state streams back: the person going back to a build pauses the film at once, a
@@ -92,8 +92,9 @@ export type StageState = Readonly<
 export type Board = Readonly<{ frame: number; caption: string; }>;
 
 /** a film staged: its scene and film, the screens it is on (the main first), each
- *  screen's reel and the main build's changes counted as it staged (SEE: buildEdits) */
-type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; edits: number; }>;
+ *  screen's reel, the main build's changes counted as it staged (SEE: buildEdits) and
+ *  the probe of its surfaces it staged with */
+type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; edits: number; surfaceProbe: SurfaceProbe; }>;
 
 // == Class =======================================================================
 export class Studios {
@@ -261,11 +262,13 @@ export class Studios {
       if(reels.some(each => each === undefined)) throw new Error('A studio took the scene but no reel: it may need updating.');
 
       // the film with its wheels, each actor clicking onto studs on the surfaces it
-      // stands near, its camera cleared, loaded on every screen; an actor the stage
-      // refused is left out of every frame (the sheet says why)
+      // stands near, its camera cleared, each figure among them held against the parts
+      // in the air, loaded on every screen; an actor the stage refused is left out of
+      // every frame (the sheet says why)
       const facts = { wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), ...(answer.bottoms ? { bottoms: answer.bottoms } : {}), clicks: new Set(answer.clicks ?? []), rests: restsOf(answer), grounds };
       const surfaces = (facts.clicks.size > 0) ? await surfacesOf(filmFor(facts), facts.clicks, surfaceProbe) : undefined;
-      const { film, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), probe);
+      const { film: cleared, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), probe);
+      const film = surfaces ? await bodiesThrough(cleared, new Set([...facts.figures].filter(name => facts.clicks.has(name))), surfaces, probe, groundProbe) : cleared/*no figure on studs*/;
       const cast = new Set(answer.actors);
       const frames = film.frames.map(frame => reelFrameOf(castOnly(frame, cast)));
       for(let from=0; from<frames.length; from+=REEL_PAGE) {
@@ -274,7 +277,7 @@ export class Studios {
         await Promise.all(screens.map((screen, index) => screen.loadReel({ reel: reels[index], from, frames: page })));
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
-      this.staged = { scene, film, screens, reels: reels as number[], edits };
+      this.staged = { scene, film, screens, reels: reels as number[], edits, surfaceProbe };
       this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {}, parts, avoided });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
@@ -326,6 +329,14 @@ export class Studios {
     const staged = this.ready();
     if(!staged) throw new Error(notStaged(this.state.value));
     return (await staged.screens[0].storyboard({ reel: staged.reels[0], frames, ...((view !== undefined) ? { view } : {}) })).shown;
+  }
+
+  /** the surfaces over every cell of an area of a set, asked of the main screen as
+   *  staging asks them (SEE: ground.ts surfacesIn); refuses while the film is not staged */
+  public async surfacesIn(set: string | undefined, area: CellArea): ReturnType<typeof surfacesIn> {
+    const staged = this.ready();
+    if(!staged) throw new Error(notStaged(this.state.value));
+    return await surfacesIn(staged.surfaceProbe, set, area);
   }
 
   /** resolves once the main screen reports a frame drawn; refuses after SHOWN_MILLIS,

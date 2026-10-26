@@ -767,7 +767,7 @@
       },
       {
         "name": "follow",
-        "description": "Follow an actor through the staged reel, for Applications: at each frame shown live, the actor's ghosts at each drawing within before and after seconds (cool behind, warm ahead, fainter further off) and its path through its hips with its keys marked, never in a capture or a thumbnail. Without an actor, follow no one. Staging again follows no one",
+        "description": "Follow an actor through the staged reel, for Applications: at each frame shown live, the actor's ghosts at each drawing within before and after seconds (red behind, green ahead, fainter further off) and its path through its hips with its keys marked, never in a capture or a thumbnail. Without an actor, follow no one. Staging again follows no one",
         "inputSchema": {
           "type": "object",
           "properties": {

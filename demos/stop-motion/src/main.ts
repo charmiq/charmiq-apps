@@ -651,7 +651,7 @@ if(films) {
   merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
 } /* else -- standalone: no Drive */
 surface.advertise(charmiq);
-if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
+if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), surfaces: (set, area) => studios.surfacesIn(set, area), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
 showSheet();
 showStatus();
 showFile();
