@@ -174,8 +174,9 @@ const flying = (film: Film, name: string, index: number): boolean => {
   });
 };
 
-/** what places an actor's feet at a time (SEE: FootingBy) */
-const placedBy = (film: Film, name: string, time: number): Readonly<{ by: FootingBy; lines: ReadonlyArray<number>; keys?: ReadonlyArray<HeightKey>; }> => {
+/** what places an actor's feet at a time (SEE: FootingBy): a footing problem's cause,
+ *  and a timeline mark's row */
+export const placedBy = (film: Film, name: string, time: number): Readonly<{ by: FootingBy; lines: ReadonlyArray<number>; keys?: ReadonlyArray<HeightKey>; }> => {
   const actor = film.scene.actors.find(each => each.name === name)!;
   const linesOf = (lined: ReadonlyArray<Readonly<{ line?: number; }>>) => lined.flatMap(each => (each.line !== undefined) ? [each.line] : []);
   // the height keys easing at a time: the two either side, or the last it holds

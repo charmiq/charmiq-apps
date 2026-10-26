@@ -1,7 +1,7 @@
 {
   "id": "ai.charmiq.demos.stop-motion",
   "name": "Stop Motion",
-  "description": "The timeline of a stop-motion film of toy-brick scenes: the scene is code in a code editor's scene.js tab, the film plays in Brick Studio, the screen, and scrubs on the timeline, exports as an MP4, and saves to the Drive as one film (its set and its scene). A scene plays sound with sound.at(time, sound, { volume, until }) or actor.sound(time, sound, { volume, until }) to follow an actor across the picture: the sound is any audio file in the Platform named by its URI, charmiq://file/<assetId> (an Asset you upload, download, or generate: create_audio and create_music return assetIds; use 'charmiq://file/' + assetId)",
+  "description": "The timeline of a stop-motion film of toy-brick scenes: the scene is code in a code editor's scene.js tab, the film plays in Brick Studio, the screen, and scrubs on the timeline, exports as an MP4, and saves to the Drive as one film (its set and its scene). A scene plays sound with sound.at(time, sound, { volume, until }) or actor.sound(time, sound, { volume, until }) to follow an actor across the picture: the sound is any audio file in the Platform named by its URI, charmiq://file/<assetId> (an Asset you upload, download, or generate: create_speech and create_music return assetIds; use 'charmiq://file/' + assetId)",
   "requestedScopes": [
     "application.advertise",
     "application.discover",

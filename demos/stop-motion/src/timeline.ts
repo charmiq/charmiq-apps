@@ -2,6 +2,7 @@ import { cameraShots, filmLengthOf, filmTimeOf, frameAtTime, sceneTimeOf, shotAt
 import type { Inspected, InspectedMark, Inspector } from './inspector';
 import type { ClosePair } from './measure';
 import type { SoundCue } from './recorder';
+import type { Lit, MarkedSpan } from './review-surface';
 import { bandTiers, groupReading, keyGroups, rowsOf, standingAt, underAt, type KeyGroup, type Row, type RowBand, type SoundReading, type SoundsKnown, type Under } from './timeline-marks';
 import { clampZoom, labelOf, labelStep, labelWidth, maxZoom, spanInView, ZOOM_STEP } from './timeline-view';
 
@@ -24,7 +25,11 @@ import { clampZoom, labelOf, labelStep, labelWidth, maxZoom, spanInView, ZOOM_ST
 // (again, the zoom before it), and the ruler's corner holds the same as buttons. The
 // span in view is told to the host, which frames it on the picture track; while the
 // film plays, a playhead leaving the view turns it a page, and a scrub or a sound
-// dragged past an end of the view scrolls it.
+// dragged past an end of the view scrolls it. While marking (SEE: review-surface.ts),
+// a drag across the lanes selects a span of frames over the rows it crosses instead
+// of scrubbing, drawn as a band over each row while dragged, and marked as the pointer
+// lifts; the ruler still scrubs. The spans marked, or those a note shows, stay lit on
+// their rows' lanes until marking ends or another note shows.
 // each sound draws as its waveform over the span it plays; one whose time the scene
 // writes as a number drags along its row to a new time, which the scene then holds,
 // and one written otherwise says where its time is written. A sound whose file is
@@ -62,6 +67,8 @@ export type TimelineHost = Readonly<{
   seek: (index: number) => void;
   step: (delta: number) => void;
   toggle: () => void;
+  /** a span dragged across the lanes while marking: its frames and the rows it crosses */
+  marked: (span: MarkedSpan) => void;
   /** a frame's picture as the studio draws it, or undefined when none can be had now
    *  (playing, exporting, not staged) */
   picture: (index: number) => Promise<string | undefined>;
@@ -89,8 +96,12 @@ export type TimelineHost = Readonly<{
  *  one's waveform (its loudest sample in equal slices, 0 to 1) once it is read */
 export type TimelineSounds = SoundsKnown & Readonly<{ peaks: (sound: string) => Float32Array | undefined; }>;
 
-/** a row as laid out: its marks' elements, each key group's diamond */
-type Laid = Readonly<{ row: Row; groups: ReadonlyArray<KeyGroup>; keys: ReadonlyArray<HTMLElement>; bands: ReadonlyArray<HTMLElement>; notches: ReadonlyArray<HTMLElement>; }>;
+/** a row as laid out: its line and lane, its marks' elements, each key group's diamond */
+type Laid = Readonly<{ row: Row; line: HTMLElement; lane: HTMLElement; groups: ReadonlyArray<KeyGroup>; keys: ReadonlyArray<HTMLElement>; bands: ReadonlyArray<HTMLElement>; notches: ReadonlyArray<HTMLElement>; }>;
+
+/** a span being dragged while marking: the frame and row (laid index) where the press
+ *  began, and those under the pointer now */
+type Selecting = Readonly<{ from: number; fromRow: number; to: number; toRow: number; }>;
 
 /** a moment of the film on a row (none on the ruler): its frame, its share of the
  *  film and its time, and the marks under it there */
@@ -139,6 +150,11 @@ export class Timeline {
   /** a sound being dragged: its band, its element, where the press began and the
    *  lanes' scroll then */
   private dragging: Readonly<{ band: RowBand; mark: HTMLElement; startX: number; startScroll: number; }> | undefined;
+  /** whether a drag across the lanes marks a span (SEE: review-surface.ts), the span
+   *  being dragged, and the spans lit on their rows (those marked, or a note's shown) */
+  private marking = false;
+  private selecting: Selecting | undefined;
+  private lights: ReadonlyArray<Lit> = [];
   /** the lanes' zoom (1: the whole film across them), the zoom a fit left (a second fit
    *  returns to it, where it stood), and a zoom waiting for the next animation frame (a
    *  pinch's moves gather into one) with what it holds still: a share of the film at a
@@ -189,10 +205,11 @@ export class Timeline {
       // pointer and the event's target is theirs
       const mark = this.root.ownerDocument.elementsFromPoint(event.clientX, event.clientY).find((under): under is HTMLElement => (under instanceof HTMLElement) && under.classList.contains('band'));
       const laid = mark && this.laid.find(each => each.bands.includes(mark));
-      if(!mark || !laid || !isWalk(laid.row, laid.row.bands[laid.bands.indexOf(mark)])) return/*not a walk*/;
+      if(this.marking || !mark || !laid || !isWalk(laid.row, laid.row.bands[laid.bands.indexOf(mark)])) return/*marking, or not a walk*/;
       this.host.gait(laid.row.track.name);
     });
     this.scroller.addEventListener('pointermove', event => {
+      if(this.selecting) { this.select(event); return; }
       if(this.dragging) { this.drag(event); return; }
       if(this.scrubbing) { this.scrub(event); return; }
       this.pointer = { x: event.clientX, y: event.clientY };
@@ -201,8 +218,8 @@ export class Timeline {
     });
     this.scroller.addEventListener('pointerleave', () => { this.pointer = undefined; this.hover(undefined); });
     const end = () => { this.scrubbing = false; root.classList.remove('is-scrubbing'); };
-    this.scroller.addEventListener('pointerup', event => { if(this.dragging) void this.drop(event); else end(); });
-    this.scroller.addEventListener('pointercancel', () => { this.cancelDrag(); end(); });
+    this.scroller.addEventListener('pointerup', event => { if(this.selecting) this.selected(); else if(this.dragging) void this.drop(event); else end(); });
+    this.scroller.addEventListener('pointercancel', () => { this.cancelSelect(); this.cancelDrag(); end(); });
     this.scroller.addEventListener('scroll', () => this.refresh(false/*its waveforms on the next frame*/));
     // a pinch arrives as the wheel with Ctrl (Safari's as its own gesture); ⌥ (Alt) with
     // the wheel zooms too. ⌘ stays the inspector's, and a plain wheel scrolls
@@ -253,6 +270,22 @@ export class Timeline {
   public unpin(): void {
     this.pinned = undefined;
     this.update();
+  }
+
+  // .. Marking ...................................................................
+  /** turns marking a span on or off (SEE: review-surface.ts): either way, nothing lit */
+  public setMarking(on: boolean): void {
+    this.marking = on;
+    this.root.classList.toggle('is-marking', on);
+    this.selecting = undefined;
+    this.lights = [];
+    this.drawLit();
+  }
+
+  /** lights rows over spans of frames (a note shown), in place of those lit */
+  public lightSpans(lit: ReadonlyArray<Lit>): void {
+    this.lights = lit;
+    this.drawLit();
   }
 
   /** draws the film's sounds again: one read since, its length and waveform known.
@@ -340,6 +373,7 @@ export class Timeline {
       return laid.laid;
     });
     this.scroller.append(body);
+    this.drawLit()/*on the lanes laid anew*/;
     this.shownWidth = this.lanesShown();
     this.refresh();
   }
@@ -518,7 +552,7 @@ export class Timeline {
       return diamond;
     });
     line.append(name, lane);
-    return { element: line, laid: { row, groups, keys, bands, notches } };
+    return { element: line, laid: { row, line, lane, groups, keys, bands, notches } };
   }
 
   // .. Sounds ....................................................................
@@ -645,6 +679,7 @@ export class Timeline {
       if(moment) { event.preventDefault(); this.pinned = moment; this.update(); }
       return;
     }
+    if(this.marking && (event.target as HTMLElement).closest('.lane')) { this.startSelect(event); return; }
     const key = (event.target as HTMLElement).closest<HTMLElement>('.key');
     if(key) {
       const group = this.groupOf(key);
@@ -753,6 +788,79 @@ export class Timeline {
     if(!act) return;
     event.preventDefault();
     act();
+  }
+
+  // == Marking ===================================================================
+  // a press on the lanes while marking: the span begins at its frame and row
+  private startSelect(event: PointerEvent): void {
+    const at = this.momentAt(event.clientX), row = this.rowAt(event.clientY);
+    if(!at || (row === undefined)) return/*no lanes laid*/;
+    event.preventDefault();
+    this.selecting = { from: at.frame, fromRow: row, to: at.frame, toRow: row };
+    this.scroller.setPointerCapture(event.pointerId);
+    this.drawLit();
+  }
+
+  // the span follows the pointer, across frames and rows, the lanes scrolling past an
+  // end of their view
+  private select(event: PointerEvent): void {
+    const selecting = this.selecting!;
+    this.carry(event.clientX);
+    const at = this.momentAt(event.clientX), row = this.rowAt(event.clientY);
+    const next = { ...selecting, ...(at ? { to: at.frame } : {}), ...((row !== undefined) ? { toRow: row } : {}) };
+    if((next.to === selecting.to) && (next.toRow === selecting.toRow)) return/*the same span*/;
+    this.selecting = next;
+    this.drawLit();
+  }
+
+  // the pointer lifted: the span marked and kept lit on its rows
+  private selected(): void {
+    const span = this.spanOf(this.selecting!);
+    this.selecting = undefined;
+    this.lights = [...this.lights, { first: span.first, last: span.last, rows: span.rows.map(row => row.name) }];
+    this.drawLit();
+    this.host.marked(span);
+  }
+
+  // a drag the browser took away: no span marked
+  private cancelSelect(): void {
+    if(!this.selecting) return;
+    this.selecting = undefined;
+    this.drawLit();
+  }
+
+  /** a span being dragged as its frames and the rows it crosses, in the timeline's order */
+  private spanOf(selecting: Selecting): MarkedSpan {
+    const [top, bottom] = [Math.min(selecting.fromRow, selecting.toRow), Math.max(selecting.fromRow, selecting.toRow)];
+    return { first: Math.min(selecting.from, selecting.to), last: Math.max(selecting.from, selecting.to), rows: this.laid.slice(top, bottom + 1).map(laid => laid.row) };
+  }
+
+  /** the row (laid index) at a page y: above the rows the first, below them the last */
+  private rowAt(y: number): number | undefined {
+    if(this.laid.length < 1) return undefined;
+    const index = this.laid.findIndex(laid => y < laid.line.getBoundingClientRect().bottom);
+    return (index < 0) ? (this.laid.length - 1) : index;
+  }
+
+  /** the spans lit, and the one being dragged, each a band over its frames on each of
+   *  its rows' lanes (a row by its name; one the film no longer has, none) */
+  private drawLit(): void {
+    this.scroller.querySelectorAll('.marked').forEach(band => band.remove());
+    const film = this.film;
+    if(!film) return;
+    const frames = film.frames.length;
+    const draw = (first: number, last: number, laid: Laid | undefined, className: string) => {
+      if(!laid) return;
+      const band = element(this.root.ownerDocument, 'span', className);
+      band.style.left = `${((Math.max(0, first) / frames) * 100).toFixed(3)}%`;
+      band.style.width = `${(((Math.min(last, frames - 1) + 1 - Math.max(0, first)) / frames) * 100).toFixed(3)}%`;
+      laid.lane.prepend(band)/*under the row's own marks*/;
+    };
+    for(const lit of this.lights) for(const name of lit.rows) draw(lit.first, lit.last, this.laid.find(laid => laid.row.name === name), 'marked');
+    if(this.selecting) {
+      const span = this.spanOf(this.selecting);
+      for(const row of span.rows) draw(span.first, span.last, this.laid.find(laid => laid.row === row), 'marked is-selecting');
+    } /* else -- nothing being dragged */
   }
 
   // == Hover =====================================================================

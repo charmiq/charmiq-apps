@@ -18,6 +18,7 @@ import { GaitView } from './gait-view';
 import { closePairs } from './measure';
 import { Player, type PlayerState } from './player';
 import { castAs, type Recorded, type SceneError, type SoundCue } from './recorder';
+import { TimelineSurface } from './review-surface';
 import { addSound, applyEdit, isRefusal, regait, retimeSound, sameGait, sameSounds, soundsAdded, soundsMoved, writtenGait, type Refusal, type SceneEdit } from './scene-edit';
 import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB, type MeasuredScene } from './scene-source';
@@ -35,7 +36,9 @@ import type { SoundReading } from './timeline-marks';
 // film: the studios show it. A scene with a mistake keeps the last film that ran and
 // says where the mistake is. The film's file (New, Open, Save) is its set and its scene
 // in one design in the Drive, written and read by Stop Motion between the two. Stop
-// Motion plays the film's sound itself, on the player's clock (SEE: soundtrack.ts)
+// Motion plays the film's sound itself, on the player's clock (SEE: soundtrack.ts). The
+// timeline is a review surface: a note marks it and shows its marks again on it (SEE:
+// review-surface.ts)
 //
 //   SceneSource (the editor's scene.js) -> Director: runScene (a Worker), filmOf
 //     -> Studios.stage (the wheels found, the reel loaded) -> Player (+ Soundtrack),
@@ -150,7 +153,7 @@ const director = new Director(studios, async code => {
 const player = new Player(index => showFrame(index), soundtrack);
 const inspector = new Inspector(element('inspect'), element('sheetFilm'), () => timeline.unpin());
 const timeline = new Timeline(element('timeline'), {
-  seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle(),
+  seek: index => player.seek(index), step: delta => player.step(delta), toggle: () => player.toggle(), marked: span => surface.mark(span),
   picture: index => picture(index, INSPECT_WIDTH), nearPicture: index => strip.nearest(index),
   sounds: () => soundsKnown, fixed: cue => fixedWhy(cue), moveSound: (cue, time) => moveSound(cue, time),
   viewed: span => strip.setSpan(span)/*the picture track frames it*/,
@@ -158,6 +161,9 @@ const timeline = new Timeline(element('timeline'), {
   followActor: actor => { followed = actor; follow(); },
 }, inspector);
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack(), (from, to) => timeline.showSpan(from, to));
+/** the timeline as a review surface: marked while a note is written, a note's marks
+ *  shown on it */
+const surface = new TimelineSurface({ film: () => film, frame: () => player.current.index, timeline, player, shown: index => studios.whenShown(index) });
 const gaitView = new GaitView(element('gait'), { write: (name, keys) => writeGait(name, keys), seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), rewind: index => player.seek(index), loop: span => player.loopSpan(span), close: () => showGait(false) });
 
 // -- Film Files ------------------------------------------------------------------
@@ -644,6 +650,7 @@ if(films) {
   films.state$.subscribe(() => showFile());
   merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
 } /* else -- standalone: no Drive */
+surface.advertise(charmiq);
 if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
 showSheet();
 showStatus();

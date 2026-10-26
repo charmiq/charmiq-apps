@@ -19,6 +19,7 @@ import { GroundControl } from './ground-control';
 import { LookAround } from './look-around';
 import { partCount, type Model } from './model';
 import { SHIPPED_PICTURES } from './picture';
+import { ReviewControl } from './review-control';
 import { SetControl } from './set-control';
 import { SkyControl } from './sky-control';
 import { Sheet } from './sheet';
@@ -79,6 +80,7 @@ const stage = new StageControl({
   film: element('stagedFilm'), play: element('stagedPlay'), scrub: element('stagedScrub'), time: element('stagedTime'),
 }, studio, viewer, build, sheet);
 const commands = new CommandSurface(build, designs, shippedPictures, viewer, lookAround, stage, look);
+const review = new ReviewControl({ root: document.querySelector<SVGSVGElement>('#reviewMarks')!/*by contract*/, shown: document.querySelector<SVGGElement>('#reviewShown')!/*by contract*/, drawn: document.querySelector<SVGGElement>('#reviewDrawn')!/*by contract*/ }, studio, viewer, stage, () => standStill());
 /** why the last ground change was refused, until the build next changes */
 let groundRefused: string | undefined;
 const ground = new GroundControl({ root: element('ground'), button: element('groundButton'), menu: element('groundMenu') }, build, reason => { groundRefused = reason; showStatus(build.getModel()); });
@@ -226,7 +228,7 @@ const onWalkKey = (event: KeyboardEvent, down: boolean) => {
   if(down && sheet.isOpen && !isForOthers(event) && !movesFocus(event)) { sheet.hide(); return; }
   if(down && (event.code === 'KeyI') && !isForOthers(event)) { toggleHelp(); return; }
   if(!(event.code in WALK_KEYS)) { if(event.key === 'Shift') viewer.walk(walkFromKeys(down)); return; }
-  if(down && (isForOthers(event) || help.open)) return;
+  if(down && (isForOthers(event) || help.open || review.isMarking)) return/*a stroke is drawn on a picture standing still*/;
   event.preventDefault()/*Space neither scrolls nor presses the focused button*/;
   if(down) held.add(event.code);
   else held.delete(event.code);
@@ -266,6 +268,7 @@ const start = async () => {
   build.onUncertain(() => showStatus(build.getModel()));
   viewer.onParts(() => showStatus(build.getModel()));
   commands.init()/*each command waits for the build*/;
+  review.advertise(charmiq);
   try {
     await build.init();
   } catch(error) {

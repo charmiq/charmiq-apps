@@ -28,7 +28,8 @@ theme: charmiq:none
     line-height: 0;
     margin: 0px;
   }
-  .studio > .timeline {
+  .studio > .timeline,
+  .studio > .scene {
     grid-column: 1 / -1;
   }
   .studio iframe {
@@ -10908,8 +10909,16 @@ theme: charmiq:none
       </app-content>
     </iframe-app>
   </p>
+  <p class="review">
+    <iframe-app data-name="review" height="380px" src="charmiq://../review" width="100%">
+    </iframe-app>
+  </p>
+  <p class="timeline">
+    <iframe-app data-name="timeline" height="420px" src="charmiq://." width="100%">
+    </iframe-app>
+  </p>
   <p class="scene">
-    <iframe-app data-name="scene" height="380px" src="charmiq://../../apps/codemirror-editor" width="100%">
+    <iframe-app data-name="scene" height="480px" src="charmiq://../../apps/codemirror-editor" width="100%">
       <app-content name="scene:scene.js">
 // The Salon. A gallery after the Louvre's Salon Carré, hung frame to frame: visitors muse
 // along the walls, a couple rests on the velvet bench, a copyist works at her easel before
@@ -11126,10 +11135,6 @@ title(END, END + 2, 'The Salon')
   ]
 }
       </app-state>
-    </iframe-app>
-  </p>
-  <p class="timeline">
-    <iframe-app data-name="timeline" height="420px" src="charmiq://." width="100%">
     </iframe-app>
   </p>
 </div>

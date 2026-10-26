@@ -4,9 +4,10 @@ import type { PoseBottoms } from '../../brick-shared/rise';
 import { skyFrom } from '../../brick-shared/sky';
 
 import type { Build } from './build';
+import type { PartLine } from './grid';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Size } from './stage';
+import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Shot, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -69,6 +70,14 @@ export type ScreenState = StageState & Readonly<{ build: boolean; sets: Readonly
 /** a reel as loaded: its number, header and the frames loaded so far, each as this
  *  screen shows it */
 type Reel = Readonly<{ id: number; header: ReelHeader; frames: ReelFrame[]; }>;
+/** what the picture shows of the stage, as a person pointing at it names it: the
+ *  reel's frame (none for a frame a frame call shows), the view it is seen through
+ *  (the main camera when none), the set standing and each actor shown, by name, with
+ *  its lines in the scene's frame */
+export type StageShown = Readonly<{ frame?: number; view?: string; set: string; actors: ReadonlyArray<Readonly<{ name: string; lines: ReadonlyArray<PartLine>; }>>; }>;
+/** a frame drawn: the reel's frame it is (none for a frame call's), the set standing
+ *  (an index into the cast's sets) and its shots */
+type Drawn = Readonly<{ frame?: number; set: number; shots: ReadonlyArray<Shot>; }>;
 
 // == Class =======================================================================
 export class StageControl {
@@ -98,6 +107,8 @@ export class StageControl {
   private edits = 0;
   /** the actor followed through the film, while one is (SEE: follow) */
   private followed: Follow | undefined;
+  /** the frame the picture shows, while a stage stands */
+  private drawn: Drawn | undefined;
   /** the reel's frame last shown, and whether the film said it plays */
   private shownFrame = 0;
   private playing = false;
@@ -126,6 +137,16 @@ export class StageControl {
 
   /** the screen's state, from now on */
   public state$(): Observable<ScreenState> { return this.state.asObservable(); }
+
+  /** what the picture shows of the stage, while one stands */
+  public shown(): StageShown | undefined {
+    const cast = this.cast, drawn = this.drawn;
+    if(!cast || !drawn) return undefined/*the build*/;
+    return {
+      ...((drawn.frame !== undefined) ? { frame: drawn.frame } : {}), ...((this.view !== undefined) ? { view: this.view } : {}), set: cast.sets[drawn.set].name,
+      actors: drawn.shots.map(shot => ({ name: shot.name, lines: shotLines(cast, [shot]) })),
+    };
+  }
 
   /** stages sets (of LDraw text, else of the build; its first set when none is named)
    *  and casts its actors, showing the first set alone until a frame shows them, lit as
@@ -158,6 +179,7 @@ export class StageControl {
     [this.shownFrame, this.playing] = [0, false];
     this.viewer.useSky(skied)/*before the first set is shown under it*/;
     this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged), keep === true);
+    this.drawn = { set: 0, shots: [] }/*the first set alone, until a frame shows*/;
     this.showHeld();
     this.viewer.useLight(lit);
     if(header) this.viewer.drawStageAt(header.width, header.height);
@@ -236,6 +258,7 @@ export class StageControl {
       this.applied++;
       const picture = this.pictureOf(loaded, shot, undefined);
       this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving), true/*through its own camera*/);
+      this.drawn = { frame: frame as number, set: shot.set, shots: shot.shots };
       const image = await this.viewer.capture(size.width, size.height);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
       this.publish({ kind: 'staged', reel: loaded.id, frame: frame as number });
@@ -305,6 +328,7 @@ export class StageControl {
       const size = captureOf(capture);
       this.applied++/*a reel frame waiting to be drawn is no longer the one shown*/;
       this.viewer.showFrame(shownActors(cast, shots), view, undefined/*no overlay*/, standing, undefined/*no transition*/, !!size/*a capture through its own camera*/);
+      this.drawn = { set: standing, shots };
       if(!size) return { shown: shots.length };
       const image = await this.viewer.capture(size.width, size.height);
       if(this.cast !== cast) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
@@ -340,6 +364,7 @@ export class StageControl {
     const applied = ++this.applied;
     const picture = this.pictureOf(loaded, shot, undefined);
     this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving));
+    this.drawn = { frame, set: shot.set, shots: shot.shots };
     this.shownFrame = frame;
     this.ghost();
     this.showControls();
@@ -382,6 +407,7 @@ export class StageControl {
     this.cast = undefined/*nothing staged*/;
     this.reel = undefined;
     this.wanted = undefined;
+    this.drawn = undefined;
     this.viewer.unstage();
     this.showHeld();
     this.show(undefined/*no strip*/);

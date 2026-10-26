@@ -1,0 +1,327 @@
+{
+  "id": "ai.charmiq.demos.review",
+  "name": "Review",
+  "description": "A document's review notes: a person stops where something is wrong in what the document's Applications show, circles it on the picture or marks its span on the timeline, and writes a few words. Read the notes with listNotes, show each with showNote (the moment and its marks come back on the picture and the timeline, so a screenshot or a measurement sees what the person saw), fix what it points at, and answer it with replyToNote. Only the person closes a note.",
+  "requestedScopes": [
+    "application.discover",
+    "application.call",
+    "application.advertise"
+  ],
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.scss"
+    },
+    "format": "esm",
+    "mounts": {
+      "/brick-shared": "../brick-shared",
+      "/shared": "../../shared"
+    },
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.2",
+        "rxjs/operators": "https://esm.sh/rxjs@7.8.2/operators"
+      }
+    }
+  },
+  "runtime": {
+    "appContent": true
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "listNotes",
+        "description": "The document's notes, oldest first (work through them in the order the person watched), each with its marks as resolved and its replies; status narrows them (open: still to answer)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "answered",
+                "closed"
+              ],
+              "description": "Only the notes in this status"
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string",
+                    "description": "What the person wrote"
+                  },
+                  "status": {
+                    "type": "string",
+                    "description": "open (waiting), answered (replied to), or closed (the person is satisfied)"
+                  },
+                  "author": {
+                    "type": "string",
+                    "description": "person or agent"
+                  },
+                  "marks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "surface": {
+                          "type": "string",
+                          "description": "Where it was made: picture (a stroke drawn on Brick Studio's picture) or timeline (a span dragged across Stop Motion's rows)"
+                        },
+                        "label": {
+                          "type": "string",
+                          "description": "What it points at, in the person's words"
+                        },
+                        "frames": {
+                          "type": "object",
+                          "description": "The film frames it names, first and last (seek them)",
+                          "properties": {
+                            "first": {
+                              "type": "integer"
+                            },
+                            "last": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "first",
+                            "last"
+                          ]
+                        },
+                        "resolved": {
+                          "type": "object",
+                          "description": "What the surface found under it: on the picture the frame, the actors and the parts the stroke passes over; on the timeline the times, the shot, and each row's actor with what moves it then (walk, path or keys) and the scene lines"
+                        }
+                      },
+                      "required": [
+                        "surface",
+                        "label",
+                        "resolved"
+                      ]
+                    }
+                  },
+                  "replies": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "author": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "author",
+                        "text"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "text",
+                  "status",
+                  "author",
+                  "marks",
+                  "replies"
+                ]
+              }
+            },
+            "surfaces": {
+              "type": "integer",
+              "description": "How many Applications in the document take and show marks"
+            }
+          },
+          "required": [
+            "notes",
+            "surfaces"
+          ]
+        }
+      },
+      {
+        "name": "showNote",
+        "description": "Show a note as opening it does: the timeline goes to its span and loops it, the picture draws its strokes; resolves once the surfaces were told, so a screenshot next sees it",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The note's id, as listNotes gives it (its first characters will do)"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "shown": {
+              "type": "string"
+            },
+            "marks": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "shown",
+            "marks"
+          ]
+        }
+      },
+      {
+        "name": "replyToNote",
+        "description": "Answer a note: what was wrong, what changed (the scene lines) and what was checked. Leaves it answered, or open when it needs the person (say why and what they can do). Never closes it: closing is the person's",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "reply": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "answered",
+                "open"
+              ],
+              "description": "answered (the default), or open when the person must act"
+            }
+          },
+          "required": [
+            "id",
+            "reply"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string",
+              "description": "What the person wrote"
+            },
+            "status": {
+              "type": "string",
+              "description": "open (waiting), answered (replied to), or closed (the person is satisfied)"
+            },
+            "author": {
+              "type": "string",
+              "description": "person or agent"
+            },
+            "marks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "surface": {
+                    "type": "string",
+                    "description": "Where it was made: picture (a stroke drawn on Brick Studio's picture) or timeline (a span dragged across Stop Motion's rows)"
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "What it points at, in the person's words"
+                  },
+                  "frames": {
+                    "type": "object",
+                    "description": "The film frames it names, first and last (seek them)",
+                    "properties": {
+                      "first": {
+                        "type": "integer"
+                      },
+                      "last": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "first",
+                      "last"
+                    ]
+                  },
+                  "resolved": {
+                    "type": "object",
+                    "description": "What the surface found under it: on the picture the frame, the actors and the parts the stroke passes over; on the timeline the times, the shot, and each row's actor with what moves it then (walk, path or keys) and the scene lines"
+                  }
+                },
+                "required": [
+                  "surface",
+                  "label",
+                  "resolved"
+                ]
+              }
+            },
+            "replies": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "author": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "author",
+                  "text"
+                ]
+              }
+            }
+          },
+          "required": [
+            "id",
+            "text",
+            "status",
+            "author",
+            "marks",
+            "replies"
+          ]
+        }
+      },
+      {
+        "name": "deleteNote",
+        "description": "Delete a note, only when the person asks",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "deleted": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "deleted"
+          ]
+        }
+      }
+    ]
+  }
+}

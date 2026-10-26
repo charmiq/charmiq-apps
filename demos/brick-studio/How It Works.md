@@ -138,6 +138,18 @@ The Studio can show a scene in place of the build: a still for a Charm (the car 
 While the scene shows, the picture is framed as film, a band of sprocket holes along its top and foot, and a strip says so and carries a Back to the build button, a Move the view button and a full-screen button; the Studio's own controls rest. Where a pointer hovers, the strip stands only while it is over the studio or a control in the strip holds the keys. **Move the view** hands the camera to the person: the mouse turns and zooms round the scene, looking up at what stands above it as over a build, and the keys walk it as over a build (W A S D, Q E to turn, Space and C up and down, Shift faster), while the film plays on, its actors posed frame by frame and the camera left where the person put it; pressed again, the film's camera stands at its next frame. A capture an Application asks for is still taken through the frame's own camera, the person's view standing again after. Staging the scene afresh lets the view go; staged again keeping the picture, it stays held. Full screen over a film, the strip carries the film's controls: play and pause, a scrub bar and the film's time (Space and the arrows besides). Each press is asked of the film (the Application playing it counts each ask on the stage's stream, which names the reel it stands for), and the frames it then shows answer it. While the film plays, the strip rests out of sight once the pointer stands still off it. The button shows the build again, with the camera where it stood, and refuses the film's next frame until it stages the scene again, so a film pauses rather than taking the view back. Edits made meanwhile reach the build, and the strip says the build changed.
 
 
+## Review Marks
+
+The Studio's picture is a surface [Review](charmiq://../review/README.md) marks: it advertises the review capability (`charmiq.review-surface`, SEE: [`shared/review/surface.ts`](charmiq://../../shared/review/surface.ts)), and Review finds it there. While Review asks for marks, a drag over the picture draws a stroke there (a circle round the trouble, a line along a path, an arrow at a part) and leaves it drawn; the camera stands still under it and the keys walk nowhere. As the pointer lifts, the stroke becomes a mark:
+
+- **The frame** the Studio shows, when a film's reel is staged, and **the view** it sees the film through, when it is not the film's own camera.
+- **The actors** whose shown pieces the stroke passes over, or encloses when it closes on itself: each piece's drawn bounds, seen through the camera.
+- **The parts** the stroke's points and its middle show, the first thing each point meets in the picture, each named as a placement is named elsewhere (`brick-1x4 red at x -8 z 3 level 3 in hurdle at x -8 z 3 level 0`), and the set shown when it is named.
+- **The stroke** itself, in the picture's own coordinates (0 to 1 across and down), so a resized Studio draws it in the same place.
+
+The mark's label reads the frame, the actors and the first part: *Picture, frame 658: Hurdler-2, hurdle at x -8 z 3 level 0*. Marking off takes the strokes away. Review shows a note's marks again: the Studio draws, over the picture and in the review color, the strokes of the picture's marks made through the view it shows, until Review shows others or none; drawing them moves and resizes nothing. With no Review in the document nothing asks, and the Studio is as it always is.
+
+
 ## Building Together
 
 The `model` app-content is the truth: the Studio shows what it holds, whoever changed it.
@@ -235,6 +247,8 @@ A Charm can also call these from the Platform's Run Code: its script finds the S
 | [`src/set-control.ts`](charmiq://./src/set-control.ts) | the set menu: the set shown, and the build's sets to show |
 | [`src/probe.ts`](charmiq://./src/probe.ts) | what stands at a point and across a segment of a set, followed exactly cell by cell |
 | [`src/stage-control.ts`](charmiq://./src/stage-control.ts) | the Studio on stage: its strip, its way back and its frames in order |
+| [`src/review.ts`](charmiq://./src/review.ts) | a review stroke on the picture: its points, the actors and parts under it, its label and mark, and the marks shown again |
+| [`src/review-control.ts`](charmiq://./src/review-control.ts) | the picture as a review surface: the capability, the layer strokes are drawn on, and the marks shown over it |
 | [`src/numbers.ts`](charmiq://./src/numbers.ts) | the least and greatest of a build-sized list of numbers |
 | [`src/content-bridge.ts`](charmiq://./src/content-bridge.ts) | the build <-> the `model` app-content, edited with guarded edits |
 | [`src/command.ts`](charmiq://./src/command.ts) | the Charm command surface |

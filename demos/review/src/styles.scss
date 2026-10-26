@@ -1,0 +1,237 @@
+@use '../../brick-shared/family';
+
+// a document's notes, in the Brick family's look (SEE: brick-shared/_family.scss): a
+// panel beside the studio, its bar's New note, the note being written with a chip for
+// each mark, and every note by its status with its chips and replies
+// ********************************************************************************
+// == Variables ===================================================================
+:root {
+  --bench:     #FFFDF2;
+  --lane:      #F6F1E2;
+  --lane-line: #E7E0CC;
+  /** the family's surfaces (SEE: brick-shared/_family.scss) */
+  --surface:   var(--bench);
+  --field:     var(--lane);
+  /** what a review mark is drawn in, on every surface */
+  --review:    var(--brick-orange);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bench:     #1B1A17;
+    --lane:      #23211D;
+    --lane-line: #33302A;
+  }
+}
+
+// == Panel =======================================================================
+.review {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 16px 16px 14px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.count {
+  @extend %mono-caps;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-soft);
+  overflow-wrap: break-word;
+}
+
+.eyebrow { @extend %mono-caps; font-size: 9px; color: var(--ink-soft); }
+
+// == Tags ========================================================================
+.tag {
+  @include family.tag;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 9px;
+  white-space: nowrap;
+
+  &:disabled { opacity: 0.55; cursor: default; filter: none; }
+
+  &--plain  { background: var(--bench); color: var(--ink); }
+  &--yellow { background: var(--brick-yellow); }
+  &--azure  { background: var(--brick-azure); }
+  &--ink    { background: var(--outline); color: #FFFDF2; }
+}
+
+// == Marks =======================================================================
+.marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  min-width: 0;
+
+  &:empty { display: none; }
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  background: var(--bench);
+  font-size: 11px;
+  box-shadow: 0 1px 0 var(--outline);
+
+  &::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--review);
+  }
+  &[data-surface='timeline']::before { border-radius: 1px; }
+
+  span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+.chip-remove {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+
+  &:hover { color: var(--ink); }
+}
+
+// == Composer ====================================================================
+.composer {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--edge);
+  border-left: 4px solid var(--review);
+  border-radius: 2px;
+  background: var(--lane);
+}
+
+.hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-soft);
+  overflow-wrap: break-word;
+}
+
+.words {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 2px;
+  background: var(--bench);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+
+  &:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+// == Notes =======================================================================
+.notes {
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.section {
+  display: grid;
+  gap: 8px;
+
+  > summary { cursor: pointer; }
+}
+
+.note {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--lane-line);
+  border-radius: 2px;
+  background: var(--bench);
+
+  &[data-status='answered'] { border-left: 4px solid var(--brick-azure); }
+  &[data-status='closed'] { opacity: 0.7; }
+  &.is-shown { border-color: var(--review); box-shadow: 0 0 0 1px var(--review); }
+}
+
+.note-words {
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.replies {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+
+  &:empty { display: none; }
+}
+
+.reply {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink-soft);
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+
+  b { color: var(--ink); font-weight: 600; }
+}
+
+.reopen {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}

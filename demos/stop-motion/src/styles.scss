@@ -663,6 +663,22 @@
   &.is-lit { box-shadow: 0 0 0 1px var(--outline), 0 0 0 3px color-mix(in srgb, var(--brick-red) 45%, transparent); }
 }
 
+// a span marked for a note, or a note's span shown: an azure band over its frames on
+// each row it covers, under the row's own marks (first in its lane), dashed while
+// dragged; while marking, the lanes take the crosshair (the ruler still scrubs)
+.marked {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  background: color-mix(in srgb, var(--brick-azure) 28%, transparent);
+  border: 1px solid var(--brick-azure);
+  border-radius: 2px;
+  pointer-events: none;
+
+  &.is-selecting { border-style: dashed; }
+}
+.timeline.is-marking .lane, .timeline.is-marking .lane * { cursor: crosshair; }
+
 // a key: a diamond on its time; keys too near to tell apart one diamond, its count on
 // it; a key lit grows and glows in its row's color
 .key {

@@ -10,6 +10,8 @@
 :root {
   --stage:     #FFFDF2;
   --baseplate: #F1ECDD;
+  /** a review's marks over the picture: a magenta no brick is */
+  --review:    #FF2E9A;
   /** the family's surfaces (SEE: brick-shared/_family.scss) */
   --surface:   var(--stage);
   --field:     var(--baseplate);
@@ -47,6 +49,23 @@
 
 // a film's fade and title, over the stage and fit as it is
 .stage-overlay { pointer-events: none; }
+
+// a review's marks over the picture, in its coordinates (stretched with it, each line
+// its own width): the strokes drawn while Review asks for marks, when the layer takes
+// the pointer from the canvas so the camera stands still, and a note's marks shown
+.review-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+
+  polyline { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+  .review-halo { stroke: rgba(16, 15, 13, 0.55); stroke-width: 7px; }
+  .review-line { stroke: var(--review); stroke-width: 3.5px; }
+}
+.studio.is-marking .review-marks { pointer-events: auto; cursor: crosshair; touch-action: none; }
 
 // == Bar =========================================================================
 .bar {

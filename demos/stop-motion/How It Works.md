@@ -95,7 +95,7 @@ The bar says the film's name and whether it has changed since it was saved or op
 
 ## The Sound
 
-A film's sounds are the person's own files in the Platform, however they came there: uploaded, or made by a Charm (`create_audio` speaks a line, `create_music` composes a piece; each returns the file's id). A scene plays one by its URI, `charmiq://file/<assetId>`, reading it through the Drive; *Add sound* picks one from the Drive's folders and writes its line into the scene at the playhead (`sound.at(1.5, 'charmiq://file/…') // Horn.ogg`). The few sounds Stop Motion's example films play ship with it and play by name; they are the audio files in [`sounds`](charmiq://./sounds/README.md), the folder the manifest declares as `sound/` (a sound added there plays by its file's name, with no other change), each Creative Commons Zero.
+A film's sounds are the person's own files in the Platform, however they came there: uploaded, or made by a Charm (`create_speech` speaks a line, `create_music` composes a piece; each returns the file's id). A scene plays one by its URI, `charmiq://file/<assetId>`, reading it through the Drive; *Add sound* picks one from the Drive's folders and writes its line into the scene at the playhead (`sound.at(1.5, 'charmiq://file/…') // Horn.ogg`). The few sounds Stop Motion's example films play ship with it and play by name; they are the audio files in [`sounds`](charmiq://./sounds/README.md), the folder the manifest declares as `sound/` (a sound added there plays by its file's name, with no other change), each Creative Commons Zero.
 
 Stop Motion plays the film's sound itself as the studio shows its picture: started with the playhead, from wherever it starts, seeks or loops, and waiting the moment the studio takes to show a frame so the two meet on screen; at the film's end or its loop the last sounds play out, and a pause stops them at once. The film's fade fades its sound too. A sound following an actor sounds from where the actor stands in the camera's picture, however the camera tilts. A browser lets an Application sound only once the person has pressed in it: a film played otherwise (a Charm's `play`) stays silent, and a *Sound off · click to hear* chip lets it in. A sound whose file cannot be read is left out and a *Sounds missing* chip names it; with none readable, a *No sound* chip says why.
 
@@ -114,6 +114,8 @@ Drag anywhere else on the ruler or the rows to scrub; a diamond seeks to its key
 The timeline opens with the whole film across it, and zooms in from there (never further out): pinch on a trackpad, or hold ⌥ (Alt) and turn the wheel, and the moment under the pointer stays under it; with the timeline focused, `=` and `-` zoom about the playhead and `\` fits the whole film (press it again to return); the ruler's corner holds the same as − / Fit / + buttons. Zoomed in, keys drawn as one diamond with a count draw apart, the rows scroll sideways under their names (a sideways swipe, or Shift with the wheel), and the ruler labels halves, quarters and frames, every label to the same places (`3.5s 4.0s`, frames to the millisecond). While the film plays, the view turns a page as the playhead leaves it. The picture track under the timeline always shows the whole film, a yellow bracket framing the span the timeline shows: drag its grip along the top to pan, drag either end to zoom; the pictures under it still seek when pressed.
 
 Opening a film says so: the film picked in the Open dialog shows *Opening…* while everything else in the dialog waits, and the bar says *opening…* until the film is staged. Staging shows its progress in the status, loading the film into the studio frame by frame.
+
+The timeline is a surface notes are made on: with a Review in the document, starting a note marks the moment the playhead is on, and while the note is written a drag across the rows marks a span of frames over the rows it crosses, drawn as an azure band, in place of scrubbing (the ruler still scrubs). Each mark says what it points at: its frames and times, the shot it starts in, and each row, an actor's with what moves it as the span starts (its walk, a path or its keys) and the scene's lines that do, as `describeFilm`'s footing names them. Opening a note loops its spans with their rows lit; a note drawn on the picture alone goes to its frame. Without a Review the timeline scrubs as ever.
 
 ## The Gait mode
 
@@ -167,7 +169,7 @@ A Charm sees stills, never playback, so the film is also read as it looks. Stagi
 | [`src/ground.ts`](charmiq://./src/ground.ts) | the ground actors follow: the surfaces under them asked of the studio and followed frame by frame |
 | [`src/screen.ts`](charmiq://./src/screen.ts) | what a frame's camera sees: a point's and an actor's place on the screen, as the studio draws it |
 | [`src/clearance.ts`](charmiq://./src/clearance.ts) | the film's camera against the set's parts: what each frame's camera meets, and an avoiding camera drawn in |
-| [`src/review.ts`](charmiq://./src/review.ts) | the film read as it looks: where the camera goes wrong, and each cut as an editor reads it |
+| [`src/review.ts`](charmiq://./src/review.ts) | the film read as it looks: where the camera goes wrong, where a figure's feet go wrong and what places them, and each cut as an editor reads it |
 | [`src/studios.ts`](charmiq://./src/studios.ts) | the Brick Studios found, the main one chosen, the reel staged, each frame shown, each studio's state followed |
 | [`src/player.ts`](charmiq://./src/player.ts) | the playhead and its clock |
 | [`src/sound.ts`](charmiq://./src/sound.ts) | the film's sounds, read (Platform files through the Drive, shipped sounds as resources) and decoded once, their waveforms, and the mix a film's cues make, for playing and exporting alike |
@@ -175,6 +177,7 @@ A Charm sees stills, never playback, so the film is also read as it looks. Stagi
 | [`sounds`](charmiq://./sounds/README.md) | the sounds Stop Motion ships for its example films, and where each comes from |
 | [`src/timeline.ts`](charmiq://./src/timeline.ts) | the timeline |
 | [`src/gait-view.ts`](charmiq://./src/gait-view.ts) | the Gait mode: a walker's gait on its graphs, written into the scene |
+| [`src/review-surface.ts`](charmiq://./src/review-surface.ts) | the timeline as a review surface: a span marked over rows and resolved into the film's terms, and a note's marks shown again |
 | [`src/timeline-marks.ts`](charmiq://./src/timeline-marks.ts) | the timeline's marks as data: its rows, keys grouped, bands stacked, what lies under a moment, where each track stands |
 | [`src/inspector.ts`](charmiq://./src/inspector.ts) | the sheet's inspector: a moment of the film in the sheet's place |
 | [`src/strip.ts`](charmiq://./src/strip.ts) | the picture track, a strip of film |

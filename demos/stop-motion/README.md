@@ -2,7 +2,7 @@
 
 *Ask your Charm for a little film: a car flying off a ramp, a knight riding out of a castle gate. It builds the set in Brick Studio, writes the scene as code, and the film plays right there in the studio. Scrub the timeline and the studio follows; export it as a video.*
 
-Three Applications, one document: Brick Studio is the screen, Stop Motion is the timeline, and a code editor holds the scene.
+Four Applications, one document: Brick Studio is the screen, Stop Motion is the timeline, a code editor holds the scene, and Review keeps your notes on the film (stop where something is wrong, circle it, say what, and your Charm answers each).
 
 
 ## The Studio
@@ -8624,6 +8624,12 @@ Three Applications, one document: Brick Studio is the screen, Stop Motion is the
 </iframe-app>
 
 
+## Review
+
+<iframe-app data-name="review" height="300px" width="100%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://../review">
+</iframe-app>
+
+
 ## The Scene
 
 <iframe-app data-name="scene" height="420px" width="100%" style="border: 1px solid lightgrey; border-radius: 4px;" src="charmiq://../../apps/codemirror-editor">
@@ -9112,7 +9118,7 @@ Or open the chat on this document and ask:
 - *Add a second car that chases the first one up the ramp.*
 - *Build a castle gate in the studio, then film a knight riding out of it.*
 
-The scene's commands, and how the three Applications work together, are in [How It Works](charmiq://./How%20It%20Works.md).
+The scene's commands, and how the Applications work together, are in [How It Works](charmiq://./How%20It%20Works.md).
 
 
 ## Credits

@@ -11,6 +11,7 @@ import { CATALOG, resourceFamily, type Finish } from './catalog';
 import { requestDraw } from './frame-request';
 import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
 import { drawnLines, partCount, type Model } from './model';
+import type { PictureBox, PicturePoint } from './review';
 import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type GhostPath, type Point, type ShownActors, type StageCamera, type StageLight, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
@@ -154,9 +155,11 @@ export const DEFAULT_VIEW: View = { azimuth: 30, elevation: 28 };
 export type View = Readonly<{ azimuth: number; elevation: number; }>;
 
 /** one drawn file: `geometry` names a part's own faces (its LDraw stem) or a print's
- *  (SEE: printKey); `drop` names the part whose drop it rides; an actor's moves with
- *  each frame of a stage and never counts toward the build's bounds */
-type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; finish: Finish | undefined/*plastic*/; key: string; drop: string; matrix: THREE.Matrix4; actor?: true; }>;
+ *  (SEE: printKey); `drop` names the part whose drop it rides; `placement` is the
+ *  set's placement it draws (an index into the model's placements; none for a line
+ *  the model reads as no placement); an actor's moves with each frame of a stage and
+ *  never counts toward the build's bounds */
+type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; finish: Finish | undefined/*plastic*/; key: string; drop: string; placement?: number; matrix: THREE.Matrix4; actor?: true; }>;
 type Drop = { mesh: THREE.InstancedMesh; index: number; matrix: THREE.Matrix4; start: number; };
 
 /** how the keys move the camera, each -1, 0 or 1: forward (or back), right (or
@@ -702,6 +705,7 @@ export class Viewer {
       const { geometry, glass, finish, color: tint, actor } = partItems[0];
       const mesh = new THREE.InstancedMesh(this.geometries.get(geometry)!, glass ? this.glassFor(tint) : finish ? this.metalFor(finish) : this.material, partItems.length);
       if(actor) mesh.userData.actor = groupKey/*how a frame finds the mesh to move*/;
+      else mesh.userData.placements = partItems.map(item => item.placement)/*what each instance draws, as the picture names it (SEE: placementsAt)*/;
       mesh.castShadow = !glass/*light passes through; the path tracer shades it physically*/;
       mesh.receiveShadow = true;
       partItems.forEach((item, index) => {
@@ -825,6 +829,49 @@ export class Viewer {
     this.tween?.resolve()/*a walk takes over from a view change*/;
     this.tween = undefined;
     this.requestFrame();
+  }
+
+  // == Picture ===================================================================
+  // what the picture shows where, for a person pointing at it: points and bounds in
+  // picture coordinates, 0 to 1 across and down the canvas as shown (a stage drawn at
+  // a film's size fills the canvas all the same), through the camera drawn now
+
+  /** the set drawn now and, for each point, the placement of it that is the first
+   *  thing the point shows: none where it shows an actor, the baseplate, a picture
+   *  standing in the set, a line the model reads as no placement, or the sky */
+  public placementsAt(points: ReadonlyArray<PicturePoint>): Readonly<{ model: Model | undefined; placements: ReadonlyArray<number | undefined>; }> {
+    const model = this.staging ? this.staging.sets[this.staging.standing] : this.model;
+    this.camera.updateMatrixWorld();
+    const ray = new THREE.Raycaster();
+    const seen = [this.parts, this.pictures.group, ...(this.baseplate ? [this.baseplate] : [])];
+    return { model, placements: points.map(([x, y]) => {
+      ray.setFromCamera(new THREE.Vector2((x * 2) - 1, 1 - (y * 2)), this.camera);
+      const hit = ray.intersectObjects(seen, true)[0];
+      const placements = hit?.object.userData.placements as ReadonlyArray<number | undefined> | undefined/*a set's mesh alone carries them*/;
+      return ((hit?.instanceId === undefined) || !placements) ? undefined : placements[hit.instanceId];
+    }) };
+  }
+
+  /** each line's drawn bounds in the picture, through the camera drawn now: none for a
+   *  line whose part is not built, or standing wholly behind the camera */
+  // NOTE: a box reaching behind the camera is bounded by its corners ahead of it alone,
+  //       short of the edge of the picture it reaches toward
+  public pictureBounds(lines: ReadonlyArray<PartLine>): ReadonlyArray<PictureBox | undefined> {
+    this.camera.updateMatrixWorld();
+    const toCamera = this.camera.matrixWorldInverse;
+    return lines.map(line => {
+      const box = this.geometries.get(line.ldraw)?.boundingBox;
+      if(!box) return undefined/*not built*/;
+      const placed = toScene(line.position, line.matrix);
+      const ahead: THREE.Vector3[] = [];
+      for(const x of [box.min.x, box.max.x]) for(const y of [box.min.y, box.max.y]) for(const z of [box.min.z, box.max.z]) {
+        const corner = new THREE.Vector3(x, y, z).applyMatrix4(placed);
+        if(corner.clone().applyMatrix4(toCamera).z < -CAMERA_NEAR) ahead.push(corner.project(this.camera));
+      }
+      if(ahead.length < 1) return undefined/*behind the camera*/;
+      const across = ahead.map(corner => (corner.x + 1) / 2), down = ahead.map(corner => (1 - corner.y) / 2);
+      return { left: Math.min(...across), top: Math.min(...down), right: Math.max(...across), bottom: Math.max(...down) };
+    });
   }
 
   // == Stage =====================================================================
@@ -1579,10 +1626,10 @@ export class Viewer {
 /** every part line of a build that has catalog geometry, with its scene transform */
 /** the lines a build is drawn as: every line that can be (SEE: isDrawable) */
 const renderItems = (model: Model): RenderItem[] => [
-  ...model.placements.flatMap(placement => {
+  ...model.placements.flatMap((placement, index) => {
     const lines = drawnLines(model, placement);
     const drop = lineKey(lines[0]);
-    return lines.every(isDrawable) ? lines.map(line => renderItem(line, drop)) : []/*the part whole, or none of it*/;
+    return lines.every(isDrawable) ? lines.map(line => ({ ...renderItem(line, drop), placement: index })) : []/*the part whole, or none of it*/;
   }),
   ...model.others.filter(isDrawable).map(other => renderItem(other, lineKey(other))),
 ];

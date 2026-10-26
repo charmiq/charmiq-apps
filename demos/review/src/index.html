@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+  <div class="review">
+    <!-- == Bar =============================================================== -->
+    <header class="bar">
+      <h1 class="title">Review</h1>
+      <span class="count" id="count" role="status"></span>
+      <button class="tag tag--yellow" id="newButton" type="button" title="Write a note on what you see (N)">New note</button>
+    </header>
+
+    <!-- == Status ============================================================ -->
+    <p class="status" id="status" role="alert" hidden></p>
+
+    <!-- == Composer ========================================================== -->
+    <form class="composer" id="composer" aria-label="New note" hidden>
+      <p class="eyebrow">New note</p>
+      <ul class="marks" id="draftMarks" aria-label="What the note points at"></ul>
+      <p class="hint" id="draftHint">Circle it on the picture, or drag across the timeline over the frames and rows it spans.</p>
+      <textarea class="words" id="draftText" rows="3" placeholder="What's wrong?" aria-label="The note"></textarea>
+      <div class="actions">
+        <button class="tag tag--plain" id="cancelButton" type="button" title="Drop the note (Escape)">Cancel</button>
+        <button class="tag tag--yellow" id="saveButton" type="submit" title="Save the note (Enter)">Save</button>
+      </div>
+    </form>
+
+    <!-- == Notes ============================================================= -->
+    <section class="notes" id="notes" aria-label="Notes"></section>
+  </div>
+</body>
+</html>

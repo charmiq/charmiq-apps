@@ -54,6 +54,17 @@ Stop Motion films the build: the scene is JavaScript in the code editor's `scene
 - After each change: `describeFilm`, and fix its mistake, refusals, `overlaps` (actors standing in each other: walks crossing at the same moment, or two parked on one spot; give each its own spot, or hide it with `visible: false` once its part is done), camera problems and `footing` (a figure's feet in the set: its walk misses the treads or it is keyed into a floor; over nothing: walked off an edge; floating: keyed in the air over its seat or floor; each names the scene lines placing the feet); `reviewCuts`. Then `storyboard`, take a screenshot of the Studio, and look at every figure: facing where it walks or what it watches, its feet on the floor or the tread (not sunk into it, not above it), none inside a part. `describeFilm` does not see these: only the pictures do. Fix, then look again.
 - To see where everyone goes and when, write `view('map', { plan: true })` and `storyboard({ view: 'map', times })`: each moment from straight above, north up, every actor's path and the camera drawn over it.
 
+### Review notes
+
+When the person says notes are waiting (a Review panel in the document), work through them:
+
+1. `listNotes({ status: 'open' })`. Take them in the order given, a shot at a time.
+2. For each, `showNote`, then look at what it points at: each mark names its frames, and what lies under it (the actors and parts under a stroke; a span's rows with what moves each actor and the scene lines). Measure it: `describeFilm` (its overlaps and footing over those frames and actors), `measure`, a `storyboard` of the span (through a plan view for where people go).
+3. Fix the cause in the scene with `replaceText`, then `describeFilm` again over the span.
+4. `replyToNote`: what was wrong, what you changed (the scene lines) and what you checked. It is then answered.
+5. A note you cannot fix (the set, a gait, something the tools cannot do): reply why and what the person can do, with `status: 'open'`.
+6. Never close a note: that is the person's. Tell them how many you answered and which need them.
+
 ## Taste
 
 - Form, proportion and surface: choose parts for the shapes they make. Slopes and ridges for roofs, curves for bodies and hoods, round parts for wheels, eyes and trunks, tiles to finish a smooth top.
