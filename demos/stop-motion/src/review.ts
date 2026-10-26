@@ -1,6 +1,6 @@
 import { frameEnd, keyInForce, shotFrames, type Film, type FilmFrame, type ShotFrames } from './film';
 import { inBox, isSized, rideRoot, segmentEnters, type Box, type Size } from './measure';
-import type { Recorded, RecordedCamera } from './recorder';
+import type { Key, Point, Recorded, RecordedCamera } from './recorder';
 import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
 
 // the film reviewed as it looks, for a Charm that sees stills and never playback: what
@@ -35,8 +35,13 @@ const FOOTING_GAP = 0.25;
  *  a walker's toe brushing a tread's edge */
 const FOOTING_DEEP = 0.3;
 /** how long a figure not stepping floats before it shows (seconds), past a keyed jump's
- *  flight */
+ *  takeoff and landing */
 const FLOATING_LONG = 1;
+/** how fast a figure in the air rises or falls (plates a second) over FLIGHT_WINDOW
+ *  either side of a frame to be flying there, never resting: a jump's arc even at its
+ *  top, never a height easing over a wait between far keys */
+const FLIGHT_SPEED = 4;
+const FLIGHT_WINDOW = 0.125/*seconds*/;
 
 // == Types =======================================================================
 /** what the studio's probe answered for a frame: the part its camera stands inside,
@@ -47,10 +52,20 @@ export type PartFinding = Readonly<{ inside?: string; hidden?: string; }>;
 export type CameraProblem = Readonly<{ from: number; to: number; kind: 'inside' | 'hidden'; by: string; }>;
 /** a span (seconds) a figure's feet stand in the set (`into`), as it steps out over
  *  nothing (`above`), or as it stands, sits or poses its lowest point over what is under
- *  it (`floating`), and the most they reach (studs) */
-export type FootingProblem = Readonly<{ actor: string; from: number; to: number; kind: FootingKind; most: number; }>;
+ *  it (`floating`), the most they reach (studs); as the span starts, where it stands
+ *  (`at`, its height its lowest point in plates), the top (plates) of the part its feet
+ *  are in or of what is under them, and what places its feet with the scene's lines
+ *  that do (SEE: FootingBy) with the height keys easing then */
+export type FootingProblem = Readonly<{ actor: string; from: number; to: number; kind: FootingKind; most: number; at: Point; surface?: number; by: FootingBy; lines: ReadonlyArray<number>; keys?: ReadonlyArray<HeightKey>; }>;
+/** a height key a figure's feet ease from or to: its time (seconds) and height (plates) */
+export type HeightKey = Readonly<{ time: number; height: number; }>;
 /** how a figure's footing goes wrong (SEE: FootingProblem) */
 export type FootingKind = 'into' | 'above' | 'floating';
+/** what places a figure's feet: its walk (its line; off the ground, the height keys
+ *  easing as it starts, whose height it holds), a path keying its height (the path's
+ *  line), or its keys (the lines of the height keys it eases between, or the one it
+ *  holds) */
+export type FootingBy = 'walk' | 'path' | 'keys';
 /** which way a subject moves on the screen over a few frames */
 export type Moving = 'left' | 'right' | 'up' | 'down' | 'still';
 /** a side of a cut: its frame and shot, its subject, where that stands on the screen
@@ -127,22 +142,53 @@ const problemAt = (film: Film, sizes: Readonly<Record<string, Size>>, frame: Fil
  *  nothing (off a gallery's edge), or resting in the air (a sitter over its seat); each
  *  a span of the frames it holds over, a pause between steps within it, and the most it
  *  reaches: feet in the set only where they go a plate deep (a toe brushing a tread's
- *  edge is a walk's own), a figure in the air only held there a second (a jump flies).
+ *  edge is a walk's own), a figure in the air only held there a second and never while
+ *  it flies (SEE: flying).
  *  A film made without the set's surfaces measures none */
 export const footingProblems = (film: Film): ReadonlyArray<FootingProblem> => {
-  const spans: Array<{ actor: string; from: number; to: number; kind: FootingKind; most: number; }> = [];
+  const spans: Array<{ actor: string; from: number; to: number; kind: FootingKind; most: number; at: Point; surface?: number; by: FootingBy; lines: ReadonlyArray<number>; keys?: ReadonlyArray<HeightKey>; }> = [];
   film.frames.forEach((frame, index) => {
     for(const [actor, step] of Object.entries(frame.feet ?? {})) {
       for(const kind of ['into', 'above', 'floating'] as const) {
         const reach = step[kind];
         if(reach === undefined) continue;
+        if((kind === 'floating') && flying(film, actor, index)) continue;
         const open = spans.find(span => (span.actor === actor) && (span.kind === kind) && ((frame.time - span.to) <= FOOTING_GAP));
         if(open) { [open.to, open.most] = [frameEnd(film, index), Math.max(open.most, reach)]; continue; }
-        spans.push({ actor, from: frame.time, to: frameEnd(film, index), kind, most: reach });
+        const at = frame.actors.find(shot => shot.name === actor)!.position;
+        spans.push({ actor, from: frame.time, to: frameEnd(film, index), kind, most: reach, at, ...((step.surface !== undefined) ? { surface: step.surface } : {}), ...placedBy(film, actor, frame.time) });
       }
     }
   });
   return spans.filter(span => (span.kind === 'above') || ((span.kind === 'into') && (span.most >= FOOTING_DEEP)) || ((span.kind === 'floating') && ((span.to - span.from) >= FLOATING_LONG)));
+};
+
+/** whether an actor is flying at a frame: its height a frame FLIGHT_WINDOW before or
+ *  after it apart from its own faster than FLIGHT_SPEED */
+const flying = (film: Film, name: string, index: number): boolean => {
+  const heightAt = (at: number) => film.frames[at]?.actors.find(shot => shot.name === name)?.position.height;
+  const here = heightAt(index)!, reach = Math.max(1, Math.round(FLIGHT_WINDOW * film.scene.fps));
+  return [index - reach, index + reach].some(at => {
+    const there = heightAt(at);
+    return (there !== undefined) && (Math.abs(there - here) > (FLIGHT_SPEED * Math.abs(film.frames[at].time - film.frames[index].time)));
+  });
+};
+
+/** what places an actor's feet at a time (SEE: FootingBy) */
+const placedBy = (film: Film, name: string, time: number): Readonly<{ by: FootingBy; lines: ReadonlyArray<number>; keys?: ReadonlyArray<HeightKey>; }> => {
+  const actor = film.scene.actors.find(each => each.name === name)!;
+  const linesOf = (lined: ReadonlyArray<Readonly<{ line?: number; }>>) => lined.flatMap(each => (each.line !== undefined) ? [each.line] : []);
+  // the height keys easing at a time: the two either side, or the last it holds
+  const heights = actor.keys.filter(key => Object.hasOwn(key.values, 'height'));
+  const easingAt = (at: number) => { const next = heights.findIndex(key => key.time > at); return (next < 0) ? heights.slice(-1) : heights.slice(Math.max(0, next - 1), next + 1); };
+  const keysOf = (easing: ReadonlyArray<Key>) => ((easing.length > 0) ? { keys: easing.map(key => ({ time: key.time, height: key.values.height })) } : {});
+  const walk = actor.walks?.find(each => (time >= each.start) && (time <= each.end));
+  if(walk) return { by: 'walk', lines: linesOf([walk]), ...(actor.ground ? {} : keysOf(easingAt(walk.start))) }/*a walk holds the level its keys give it as it starts*/;
+  const at = time * film.scene.fps;
+  const path = actor.spans.find(span => (at >= span.from) && (at <= span.to) && span.channels.includes('height'));
+  if(path) return { by: 'path', lines: linesOf([path]) };
+  const easing = easingAt(time);
+  return { by: 'keys', lines: [...new Set(linesOf(easing))], ...keysOf(easing) };
 };
 
 // == Screen ======================================================================

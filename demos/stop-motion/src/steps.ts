@@ -39,6 +39,15 @@ const MOVING_CLEAR = 0.01;
 const STEP_CLIMB = 2;
 /** a stride up or down a level (studs): from the stud before the edge to the stud past it */
 const STAIR = 2;
+/** the highest part a walk leaps (plates over its level: a brick), the deepest (studs),
+ *  how far ahead it looks for one (studs: it leaves a stud short of where a foot would
+ *  stand in it) and the most a hop rises to clear the set (plates) */
+const LEAP = 3;
+const LEAP_DEEP = 2;
+const LEAP_AHEAD = 2;
+const LEAP_LIFT = 4 * LEAP;
+/** how finely a hop's rise is fitted (plates) */
+const LIFT_FIT = 0.01;
 /** the most a hop's legs may stand tipped as it leaves the plate (degrees): rolled
  *  forward onto the toes, never back on the heels */
 const SPRING = -2;
@@ -173,6 +182,13 @@ export const hopShares = (shape: GaitShape): Readonly<{ crouch: number; land: nu
   const { crouch, air, land } = shape.timing, all = Math.max(TIE, crouch + air + land);
   return { crouch: crouch / all, land: land / all };
 };
+/** whether a figure `u` (0 to 1) through a move is in the air: a hop past its crouch
+ *  and short of its landing, in its gait's shape (WALK when it names none) */
+export const aloft = (move: Pick<Move, 'kind'>, u: number, shape: GaitShape = WALK): boolean => {
+  if(move.kind !== 'hop') return false;
+  const { crouch, land } = hopShares(shape);
+  return (u > crouch) && (u < (1 - land));
+};
 /** what keys a step's body and legs: a level step's, or a step up or down's */
 export type Stride = Pick<GaitShape, 'glide' | 'lead' | 'trail' | 'heelOn' | 'toeOff'>;
 /** a move's stride: a step's onto its own level, or up or down onto another */
@@ -205,7 +221,7 @@ export const gaitMoveOf = (move: Pick<Move, 'kind' | 'from' | 'to'>): GaitMove =
 
 /** one move of a walk or of a clicked actor: a step forward, a turn on one foot or a
  *  hop, from a stance to another over a span (seconds) */
-export type Move = Readonly<{ kind: 'step' | 'turn' | 'hop' | 'shift'; from: Stance; to: Stance; start: number; end: number; foot: Foot/*the step's leading foot, the turn's pivot, the foot a shift puts the weight on*/; }>;
+export type Move = Readonly<{ kind: 'step' | 'turn' | 'hop' | 'shift'; from: Stance; to: Stance; start: number; end: number; foot: Foot/*the step's leading foot, the turn's pivot, the foot a shift puts the weight on*/; lift?: number/*plates a hop's arc rises where its gait's would not clear the set (SEE: hopLift)*/; }>;
 
 // == Surfaces ====================================================================
 /** the baseplate alone: studded at 0 everywhere (a film made before the stage answers) */
@@ -240,9 +256,13 @@ const rightOf = (yaw: number): readonly [number, number] => { const angle = (yaw
  *  gallery); one with none under it is in the part whose top is the lowest above it,
  *  below that top by the least way out, up or across its cell. The figure's roll is
  *  left out (a lean lifts a foot, never lowers one into the plate) */
-export const feetInto = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number => {
+export const feetInto = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number => feetIn(set, surfaceAt).into;
+
+/** how far a figure's feet reach into the set (SEE: feetInto) and the top (plates) of
+ *  the part they reach deepest into; none when clear */
+export const feetIn = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): Readonly<{ into: number; top?: number; }> => {
   const [fx, fz] = forwardOf(set.yaw ?? 0), [rx, rz] = rightOf(set.yaw ?? 0), base = (set.height ?? 0) / PLATES_PER_STUD;
-  let into = 0;
+  let into = 0, deepest: number | undefined;
   for(const [limb, side] of [['pose.leftLeg', -1], ['pose.rightLeg', 1]] as const) {
     const leg = radians(set[limb] ?? 0), [cos, sin] = [Math.cos(leg), Math.sin(leg)];
     for(const a of [-HEEL, TOE]) for(const across of [0.05, 0.95]) {
@@ -256,9 +276,18 @@ export const feetInto = (set: Readonly<Record<string, number>>, surfaceAt: Surfa
       // across its cell only toward a side opening onto something lower: out of the part
       const sides = [[x - cx, -1, 0], [cx + 1 - x, 1, 0], [z - cz, 0, -1], [cz + 1 - z, 0, 1]].filter(([, dx, dz]) => topOf(cx + dx, cz + dz) < (top - 1e-9)).map(([distance]) => distance);
       into = Math.min(below, ...sides);
+      deepest = top * PLATES_PER_STUD;
     }
   }
-  return into;
+  return (deepest === undefined) ? { into } : { into, top: deepest };
+};
+
+/** the top (plates) of what is under a figure's feet, its pose as `set` places it: the
+ *  highest surface under them at or below its lowest point; none over nothing */
+export const surfaceUnder = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number | undefined => {
+  const lowest = set.height ?? 0;
+  const under = feetCells({ x: set.x ?? 0, z: set.z ?? 0, yaw: set.yaw ?? 0 }).flatMap(([x, z]) => surfaceAt(x, z).map(surface => surface.height)).filter(top => top <= (lowest + ON_SURFACE));
+  return (under.length > 0) ? Math.max(...under) : undefined;
 };
 
 /** how far a figure's feet stand over nothing (studs; 0 when one is on the set): the
@@ -298,19 +327,21 @@ export const clickedNear = (x: number, z: number, yaw: number): Pick<Stance, 'x'
  *  one foot (a diagonal a staircase); off studs along the path itself, a stud a step
  *  at most; a figure on studs strides onto a level within STEP_CLIMB from the stud
  *  before its edge to the stud past it when the walk goes that far, and otherwise hops
- *  onto another level; up at most `climb` plates when the actor
- *  follows the ground (else its level as it starts), a level past that holding its
- *  own as at a wall. A creature hops every step. Its moves share the walk's span by
- *  their drawings in its gait's timing */
+ *  onto another level; up at most `climb` plates when the actor follows the ground
+ *  (else its level as it starts), a level past that holding its own as at a wall,
+ *  leaping a part in its way no higher than LEAP over its level and no deeper than
+ *  LEAP_DEEP, each hop rising as its feet need (SEE: hopLift). A creature hops every
+ *  step. Its moves share the walk's span by their drawings in its gait's timing (a
+ *  leap the walk's time for the studs it crosses where that is longer) */
 export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: number | undefined, figure: boolean): ReadonlyArray<Move> => {
   // each kind of move weighed by its drawings against a step's (SEE: GaitShape.timing)
   const timing = (walk.shape ?? WALK).timing, weigh = (drawings: number) => drawings / Math.max(TIE, timing.step);
   const moves: Array<Omit<Move, 'start' | 'end'> & { weight: number; }> = [];
   let current = from.studded ? { ...from, ...clickedNear(from.x, from.z, from.yaw) } : from;
   let lead = walk.lead;
-  const push = (kind: Move['kind'], to: Stance, foot: Foot, weight: number) => {
+  const push = (kind: Move['kind'], to: Stance, foot: Foot, weight: number, lift?: number) => {
     if(moves.length >= MAX_MOVES) return false;
-    moves.push({ kind: (kind === 'hop') ? 'hop' : (figure ? kind : 'hop'), from: current, to, foot, weight });
+    moves.push({ kind: (kind === 'hop') ? 'hop' : (figure ? kind : 'hop'), from: current, to, foot, weight, ...((lift !== undefined) ? { lift } : {}) });
     current = to;
     return true;
   };
@@ -332,7 +363,7 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
     const kind = (next.level !== current.level) ? 'hop' : 'step';
     const foot = lead;
     lead = (lead === 'left') ? 'right' : 'left';
-    return push(kind, next, foot, (kind === 'hop') ? weigh(timing.crouch + timing.air + timing.land) : length);
+    return push(kind, next, foot, (kind === 'hop') ? weigh(timing.crouch + timing.air + timing.land) : length, (kind === 'hop') ? hopLift(surfaceAt, current, next, foot, figure, walk) : undefined);
   };
   // a figure's stride onto a level within its reach: up from a stud whose next lies on
   // its own level and the one past it higher, down from a stud whose next lies lower as
@@ -349,6 +380,36 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
     lead = (lead === 'left') ? 'right' : 'left';
     return push('step', far, foot, weigh((far.level > current.level) ? timing.up : timing.down));
   };
+  // a leap over a part in its way (SEE: wayOf) along `yaw`, its point `remaining` studs
+  // on: from where it stands once a foot a stud or LEAP_AHEAD on would stand in the
+  // part, to a stud past where both feet clear it on its own level, rising as its feet
+  // need to clear the part's top (SEE: hopLift); none where the part is higher or
+  // deeper, its point comes sooner, or it stands in a part already
+  const leap = (yaw: number, remaining: number): boolean | undefined => {
+    const [fx, fz] = forwardOf(yaw).map(v => back * v);
+    const at = (studs: number) => landing(surfaceAt, current, { x: current.x + (fx * studs), z: current.z + (fz * studs), yaw }, climb);
+    const way = (studs: number) => { const stance = at(studs); return wayOf(surfaceAt, stance, stance.level)/*a level it climbs onto is not in its way*/; };
+    if(wayOf(surfaceAt, current, current.level) !== 0) return undefined/*in a part already: it walks on through*/;
+    let into: number | undefined;
+    for(let studs=1; (studs<=LEAP_AHEAD) && (into === undefined); studs++) {
+      const rise = way(studs);
+      if(rise > (LEAP + ON_SURFACE)) return undefined/*a wall*/;
+      if(rise > 0) into = studs;
+    }
+    if(into === undefined) return undefined/*nothing in its way*/;
+    let past: number | undefined;
+    for(let studs=into+1; (studs<=(into + LEAP_DEEP)) && (past === undefined); studs++) {
+      const rise = way(studs);
+      if(rise > (LEAP + ON_SURFACE)) return undefined/*a wall beyond*/;
+      if(rise === 0) past = studs;
+    }
+    if((past === undefined) || ((past + 1) > (remaining + NEAREST))) return undefined/*too deep, or its point short of its far side*/;
+    const to = at(past + 1);
+    if((way(past + 1) !== 0) || (Math.abs(to.level - current.level) >= ON_SURFACE)) return undefined/*no footing past it*/;
+    const foot = lead;
+    lead = (lead === 'left') ? 'right' : 'left';
+    return push('hop', to, foot, Math.max(weigh(timing.crouch + timing.air + timing.land), past + 1), hopLift(surfaceAt, current, to, foot, figure, walk));
+  };
 
   for(const target of walk.points.slice(1)) {
     for(let guard=0; guard<MAX_MOVES; guard++) {
@@ -358,7 +419,12 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
         const [along, across] = [(dx * fx) + (dz * fz), (dx * rx) + (dz * rz)];
         if((Math.abs(along) <= NEAREST) && (Math.abs(across) <= NEAREST)) break/*clicked in nearest the point*/;
         if((along > (STAIR - NEAREST)) && (along >= (Math.abs(across) - TIE))) { const strode = stair(); if(strode === false) break; if(strode) continue; }
-        if((along > NEAREST) && (along >= (Math.abs(across) - TIE))) { if(!step(1)) break; continue; }
+        if((along > NEAREST) && (along >= (Math.abs(across) - TIE))) {
+          const leapt = leap(current.yaw, along);
+          if(leapt === false) break;
+          if(!leapt && !step(1)) break;
+          continue;
+        }
         if(!((Math.abs(across) > (Math.abs(along) + TIE)) ? turn((across > 0) ? 90 : -90) : turn(90))) break/*about: two quarters*/;
         continue;
       } /* else -- off studs: along the path itself */
@@ -367,7 +433,9 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
       const heading = (Math.atan2(dx, dz) * (180 / Math.PI)) + FRONT + ((back < 0) ? 180 : 0)/*the yaw facing the point, or away from it*/;
       const by = wrapped(heading - current.yaw);
       if(Math.abs(by) > OFF_TURN) { if(!turn(by)) break; continue; }
-      if(!step(Math.min(1, distance), current.yaw + by/*straight at the point*/)) break;
+      const leapt = leap(current.yaw + by, distance);
+      if(leapt === false) break;
+      if(!leapt && !step(Math.min(1, distance), current.yaw + by/*straight at the point*/)) break;
     }
   }
   return timed(moves, walk.start, walk.end);
@@ -402,6 +470,37 @@ const landing = (surfaceAt: SurfaceAt, current: Stance, ahead: Pick<Stance, 'x' 
   const surface = standingOn(surfaceAt, ahead, level);
   const studded = surface?.studded ?? false;
   return { ...ahead, ...(studded ? clickedNear(ahead.x, ahead.z, ahead.yaw) : {}), level, studded };
+};
+
+/** how far a part stands in the way of a stance at `level` (plates over it): the
+ *  lowest top over that level under its feet, where they find no surface at it; 0 where
+ *  they stand on it, or nothing stands over it (a gap, a lower level) */
+const wayOf = (surfaceAt: SurfaceAt, stance: Pick<Stance, 'x' | 'z' | 'yaw'>, level: number): number => {
+  if(standingOn(surfaceAt, stance, level)) return 0;
+  const rises = feetCells(stance).flatMap(([x, z]) => surfaceAt(x, z).map(surface => surface.height - level).filter(rise => rise > ON_SURFACE));
+  return (rises.length > 0) ? Math.min(...rises) : 0;
+};
+
+/** how high a hop from `from` to `to` rises (plates) for its feet to clear the set: the
+ *  least, from its gait's own rise to LEAP_LIFT, that keeps its feet out of the set (SEE:
+ *  feetInto) through its flight at each of ARCH_SAMPLES moments, no deeper than where
+ *  they spring from and land (a toe brushing the face of a level it hops onto) and
+ *  everything over its higher level a stud's height higher (the studs on top, and room
+ *  to spare); none where its gait's own rise does */
+const hopLift = (surfaceAt: SurfaceAt, from: Stance, to: Stance, foot: Foot, figure: boolean, gait: Gait): number | undefined => {
+  const shape = gait.shape ?? WALK, top = Math.max(from.level, to.level);
+  const raised: SurfaceAt = (x, z) => surfaceAt(x, z).map(surface => (surface.height > (top + ON_SURFACE)) ? { ...surface, height: surface.height + (STUD_CLEAR * PLATES_PER_STUD) } : surface);
+  const intoAt = (lift: number | undefined, u: number) => feetInto(posedAt({ kind: 'hop', from, to, start: 0, end: 1, foot, ...((lift !== undefined) ? { lift } : {}) }, u, figure, gait).set, raised);
+  const ends = Math.max(intoAt(undefined, 0), intoAt(undefined, 1));
+  const clears = (lift: number | undefined) => {
+    for(let index=0; index<=ARCH_SAMPLES; index++) if(aloft({ kind: 'hop' }, index / ARCH_SAMPLES, shape) && (intoAt(lift, index / ARCH_SAMPLES) > (ends + TIE))) return false;
+    return true;
+  };
+  if(clears(undefined)) return undefined;
+  let [low, high] = [shape.hopLift + (shape.hopClimb * Math.abs(to.level - from.level)), LEAP_LIFT];
+  if(!clears(high)) return high;
+  while((high - low) > LIFT_FIT) { const middle = (low + high) / 2; if(clears(middle)) high = middle; else low = middle; }
+  return high;
 };
 
 /** the level a figure following the ground stands on under its feet: under each, the
@@ -679,7 +778,7 @@ const hopping = (move: Move, u: number, figure: boolean, shape: GaitShape): Pose
   const from = figure ? at(move.from, a, Math.min(SPRING, keysAt(shape.crouchLegs, 1)), keysAt(shape.crouchLean, 1), keysAt(shape.crouchArms, 1)) : at(move.from, a, 0, 0, 0);
   const to = figure ? at(move.to, b, keysAt(shape.landLegs, 0), keysAt(shape.landLean, 0), keysAt(shape.landArms, 0)) : at(move.to, b, 0, 0, 0);
   const between = (p: number, q: number) => p + ((q - p) * eased);
-  const lift = shape.hopLift + (shape.hopClimb * Math.abs(b - a));
+  const lift = move.lift ?? (shape.hopLift + (shape.hopClimb * Math.abs(b - a)));
   // across the ground it carries the speed it leaves with, steady to the landing; only
   // its rise follows the arc
   return posed({

@@ -5,7 +5,7 @@ import { DesignExists, displayName } from '../../brick-shared/designs';
 import type { Avoided } from './clearance';
 import { cameraShots, filmLengthOf, frameAtTime, setAt, shotAt, shotFrames, type CameraShot, type Film } from './film';
 import { UnsavedChanges, type Films } from './films';
-import { closePairs, closest, isSized, type Size } from './measure';
+import { closePairs, closest, isSized, overlapsOf, type Size } from './measure';
 import type { Player } from './player';
 import type { Point, SceneError } from './recorder';
 import { cameraProblems, footingProblems, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type PartFinding } from './review';
@@ -16,11 +16,11 @@ import type { Board, StageState } from './studios';
 // player's transport, and the film's geometry. A Charm writes the scene in the code
 // editor's scene.js tab; these say how the film stands, show any moment of it on the
 // studios so a screenshot sees it, show a storyboard of its moments on the main
-// studio's sheet for one screenshot to read, tell where its actors and camera stand
-// and how close actors come, read it as it looks (each actor on the screen, where the
-// camera goes wrong, each cut as an editor reads it; SEE: review.ts), and keep the
-// film in the Drive: its set and its scene saved as one film, opened back, or cleared
-// for a new one
+// studio's sheet for one screenshot to read, tell where its actors and camera stand,
+// which actors stand in each other and how close actors come, read it as it looks
+// (each actor on the screen, where the camera goes wrong, each cut as an editor reads
+// it; SEE: review.ts), and keep the film in the Drive: its set and its scene saved as
+// one film, opened back, or cleared for a new one
 // ********************************************************************************
 // == Constants ===================================================================
 /** the most frames a storyboard shows (SEE: Brick Studio's storyboard) */
@@ -70,10 +70,11 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
             const steps = film.footsteps!.filter(cue => cue.actor === actor);
             return { actor, steps: steps.length, from: thousandths(steps[0].time), to: thousandths(steps[steps.length - 1].time), sounds: [...new Set(steps.map(cue => cue.name))] };
           }) } : {}),
-          ...(sizes ? { close: closePairs(film, sizes).map(pair => ({ actors: pair.actors, frame: pair.frame, time: thousandths(pair.time), gap: hundredths(pair.gap) })) } : {}),
+          ...(sizes ? { overlaps: overlapsReport(film, sizes) } : {}),
           ...(staged ? { camera: cameraProblems(staged.film, staged.sizes, staged.parts).map(problemReport) } : {}),
-          ...(staged ? { footing: footingProblems(staged.film).map(({ actor, from, to, kind, most }) => ({ actor, from: thousandths(from), to: thousandths(to), kind, most: hundredths(most) })) } : {}),
+          ...(staged ? { footing: footingReport(staged.film) } : {}),
           ...((staged && (staged.avoided.length > 0)) ? { avoided: staged.avoided.map(({ from, to, kept, view }) => ({ from: thousandths(from), to: thousandths(to), kept: hundredths(kept), ...((view !== undefined) ? { view } : {}) })) } : {}),
+          ...(sizes ? { close: closeReport(film, sizes) } : {}),
           ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
         } : {}),
         ...(error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {}),
@@ -132,11 +133,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       if([from, to].some(value => (value !== undefined) && ((typeof value !== 'number') || !Number.isFinite(value)))) throw new Error('from and to are seconds.');
       const found = closest(film, sizes, a, b, from as number | undefined, to as number | undefined);
       if(!found) throw new Error(`${a} and ${b} are never shown together${((from !== undefined) || (to !== undefined)) ? ' then' : ''}.`);
-      const at = film.frames[found.frame].actors;
-      return {
-        actors: [a, b], frame: found.frame, time: thousandths(found.time), gap: hundredths(found.gap), touching: found.gap === 0,
-        positions: Object.fromEntries([a, b].map(name => [name, rounded(at.find(actor => actor.name === name)!.position)])),
-      };
+      return { actors: [a, b], frame: found.frame, time: thousandths(found.time), gap: hundredths(found.gap), touching: found.gap === 0, positions: positionsAt(film, found.frame, [a, b]) };
     },
 
     screenOf: ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
@@ -190,6 +187,22 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
     },
   });
 };
+
+// == Report ======================================================================
+/** describeFilm's overlaps: each with where the two stand when they stand deepest */
+export const overlapsReport = (film: Film, sizes: Readonly<Record<string, Size>>) =>
+  overlapsOf(film, sizes).map(({ actors, from, to, most, frame, time }) => ({ actors, from: thousandths(from), to: thousandths(to), most: hundredths(most), time: thousandths(time), positions: positionsAt(film, frame, actors) }));
+
+/** describeFilm's footing, over the film staged on the set's surfaces */
+export const footingReport = (film: Film) =>
+  footingProblems(film).map(({ actor, from, to, kind, most, at, surface, by, lines, keys }) => ({
+    actor, from: thousandths(from), to: thousandths(to), kind, most: hundredths(most), at: rounded(at), ...((surface !== undefined) ? { surface: hundredths(surface) } : {}), by, lines,
+    ...(keys ? { keys: keys.map(key => ({ time: thousandths(key.time), height: hundredths(key.height) })) } : {}),
+  }));
+
+/** describeFilm's close actors */
+export const closeReport = (film: Film, sizes: Readonly<Record<string, Size>>) =>
+  closePairs(film, sizes).map(pair => ({ actors: pair.actors, frame: pair.frame, time: thousandths(pair.time), gap: hundredths(pair.gap) }));
 
 // == Util ========================================================================
 /** runs a change of film, a refusal over unsaved changes saying how to go on */
@@ -264,3 +277,6 @@ const captionOf = (time: number, index: number, shots: ReadonlyArray<CameraShot>
 const hundredths = (value: number): number => (Math.round(value * 100) / 100) || 0/*never -0*/;
 const thousandths = (value: number): number => (Math.round(value * 1000) / 1000) || 0/*never -0*/;
 const rounded = ({ x, z, height }: Point): Point => ({ x: hundredths(x), z: hundredths(z), height: hundredths(height) });
+/** where each of two actors shown in a frame stands, by name */
+const positionsAt = (film: Film, frame: number, names: readonly [string, string]): Record<string, Point> =>
+  Object.fromEntries(names.map(name => [name, rounded(film.frames[frame].actors.find(actor => actor.name === name)!.position)]));

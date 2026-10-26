@@ -1,20 +1,26 @@
-import type { Film, Shot } from './film';
+import { frameEnd, type Film, type Shot } from './film';
 import type { Point, RecordedActor } from './recorder';
 
 // how far apart actors come. An actor's box is its footprint turned by its yaw (pitch
 // and roll aside) and its height from its position up, unposed, as the stage sizes
 // it. Two boxes' gap is the distance between them, 0 where they touch or overlap.
-// Over a film, every two actors that do not ride together are measured, and a pair
-// coming within CLOSE_GAP is close. A film holds up to 64 actors for 7,200 frames, so
-// each actor's track is indexed once per film, a frame is boxed only when the
-// distance between the actors' reaches could beat the nearest found, a pair whose
-// tracks never come within CLOSE_GAP is passed over whole, and a film's close pairs
-// are found once for the sizes given. Only an actor the stage sized (its own entry,
-// whatever its name) is measured
+// Over a film, every two actors that do not ride together are measured: a pair coming
+// within CLOSE_GAP is close, and a pair standing more than OVERLAP_DEEP in each other
+// (the least their boxes overlap any way) overlaps. A film holds up to 64 actors for
+// 7,200 frames, so each actor's track is indexed once per film, a frame is boxed only
+// when the distance between the actors' reaches could beat the nearest found, a pair
+// whose tracks never come within CLOSE_GAP (or never meet, for overlaps) is passed
+// over whole, and a film's close pairs and overlaps are found once for the sizes
+// given. Only an actor the stage sized (its own entry, whatever its name) is measured
 // ********************************************************************************
 // == Constants ===================================================================
 /** two actors this near are close */
 export const CLOSE_GAP = 2/*studs*/;
+/** two actors standing deeper than this in each other overlap (studs): past a hand
+ *  brushing a sleeve */
+export const OVERLAP_DEEP = 0.5;
+/** the longest two actors part (seconds) with their overlap still running on */
+const OVERLAP_GAP = 0.25;
 const STUDS_PER_PLATE = 0.4;
 /** a gap nearer than this is touching: a turn's trigonometry rounds */
 const TOUCHING = 1e-9/*studs*/;
@@ -32,6 +38,9 @@ export type Box = Readonly<{ position: Point; yaw: number; size: Size; }>;
 /** where two actors come closest: the first frame of their least gap */
 export type Closest = Readonly<{ frame: number; time: number; gap: number; }>;
 export type ClosePair = Closest & Readonly<{ actors: readonly [string, string]; }>;
+/** two actors standing in each other: the span (seconds), the most they stand in and
+ *  the first frame they do */
+export type Overlap = Readonly<{ actors: readonly [string, string]; from: number; to: number; most: number; frame: number; time: number; }>;
 
 type Corner = readonly [number, number];
 
@@ -43,6 +52,14 @@ export const gapBetween = (a: Box, b: Box): number => {
   const up = Math.max(0, b.position.height - aTop, a.position.height - bTop) * STUDS_PER_PLATE;
   const gap = Math.hypot(across, up);
   return (gap < TOUCHING) ? 0 : gap;
+};
+
+/** how deep two boxes stand in each other (studs): the least their footprints overlap
+ *  across any of their edges, or their heights do; 0 where they are apart or touch */
+export const depthBetween = (a: Box, b: Box): number => {
+  const up = (Math.min(a.position.height + a.size.height, b.position.height + b.size.height) - Math.max(a.position.height, b.position.height)) * STUDS_PER_PLATE;
+  const depth = Math.min(up, footprintDepth(corners(a), corners(b)));
+  return (depth < TOUCHING) ? 0 : depth;
 };
 
 // == Film ========================================================================
@@ -75,7 +92,46 @@ export const closePairs = (film: Film, sizes: Readonly<Record<string, Size>>): R
   return pairs;
 };
 
+/** every span two actors of a film stand more than OVERLAP_DEEP in each other, a part
+ *  of OVERLAP_GAP or less running on, with the most they stand in and the first frame
+ *  they do; the longest first, ties in the scene's order; two that ride together never,
+ *  nor an actor the stage gave no size. Found once for a film and the sizes given */
+export const overlapsOf = (film: Film, sizes: Readonly<Record<string, Size>>): ReadonlyArray<Overlap> => {
+  const known = overlapsFound.get(film);
+  if(known?.sizes === sizes) return known.overlaps;
+  const actors = film.scene.actors.filter(actor => isSized(sizes, actor.name));
+  const tracks = tracksOf(film);
+  const extents = new Map(actors.map(actor => [actor.name, extentOf(tracks.get(actor.name)!, reachOf(sizes[actor.name]))]));
+  const overlaps: Array<{ actors: readonly [string, string]; from: number; to: number; most: number; frame: number; time: number; }> = [];
+  actors.forEach((one, index) => {
+    for(const other of actors.slice(index + 1)) {
+      if(rideRoot(film.scene.actors, one) === rideRoot(film.scene.actors, other)) continue/*riding together*/;
+      if(apart(extents.get(one.name)!, extents.get(other.name)!) > 0) continue/*their tracks never meet*/;
+      const [ones, others, size, otherSize] = [tracks.get(one.name)!, tracks.get(other.name)!, sizes[one.name], sizes[other.name]];
+      const reaches = reachOf(size) + reachOf(otherSize);
+      let open: { actors: readonly [string, string]; from: number; to: number; most: number; frame: number; time: number; } | undefined;
+      film.frames.forEach((frame, at) => {
+        const [a, b] = [ones[at], others[at]];
+        if(!a || !b || (Math.hypot(b.position.x - a.position.x, b.position.z - a.position.z) >= reaches)) return/*hidden, or out of reach*/;
+        const depth = depthBetween({ position: a.position, yaw: a.turn.yaw, size }, { position: b.position, yaw: b.turn.yaw, size: otherSize });
+        if(depth <= OVERLAP_DEEP) return;
+        if(open && ((frame.time - open.to) <= OVERLAP_GAP)) {
+          open.to = frameEnd(film, at);
+          if(depth > open.most) [open.most, open.frame, open.time] = [depth, frame.index, frame.time];
+          return;
+        } /* else -- a span of its own */
+        overlaps.push(open = { actors: [one.name, other.name], from: frame.time, to: frameEnd(film, at), most: depth, frame: frame.index, time: frame.time });
+      });
+    }
+  });
+  const sorted = overlaps.sort((a, b) => (b.to - b.from) - (a.to - a.from));
+  overlapsFound.set(film, { sizes, overlaps: sorted });
+  return sorted;
+};
+
 // == Tracks ======================================================================
+/** each film's overlaps, for the sizes they were found for */
+const overlapsFound = new WeakMap<Film, Readonly<{ sizes: Readonly<Record<string, Size>>; overlaps: ReadonlyArray<Overlap>; }>>();
 /** each film's close pairs, for the sizes they were found for */
 const pairsFound = new WeakMap<Film, Readonly<{ sizes: Readonly<Record<string, Size>>; pairs: ReadonlyArray<ClosePair>; }>>();
 /** each film's actors' tracks: each actor's shot in every frame, none where hidden */
@@ -203,6 +259,17 @@ const footprintGap = (a: ReadonlyArray<Corner>, b: ReadonlyArray<Corner>): numbe
   const nearest = (points: ReadonlyArray<Corner>, polygon: ReadonlyArray<Corner>) => Math.min(...points.flatMap(point => polygon.map((start, index) => toSegment(point, start, polygon[(index + 1) % polygon.length]))));
   return Math.min(nearest(a, b), nearest(b, a));
 };
+
+/** how deep two convex footprints stand in each other: the least their extents overlap
+ *  across any edge of either, 0 where one has the other wholly beyond it */
+const footprintDepth = (a: ReadonlyArray<Corner>, b: ReadonlyArray<Corner>): number => Math.min(...[a, b].flatMap(polygon => polygon.map((start, index) => {
+  const end = polygon[(index + 1) % polygon.length], length = Math.hypot(end[0] - start[0], end[1] - start[1]);
+  const normal: Corner = [(end[1] - start[1]) / length, (start[0] - end[0]) / length];
+  const project = (point: Corner) => (point[0] * normal[0]) + (point[1] * normal[1]);
+  const [aLeast, aMost] = [Math.min(...a.map(project)), Math.max(...a.map(project))];
+  const [bLeast, bMost] = [Math.min(...b.map(project)), Math.max(...b.map(project))];
+  return Math.max(0, Math.min(aMost, bMost) - Math.max(aLeast, bLeast));
+})));
 
 /** whether an edge of `a` has `b` wholly beyond it */
 const separated = (a: ReadonlyArray<Corner>, b: ReadonlyArray<Corner>): boolean => a.some((start, index) => {

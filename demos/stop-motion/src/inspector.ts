@@ -5,7 +5,9 @@ import type { BandKind, Said } from './timeline-marks';
 // picture of the frame (the picture track's nearest, developing, while it arrives),
 // when the moment is (its time, its frame, the shot and the set), where the row's
 // track stands then, and every mark under the pointer. The sheet scrolls, so nothing
-// is left out; the film's sheet returns once the moment is let go
+// is left out; the film's sheet returns once the moment is let go. The moment shows in
+// the sheet's fixed place, never a card beside the pointer: a card's size follows what
+// lies under the pointer, so it jumps as the pointer scrubs and covers the rows it tells
 // ********************************************************************************
 // == Types =======================================================================
 /** a mark under the pointer: its shape, its row's color and what it says */

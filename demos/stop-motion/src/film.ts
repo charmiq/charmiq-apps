@@ -1,7 +1,7 @@
 import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
 
 import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
-import { feetAbove, feetInto, gaitMoveOf, jitter, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
+import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, surfaceUnder, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -25,7 +25,7 @@ const MAX_HEIGHT = 2_000;
  *  sole resting on a surface rounds */
 const INTO_SET = 0.01;
 /** how far a walker's feet stand over the set before they are over nothing (studs): a
- *  brick, past what a hop lifts them */
+ *  brick, past what a step lifts them (a hop's flight is in the air, never over nothing) */
 const OVER_NOTHING = 1.2;
 /** how far a figure not stepping rests over what is under it before it floats (studs):
  *  half a plate, past a sole's rounding */
@@ -90,9 +90,11 @@ export type FilmFrame = Readonly<{
 }>;
 /** how far a figure's feet reach into the set (studs: standing in a tread, walking
  *  through a landing), as it steps how far they stand over nothing (walked off a
- *  gallery's edge), and as it stands, sits or poses how far its lowest point rests
- *  over what is under it (`floating`: a sitter keyed over its seat) */
-export type Feet = Readonly<{ into?: number; above?: number; floating?: number; }>;
+ *  gallery's edge; never in a hop's flight), and as it stands, sits or poses how far
+ *  its lowest point rests over what is under it (`floating`: a sitter keyed over its
+ *  seat); and the top (plates) of the part its feet are in, else of what is under them
+ *  (SEE: steps.ts feetIn, surfaceUnder) */
+export type Feet = Readonly<{ into?: number; above?: number; floating?: number; surface?: number; }>;
 /** a walker's move under way in a frame (SEE: FilmFrame.steps) */
 export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; }>;
 
@@ -211,9 +213,12 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       if(stepping && figures.has(actor.name) && ((local.channels.visible ?? 1) >= 0.5)) {
         const rise = bottoms ? poseRise(bottoms, poseOf(local.channels)) : 0;
         const soles = { ...local.channels, height: (local.channels.height ?? 0) - rise };
-        const into = feetInto(soles, standingOn), above = under ? feetAbove(soles, standingOn) : 0;
+        const { into, top } = feetIn(soles, standingOn), above = (under && !aloft(under.move, under.u, under.walk.shape)) ? feetAbove(soles, standingOn) : 0/*a hop's flight is in the air*/;
         const floating = under ? 0 : feetAbove({ ...local.channels, 'pose.leftLeg': 0, 'pose.rightLeg': 0 }, standingOn);
-        if((into > INTO_SET) || (above > OVER_NOTHING) || (floating > FLOATING)) feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}) };
+        if((into > INTO_SET) || (above > OVER_NOTHING) || (floating > FLOATING)) {
+          const surface = (into > INTO_SET) ? top : surfaceUnder((floating > FLOATING) ? local.channels : soles, standingOn);
+          feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}), ...((surface !== undefined) ? { surface } : {}) };
+        }
       } /* else -- riding, unseen, or not a figure on studs */
       const own = placedOf(local);
       const parent = actor.ride && placed.get(actor.ride.parent);
@@ -688,9 +693,12 @@ const heldAt = <K extends Readonly<{ time: number; }>>(keys: ReadonlyArray<K> | 
 export const setAt = (keys: ReadonlyArray<SetKey> | undefined, time: number): string | undefined => heldAt(keys, time)?.set;
 
 /** a channel's value at a time: its keys' values eased from each to the next, the
- *  first before it and the last after; undefined for a channel no key gives */
-export const channelAt = (keys: ReadonlyArray<Key>, channel: string, time: number): number | undefined =>
-  eased(keys.filter(key => channel in key.values), time, key => key.values[channel], lerp);
+ *  first before it and the last after (`visible` taken at each key and held to the
+ *  next, as shown or not, never eased); undefined for a channel no key gives */
+export const channelAt = (keys: ReadonlyArray<Key>, channel: string, time: number): number | undefined => {
+  const giving = keys.filter(key => channel in key.values);
+  return (channel === 'visible') ? keyInForce(giving, time)?.values.visible : eased(giving, time, key => key.values[channel], lerp);
+};
 
 /** whether `time` has reached a key at `at`: a key holds from its own time on,
  *  compared exactly, so a cut's shot and the frames that show it agree */
