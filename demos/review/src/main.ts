@@ -9,9 +9,10 @@ import { Surfaces } from './surfaces';
 // note (every surface then takes marks: a stroke on the picture, a span on the
 // timeline), types a few words and saves; each note lists by its status with its
 // marks' chips and its replies. Showing a note puts its marks back on the surfaces (the
-// timeline on its span, the picture with its strokes). The Agent reads and answers the
-// notes through the commands (SEE: command.ts); the person closes a note, or sends it
-// back with a reply
+// timeline on its span, the picture with its strokes) while the note stays in the
+// person's view: one closed into the collapsed Closed section, or deleted, by anyone,
+// stops showing. The Agent reads and answers the notes through the commands (SEE:
+// command.ts); the person closes a note, or sends it back with a reply
 // ********************************************************************************
 // == Constants ===================================================================
 /** how each status heads its notes, in the order they list */
@@ -40,6 +41,8 @@ const surfaces = new Surfaces(charmiq);
 let draft: Mark[] | undefined;
 /** the note shown on the surfaces, while one is */
 let shownId: string | undefined;
+/** whether the person holds the Closed section open: it lists collapsed until they do */
+let closedOpen = false;
 /** what failed, while it stands */
 let failure: string | undefined;
 
@@ -89,11 +92,24 @@ const renderDraft = (): void => {
 };
 
 // == Notes =======================================================================
-/** shows a note on the surfaces, or none */
+/** shows a note on the surfaces, or none: a closed one with the Closed section opened,
+ *  so the note shown stands in the person's view (SEE: isInView) */
 const showNote = (note: Note | undefined): Promise<void> => {
   shownId = note?.id;
+  if(note?.status === NoteStatus.Closed) closedOpen = true;
   render();
   return surfaces.show(note?.marks ?? []);
+};
+
+/** whether a note is where the person sees it, its Stop showing within reach: listed,
+ *  and outside the Closed section unless they hold it open */
+const isInView = (note: Note | undefined): boolean => !!note && ((note.status !== NoteStatus.Closed) || closedOpen);
+
+/** renders the notes as they stand, the note shown no longer shown once it leaves the
+ *  person's view (SEE: isInView) */
+const relist = (): void => {
+  if(shownId && !isInView(notes?.find(shownId))) void showNote(undefined)/*renders*/;
+  else render();
 };
 
 const render = (): void => {
@@ -114,6 +130,10 @@ const render = (): void => {
     if(listed.length < 1) return [];
     const section = document.createElement((state === NoteStatus.Closed) ? 'details' : 'section');
     section.className = `section section--${state}`;
+    if(section instanceof HTMLDetailsElement) {
+      section.open = closedOpen;
+      section.addEventListener('toggle', () => { if(section.open !== closedOpen) { closedOpen = section.open; relist(); } })/*a section rendered open tells its own toggle too*/;
+    } /* else -- Open and Answered always list open */
     const title = document.createElement((state === NoteStatus.Closed) ? 'summary' : 'h2');
     title.className = 'eyebrow';
     title.textContent = `${heading} · ${listed.length}`;
@@ -185,8 +205,7 @@ const reopen = (card: HTMLElement, note: Note): void => {
 const deleteButton = (note: Note): HTMLButtonElement => {
   const remove = button('Delete', 'Delete the note', () => {
     if(remove.dataset.asking !== 'true') { remove.dataset.asking = 'true'; remove.textContent = 'Delete?'; return; }
-    if(shownId === note.id) void showNote(undefined);
-    void act(notes!.remove(note.id));
+    void act(notes!.remove(note.id))/*shown, it stops showing as it goes (SEE: relist)*/;
   });
   remove.addEventListener('blur', () => { remove.dataset.asking = 'false'; remove.textContent = 'Delete'; });
   return remove;
@@ -241,7 +260,7 @@ document.addEventListener('keydown', event => {
 
 surfaces.onFound(() => render());
 if(notes) {
-  notes.onChange(() => render());
+  notes.onChange(() => relist());
   notes.onReadFailure(error => { failure = (error as Error).message; render(); });
   notes.onSaveFailure(error => { failure = (error as Error).message; render(); });
   notes.follow().catch(error => { failure = (error as Error).message; render(); });

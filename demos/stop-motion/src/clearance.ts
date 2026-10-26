@@ -1,5 +1,6 @@
 import { cameraShots, frameEnd, isReached, pointIn, rotation, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING } from './film';
 import type { GroundProbe } from './ground';
+import type { Size } from './measure';
 import type { Point, RecordedCamera, Span } from './recorder';
 import { avoidingAt, flying, pathAt, type PartFinding } from './review';
 import { lowestAbove, surfaceUnder, type SurfaceAt } from './steps';
@@ -19,7 +20,8 @@ import { lowestAbove, surfaceUnder, type SurfaceAt } from './steps';
 // frames before its cut, so neither it nor they jump. On another set it is that frame
 // held, its camera as that frame's was cleared. Each figure's body is held against the
 // parts too, while it is in the air: a keyed flight through a bar, or how far it clears
-// one
+// one; and a figure the ground stands on a part, its footing gone wrong there, is told
+// the part it stands on
 // ********************************************************************************
 // == Constants ===================================================================
 /** the shares of its distance to its target an avoiding camera is tried at, the
@@ -53,6 +55,8 @@ const COLUMN_HAIR = 0.1;
 const STUDS_PER_PLATE = 0.4;
 /** how near two heights lie to count as one (plates) */
 const TOUCHING = 1e-9;
+/** how far apart (studs) the points a footprint is asked at lie */
+const FOOTPRINT_STEP = 0.5;
 
 // == Types =======================================================================
 /** asks the studio what stands at points and across segments of a set (the first
@@ -269,6 +273,40 @@ export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, su
     if(!found) return frame;
     return { ...frame, feet: { ...frame.feet, ...Object.fromEntries(Object.entries(found).map(([name, wrong]) => [name, { ...frame.feet?.[name], ...wrong }])) } };
   }) };
+};
+
+/** the film with the part the ground stands each figure on named on its feet (`on`) at
+ *  each frame its footing goes wrong standing over the baseplate (SEE: film.ts Feet
+ *  `ground`): the part whose top is that level, asked of the probe half a plate under it
+ *  across the figure's footprint (as the stage sized it, turned as it stands), the
+ *  nearest its middle first. Where none is found its feet name none */
+export const groundedOn = async (film: Film, sizes: Readonly<Record<string, Size>>, probe: Probe): Promise<Film> => {
+  const standing = film.frames.flatMap((frame, index) => Object.entries(frame.feet ?? {}).flatMap(([name, feet]) => {
+    const shot = frame.actors.find(each => each.name === name);
+    return ((feet.ground !== undefined) && (feet.ground > TOUCHING) && shot && Object.hasOwn(sizes, name)) ? [{ index, set: frame.set, name, points: footprintAt(shot, sizes[name], feet.ground - 0.5) }] : [];
+  }));
+  const named = await partsAt(probe, standing.flatMap(({ set, points }) => points.map(point => ({ set, point }))));
+  let at = 0;
+  const on = new Map<number, Record<string, string>>();
+  for(const { index, name, points } of standing) {
+    const part = named.slice(at, at + points.length).find(found => found !== null);
+    at += points.length;
+    if(part) on.set(index, { ...on.get(index), [name]: part });
+  }
+  return { ...film, frames: film.frames.map((frame, index) => {
+    const found = on.get(index);
+    return found ? { ...frame, feet: Object.fromEntries(Object.entries(frame.feet!).map(([name, feet]) => [name, (found[name] !== undefined) ? { ...feet, on: found[name] } : feet])) } : frame;
+  }) };
+};
+
+/** the points across a figure's footprint at a height (plates), FOOTPRINT_STEP apart and
+ *  turned as it stands, the nearest its middle first */
+const footprintAt = (shot: Shot, size: Size, height: number): ReadonlyArray<Point> => {
+  const angle = shot.turn.yaw * (Math.PI / 180);
+  const along = (extent: number) => Array.from({ length: (2 * Math.floor((extent / 2) / FOOTPRINT_STEP)) + 1 }, (_, k) => (k - Math.floor((extent / 2) / FOOTPRINT_STEP)) * FOOTPRINT_STEP);
+  return along(size.width).flatMap(across => along(size.depth).map(ahead => [across, ahead] as const))
+    .sort((a, b) => Math.hypot(...a) - Math.hypot(...b))
+    .map(([across, ahead]) => ({ x: shot.position.x + (across * Math.cos(angle)) + (ahead * Math.sin(angle)), z: shot.position.z - (across * Math.sin(angle)) + (ahead * Math.cos(angle)), height }));
 };
 
 /** a figure's body's points where it stands, turned as it is */

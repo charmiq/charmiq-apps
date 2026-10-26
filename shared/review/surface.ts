@@ -38,7 +38,8 @@ export type ReviewSurface = Readonly<{
   marking: (on: boolean) => Promise<void>;
   /** each mark the person makes on the surface, as it is made */
   marks$: () => Observable<Mark>;
-  /** shows these marks: draws those of its own kind, and may go to the frames any of
-   *  them names; none clears what it shows */
+  /** shows these marks until the next show: draws those of its own kind (a mark drawn
+   *  over one frame, a stroke on the picture, only while that frame is shown), and may
+   *  go to the frames any of them names; none clears what it shows */
   show: (marks: ReadonlyArray<Mark>) => Promise<void>;
 }>;

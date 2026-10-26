@@ -10,7 +10,7 @@ import type { Model } from './model';
 // encloses, and the set's parts its points show. A stroke's points are picture
 // coordinates, 0 to 1 across and down the picture, so a resized studio draws a mark
 // where it was made. A mark's `shown` carries the stroke, frame and view, so a studio
-// seeing through the same view draws it again
+// showing the same frame through the same view draws it again, and only then
 // ********************************************************************************
 // == Constants ===================================================================
 /** the kind of surface the picture is (a mark's `surface`) */
@@ -147,14 +147,17 @@ export const pictureMark = ({ frame, view, set, actors, parts, stroke }: Picture
 };
 
 // == Show ========================================================================
-/** the strokes of the picture marks a studio seeing through `view` (none for the main
- *  camera or the build) draws: those made through the same view, each stroke as its
- *  `shown` gives it; any other mark, and one whose stroke is malformed, draws nothing */
-export const shownStrokes = (marks: ReadonlyArray<Mark>, view: string | undefined): ReadonlyArray<ReadonlyArray<PicturePoint>> =>
+/** the strokes of the picture marks a studio draws over what it shows: `at` names the
+ *  reel's frame (none for a frame call's) and the view it is seen through (none for
+ *  the main camera), and is none for the build. Those made on the same frame through
+ *  the same view draw, each stroke as its `shown` gives it; any other mark, and one
+ *  whose stroke is malformed, draws nothing */
+export const shownStrokes = (marks: ReadonlyArray<Mark>, at: Readonly<{ frame?: number; view?: string; }> | undefined): ReadonlyArray<ReadonlyArray<PicturePoint>> =>
   (Array.isArray(marks) ? marks : []).flatMap(mark => {
     if((mark?.surface !== PICTURE) || !mark.shown || (typeof mark.shown !== 'object')) return [];
-    const { view: madeThrough, stroke } = mark.shown as Readonly<{ view?: unknown; stroke?: unknown; }>;
-    if((madeThrough ?? undefined) !== view) return []/*through another view*/;
+    const { frame: madeOn, view: madeThrough, stroke } = mark.shown as Readonly<{ frame?: unknown; view?: unknown; stroke?: unknown; }>;
+    if((madeOn ?? undefined) !== at?.frame) return []/*on another frame*/;
+    if((madeThrough ?? undefined) !== at?.view) return []/*through another view*/;
     const points = strokeOf(stroke);
     return points ? [points] : [];
   });

@@ -1,4 +1,4 @@
-import { BehaviorSubject, type Observable } from 'rxjs';
+import { BehaviorSubject, Subject, type Observable } from 'rxjs';
 
 import type { PoseBottoms } from '../../brick-shared/rise';
 import { skyFrom } from '../../brick-shared/sky';
@@ -107,8 +107,9 @@ export class StageControl {
   private edits = 0;
   /** the actor followed through the film, while one is (SEE: follow) */
   private followed: Follow | undefined;
-  /** the frame the picture shows, while a stage stands */
+  /** the frame the picture shows, while a stage stands, and each time it changes */
   private drawn: Drawn | undefined;
+  private readonly redrawn = new Subject<void>();
   /** the reel's frame last shown, and whether the film said it plays */
   private shownFrame = 0;
   private playing = false;
@@ -137,6 +138,10 @@ export class StageControl {
 
   /** the screen's state, from now on */
   public state$(): Observable<ScreenState> { return this.state.asObservable(); }
+
+  /** each time what the picture shows changes (SEE: shown): a frame drawn, a stage,
+   *  the build shown again */
+  public shownChanged$(): Observable<void> { return this.redrawn.asObservable(); }
 
   /** what the picture shows of the stage, while one stands */
   public shown(): StageShown | undefined {
@@ -179,7 +184,7 @@ export class StageControl {
     [this.shownFrame, this.playing] = [0, false];
     this.viewer.useSky(skied)/*before the first set is shown under it*/;
     this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged), keep === true);
-    this.drawn = { set: 0, shots: [] }/*the first set alone, until a frame shows*/;
+    this.setDrawn({ set: 0, shots: [] }/*the first set alone, until a frame shows*/);
     this.showHeld();
     this.viewer.useLight(lit);
     if(header) this.viewer.drawStageAt(header.width, header.height);
@@ -258,7 +263,7 @@ export class StageControl {
       this.applied++;
       const picture = this.pictureOf(loaded, shot, undefined);
       this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving), true/*through its own camera*/);
-      this.drawn = { frame: frame as number, set: shot.set, shots: shot.shots };
+      this.setDrawn({ frame: frame as number, set: shot.set, shots: shot.shots });
       const image = await this.viewer.capture(size.width, size.height);
       if((this.cast !== cast) || (this.reel !== loaded)) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
       this.publish({ kind: 'staged', reel: loaded.id, frame: frame as number });
@@ -328,7 +333,7 @@ export class StageControl {
       const size = captureOf(capture);
       this.applied++/*a reel frame waiting to be drawn is no longer the one shown*/;
       this.viewer.showFrame(shownActors(cast, shots), view, undefined/*no overlay*/, standing, undefined/*no transition*/, !!size/*a capture through its own camera*/);
-      this.drawn = { set: standing, shots };
+      this.setDrawn({ set: standing, shots });
       if(!size) return { shown: shots.length };
       const image = await this.viewer.capture(size.width, size.height);
       if(this.cast !== cast) { image.close(); throw new Error(this.ended())/*ended while it settled*/; }
@@ -364,11 +369,17 @@ export class StageControl {
     const applied = ++this.applied;
     const picture = this.pictureOf(loaded, shot, undefined);
     this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving));
-    this.drawn = { frame, set: shot.set, shots: shot.shots };
+    this.setDrawn({ frame, set: shot.set, shots: shot.shots });
     this.shownFrame = frame;
     this.ghost();
     this.showControls();
     void this.viewer.whenSettled().then(() => { if((this.reel === loaded) && (this.applied === applied)) this.publish({ kind: 'staged', reel, frame }); });
+  }
+
+  /** the frame the picture shows from now, told to whoever follows it */
+  private setDrawn(drawn: Drawn | undefined): void {
+    this.drawn = drawn;
+    this.redrawn.next();
   }
 
   /** the reel staged that `reel` names, with its cast, or why there is none */
@@ -407,7 +418,7 @@ export class StageControl {
     this.cast = undefined/*nothing staged*/;
     this.reel = undefined;
     this.wanted = undefined;
-    this.drawn = undefined;
+    this.setDrawn(undefined/*the build*/);
     this.viewer.unstage();
     this.showHeld();
     this.show(undefined/*no strip*/);

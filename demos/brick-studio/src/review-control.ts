@@ -13,9 +13,11 @@ import type { Viewer } from './viewer';
 // the camera standing still under it (the marks' layer takes the pointer from the
 // canvas and the keys walk nowhere); each stroke, as the pointer lifts, is resolved
 // (SEE: review.ts) and heard on `marks$`. Marking off takes the strokes away. Review
-// shows a note's marks again: those of the picture seen through the view this studio
-// shows are drawn over it until the next show. The layer moves and resizes nothing;
-// with no Review in the document nothing calls it and it stands empty
+// shows a note's marks again until the next show: each picture mark is drawn over the
+// picture while the studio shows the frame it was drawn on through the view it was
+// drawn through, taken off on any other and drawn again on returning. The layer moves
+// and resizes nothing; with no Review in the document nothing calls it and it stands
+// empty
 // ********************************************************************************
 // == Types =======================================================================
 /** the marks' layer over the picture (an SVG in picture coordinates), its marks shown
@@ -38,13 +40,16 @@ export class ReviewControl {
   private readonly made = new Subject<Mark>();
   private since: Mark[] = [];
   private stroke: Stroke | undefined/*none under way*/;
+  /** the marks Review last asked shown, drawn as the picture shows their frames */
+  private shownMarks: ReadonlyArray<Mark> = [];
 
-  public constructor(private readonly elements: ReviewElements, private readonly studio: HTMLElement, private readonly viewer: Pick<Viewer, 'placementsAt' | 'pictureBounds'>, private readonly stage: Pick<StageControl, 'shown'>, private readonly standStill: () => void/*the keys' walk stopped*/) {
+  public constructor(private readonly elements: ReviewElements, private readonly studio: HTMLElement, private readonly viewer: Pick<Viewer, 'placementsAt' | 'pictureBounds'>, private readonly stage: Pick<StageControl, 'shown' | 'shownChanged$'>, private readonly standStill: () => void/*the keys' walk stopped*/) {
     const { root } = elements;
     root.addEventListener('pointerdown', event => this.begin(event));
     root.addEventListener('pointermove', event => this.extend(event));
     root.addEventListener('pointerup', event => this.end(event));
     root.addEventListener('pointercancel', event => { if(event.pointerId === this.stroke?.pointer) this.drop(); });
+    stage.shownChanged$().subscribe(() => { if(this.shownMarks.length > 0) this.drawShown(); });
   }
 
   /** whether the picture takes marks: the keys walk nowhere meanwhile */
@@ -127,11 +132,17 @@ export class ReviewControl {
   private pointOf(event: PointerEvent): PicturePoint { return picturePoint(event.clientX, event.clientY, this.elements.root.getBoundingClientRect()); }
 
   // == Show ======================================================================
-  /** draws the strokes of the picture marks made through the view this studio shows,
-   *  in place of those shown before: none clears them */
+  /** shows these marks in place of those shown before: none clears them */
   private show(marks: ReadonlyArray<Mark>): void {
+    this.shownMarks = marks;
+    this.drawShown();
+  }
+
+  /** draws the strokes of the marks shown made on the frame and through the view the
+   *  picture shows now */
+  private drawShown(): void {
     const { root, shown } = this.elements;
-    shown.replaceChildren(...shownStrokes(marks, this.stage.shown()?.view).map(stroke => strokeElement(root.ownerDocument, stroke)));
+    shown.replaceChildren(...shownStrokes(this.shownMarks, this.stage.shown()).map(stroke => strokeElement(root.ownerDocument, stroke)));
   }
 }
 

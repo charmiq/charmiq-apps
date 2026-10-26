@@ -100,9 +100,11 @@ export type FilmFrame = Readonly<{
  *  it and how deep the deepest is (`through`, studs: its least way out), and over a
  *  keyed flight the body's least clearance over the top of a part it crosses
  *  (`clearance`, studs, below 0 through it), as staging probes them (SEE: clearance.ts
- *  bodiesThrough); and the top (plates) of the part its feet are in, else of what is
- *  under them (SEE: steps.ts feetIn, surfaceUnder) */
-export type Feet = Readonly<{ into?: number; above?: number; floating?: number; tipped?: number; through?: Readonly<{ part: string; points: ReadonlyArray<string>; depth: number; }>; clearance?: Readonly<{ part: string; studs: number; }>; surface?: number; }>;
+ *  bodiesThrough); the top (plates) of the part its feet are in, else of what is
+ *  under them (SEE: steps.ts feetIn, surfaceUnder); and following the ground, the level
+ *  (plates) the ground stands it on (`ground`) and the part whose top that is (`on`, as
+ *  staging probes it: SEE clearance.ts groundedOn) */
+export type Feet = Readonly<{ into?: number; above?: number; floating?: number; tipped?: number; through?: Readonly<{ part: string; points: ReadonlyArray<string>; depth: number; }>; clearance?: Readonly<{ part: string; studs: number; }>; surface?: number; ground?: number; on?: string; }>;
 /** a walker's move under way in a frame (SEE: FilmFrame.steps) */
 export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; }>;
 
@@ -226,7 +228,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
         const tipped = tiltOf({ pitch: local.channels.pitch ?? 0, roll: local.channels.roll ?? 0 });
         if((into > INTO_SET) || (above > OVER_NOTHING) || (floating > FLOATING) || (tipped > TIPPED)) {
           const surface = (into > INTO_SET) ? top : surfaceUnder((floating > FLOATING) ? local.channels : soles, standingOn);
-          feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}), ...((tipped > TIPPED) ? { tipped } : {}), ...((surface !== undefined) ? { surface } : {}) };
+          feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}), ...((tipped > TIPPED) ? { tipped } : {}), ...((surface !== undefined) ? { surface } : {}), ...((ground !== undefined) ? { ground } : {}) };
         }
       } /* else -- riding, unseen, or not a figure on studs */
       const own = placedOf(local);

@@ -2,7 +2,7 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { PoseBottoms } from '../../brick-shared/rise';
-import { bodiesThrough, clearanceOf, type Avoided, type Probe } from './clearance';
+import { bodiesThrough, clearanceOf, groundedOn, type Avoided, type Probe } from './clearance';
 import { planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type Paint, type Rest, type StageFacts } from './film';
 import { groundsOf, surfacesIn, surfacesOf, type CellArea, type GroundProbe, type SurfaceProbe } from './ground';
 import type { Size } from './measure';
@@ -19,7 +19,7 @@ import type { PartFinding } from './review';
 // marks when the scene has a plan view, and each actor following the ground stood on
 // it; SEE: ground.ts), then the film made with the wheels the stage
 // found, its camera held against the set's parts (drawn in where it avoids them; SEE:
-// clearance.ts) and each figure's body in the air held against them, loaded on every screen a page at a time; the stage's sizes of the
+// clearance.ts), each figure's body in the air held against them and the part the ground stands a figure on named, loaded on every screen a page at a time; the stage's sizes of the
 // actors and the parts each frame's camera meets are kept for measuring and review. A
 // plan's camera path is dashed where its camera stands inside a part. A frame is then a number sent to each screen, and each studio's
 // state streams back: the person going back to a build pauses the film at once, a
@@ -263,12 +263,13 @@ export class Studios {
 
       // the film with its wheels, each actor clicking onto studs on the surfaces it
       // stands near, its camera cleared, each figure among them held against the parts
-      // in the air, loaded on every screen; an actor the stage refused is left out of
-      // every frame (the sheet says why)
+      // in the air and told the part the ground stands it on, loaded on every screen; an
+      // actor the stage refused is left out of every frame (the sheet says why)
       const facts = { wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), ...(answer.bottoms ? { bottoms: answer.bottoms } : {}), clicks: new Set(answer.clicks ?? []), rests: restsOf(answer), grounds };
       const surfaces = (facts.clicks.size > 0) ? await surfacesOf(filmFor(facts), facts.clicks, surfaceProbe) : undefined;
       const { film: cleared, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), probe);
-      const film = surfaces ? await bodiesThrough(cleared, new Set([...facts.figures].filter(name => facts.clicks.has(name))), surfaces, probe, groundProbe) : cleared/*no figure on studs*/;
+      const held = surfaces ? await bodiesThrough(cleared, new Set([...facts.figures].filter(name => facts.clicks.has(name))), surfaces, probe, groundProbe) : cleared/*no figure on studs*/;
+      const film = grounded ? await groundedOn(held, answer.sizes ?? {}, probe) : held;
       const cast = new Set(answer.actors);
       const frames = film.frames.map(frame => reelFrameOf(castOnly(frame, cast)));
       for(let from=0; from<frames.length; from+=REEL_PAGE) {
