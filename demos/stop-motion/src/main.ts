@@ -34,11 +34,11 @@ import type { SoundReading } from './timeline-marks';
 // runs it into a film, stages it on the studios (the film's screens) and wires the
 // playhead, the timeline, the picture track and the transport. Stop Motion draws no
 // film: the studios show it. A scene with a mistake keeps the last film that ran and
-// says where the mistake is. The film's file (New, Open, Save) is its set and its scene
-// in one design in the Drive, written and read by Stop Motion between the two. Stop
-// Motion plays the film's sound itself, on the player's clock (SEE: soundtrack.ts). The
-// timeline is a review surface: a note marks it and shows its marks again on it (SEE:
-// review-surface.ts)
+// says where the mistake is. The film's file (New, Open, Save as, Save) is its set and
+// its scene in one design in the Drive, written and read by Stop Motion between the
+// two. Stop Motion plays the film's sound itself, on the player's clock (SEE:
+// soundtrack.ts). The timeline is a review surface: a note marks it and shows its marks
+// again on it (SEE: review-surface.ts)
 //
 //   SceneSource (the editor's scene.js) -> Director: runScene (a Worker), filmOf
 //     -> Studios.stage (the wheels found, the reel loaded) -> Player (+ Soundtrack),
@@ -288,7 +288,7 @@ statusAction.addEventListener('click', () => {
   else void director.restage();
 });
 
-// == Picture track ===============================================================
+// == Picture Track ===============================================================
 /** the darkroom: a picture is drawn here to keep */
 const darkroom = document.createElement('canvas');
 let developing = false;
@@ -393,9 +393,13 @@ const saveFilm = async () => {
     if(!saved) filmDialog.saveAs(film?.scene.title ?? 'Untitled film');
   } catch(failure) { fileState.textContent = (failure as Error).message; fileState.dataset.state = 'error'; }
 };
+/** asks for a name and a folder and saves the film there as a new file, which becomes
+ *  the film's own; the film's own name offered, else the scene's title */
+const saveFilmAs = () => filmDialog?.saveAs(films?.state.name ?? film?.scene.title ?? 'Untitled film');
 
 element('newButton').addEventListener('click', () => void filmDialog?.openNew());
 element('openButton').addEventListener('click', () => filmDialog?.openOpen());
+element('saveAsButton').addEventListener('click', () => saveFilmAs());
 element('saveButton').addEventListener('click', () => void saveFilm());
 
 // == Sounds ======================================================================
@@ -651,7 +655,7 @@ if(films) {
   merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
 } /* else -- standalone: no Drive */
 surface.advertise(charmiq);
-if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), surfaces: (set, area) => studios.surfacesIn(set, area), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames });
+if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), surfaces: (set, area) => studios.surfacesIn(set, area), extent: set => studios.extentOf(set), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames, hear: sound => bank ? bank.read(sound) : Promise.reject(new Error('this Platform delivers no sound files')) });
 showSheet();
 showStatus();
 showFile();

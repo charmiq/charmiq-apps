@@ -1,7 +1,7 @@
-import { gearKey, getStageFace, ACCESSORIES, ALL_FACES, CATALOG, COLORS, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
+import { gearKey, getStageFace, ACCESSORIES, ALL_FACES, CATALOG, COLORS, FIGURE_COLORS, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
 import { maxOf, minOf } from './numbers';
 import { COLOR_VALUES, FACE_GEOMETRY, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { hingePieces, hingeTurn, pieceLines, posedPieces, upperTurn, wheelPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type Pose, type Worn } from './pose';
+import { hingePieces, hingeTurn, pieceLines, posedPieces, upperTurn, wheelPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type FigureColorCodes, type Pose, type Worn } from './pose';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
 // level is one plate height (a brick is three). A placement names the minimum
@@ -47,10 +47,10 @@ export type Rotation = typeof ROTATIONS[number];
 export type Cell = readonly [number/*x*/, number/*z*/];
 
 // ................................................................................
-/** a catalog part on the grid. A posable part (a figure) may carry a pose and its
- *  legs' color; its footprint corner stays where it stands whatever its pose, and its
- *  level is its posed bottom (a seated figure's on its seat). A hinge's top may turn,
- *  carrying a component (SEE: Hinges) */
+/** a catalog part on the grid. A posable part (a figure) may carry a pose, its legs'
+ *  color and its skin; its footprint corner stays where it stands whatever its pose,
+ *  and its level is its posed bottom (a seated figure's on its seat). A hinge's top
+ *  may turn, carrying a component (SEE: Hinges) */
 export type Placement = Readonly<{
   part: string/*catalog key*/;
   color: string/*catalog color key*/;
@@ -63,6 +63,9 @@ export type Placement = Readonly<{
   /** its hips' and legs' color (catalog color key) when not the part's own; only on a
    *  posable part */
   legColor?: string;
+  /** its head's and hands' color (catalog color key) when not the part's own; only on
+   *  a posable part */
+  skin?: string;
   /** a figure's face, when it wears another than the default (SEE: catalog.ts FIGURE_FACES) */
   face?: string;
   /** what it wears on its head and holds in each hand; only on a posable part */
@@ -342,8 +345,7 @@ export const placedLines = (shape: PartShape, placement: Placement, colorCode: n
  *  (LDU): a stage's actor stands where its shot puts it, its pose any angle */
 export const partLines = (shape: PartShape, placement: Placement, colorCode: number, position: readonly [number, number, number], rolled = 0): PartLine[] => {
   const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position, matrix: rotationMatrix(placement.rotation) };
-  const legs = (placement.legColor === undefined) ? undefined : getColor(placement.legColor)?.code;
-  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, legs, wornOf(placement), getStageFace(placement.face)) :
+  const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, colorsOf(placement), wornOf(placement), getStageFace(placement.face)) :
     shape.part.hinge ? hingePieces(shape.part, placement.angle ?? 0) :
     (shape.part.wheels && (rolled !== 0)) ? wheelPieces(shape.part, rolledAngle(shape.part, rolled)) :
     piecesOf(shape.part);
@@ -356,6 +358,12 @@ export const partLines = (shape: PartShape, placement: Placement, colorCode: num
  *  over their tires' radius */
 export const rolledAngle = (part: CatalogPart, rolled: number): number =>
   ((rolled * LDU_PER_STUD) / part.wheels!.radius/*by contract*/) * (180 / Math.PI);
+
+/** a placement's figure colors, as its pieces are written (SEE: pose.ts FigureColorCodes) */
+const colorsOf = (placement: Placement): FigureColorCodes => Object.fromEntries(FIGURE_COLORS.flatMap(({ field, pieces }) => {
+  const color = placement[field], code = (color === undefined) ? undefined/*its pieces' own*/ : getColor(color)?.code;
+  return (code === undefined) ? [] : [[pieces, code]];
+}));
 
 /** what a placement wears, as its pieces are written (SEE: pose.ts Worn) */
 const wornOf = (placement: Placement): Worn => Object.fromEntries(SLOTS_IN_ORDER.flatMap(slot => {
@@ -406,7 +414,7 @@ const piecesOf = (part: CatalogPart): ReadonlyArray<PartLine> => {
   return lines;
 };
 
-// == Components ================================================================
+// == Components ==================================================================
 // a component is a group of parts in its own grid, placed as a unit: a copy names
 // where the component's footprint goes and how it turns, as a part does. Its LDraw
 // line moves the component's own grid: turned about its origin, its footprint's

@@ -16,6 +16,8 @@ import { type Surface, type SurfaceAt, BASEPLATE } from './steps';
 // the higher of two as near. The surfaces an actor that clicks onto
 // studs stands on are asked the same way, cell by cell around where its keys put it
 // each frame (its steps, turns and hops stray no further), each surface studded or not
+// and named by the part whose top it is; the surfaces over an area, and the extent of a
+// set's parts, are asked the same way for a map of the set
 // ********************************************************************************
 // == Constants ===================================================================
 /** the most footprints one probe answers (Brick Studio's MAX_PROBES), and the most
@@ -31,8 +33,15 @@ export type Footprint = Readonly<{ x: number; z: number; width: number; depth: n
 /** asks the studio the surfaces under footprints of a set (the first staged when none
  *  is named), each lowest first (plates) */
 export type GroundProbe = (set: string | undefined, grounds: ReadonlyArray<Footprint>) => Promise<ReadonlyArray<ReadonlyArray<number>>>;
-/** the same, each surface studded or not (SEE: Brick Studio's probe studded) */
+/** the same, each surface studded or not and its part (SEE: Brick Studio's probe
+ *  studded, tops) */
 export type SurfaceProbe = (set: string | undefined, grounds: ReadonlyArray<Footprint>) => Promise<ReadonlyArray<ReadonlyArray<Surface>>>;
+/** asks the studio the area a set's parts stand over (SEE: Brick Studio's probe
+ *  extent): none for a set without parts */
+export type ExtentProbe = (set: string | undefined) => Promise<CellArea | undefined>;
+/** the grounds a studio's probe answers: the surfaces under each footprint, and beside
+ *  them whether each is studded and the part whose top it is */
+export type ProbedGrounds = Readonly<{ grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; tops?: ReadonlyArray<ReadonlyArray<string | null>>; }>;
 
 // == Ground ======================================================================
 /** the ground under each actor that follows it, at every frame (plates), by name: none
@@ -90,6 +99,7 @@ export const surfacesOf = async (film: Film, clicks: ReadonlySet<string>, probe:
   const found = (asked.size > 0) ? await probeAll(probe, asked) : new Map<string, ReadonlyArray<Surface>>();
   return set => (x, z) => found.get(cellKey(set, x, z)) ?? BASEPLATE(x, z);
 };
+
 /** an area of a set (whole studs): its south-west corner and size */
 export type CellArea = Readonly<{ x: number; z: number; width: number; depth: number; }>;
 /** the most cells a read of an area asks */
@@ -103,6 +113,15 @@ export const surfacesIn = async (probe: SurfaceProbe, set: string | undefined, a
   const found = await probeAll(probe, asked);
   return Array.from({ length: area.depth }, (_, row) => Array.from({ length: area.width }, (_, column) => found.get(cellKey(set, area.x + column, area.z + row)) ?? []));
 };
+
+/** the surfaces a probe answers under each footprint: smooth where it says nothing of
+ *  studs, its part where it names one (the baseplate's, and a studio naming none,
+ *  none) */
+export const surfacesProbed = (probed: ProbedGrounds): ReadonlyArray<ReadonlyArray<Surface>> =>
+  (probed.grounds ?? []).map((surfaces, index) => surfaces.map((height, at) => {
+    const part = probed.tops?.[index]?.[at];
+    return { height, studded: probed.studded?.[index]?.[at] ?? false, ...(((part !== undefined) && (part !== null)) ? { part } : {}) };
+  }));
 
 /** how many cells either way around where an actor stands its surfaces are asked */
 const NEAR = 1;

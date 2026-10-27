@@ -1,6 +1,6 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { isSkyLine, skyLine, skyOf, type Sky } from '../../brick-shared/sky';
-import { type CatalogPart, type FigureFace, ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_FACES } from './catalog';
+import { type CatalogPart, type FigureFace, type FigurePieces, ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_COLORS, FIGURE_FACES } from './catalog';
 import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getPartsByLDraw, getShape, gridPosition, type PartShape, isInheritedColor, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 import { isPictureLine, pictureOf, type Picture } from './picture';
@@ -816,7 +816,7 @@ const newFileName = (component: string): string => `${component}.ldr`;
  *  one file), is the placement's, the first such line in the text. A piece a
  *  component's line places is never a part of the build's own, nor of another line's.
  *  A posable part's pieces are read limb by limb (SEE: readPose), and the placement
- *  takes the pose and legs color they show, its level raised by the pose's lift.
+ *  takes the pose and colors they show, its level raised by the pose's lift.
  *  Returns each placement's piece lines, in order, and whether a piece went undecided:
  *  more lines lay where it goes than MAX_NEAR_LINES, so which is its own is not told.
  *  The arrays of placements and other parts are changed in place */
@@ -894,7 +894,8 @@ const sameFootprint = (a: PartShape, b: PartShape): boolean => (a.width === b.wi
 
 /** a posable part's pose read from its pieces (SEE: pose.ts): the hips in whichever
  *  catalog color they are (the legs color), then each limb's pivot piece at each angle a
- *  limb takes and the rest of the limb at the angle found, then what it wears and
+ *  limb takes (the head in whichever catalog color it is, its skin) and the rest of the
+ *  limb at the angle found, then what it wears and
  *  holds, every look bounded as any piece's (SEE: absorbPieces). A piece not found
  *  leaves its limb at 0 and is written again whole; an accessory not found is no
  *  accessory. Returns the placement, posed, its level raised by the pose's lift (it
@@ -907,35 +908,49 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
   const placedPiece = (piece: PartLine, code: number): PartLine => pieceAt(own, piece, code);
   const limbed = new Set(LIMBS.flatMap(limb => part.limbs![limb].pieces));
 
-  // the legs color: the color the hips (a legs piece no limb moves) are found in
-  let legsCode: number | undefined;
-  for(const index of (part.legs ?? []).filter(index => !limbed.has(index))) {
-    for(const color of [lines[index].colorCode, ...COLORS.map(each => each.code).filter(code => code !== lines[index].colorCode)]) {
-      const line = take(placedPiece(lines[index], color));
-      if(line === undefined) continue;
-      found.set(index, line);
-      legsCode ??= color;
-      break;
+  // each of its colors (SEE: catalog.ts FIGURE_COLORS): the color its first piece no
+  // limb moves is found in (the hips, for the legs color), or for pieces every one of
+  // which a limb moves (the head and hands), the color their limb's pivot is
+  // found in, its pieces' own first
+  const codes: Partial<Record<FigurePieces, number>> = {};
+  const ownFirst = (code: number): number[] => [code, ...COLORS.map(each => each.code).filter(other => other !== code)];
+  const groupOf = (index: number): FigurePieces | undefined => FIGURE_COLORS.find(({ pieces }) => part[pieces]?.includes(index))?.pieces;
+  for(const { pieces } of FIGURE_COLORS) {
+    for(const index of (part[pieces] ?? []).filter(index => !limbed.has(index))) {
+      for(const color of ownFirst(lines[index].colorCode)) {
+        const line = take(placedPiece(lines[index], color));
+        if(line === undefined) continue;
+        found.set(index, line);
+        codes[pieces] ??= color;
+        break;
+      }
     }
   }
-  const legs = new Set(part.legs ?? []);
-  const codeOf = (index: number): number => (legs.has(index) && (legsCode !== undefined)) ? legsCode : lines[index].colorCode;
+  const codeOf = (index: number): number => { const group = groupOf(index); return ((group !== undefined) ? codes[group] : undefined) ?? lines[index].colorCode; };
 
   // each limb: its pivot at each angle, then the rest at the angle found (at 0 when
   // its pivot is found at none, each piece then taken alone as any part's). A pivot
-  // that is the face piece is looked for wearing each face, the default first
+  // that is the face piece is looked for wearing each face, the default first; a
+  // pivot whose color is not yet found, in each color, its own first
   const pose: Partial<Record<typeof LIMBS[number], number>> = {};
   let face: FigureFace | undefined;
   for(const limb of LIMBS) {
     const { pieces } = part.limbs![limb];
     const faces = (pieces[0] === part.facePiece) ? FIGURE_FACES : [undefined/*no face to wear*/];
-    const angle = [0, ...POSE_ANGLES.filter(each => each !== 0)].find(each => faces.some(worn => {
-      const pivot = take(placedPiece(limbLines(part, limb, each, worn)[0], codeOf(pieces[0])));
-      if(pivot === undefined) return false;
-      found.set(pieces[0], pivot);
-      if(pieces[0] === part.facePiece) face = worn;
-      return true;
-    }));
+    const group = groupOf(pieces[0]);
+    const tried = ((group !== undefined) && (codes[group] === undefined)) ? ownFirst(lines[pieces[0]].colorCode) : [codeOf(pieces[0])];
+    let angle: number | undefined;
+    for(const color of tried) {
+      angle = [0, ...POSE_ANGLES.filter(each => each !== 0)].find(each => faces.some(worn => {
+        const pivot = take(placedPiece(limbLines(part, limb, each, worn)[0], color));
+        if(pivot === undefined) return false;
+        found.set(pieces[0], pivot);
+        if(group !== undefined) codes[group] = color;
+        if(pieces[0] === part.facePiece) face = worn;
+        return true;
+      }));
+      if(angle !== undefined) break;
+    }
     if(angle !== undefined) pose[limb] = angle;
     const limbPieces = limbLines(part, limb, angle ?? 0, face);
     pieces.slice(1).forEach((index, order) => {
@@ -945,7 +960,10 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
   }
 
   const normalized = normalizePose(pose);
-  const legColor = ((legsCode === undefined) || (legsCode === lines[(part.legs ?? [])[0]]?.colorCode)) ? undefined : getColorByCode(legsCode)?.key;
+  const colors = Object.fromEntries(FIGURE_COLORS.flatMap(({ field, pieces }) => {
+    const code = codes[pieces], key = ((code === undefined) || (code === lines[(part[pieces] ?? [])[0]]?.colorCode)) ? undefined/*its pieces' own*/ : getColorByCode(code)?.key;
+    return (key === undefined) ? [] : [[field, key]];
+  }));
 
   // what it wears: each slot's accessories of its kind, by each of their grips, in
   // any catalog color, where the posed piece carrying the slot puts them
@@ -967,7 +985,7 @@ const readPose = (part: CatalogPart, placement: Placement, take: (piece: PartLin
   });
 
   const worn = ((face !== undefined) && (face.key !== DEFAULT_FIGURE_FACE)) ? { face: face.key } : {}/*the default is the head as the part writes it*/;
-  const posed: Placement = { ...placement, level: placement.level + poseLift(part, { pose: normalized }), ...(normalized ? { pose: normalized as Pose } : {}), ...(legColor ? { legColor } : {}), ...worn, ...gear };
+  const posed: Placement = { ...placement, level: placement.level + poseLift(part, { pose: normalized }), ...(normalized ? { pose: normalized as Pose } : {}), ...colors, ...worn, ...gear };
   return { posed, indices: [...found.keys()].sort((a, b) => a - b).map(index => found.get(index)!) };
 };
 

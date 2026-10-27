@@ -220,6 +220,15 @@ export const inBox = (box: Box, point: Point): boolean => {
   return (Math.abs(across) <= (box.size.width / 2)) && (up >= 0) && (up <= (box.size.height * STUDS_PER_PLATE)) && (Math.abs(along) <= (box.size.depth / 2));
 };
 
+/** how far a point lies from a box (studs), 0 within it */
+export const pointGap = (box: Box, point: Point): number => {
+  const [across, up, along] = boxFrameOf(box, point);
+  return Math.hypot(Math.max(0, Math.abs(across) - (box.size.width / 2)), Math.max(0, -up, up - tallOf(box)), Math.max(0, Math.abs(along) - (box.size.depth / 2)));
+};
+
+/** how tall a box stands (studs) */
+export const tallOf = (box: Box): number => box.size.height * STUDS_PER_PLATE;
+
 /** where a segment first enters a box, as a share of its length from its start; none
  *  when it misses it */
 export const segmentEnters = (box: Box, from: Point, to: Point): number | undefined => {

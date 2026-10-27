@@ -131,7 +131,7 @@ export const clearanceOf = async (film: Film, probe: Probe): Promise<Cleared> =>
     return { ...frame, camera, views, ...(transition ? { transition } : {}) };
   });
   return {
-    film: { scene, frames: cleared },
+    film: { ...film, frames: cleared }/*its footsteps and leaps its own*/,
     parts: filmShares.map((share, frame) => found.get(keyOf(source[frame], frame, share)) ?? {}),
     avoided: tracks.flatMap((track, index) => track.leaving ? [] : avoidedOf(film, (index === 0) ? filmShares : shares[index]).map(span => ({ ...span, ...((track.view !== undefined) ? { view: track.view } : {}) }))),
   };
@@ -226,8 +226,9 @@ const keyOf = (track: number, frame: number, share: number): string => `${track}
  *  height), each part whose top rises above both the surface under its takeoff and the
  *  one under its landing is held against the body too: the body's least clearance over
  *  that part's top (studs, below 0 through it), each point's part read from the ground
- *  under it (`groundProbe`) or, within the part, from its way out (SEE: film.ts Feet
- *  `through`, `clearance`). Only `figures` are held so, never one riding */
+ *  under it (`groundProbe`) or, within the part, from its way out, with the point
+ *  setting it (SEE: film.ts Feet `through`, `clearance`). Only `figures` are held so,
+ *  never one riding */
 export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, surfaces: (set: string | undefined) => SurfaceAt, probe: Probe, groundProbe: GroundProbe): Promise<Film> => {
   const riders = new Set(film.scene.actors.filter(actor => actor.ride).map(actor => actor.name));
   const aloft = (frame: FilmFrame, index: number, shot: Shot) => (lowestAbove({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set)) > FLOATING) || flying(film, shot.name, index);
@@ -247,7 +248,7 @@ export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, su
   const ways = inside.map((each, at) => wayOut(each.point, each.part, outs.slice(at * WAY_OUT_ASKS, (at + 1) * WAY_OUT_ASKS)));
 
   // over a keyed flight, the top of the part under each point not in one, above its floor
-  const over = bodies.flatMap((body, at) => (body.floor === undefined) ? [] : body.points.flatMap((point, index) => (partOf(at, index) === null) ? [{ body: at, point }] : []));
+  const over = bodies.flatMap((body, at) => (body.floor === undefined) ? [] : body.points.flatMap((point, index) => (partOf(at, index) === null) ? [{ body: at, index, point }] : []));
   const tops = await topsAt(groundProbe, over.map(({ body, point }) => ({ set: bodies[body].set, point })));
   const crossed = over.flatMap((each, at) => {
     const floor = bodies[each.body].floor!, top = Math.max(-Infinity, ...tops[at].filter(height => (height <= (each.point.height + TOUCHING)) && (height > (floor + TOUCHING))));
@@ -263,8 +264,8 @@ export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, su
     if(counted) write(body.index, body.shot.name, { through: { part: counted[0].part, points: counted.map(each => BODY[each.index].name), depth: Math.max(...counted.map(each => each.way.depth)) } });
     if(body.floor === undefined) return/*not a keyed flight*/;
     const clearances = [
-      ...own.filter(each => each.way.top > (body.floor! + TOUCHING)).map(each => ({ part: each.part, studs: (each.point.height - each.way.top) * STUDS_PER_PLATE })),
-      ...crossed.flatMap((each, which) => ((each.body === at) && (crossedParts[which] !== null)) ? [{ part: crossedParts[which]!, studs: (each.point.height - each.top) * STUDS_PER_PLATE }] : []),
+      ...own.filter(each => each.way.top > (body.floor! + TOUCHING)).map(each => ({ part: each.part, studs: (each.point.height - each.way.top) * STUDS_PER_PLATE, point: BODY[each.index].name })),
+      ...crossed.flatMap((each, which) => ((each.body === at) && (crossedParts[which] !== null)) ? [{ part: crossedParts[which]!, studs: (each.point.height - each.top) * STUDS_PER_PLATE, point: BODY[each.index].name }] : []),
     ].sort((a, b) => a.studs - b.studs);
     if(clearances.length > 0) write(body.index, body.shot.name, { clearance: clearances[0] });
   });

@@ -38,6 +38,9 @@ export type CatalogPart = Readonly<{
   /** the pieces (indices into `pieces`) a posable part's legs color paints: a figure's
    *  hips and legs */
   legs?: ReadonlyArray<number>;
+  /** the pieces (indices into `pieces`) a posable part's skin paints: a figure's head
+   *  and hands */
+  skin?: ReadonlyArray<number>;
   /** where a posable part wears accessories: each slot's piece (an index into
    *  `pieces`), whose transform, turned with its limb, an accessory takes, and for a
    *  hand where its grip sits in that piece (SEE: ACCESSORIES) */
@@ -337,7 +340,8 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   // (973c01) and hips and legs (21019bpde7) put them together. It poses: each arm
   // (with its hand) swings about its shoulder, each leg about its hip pin, and the
   // head turns on its neck, each pivot at its piece's origin as the library models
-  // it; its hips and legs take the legs color. On a stage's frame its torso also
+  // it; its hips and legs take the legs color, its head and hands its skin (SEE:
+  // FIGURE_COLORS). On a stage's frame its torso also
   // twists and leans over its hips (their joint 32 LDU below the neck) and each hand
   // turns on its forearm
   { key: 'figure', ldraw: '973', kind: 'figure', pieces: [
@@ -355,7 +359,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
     leftArm: { pieces: [2, 4], axis: 'x' },
     rightLeg: { pieces: [6], axis: 'x' },
     leftLeg: { pieces: [7], axis: 'x' },
-  }, legs: [5, 6, 7], waist: { upper: [0, 1, 2, 3, 4], hip: [0, 32, 0] }, facePiece: 0, slots: { hat: { piece: 0 }, rightHand: { piece: 3, grip: HAND_GRIP }, leftHand: { piece: 4, grip: HAND_GRIP } } },
+  }, legs: [5, 6, 7], skin: [0, 3, 4], waist: { upper: [0, 1, 2, 3, 4], hip: [0, 32, 0] }, facePiece: 0, slots: { hat: { piece: 0 }, rightHand: { piece: 3, grip: HAND_GRIP }, leftHand: { piece: 4, grip: HAND_GRIP } } },
   // the stand and its black wheel, as the library's complete steering wheel (3829c01)
   { key: 'steering-wheel',  ldraw: '3829a', kind: 'vehicle', pieces: [
     '1 0 0 -26.32 -0.24 0 0 1 -0.8 0.6 0 -0.6 -0.8 0 3828.dat',
@@ -380,6 +384,18 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'brick-1x4-side-studs',      ldraw: '30414', kind: 'side', faces: ['south'] },
   { key: 'bracket-1x2-up',            ldraw: '99780', kind: 'side', faces: ['south'] },
 ];
+
+// == Figure Colors ===============================================================
+/** a figure's colors beside its own (its shirt, the placement's color): each the
+ *  placement field naming a catalog color and the pieces it paints, those pieces in
+ *  their own color when the field is left out (blue legs, a yellow head and hands) */
+export const FIGURE_COLORS = [
+  { field: 'legColor', pieces: 'legs' },
+  { field: 'skin',     pieces: 'skin' },
+] as const;
+export type FigureColorField = typeof FIGURE_COLORS[number]['field'];
+/** the piece groups a figure's colors paint (SEE: CatalogPart#legs, #skin) */
+export type FigurePieces = typeof FIGURE_COLORS[number]['pieces'];
 
 // == Accessories =================================================================
 // what a figure wears on its head or holds in a hand, in a catalog color: a library

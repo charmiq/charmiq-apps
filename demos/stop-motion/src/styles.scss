@@ -57,7 +57,7 @@
 
 .links { display: flex; gap: 8px; min-width: 0; }
 
-// the film's file: its name, whether it is saved, and New, Open and Save
+// the film's file: its name, whether it is saved, and New, Open, Save as and Save
 .file {
   display: flex;
   flex: 1;
@@ -1036,9 +1036,11 @@
 
 // == Gait ========================================================================
 // the Gait mode: in place of the timeline, the picture track and the sheet, a walker's
-// gait on its graphs, its sliders beside them (SEE: gait-view.ts)
+// gait on its graphs, its sliders beside them (SEE: gait-view.ts); the bar keeps what
+// acts on the gait (the transport, Close gait) and Export, its film-only tools hidden
+// (a sound, the storyboard, the film's loop: the gait loops its own move)
 .motion.is-gait {
-  .timeline, .strip, .sheet { display: none; }
+  .timeline, .strip, .sheet, #soundChip, #soundButton, #storyboardButton, #loopButton { display: none; }
   .floor { grid-template-columns: minmax(0, 1fr); }
   .deck { grid-template-rows: auto minmax(0, 1fr); }
 }

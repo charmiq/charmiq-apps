@@ -1,4 +1,4 @@
-import { cameraShots, filmTimeOf, sceneTimeOf, type Film, type FilmFrame } from './film';
+import { cameraShots, soundEndOf, type Film, type FilmFrame } from './film';
 import type { ClosePair } from './measure';
 import { castAs, type CameraKey, type FadeKey, type Key, type RecordedCamera, type SetKey, type SoundCue, type Span, type Target, type Title } from './recorder';
 
@@ -126,8 +126,7 @@ const soundRow = (film: Film, cues: ReadonlyArray<SoundCue>, length: number, kno
   const said = (cue: SoundCue) => [...((cue.volume !== 1) ? [`volume ${Math.round(cue.volume * 100)}%`] : []), ...((cue.actor !== undefined) ? [`follows ${cue.actor}`] : []), ...readingSaid(known.reading(cue.name))];
   const reading = (cue: SoundCue) => { const where = known.reading(cue.name); return (where === undefined) ? {/*read*/} : { reading: where }; };
   const spanOf = (cue: SoundCue) => {
-    const duration = known.duration(cue.name);
-    const to = cue.until ?? ((duration !== undefined) ? sceneTimeOf(film, filmTimeOf(film, cue.time) + duration)/*its own length, at the film's pace*/ : undefined);
+    const to = soundEndOf(film, cue, known.duration(cue.name));
     return (to === undefined) ? undefined/*its length not yet known*/ : Math.min(to, length);
   };
   return {
@@ -233,7 +232,7 @@ export const underAt = (groups: ReadonlyArray<KeyGroup>, row: Row, time: number,
   notches: row.notches.filter(notch => Math.abs(notch.time - time) <= near),
 });
 
-// == Where the track stands ======================================================
+// == Where the Track Stands ======================================================
 /** where a row's track stands in a frame, as the hover card's chips: an actor's place
  *  and turn (or hidden), a camera's place, target and lens (or the plan it shows), the
  *  set standing, the sounds playing until a time, the fade or the title */

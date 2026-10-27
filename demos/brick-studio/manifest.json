@@ -129,6 +129,7 @@
                   "rotation":  { "type": "integer", "enum": [0, 90, 180, 270] },
                   "pose":      { "type": "object", "description": "A figure's pose, each limb in degrees (a multiple of 15; a limb left out is 0). An arm or leg swings forward: 90 points it ahead, 180 straight up, -30 back; the head turns clockwise seen from above. A figure's level is its lowest point: seated (legs at 90) on a seat, that is the seat's top", "properties": { "head": { "type": "integer", "multipleOf": 15 }, "leftArm": { "type": "integer", "multipleOf": 15 }, "rightArm": { "type": "integer", "multipleOf": 15 }, "leftLeg": { "type": "integer", "multipleOf": 15 }, "rightLeg": { "type": "integer", "multipleOf": 15 } } },
                   "legColor":  { "type": "string", "description": "A figure's hips and legs color (catalog color; blue when left out)" },
+                  "skin":      { "type": "string", "description": "A figure's head and hands color (catalog color; yellow when left out): light-gray for a black-and-white film" },
                   "face":      { "type": "string", "description": "A figure's face: smile (the default), grin, laugh, lopsided, surprised, scowl, frown, moustache, sunglasses, freckles, beard or glasses (listParts names them)" },
                   "hat":       { "type": "object", "description": "What a figure wears on its head (listParts names them): part and color", "properties": { "part": { "type": "string" }, "color": { "type": "string" } }, "required": ["part", "color"] },
                   "rightHand": { "type": "object", "description": "What a figure holds in its right hand (listParts names them): part, color and, to hold it another way than its first, grip", "properties": { "part": { "type": "string" }, "color": { "type": "string" }, "grip": { "type": "string" } }, "required": ["part", "color"] },
@@ -187,6 +188,7 @@
                   "rotation": { "type": "integer", "enum": [0, 90, 180, 270] },
                   "pose":     { "type": "object", "description": "A figure's pose, as addParts takes it" },
                   "legColor": { "type": "string", "description": "A figure's hips and legs color, as addParts takes it" },
+                  "skin":     { "type": "string", "description": "A figure's head and hands color, as addParts takes it" },
                   "face":     { "type": "string", "description": "A figure's face, as addParts takes it (the smile when left out)" },
                   "hat":       { "type": "object", "description": "What a figure wears on its head, as addParts takes it" },
                   "rightHand": { "type": "object", "description": "What a figure holds in its right hand, as addParts takes it" },
@@ -657,9 +659,11 @@
             "points":   { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each point's part, named, or null" },
             "segments": { "type": "array", "items": { "type": ["string", "null"] }, "description": "Each segment's first part, named, or null" },
             "grounds":  { "type": "array", "items": { "type": "array", "items": { "type": "number" } }, "description": "The surfaces under each footprint in plates, lowest first: each top of a part's cells nothing stands on (seen through or not), and 0 where the baseplate is bare under it" },
-            "studded":  { "type": "array", "items": { "type": "array", "items": { "type": "boolean" } }, "description": "Beside grounds, whether each surface is studded under the footprint: the baseplate's studs, or a part's top studs at that level, in every column under it holding the surface (a tile's top is smooth)" }
+            "studded":  { "type": "array", "items": { "type": "array", "items": { "type": "boolean" } }, "description": "Beside grounds, whether each surface is studded under the footprint: the baseplate's studs, or a part's top studs at that level, in every column under it holding the surface (a tile's top is smooth)" },
+            "tops":     { "type": "array", "items": { "type": "array", "items": { "type": ["string", "null"] } }, "description": "Beside grounds, the part whose top each surface is, by its kind and color (tile-2x4 orange; a part a hinge or face carries by itself): the one holding it under most of the footprint, the first found of as many; null for the baseplate" },
+            "extent":   { "type": "object", "description": "The area the set's parts stand over, whole studs: its south-west corner and size; absent for a set without parts", "properties": { "x": { "type": "integer" }, "z": { "type": "integer" }, "width": { "type": "integer" }, "depth": { "type": "integer" } }, "required": ["x", "z", "width", "depth"] }
           },
-          "required": ["points", "segments", "grounds", "studded"]
+          "required": ["points", "segments", "grounds", "studded", "tops"]
         }
       },
       {
@@ -682,7 +686,7 @@
             "sets":  { "type": "array", "maxItems": 8, "items": { "type": "string" }, "description": "The sets the stage stands, by name, the first standing first and a frame's set showing in its place (the first set alone when left out)" },
             "actors": {
               "type": "array",
-              "description": "Each actor once, by name: { name, component }, { name, part, color, legColor?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure, or { name, placed: { x, z, level } }, the part or copy standing there in the set as listPlacedParts gives it, or with placed.inside one part of that copy, cast alone (a clerk in a store's copy, the copy shown without it); a part is cast once, whole or within its copy",
+              "description": "Each actor once, by name: { name, component }, { name, part, color, legColor?, skin?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure, or { name, placed: { x, z, level } }, the part or copy standing there in the set as listPlacedParts gives it, or with placed.inside one part of that copy, cast alone (a clerk in a store's copy, the copy shown without it); a part is cast once, whole or within its copy",
               "items": {
                 "type": "object",
                 "properties": {
@@ -692,6 +696,7 @@
                   "part":      { "type": "string" },
                   "color":     { "type": "string" },
                   "legColor":  { "type": "string" },
+                  "skin":      { "type": "string", "description": "A figure's head and hands color, as addParts takes it" },
                   "face":      { "type": "string", "description": "A figure's face, as addParts takes it" },
                   "hat":       { "type": "object" },
                   "rightHand": { "type": "object" },

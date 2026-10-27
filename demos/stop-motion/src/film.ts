@@ -1,7 +1,7 @@
 import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
 
 import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
-import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, lowestAbove, surfaceUnder, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
+import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, surfaceUnder, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -87,6 +87,10 @@ export type FilmFrame = Readonly<{
    *  keys it (SEE: steps.ts GaitMove), how far through it (0 to 1), and the scene's gait
    *  its walk takes (the built-in when none) */
   steps?: Readonly<Record<string, FrameStep>>;
+  /** each actor following the ground in this frame, by name: the level (plates over
+   *  the baseplate) the ground stands it on, from which its keys and paths count (SEE:
+   *  StageFacts `grounds`) */
+  grounds?: Readonly<Record<string, number>>;
   /** each figure whose feet go wrong in this frame, by name, as the set's surfaces
    *  measure them (SEE: Feet) */
   feet?: Readonly<Record<string, Feet>>;
@@ -98,17 +102,21 @@ export type FilmFrame = Readonly<{
  *  seat); how far it tilts from upright past TIPPED (`tipped`, degrees: lying, however
  *  it moves); the part its body stands in while it is in the air, the body's points in
  *  it and how deep the deepest is (`through`, studs: its least way out), and over a
- *  keyed flight the body's least clearance over the top of a part it crosses
- *  (`clearance`, studs, below 0 through it), as staging probes them (SEE: clearance.ts
- *  bodiesThrough); the top (plates) of the part its feet are in, else of what is
- *  under them (SEE: steps.ts feetIn, surfaceUnder); and following the ground, the level
- *  (plates) the ground stands it on (`ground`) and the part whose top that is (`on`, as
- *  staging probes it: SEE clearance.ts groundedOn) */
-export type Feet = Readonly<{ into?: number; above?: number; floating?: number; tipped?: number; through?: Readonly<{ part: string; points: ReadonlyArray<string>; depth: number; }>; clearance?: Readonly<{ part: string; studs: number; }>; surface?: number; ground?: number; on?: string; }>;
+ *  keyed flight the body's least clearance over the top of a part it crosses and the
+ *  body's point setting it (`clearance`, studs, below 0 through it), as staging probes
+ *  them (SEE: clearance.ts bodiesThrough); the top (plates) of the part its feet are
+ *  in, else of what is under them (SEE: steps.ts feetIn, surfaceUnder); and following
+ *  the ground, the level (plates) the ground stands it on (`ground`) and the part whose
+ *  top that is (`on`, as staging probes it: SEE clearance.ts groundedOn) */
+export type Feet = Readonly<{ into?: number; above?: number; floating?: number; tipped?: number; through?: Readonly<{ part: string; points: ReadonlyArray<string>; depth: number; }>; clearance?: Readonly<{ part: string; studs: number; point: string; }>; surface?: number; ground?: number; on?: string; }>;
 /** a walker's move under way in a frame (SEE: FilmFrame.steps) */
 export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; }>;
 
-export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>; footsteps?: ReadonlyArray<SoundCue>; }>;
+export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>; footsteps?: ReadonlyArray<SoundCue>; leaps?: ReadonlyArray<WalkLeaps>; }>;
+/** a walk leaping low parts in its way, as its steps were laid on the set (SEE: steps.ts
+ *  leapsOf): its actor and line, when each leap sets off (seconds) and the steps it
+ *  takes between each and the next */
+export type WalkLeaps = Readonly<{ actor: string; line?: number; times: ReadonlyArray<number>; stepsBetween: ReadonlyArray<number>; }>;
 
 /** every sound a film plays: the scene's own, and the footsteps its figures' steps make */
 export const soundCuesOf = (film: Film): ReadonlyArray<SoundCue> => [...(film.scene.sounds ?? []), ...(film.footsteps ?? [])];
@@ -199,7 +207,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
   let previous: ReadonlyMap<string, Placed> | undefined;
   for(let index=0; index<times.length; index++) {
     const time = times[index], at = time * scene.fps/*where it stands among the scene's own frames*/;
-    const placed = new Map<string, Placed>(), headings = new Map<string, number>(), steps: Record<string, FrameStep> = {}, feet: Record<string, Feet> = {};
+    const placed = new Map<string, Placed>(), headings = new Map<string, number>(), steps: Record<string, FrameStep> = {}, levels: Record<string, number> = {}, feet: Record<string, Feet> = {};
     for(const actor of order) {
       const cast = rests.get(actor.name);
       const castRest: Partial<Rest> | undefined = (actor.ride && cast) ? (cast.pose ? { pose: cast.pose } : undefined)/*a rider stands where it rides, in the pose it stood in*/ : cast;
@@ -213,6 +221,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       // and turn kept): what its keys and paths give it, over the ground under it
       const keyed = boiled(localAt(actor, drawnTime * scene.fps, drawnTime, (rest?.position && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest), actor, drawn, scene.boil, figures.has(actor.name), clicks.has(actor.name));
       const grounded = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
+      if(ground !== undefined) levels[actor.name] = ground;
       const stepping = clicked.get(actor.name);
       const local = stepping ? { channels: stepping.at(grounded.channels, time, surfaces(setAt(scene.sets, time))) } : grounded;
       const under = stepping?.moveAt(time), standingOn = surfaces(setAt(scene.sets, time));
@@ -274,10 +283,10 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     const seen = (camera: RecordedCamera) => { const drawnTime = times[drawnFrame(camera.drawn, index)]; return cameraAt(camera, drawnTime * scene.fps, drawnTime, placed, headings); };
     const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, seen(view)]));
     const set = setAt(scene.sets, time);
-    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: seen(scene.camera), views, fade, ...((fade > 0) ? fading : {}), ...(transition ? { transition } : {}), ...(title ? { title } : {}), ...((Object.keys(steps).length > 0) ? { steps } : {}), ...((Object.keys(feet).length > 0) ? { feet } : {}) });
+    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: seen(scene.camera), views, fade, ...((fade > 0) ? fading : {}), ...(transition ? { transition } : {}), ...(title ? { title } : {}), ...((Object.keys(steps).length > 0) ? { steps } : {}), ...((Object.keys(levels).length > 0) ? { grounds: levels } : {}), ...((Object.keys(feet).length > 0) ? { feet } : {}) });
   }
-  const footsteps = footstepsOf(scene, clicked);
-  const stepped = (footsteps.length > 0) ? { footsteps } : {};
+  const footsteps = footstepsOf(scene, clicked), leaps = walkLeapsOf(scene, clicked);
+  const stepped = { ...((footsteps.length > 0) ? { footsteps } : {}), ...((leaps.length > 0) ? { leaps } : {}) };
   if(!scene.views.some(view => view.plan)) return { scene, frames, ...stepped };
 
   // each plan over the area it names, or over all the film shows
@@ -307,6 +316,14 @@ const footstepsOf = (scene: Recorded, clicked: ReadonlyMap<string, Clicked>): Re
   }
   return cues.sort((a, b) => a.time - b.time);
 };
+
+/** every walk of a film's actors clicking onto studs that leaps a part in its way, in
+ *  the scene's order (SEE: WalkLeaps) */
+const walkLeapsOf = (scene: Recorded, clicked: ReadonlyMap<string, Clicked>): ReadonlyArray<WalkLeaps> =>
+  scene.actors.flatMap(actor => (actor.walks ?? []).flatMap(walk => {
+    const moves = clicked.get(actor.name)?.movesOf(walk), leaps = moves && leapsOf(moves);
+    return leaps ? [{ actor: actor.name, ...((walk.line !== undefined) ? { line: walk.line } : {}), ...leaps }] : [];
+  }));
 
 // == Shots =======================================================================
 /** a camera's shots: one from the start and one from each cut, each to the next */
@@ -813,6 +830,12 @@ export const sceneTimeOf = (film: Film, filmTime: number): number => {
   const index = Math.max(0, Math.min(frames.length - 1, Math.floor(at)));
   return frames[index].time + (paceAt(film, index) * (at - index));
 };
+
+/** the scene's time a sound cued ends: its `until`, or its own length (`seconds`, once
+ *  read) on from its time at the film's pace, past the film's end when it outlasts it;
+ *  unknown while its length is */
+export const soundEndOf = (film: Film, cue: SoundCue, seconds: number | undefined): number | undefined =>
+  cue.until ?? ((seconds !== undefined) ? sceneTimeOf(film, filmTimeOf(film, cue.time) + seconds) : undefined);
 
 /** the scene's seconds a frame's span shows (its pace): to the next frame's time, the
  *  last frame's as the one before it (a film of one frame at its scene's own pace) */

@@ -18,6 +18,7 @@ import PARTS_LDRAW from './parts/built-in.ldr';
 import { AutoFocus } from './render/autofocus';
 import { Effects, type Lens } from './render/effects';
 import { PATH_TRACED_PARTS, type Fidelity } from './render/fidelity';
+import { framedShare, frameView, type FramingAim, type Share, type ViewPoint } from './render/framing';
 import { drawOverlay, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
@@ -736,7 +737,7 @@ export class Viewer {
     to.phi = Math.min(to.phi, this.controls.maxPolarAngle);
     let target = this.controls.target.clone();
     if(fit) {
-      const framing = this.framing(new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, to.phi, to.theta)));
+      const framing = this.framing(new THREE.Vector3().setFromSpherical(new THREE.Spherical(1, to.phi, to.theta)), 'middle');
       target = framing.target;
       to.radius = framing.radius;
     } /* else -- keep the distance and target */
@@ -760,11 +761,12 @@ export class Viewer {
     await this.whenSettled();
   }
 
-  /** places the camera at once (no tween), used for the first frame */
-  public jumpToView(view: View): void {
+  /** places the camera at once (no tween), framed aimed at `aim`: the first frame, at
+   *  the build's middle, and each of the sheet's sides, at its extent */
+  public jumpToView(view: View, aim: FramingAim = 'middle'): void {
     if(this.staging) return/*the stage's camera stands*/;
-    const to = new THREE.Spherical(1, THREE.MathUtils.degToRad(90 - clamp(view.elevation, 2, 89)), THREE.MathUtils.degToRad(view.azimuth));
-    const framing = this.framing(new THREE.Vector3().setFromSpherical(to));
+    const to = directionOf(view);
+    const framing = this.framing(new THREE.Vector3().setFromSpherical(to), aim);
     to.radius = framing.radius;
     this.controls.target.copy(framing.target);
     this.camera.position.copy(framing.target).add(new THREE.Vector3().setFromSpherical(to));
@@ -778,8 +780,9 @@ export class Viewer {
     return { azimuth: Math.round(normalizeDegrees(THREE.MathUtils.radToDeg(spherical.theta))), elevation: Math.round(90 - THREE.MathUtils.radToDeg(spherical.phi)) };
   }
 
-  /** the build from each view, framed, as a PNG data URL of the given size (CSS
-   *  pixels) once settled; the camera and the canvas's size are put back after */
+  /** the build from each view, framed to its extent, as a PNG data URL of the given
+   *  size (CSS pixels) once settled; the camera and the canvas's size are put back
+   *  after */
   public async snapshots(views: ReadonlyArray<View>, width: number, height: number): Promise<string[]> {
     this.tween?.resolve();
     this.tween = undefined;
@@ -788,7 +791,7 @@ export class Viewer {
     const images: string[] = [];
     try {
       for(const view of views) {
-        this.jumpToView(view);
+        this.jumpToView(view, 'extent');
         await this.whenSettled();
         images.push(this.canvas.toDataURL('image/png'));
       }
@@ -799,6 +802,13 @@ export class Viewer {
       this.resize()/*the canvas's own size*/;
     }
     return images;
+  }
+
+  /** the share of a picture `aspect` wide for each unit high that the build reaches
+   *  across, framed from each view as `snapshots` frames it */
+  public framedShares(views: ReadonlyArray<View>, aspect: number): ReadonlyArray<Share> {
+    const points = this.framedPoints();
+    return views.map(view => this.framing(new THREE.Vector3().setFromSpherical(directionOf(view)), 'extent', aspect, points).share);
   }
 
   /** resolves once every part has landed, any view change has finished and that
@@ -812,8 +822,7 @@ export class Viewer {
     if(this.staging) return/*the stage's camera stands*/;
     const box = this.buildBounds();
     if(box.isEmpty()) return/*nothing to frame*/;
-    const corners = [0, 1, 2, 3, 4, 5, 6, 7].map(i => new THREE.Vector3(
-      (i & 1) ? box.max.x : box.min.x, (i & 2) ? box.max.y : box.min.y, (i & 4) ? box.max.z : box.min.z).project(this.camera));
+    const corners = boxCorners(box).map(corner => corner.project(this.camera));
     const inView = corners.every(corner => (Math.abs(corner.x) <= 0.98) && (Math.abs(corner.y) <= 0.98) && (corner.z < 1));
     if(!inView) void this.setView(this.getView(), true);
   }
@@ -1341,32 +1350,41 @@ export class Viewer {
     return { plate: traced, free: () => studs.dispose() };
   }
 
-  /** the target and distance that frame the build (or the baseplate when empty)
-   *  seen from a direction: every corner of its bounds in view, the nearest edges at
-   *  the margin, so a wide, low build fills the frame as a tall one does */
-  private framing(direction: THREE.Vector3/*from the target toward the camera*/): { target: THREE.Vector3; radius: number; } {
-    const box = this.buildBounds();
-    if(box.isEmpty() && this.baseplate) box.setFromObject(this.baseplate);
-    if(box.isEmpty()) box.set(new THREE.Vector3(-4, 0, -4), new THREE.Vector3(4, 1, 4));
+  /** the target and distance that frame the build (or the baseplate when empty) seen
+   *  from a direction through a picture `aspect` wide for each unit high, aimed at
+   *  `aim` (SEE: render/framing.ts), the farthest out at the margin on the picture's
+   *  binding reach; and the share of the picture the build then reaches across.
+   *  Aimed at its extent, every corner of each part's box is in view, the camera
+   *  moved across and up so what reaches toward it fills the picture; aimed at its
+   *  middle, every corner of the build's bounds, the camera turning about its middle */
+  private framing(direction: THREE.Vector3/*from the target toward the camera*/, aim: FramingAim, aspect = this.camera.aspect, points = this.framedPoints()): { target: THREE.Vector3; radius: number; share: Share; } {
+    const bounds = new THREE.Box3().setFromPoints(points);
+    const middle = bounds.getCenter(new THREE.Vector3());
+    const held = (aim === 'extent') ? points : boxCorners(bounds);
 
     // the camera's axes looking back along the direction (straight down looks north)
-    const target = box.getCenter(new THREE.Vector3());
     const back = direction.clone().normalize();
     const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), back);
     if(right.lengthSq() < 1e-6) right.set(1, 0, 0);
     right.normalize();
     const up = new THREE.Vector3().crossVectors(back, right).normalize();
 
-    // back far enough that every corner of the bounds is in view
-    const tanVertical = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2) / FRAME_MARGIN;
-    const tanHorizontal = tanVertical * this.camera.aspect;
-    let distance = 0;
-    for(const x of [box.min.x, box.max.x]) for(const y of [box.min.y, box.max.y]) for(const z of [box.min.z, box.max.z]) {
-      const corner = new THREE.Vector3(x, y, z).sub(target);
-      const toward = corner.dot(back);
-      distance = Math.max(distance, toward + (Math.abs(corner.dot(right)) / tanHorizontal), toward + (Math.abs(corner.dot(up)) / tanVertical));
-    }
-    return { target, radius: Math.max(distance, this.controls.minDistance) };
+    const offset = new THREE.Vector3();
+    const seen = held.map((point): ViewPoint => { offset.subVectors(point, middle); return [offset.dot(right), offset.dot(up), offset.dot(back)]; });
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2);
+    const framed = frameView(seen, tanHalf, aspect, FRAME_MARGIN, aim);
+    const standing = { ...framed, distance: Math.max(framed.distance, this.controls.minDistance) };
+    const target = middle.addScaledVector(right, standing.across).addScaledVector(up, standing.up);
+    return { target, radius: standing.distance, share: framedShare(seen, standing, tanHalf, aspect) };
+  }
+
+  /** the points a framing holds: every corner of each part's box, else of the
+   *  baseplate's, else of a small box at the origin */
+  private framedPoints(): THREE.Vector3[] {
+    const parts = this.partBoxes().filter(box => !box.isEmpty());
+    const plate = ((parts.length < 1) && this.baseplate) ? new THREE.Box3().setFromObject(this.baseplate) : undefined;
+    const boxes = (parts.length > 0) ? parts : (plate && !plate.isEmpty()) ? [plate] : [new THREE.Box3(new THREE.Vector3(-4, 0, -4), new THREE.Vector3(4, 1, 4))];
+    return boxes.flatMap(boxCorners);
   }
 
 
@@ -1729,13 +1747,18 @@ const sliceVertices = (geometry: THREE.BufferGeometry, start: number, count: num
 };
 
 // == Util ========================================================================
+// -- Scene -----------------------------------------------------------------------
 /** the pixels drawn per CSS pixel on this screen, at most 2 */
 const screenPixelRatio = (): number => Math.min(window.devicePixelRatio || 1, 2);
 /** a stage's point in the scene */
 const scenePoint = (point: Point): THREE.Vector3 => new THREE.Vector3(...ldrawPoint(point)).applyMatrix4(LDRAW_TO_SCENE);
-const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+/** a box's eight corners */
+const boxCorners = ({ min, max }: THREE.Box3): THREE.Vector3[] => [0, 1, 2, 3, 4, 5, 6, 7].map(corner => new THREE.Vector3((corner & 1) ? max.x : min.x, (corner & 2) ? max.y : min.y, (corner & 4) ? max.z : min.z));
+
+// -- Camera ----------------------------------------------------------------------
+/** the direction a view looks back along, from what it looks at toward the camera */
+const directionOf = (view: View): THREE.Spherical => new THREE.Spherical(1, THREE.MathUtils.degToRad(90 - clamp(view.elevation, 2, 89)), THREE.MathUtils.degToRad(view.azimuth));
 const isStanding = (walk: Walk): boolean => (walk.forward === 0) && (walk.right === 0) && (walk.up === 0) && (walk.turn === 0);
-const lerp = (a: number, b: number, t: number): number => a + ((b - a) * t);
 
 /** a camera's up turned clockwise about where it looks by `roll` degrees, as seen from
  *  behind it: the world's up when it does not roll, or looks straight up or down */
@@ -1749,6 +1772,10 @@ const rolledUp = (position: THREE.Vector3, target: THREE.Vector3, roll: number):
   const angle = roll * (Math.PI / 180);
   return level.multiplyScalar(Math.cos(angle)).addScaledVector(right, Math.sin(angle));
 };
+
+// -- Numbers ---------------------------------------------------------------------
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+const lerp = (a: number, b: number, t: number): number => a + ((b - a) * t);
 const easeOutCubic = (t: number): number => 1 - Math.pow(1 - t, 3);
 const easeInOutCubic = (t: number): number => (t < 0.5) ? (4 * t * t * t) : (1 - (Math.pow(-2 * t + 2, 3) / 2));
 const normalizeDegrees = (degrees: number): number => ((degrees % 360) + 360) % 360;

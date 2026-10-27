@@ -200,8 +200,10 @@ export const strideOf = (shape: GaitShape, move: Pick<Move, 'from' | 'to'>): Str
 };
 
 // == Types =======================================================================
-/** a surface an actor can stand on: its height (plates), studded or smooth */
-export type Surface = Readonly<{ height: number; studded: boolean; }>;
+/** a surface an actor can stand on: its height (plates), studded or smooth, and the
+ *  part whose top it is by its kind and color (`tile-2x4 orange`), none for the
+ *  baseplate or where the studio names none */
+export type Surface = Readonly<{ height: number; studded: boolean; part?: string; }>;
 /** the surfaces in a cell of the stage (whole studs), lowest first */
 export type SurfaceAt = (x: number, z: number) => ReadonlyArray<Surface>;
 /** how an actor stands: its middle (studs), heading (degrees clockwise from north),
@@ -221,7 +223,7 @@ export const gaitMoveOf = (move: Pick<Move, 'kind' | 'from' | 'to'>): GaitMove =
 
 /** one move of a walk or of a clicked actor: a step forward, a turn on one foot or a
  *  hop, from a stance to another over a span (seconds) */
-export type Move = Readonly<{ kind: 'step' | 'turn' | 'hop' | 'shift'; from: Stance; to: Stance; start: number; end: number; foot: Foot/*the step's leading foot, the turn's pivot, the foot a shift puts the weight on*/; lift?: number/*plates a hop's arc rises where its gait's would not clear the set (SEE: hopLift)*/; }>;
+export type Move = Readonly<{ kind: 'step' | 'turn' | 'hop' | 'shift'; from: Stance; to: Stance; start: number; end: number; foot: Foot/*the step's leading foot, the turn's pivot, the foot a shift puts the weight on*/; lift?: number/*plates a hop's arc rises where its gait's would not clear the set (SEE: hopLift)*/; leap?: true/*a hop leaping a part in its way, on its own level (SEE: layWalk)*/; }>;
 
 // == Surfaces ====================================================================
 /** the baseplate alone: studded at 0 everywhere (a film made before the stage answers) */
@@ -344,9 +346,9 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
   const moves: Array<Omit<Move, 'start' | 'end'> & { weight: number; }> = [];
   let current = from.studded ? { ...from, ...clickedNear(from.x, from.z, from.yaw) } : from;
   let lead = walk.lead;
-  const push = (kind: Move['kind'], to: Stance, foot: Foot, weight: number, lift?: number) => {
+  const push = (kind: Move['kind'], to: Stance, foot: Foot, weight: number, lift?: number, leap?: true) => {
     if(moves.length >= MAX_MOVES) return false;
-    moves.push({ kind: (kind === 'hop') ? 'hop' : (figure ? kind : 'hop'), from: current, to, foot, weight, ...((lift !== undefined) ? { lift } : {}) });
+    moves.push({ kind: (kind === 'hop') ? 'hop' : (figure ? kind : 'hop'), from: current, to, foot, weight, ...((lift !== undefined) ? { lift } : {}), ...(leap ? { leap } : {}) });
     current = to;
     return true;
   };
@@ -413,7 +415,7 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
     if((way(past + 1) !== 0) || (Math.abs(to.level - current.level) >= ON_SURFACE)) return undefined/*no footing past it*/;
     const foot = lead;
     lead = (lead === 'left') ? 'right' : 'left';
-    return push('hop', to, foot, Math.max(weigh(timing.crouch + timing.air + timing.land), past + 1), hopLift(surfaceAt, current, to, foot, figure, walk));
+    return push('hop', to, foot, Math.max(weigh(timing.crouch + timing.air + timing.land), past + 1), hopLift(surfaceAt, current, to, foot, figure, walk), true);
   };
 
   for(const target of walk.points.slice(1)) {
@@ -444,6 +446,17 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
     }
   }
   return timed(moves, walk.start, walk.end);
+};
+
+/** a walk's leaps over the parts in its way, as laid (SEE: layWalk): when each sets off
+ *  (seconds) and the steps it takes between each and the next, each move carrying it on
+ *  (a step, a stride, a hop onto a level) and never a turn or a shift of weight; none
+ *  where it leaps nothing */
+export const leapsOf = (moves: ReadonlyArray<Move>): Readonly<{ times: ReadonlyArray<number>; stepsBetween: ReadonlyArray<number>; }> | undefined => {
+  const leaps = moves.flatMap((move, index) => move.leap ? [index] : []);
+  if(leaps.length < 1) return undefined;
+  const carries = (move: Move) => (move.kind === 'step') || (move.kind === 'hop');
+  return { times: leaps.map(index => moves[index].start), stepsBetween: leaps.slice(1).map((index, at) => moves.slice(leaps[at] + 1, index).filter(carries).length) };
 };
 
 /** the stud a stance's foot stands on, its middle (studs) */
@@ -856,6 +869,9 @@ export class Clicked {
   private moved: Readonly<{ x: number; z: number; time: number; pace: number; }> | undefined;
 
   public constructor(private readonly walks: ReadonlyArray<Walk>, private readonly climb: number | undefined, private readonly figure: boolean, private readonly crowding: ReadonlyArray<readonly [number, number]> = [], private readonly drawing?: Drawing) {}
+
+  /** a walk's moves, once laid */
+  public movesOf(walk: Walk): ReadonlyArray<Move> | undefined { return this.laid.get(walk)?.moves; }
 
   /** the move of a walk under way at `time` and how far through it (0 to 1: where its
    *  drawing stands, drawn), once the walk has been laid; none between walks or before

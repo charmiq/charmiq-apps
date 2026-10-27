@@ -388,9 +388,13 @@ export const describePicture = (picture: Picture): string =>
 /** whether a collision names a picture (SEE: describePicture), rather than a part */
 export const isPictureName = (named: string): boolean => named.startsWith('picture ');
 
+/** a part by its kind and color, e.g. `tile-2x4 orange`: what a placement is, wherever
+ *  it stands */
+export const describePart = (placement: Pick<Placement, 'part' | 'color'>): string => `${placement.part} ${placement.color}`;
+
 /** a placement in one line, e.g. `brick-2x4 red at x 3 z 4 level 6 rotation 90`, or
  *  `hinge-1x2 red at x 0 z 4 level 3 angle 60 carrying lid` */
 export const describePlacement = (placement: Placement): string =>
-  `${placement.part} ${placement.color} at x ${placement.x} z ${placement.z} level ${placement.level}` + ((placement.rotation !== 0) ? ` rotation ${placement.rotation}` : '') +
+  `${describePart(placement)} at x ${placement.x} z ${placement.z} level ${placement.level}` + ((placement.rotation !== 0) ? ` rotation ${placement.rotation}` : '') +
   (placement.angle ? ` angle ${placement.angle}` : '') +
   ((mountsOf(placement).length > 0) ? ` carrying ${mountsOf(placement).map(({ slot, copy }) => (slot === 'top') ? copy.component : `${copy.component} on its ${slot} face`).join(' and ')}` : '');

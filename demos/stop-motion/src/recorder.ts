@@ -947,6 +947,8 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     waiter:           { speed: 3,   stride: 1.4, swing: 28, energy: 0.4, nervous: 0.5, waits: true },
   };
   const DEFAULT_MIX = ['commuter', 'window-shopper', 'tourist', 'phone', 'stroller', 'couple'];
+  // a crowd's wardrobe where its own names none; no skins, so each walker's head and
+  // hands keep the figure's own yellow
   const WARDROBE = {
     colors: ['red', 'blue', 'white', 'black', 'green', 'yellow', 'azure', 'tan', 'orange', 'dark-gray', 'pink', 'medium-blue'],
     legColors: ['blue', 'black', 'dark-gray', 'tan', 'brown', 'light-gray', 'white'],
@@ -1049,7 +1051,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
       const partnered = personality.pair && (index > 0) && walkers[index - 1].personality.pair && (walkers[index - 1].partner === undefined) && ((index % 2) === 1);
       const hat = (next() < 0.6) ? pick(wardrobe.hats) : undefined;
       const source = {
-        part: 'figure', color: pick(wardrobe.colors), legColor: pick(wardrobe.legColors), face: pick(wardrobe.faces),
+        part: 'figure', color: pick(wardrobe.colors), legColor: pick(wardrobe.legColors), ...((wardrobe.skins !== undefined) ? { skin: pick(wardrobe.skins) } : {}), face: pick(wardrobe.faces),
         ...(hat ? { hat: { part: hat, color: pick(wardrobe.hairColors) } } : {}),
         ...(personality.phone ? { rightHand: { part: 'radio', color: 'black' } } : {}),
       };

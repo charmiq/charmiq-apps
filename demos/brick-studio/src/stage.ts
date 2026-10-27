@@ -279,12 +279,12 @@ export const lightOf = (input: unknown): StageLight => {
 // -- Cast ------------------------------------------------------------------------
 /** the actors a stage call casts from a set: each named once, a component of the set
  *  (`{ name, component }`), a catalog part dressed as a placement is (`{ name, part,
- *  color, legColor?, face?, hat?, rightHand?, leftHand? }`), or a piece standing in the
- *  set by where it stands (`{ name, placed: { x, z, level } }`, as listPlacedParts says:
- *  a part of its own as it is dressed there, a copy as its component; with `inside`,
- *  the part of that copy standing there in its component, as listComponents lists the
- *  component's parts). A part is cast once, whole or within its copy; every actor
- *  refused names why */
+ *  color, legColor?, skin?, face?, hat?, rightHand?, leftHand? }`), or a piece
+ *  standing in the set by where it stands (`{ name, placed: { x, z, level } }`, as
+ *  listPlacedParts says: a part of its own as it is dressed there, a copy as its
+ *  component; with `inside`, the part of that copy standing there in its component,
+ *  as listComponents lists the component's parts). A part is cast once, whole or
+ *  within its copy; every actor refused names why */
 export const castOf = (sets: ReadonlyArray<Model>, input: unknown): Readonly<{ cast: Cast; refused: ReadonlyArray<Refusal>; }> => {
   if(!Array.isArray(input)) throw new Error('actors lists the actors: each { name, component }, { name, part, color } or { name, placed }');
   if(input.length > MAX_ACTORS) throw new Error(`A stage casts at most ${MAX_ACTORS} actors.`);
@@ -336,7 +336,7 @@ const placedSet = (sets: ReadonlyArray<Model>, placed: unknown): number | string
 
 /** the actor an input describes, or why it is not one */
 const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
-  const { component, part, color, legColor, face, hat, rightHand, leftHand } = item;
+  const { component, part, color, face } = item;
   if(component !== undefined) {
     if(part !== undefined) return 'names a component or a part, not both';
     if(face !== undefined) return 'a component wears no face: give the figures in it their faces, or cast a figure';
@@ -349,7 +349,7 @@ const actorOf = (set: Model, item: Record<string, unknown>): Actor | string => {
   if(!catalogPart) return `unknown part '${String(part)}' (listParts names the catalog)`;
   if(catalogPart.hinge || catalogPart.faces) return carriesComponents(catalogPart);
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
-  const dressing = toPosing(catalogPart, undefined/*each frame poses it*/, legColor, face, { hat, rightHand, leftHand });
+  const dressing = toPosing(catalogPart, undefined/*each frame poses it*/, item);
   if(typeof dressing === 'string') return dressing;
   return partActor(catalogPart, { part: catalogPart.key, color, x: 0, z: 0, level: 0, rotation: 0, ...dressing });
 };

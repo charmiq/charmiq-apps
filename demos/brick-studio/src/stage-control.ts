@@ -7,7 +7,7 @@ import type { Build } from './build';
 import type { PartLine } from './grid';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, MAX_THUMBNAIL, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Shot, type Size } from './stage';
+import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Shot, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -287,19 +287,18 @@ export class StageControl {
   }
 
   /** shows frames of the reel on the sheet, each captioned and drawn through `view`
-   *  (the screen's own camera when none) at the film's shape within its panel;
-   *  answers how many once the sheet shows them, none when the sheet was closed or
-   *  taken first */
+   *  (the screen's own camera when none) at the film's shape, as large as the sheet
+   *  lays them; answers how many once the sheet shows them, none when the sheet was
+   *  closed or taken first */
   public async storyboard(reel: unknown, frames: unknown, view: unknown): Promise<Readonly<{ shown: number; }>> {
     const { loaded } = this.reelNamed(reel);
     const boards = boardsOf(frames);
     const named = viewOf(view);
     const pictures = boards.map(board => this.pictureOf(loaded, this.frameOf(loaded, board.frame), named))/*each frame and the view, known first*/;
-    const columns = (boards.length <= 4) ? 2 : (boards.length <= 9) ? 3 : 4;
     const panels = boards.map(board => ({ caption: board.caption, alt: `The film at ${board.caption}` }));
-    const shown = await this.sheet.show({ title: STORYBOARD, back: BACK_TO_FILM, columns, panels }, async (width, height) => {
-      const { header } = loaded;
-      const across = Math.min(MAX_THUMBNAIL, width, Math.floor(height * (header.width / header.height)));
+    const { header } = loaded;
+    const shown = await this.sheet.show({ title: STORYBOARD, back: BACK_TO_FILM, shape: { aspect: header.width / header.height }, panels }, async (width, height) => {
+      const across = Math.min(width, Math.floor(height * (header.width / header.height)));
       const size = { width: Math.max(1, across), height: Math.max(1, Math.round(across * (header.height / header.width))) };
       const images: ImageBitmap[] = [];
       try {

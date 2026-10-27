@@ -4,7 +4,7 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { PoseBottoms } from '../../brick-shared/rise';
 import { bodiesThrough, clearanceOf, groundedOn, type Avoided, type Probe } from './clearance';
 import { planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type Paint, type Rest, type StageFacts } from './film';
-import { groundsOf, surfacesIn, surfacesOf, type CellArea, type GroundProbe, type SurfaceProbe } from './ground';
+import { groundsOf, surfacesIn, surfacesOf, surfacesProbed, type CellArea, type ExtentProbe, type GroundProbe, type SurfaceProbe } from './ground';
 import type { Size } from './measure';
 import type { Recorded } from './recorder';
 import type { PartFinding } from './review';
@@ -56,7 +56,7 @@ type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; f
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
-  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; }>>;
+  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; tops?: ReadonlyArray<ReadonlyArray<string | null>>; extent?: CellArea; }>>;
   stage$(): Observable<ScreenState>;
   stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
@@ -93,8 +93,8 @@ export type Board = Readonly<{ frame: number; caption: string; }>;
 
 /** a film staged: its scene and film, the screens it is on (the main first), each
  *  screen's reel, the main build's changes counted as it staged (SEE: buildEdits) and
- *  the probe of its surfaces it staged with */
-type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; edits: number; surfaceProbe: SurfaceProbe; }>;
+ *  the probes of its surfaces and its sets' extents it staged with */
+type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; edits: number; surfaceProbe: SurfaceProbe; extentProbe: ExtentProbe; }>;
 
 // == Class =======================================================================
 export class Studios {
@@ -233,10 +233,8 @@ export class Studios {
       const standing = sets ? { sets } : {};
       const probe: Probe = (set, points, segments) => main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), points, segments });
       const groundProbe: GroundProbe = async (set, grounds) => (await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), grounds })).grounds ?? [];
-      const surfaceProbe: SurfaceProbe = async (set, grounds) => {
-        const probed = await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), grounds });
-        return (probed.grounds ?? []).map((surfaces, index) => surfaces.map((height, at) => ({ height, studded: probed.studded?.[index]?.[at] ?? false })));
-      };
+      const surfaceProbe: SurfaceProbe = async (set, grounds) => surfacesProbed(await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), grounds }));
+      const extentProbe: ExtentProbe = async set => (await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}) })).extent;
       const reel = { fps: scene.fps, length: sceneTimesOf(scene).length/*its frames at its speed*/, width: scene.width, height: scene.height };
       // a film staged again leaves each studio's picture standing until its frame shows,
       // the actors never gone between (a first stage shows its set until then)
@@ -278,7 +276,7 @@ export class Studios {
         await Promise.all(screens.map((screen, index) => screen.loadReel({ reel: reels[index], from, frames: page })));
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
-      this.staged = { scene, film, screens, reels: reels as number[], edits, surfaceProbe };
+      this.staged = { scene, film, screens, reels: reels as number[], edits, surfaceProbe, extentProbe };
       this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {}, parts, avoided });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
@@ -338,6 +336,15 @@ export class Studios {
     const staged = this.ready();
     if(!staged) throw new Error(notStaged(this.state.value));
     return await surfacesIn(staged.surfaceProbe, set, area);
+  }
+
+  /** the area a set's parts stand over, asked of the main screen as staging asks (SEE:
+   *  Brick Studio's probe extent): none for a set without parts; refuses while the
+   *  film is not staged */
+  public async extentOf(set: string | undefined): Promise<CellArea | undefined> {
+    const staged = this.ready();
+    if(!staged) throw new Error(notStaged(this.state.value));
+    return await staged.extentProbe(set);
   }
 
   /** resolves once the main screen reports a frame drawn; refuses after SHOWN_MILLIS,

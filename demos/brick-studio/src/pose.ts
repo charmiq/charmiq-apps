@@ -1,4 +1,4 @@
-import type { Accessory, CatalogPart, FigureFace, Grip, Slot } from './catalog';
+import type { Accessory, CatalogPart, FigureFace, FigurePieces, Grip, Slot } from './catalog';
 
 // a posable part's pose (a figure's): each limb at an angle in whole POSE_STEPs. A
 // swing (an arm, a leg) raises the limb forward by its angle, a turn (the head) turns
@@ -79,11 +79,15 @@ export const limbLines = (part: CatalogPart, limb: Limb, angle: number, face?: F
   });
 };
 
-/** every piece of a part at a pose, in its catalog order, wearing `face`, its legs
- *  pieces in `legsColor` when given, then the accessories it wears, in slot order.
+/** a figure's colors as its pieces are written: each piece group's color code, the
+ *  pieces of a group left out in their own (SEE: catalog.ts FIGURE_COLORS) */
+export type FigureColorCodes = Readonly<Partial<Record<FigurePieces, number>>>;
+
+/** every piece of a part at a pose, in its catalog order, wearing `face`, each piece
+ *  group `colors` names in its color, then the accessories it wears, in slot order.
  *  Each limb turns first, then each hand on its forearm, then the upper body (SEE:
  *  upperTurn), what is held turning with what holds it */
-export const posedPieces = (part: CatalogPart, pose: Pose | undefined, legsColor?: number, worn?: Worn, face?: FigureFace): PieceLine[] => {
+export const posedPieces = (part: CatalogPart, pose: Pose | undefined, colors?: FigureColorCodes, worn?: Worn, face?: FigureFace): PieceLine[] => {
   const lines = pieceLines(part, face);
   for(const limb of LIMBS) {
     const angle = pose?.[limb] ?? 0;
@@ -98,7 +102,7 @@ export const posedPieces = (part: CatalogPart, pose: Pose | undefined, legsColor
   }
   const upper = upperTurn(part, pose);
   if(upper) for(const index of part.waist!.upper) lines[index] = turned(lines[index], upper);
-  if(legsColor !== undefined) for(const index of part.legs ?? []) lines[index] = { ...lines[index], colorCode: legsColor };
+  for(const [pieces, colorCode] of Object.entries(colors ?? {}) as Array<[FigurePieces, number]>) for(const index of part[pieces] ?? []) lines[index] = { ...lines[index], colorCode };
   const gear = SLOTS_IN_ORDER.flatMap(slot => worn?.[slot] ? [accessoryLine(part, slot, lines[part.slots![slot].piece], worn[slot]!.accessory, worn[slot]!.grip, worn[slot]!.colorCode)] : []);
   // a print's back turned to the front on the head alone, after what the head wears
   // has taken its place from it

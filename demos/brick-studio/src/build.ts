@@ -1,7 +1,8 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { isImageName } from '../../brick-shared/shipped';
 import { drawnSky, skyFrom, type Sky } from '../../brick-shared/sky';
-import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_FACES, type CatalogPart, type Slot } from './catalog';
+import { listed } from '../../brick-shared/words';
+import { getFigureFace, ACCESSORIES, DEFAULT_FIGURE_FACE, FIGURE_COLORS, FIGURE_FACES, type CatalogPart, type FigureColorField, type Slot } from './catalog';
 import { checkModel, describeCopy, describePicture, describePlaced, describePlacement, filledBy, isPictureName, pictureTop, occupiedCells, pinsOf, sameTarget, targetOf, MAX_LISTED, type CheckResult, type PinTarget } from './check';
 import type { ContentBridge } from './content-bridge';
 import { cellKey, footprintOf, footprintSize, frameKey, getColor, getPart, getShape, mountsOf, restsIn, toRotation, FACES, MAX_COORDINATE, type Copy, type FaceCarry, type Footprint, type Gear, type Mount, type Placement } from './grid';
@@ -9,7 +10,7 @@ import { addSetEdits, appendLines, applyChanges, carriesComponents, clearEdits, 
 import { maxOf, minOf } from './numbers';
 import { isSize, pictureLine, FITS, MAX_PICTURE, MIN_PICTURE, type Picture } from './picture';
 import { pinLine } from './pin';
-import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, type Limb, type Pose } from './pose';
+import { normalizePose, pieceLines, toPoseAngle, LIMBS, POSE_STEP, SLOTS_IN_ORDER, type Limb, type Pose } from './pose';
 
 // owns the current build: the `model` app-content's text, as last seen. Every
 // edit is validated against the app-content's text it is measured on, and the
@@ -576,6 +577,7 @@ export class Build {
 }
 
 // == Validation ==================================================================
+// -- Texts -----------------------------------------------------------------------
 /** a build's text as it is given back (SEE: Build#getText): a build with components
  *  or more than one set, or one no text may be written from, as written; any other
  *  flat */
@@ -599,6 +601,7 @@ const refuseChanged = (text: string, expected: string | undefined): void => {
   if((expected !== undefined) && (readText(givenText(text, parseModel(text))) !== expected)) throw new BuildError('The build changed since it was read, so nothing was changed.');
 };
 
+// -- Sets ------------------------------------------------------------------------
 /** the set of an app-content's text a call names (SEE: pickSet), as a model, and its
  *  name */
 const setModel = (text: string, set: unknown): Readonly<{ model: Model; name: string; }> => {
@@ -657,9 +660,7 @@ const refuseTaken = (names: ReadonlyArray<string>, name: string, own: string | u
   if(names.some(each => sameSetName(each, name) && !((own !== undefined) && sameSetName(each, own)))) throw new BuildError(`This build has a set named '${name}' already.`);
 };
 
-/** names in a sentence: "A", "A and B", "A, B and C" */
-const listed = (names: ReadonlyArray<string>): string => (names.length < 2) ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-
+// -- Edit Results ----------------------------------------------------------------
 /** how many copies of a component every set of a text places */
 const copiesIn = (text: string, component: string): number => parseSets(text).reduce((total, model) => total + copiesOf(model, component), 0);
 
@@ -684,6 +685,7 @@ const tooManyParts = (sets: number, model: Model): string => (sets > 1)
   ? `A set holds at most ${MAX_PARTS} parts: this would make ${model.set ?? MAIN_SET} ${partCount(model)}.`
   : `A build holds at most ${MAX_PARTS} parts: this would make it ${partCount(model)}.`;
 
+// -- Parts and Copies ------------------------------------------------------------
 /** the parts a component of that name holds: a name free for one, and parts that
  *  repeat none; refuses the whole component otherwise (whether they collide is checked
  *  on the build, with what they carry: SEE: defineChecked) */
@@ -723,13 +725,14 @@ const toCopy = (item: unknown): Copy | string => {
 
 /** the Placement an input describes, or why it is not one */
 const toPlacement = (item: unknown): Placement | string => {
-  const { part, color, x, z, level, rotation, pose, legColor, face, hat, rightHand, leftHand, angle, carry, sides } = (item ?? {}) as Record<string, unknown>;
+  const fields = (item ?? {}) as Record<string, unknown>;
+  const { part, color, x, z, level, rotation, pose, angle, carry, sides } = fields;
   const catalogPart = (typeof part === 'string') ? getPart(part) : undefined;
   if(!catalogPart) return `unknown part '${String(part)}' (listParts names the catalog)`;
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
   const where = toPosition(x, z, level, rotation);
   if(typeof where === 'string') return where;
-  const posing = toPosing(catalogPart, pose, legColor, face, { hat, rightHand, leftHand });
+  const posing = toPosing(catalogPart, pose, fields);
   if(typeof posing === 'string') return posing;
   const hinging = toHinging(catalogPart, angle, carry);
   if(typeof hinging === 'string') return hinging;
@@ -770,6 +773,7 @@ const toHinging = (part: CatalogPart, angle: unknown, carry: unknown): Pick<Plac
   return { ...((turned !== 0) ? { angle: turned } : {}), ...(copy ? { carry: copy } : {}) };
 };
 
+// .. Figures .....................................................................
 /** what a slot wears as an input gives it (`{ part, color, grip? }`: an accessory its
  *  slot takes, a color, and one of its grips), or why it is none */
 export const toGear = (slot: Slot, input: unknown): Gear | string => {
@@ -784,21 +788,25 @@ export const toGear = (slot: Slot, input: unknown): Gear | string => {
   return { part: accessory.key, color, ...((held !== undefined) ? { grip: grip as string } : {}) };
 };
 
-/** a posable part's pose, legs color, face and what it wears an input describes, or
- *  why they are not: each limb's angle a whole number of POSE_STEPs (wrapped, SEE:
- *  toPoseAngle), the legs a catalog color, the face one of the figure faces, a hat
- *  headgear and a hand's item one held (by a grip it has, when one is named), each in
- *  a catalog color; a limb at 0, legs in their own color and the default face are left
- *  out */
-export const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, face: unknown, worn: Readonly<Record<Slot, unknown>>): Pick<Placement, 'pose' | 'legColor' | 'face' | 'hat' | 'rightHand' | 'leftHand'> | string => {
-  const wearing = (Object.keys(worn) as Slot[]).filter(slot => worn[slot] !== undefined);
-  if((pose === undefined) && (legColor === undefined) && (face === undefined) && (wearing.length < 1)) return {};
-  if(!part.limbs) return `${part.key} takes no pose, legColor, face, hat or hand item (a figure does)`;
-  const faced = toFace(part, face);
+/** the fields of an input that dress a posable part: its colors beside its own (SEE:
+ *  catalog.ts FIGURE_COLORS), its face and what it wears */
+export type Dressing = Readonly<Partial<Record<FigureColorField | 'face' | Slot, unknown>>>;
+
+/** a posable part's pose and dressing an input describes, or why they are not: each
+ *  limb's angle a whole number of POSE_STEPs (wrapped, SEE: toPoseAngle), each of its
+ *  colors a catalog color, the face one of the figure faces, a hat headgear and a
+ *  hand's item one held (by a grip it has, when one is named), each in a catalog
+ *  color; a limb at 0, a color its pieces' own and the default face are left out */
+export const toPosing = (part: CatalogPart, pose: unknown, dressing: Dressing): Pick<Placement, 'pose' | FigureColorField | 'face' | Slot> | string => {
+  const wearing = SLOTS_IN_ORDER.filter(slot => dressing[slot] !== undefined);
+  const coloring = FIGURE_COLORS.filter(({ field }) => dressing[field] !== undefined);
+  if((pose === undefined) && (coloring.length < 1) && (dressing.face === undefined) && (wearing.length < 1)) return {};
+  if(!part.limbs) return `${part.key} takes no pose, ${FIGURE_COLORS.map(({ field }) => field).join(', ')}, face, hat or hand item (a figure does)`;
+  const faced = toFace(part, dressing.face);
   if(typeof faced === 'string') return faced;
   const gear: Partial<Record<Slot, Gear>> = {};
   for(const slot of wearing) {
-    const read = toGear(slot, worn[slot]);
+    const read = toGear(slot, dressing[slot]);
     if(typeof read === 'string') return read;
     gear[slot] = read;
   }
@@ -812,11 +820,14 @@ export const toPosing = (part: CatalogPart, pose: unknown, legColor: unknown, fa
       angles[limb as Limb] = angle;
     }
   }
-  const legsColor = (legColor === undefined) ? undefined : (typeof legColor === 'string') ? getColor(legColor) : undefined;
-  if((legColor !== undefined) && !legsColor) return `unknown legColor '${String(legColor)}' (listParts names the colors)`;
-  const ownLegs = pieceLines(part)[(part.legs ?? [])[0]]?.colorCode;
+  const colors: Partial<Record<FigureColorField, string>> = {};
+  for(const { field, pieces } of coloring) {
+    const value = dressing[field], color = (typeof value === 'string') ? getColor(value) : undefined;
+    if(!color) return `unknown ${field} '${String(value)}' (listParts names the colors)`;
+    if(color.code !== pieceLines(part)[(part[pieces] ?? [])[0]]?.colorCode) colors[field] = color.key;
+  }
   const normalized = normalizePose(angles as Pose);
-  return { ...(normalized ? { pose: normalized } : {}), ...((legsColor && (legsColor.code !== ownLegs)) ? { legColor: legsColor.key } : {}), ...faced, ...gear };
+  return { ...(normalized ? { pose: normalized } : {}), ...colors, ...faced, ...gear };
 };
 
 /** the face an input names for a part, or why it is not one: one of the figure
@@ -828,6 +839,7 @@ export const toFace = (part: CatalogPart, face: unknown): Pick<Placement, 'face'
   return (face === DEFAULT_FIGURE_FACE) ? {} : { face: face as string };
 };
 
+// .. Pictures and Positions ......................................................
 /** the picture an input describes, or why it is not one: an image from the Drive,
  *  placed as a part is, its size in studs (its height the image's own shape when it
  *  names none), upright or flat, its image covering it unless `fit` says otherwise */

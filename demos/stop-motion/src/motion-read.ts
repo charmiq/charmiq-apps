@@ -7,7 +7,9 @@ import type { Key, RecordedActor } from './recorder';
 // lines that do. A channel read before its first key holds that key's value back from
 // its later time, which a reader of the scene never sees: a figure whose only pitch
 // key is at its landing lies at that pitch all through its run-up. Such a key is named
-// as holding back, with its time
+// as holding back, with its time. A height is read from the baseplate; following the
+// ground, the level the ground stands it on is read beside it, from which its keys and
+// paths count (a high jumper's over the bar's top while its footprint overlaps the bar)
 // ********************************************************************************
 // == Constants ===================================================================
 /** the channels read: an actor's place and turn */
@@ -25,9 +27,10 @@ export type MotionChannel = typeof MOTION_CHANNELS[number];
 export type Driver = Readonly<{ by: 'walk' | 'path' | 'keys' | 'none'; lines: ReadonlyArray<number>; heldBack?: number; }>;
 /** a driver over a stretch of the span read (seconds) */
 export type DriverSpan = Driver & Readonly<{ from: number; to: number; }>;
-/** the actor at a sample: its place (studs; height in plates) and turn (degrees); none
- *  of it while hidden */
-export type MotionSample = Readonly<{ time: number; frame: number; shown: boolean; x?: number; z?: number; height?: number; yaw?: number; pitch?: number; roll?: number; }>;
+/** the actor at a sample: its place (studs; height in plates over the baseplate),
+ *  following the ground the level it stands it on (`ground`, plates over the baseplate;
+ *  SEE: film.ts FilmFrame `grounds`), and its turn (degrees); none of it while hidden */
+export type MotionSample = Readonly<{ time: number; frame: number; shown: boolean; x?: number; z?: number; height?: number; ground?: number; yaw?: number; pitch?: number; roll?: number; }>;
 export type MotionRead = Readonly<{ actor: string; samples: ReadonlyArray<MotionSample>; drivers: Readonly<Record<MotionChannel, ReadonlyArray<DriverSpan>>>; }>;
 
 // == Read ========================================================================
@@ -38,9 +41,9 @@ export const motionOf = (film: Film, actor: RecordedActor, from: number, to: num
   const count = Math.max(1, Math.min(MAX_SAMPLES, Math.round(samples)));
   const picked = (count === 1) ? [first] : Array.from({ length: count }, (_, index) => Math.round(first + (((last - first) * index) / (count - 1))));
   const sampleAt = (index: number): MotionSample => {
-    const frame = film.frames[index], shot = frame.actors.find(each => each.name === actor.name);
+    const frame = film.frames[index], shot = frame.actors.find(each => each.name === actor.name), ground = frame.grounds?.[actor.name];
     return shot
-      ? { time: frame.time, frame: index, shown: true, x: shot.position.x, z: shot.position.z, height: shot.position.height, yaw: shot.turn.yaw, pitch: shot.turn.pitch, roll: shot.turn.roll }
+      ? { time: frame.time, frame: index, shown: true, x: shot.position.x, z: shot.position.z, height: shot.position.height, ...((ground !== undefined) ? { ground } : {}), yaw: shot.turn.yaw, pitch: shot.turn.pitch, roll: shot.turn.roll }
       : { time: frame.time, frame: index, shown: false };
   };
   // each channel's drivers, a stretch for each run of frames one driver drives

@@ -32,6 +32,14 @@ const BEHIND = 0.5;
 /** a time past a frame's that rounding alone puts there (seconds) */
 const TIME_EPSILON = 1e-9;
 
+/** the window (seconds) a sound's loudness is heard over, where it sounds and where it
+ *  pauses */
+const HEARD_WINDOW = 0.02;
+/** how far under its loudest window (dB) a window of a sound is a pause: a voice's
+ *  quietest sounds (a whisper, a breathed consonant) stand within it, a recording's
+ *  hum under it */
+const QUIET_UNDER = 40;
+
 // == Types =======================================================================
 /** values at each frame from `first` on (the frame index), a frame apart */
 type FrameCurve = Readonly<{ first: number; values: Float32Array; }>;
@@ -215,6 +223,49 @@ export const peaksOf = (buffer: AudioBuffer, count: number): Float32Array => {
   return peaks;
 };
 
+// == Hearing =====================================================================
+/** where a sound sounds: its length (seconds), the spans it sounds over (seconds,
+ *  first to last) and how many spans it held before they were capped */
+export type Heard = Readonly<{ seconds: number; spans: ReadonlyArray<Readonly<{ from: number; to: number; }>>; found: number; }>;
+// a sound as its samples: what is heard of a decoded sound
+type Sampled = Pick<AudioBuffer, 'length' | 'numberOfChannels' | 'sampleRate' | 'getChannelData'>;
+
+/** where a sound sounds, judged against its own loudness: in windows of
+ *  HEARD_WINDOW seconds, one sounding within QUIET_UNDER dB of its loudest (its
+ *  power across its channels); the windows sounding, parted by a pause of at least
+ *  `minPause` seconds, are its spans. Holding more than `most`, it is parted at its
+ *  longest pauses alone (the earlier of two as long) */
+export const soundSpans = (sound: Sampled, minPause: number, most: number): Heard => {
+  const size = Math.max(1, Math.round(sound.sampleRate * HEARD_WINDOW))/*samples a window*/;
+  const count = Math.ceil(sound.length / size);
+  const power = new Float64Array(count);
+  for(let channel=0; channel<sound.numberOfChannels; channel++) {
+    const data = sound.getChannelData(channel);
+    for(let at=0; at<data.length; at++) power[Math.floor(at / size)] += data[at] * data[at];
+  }
+  for(let window=0; window<count; window++) power[window] /= Math.min(size, sound.length - (window * size)) * sound.numberOfChannels;
+  const loudest = power.reduce((most, each) => Math.max(most, each), 0);
+  const quiet = loudest * (10 ** (-QUIET_UNDER / 10));
+
+  // the windows sounding, as runs from a window up to another
+  const runs: Array<[number, number]> = [];
+  for(let window=0; window<count; window++) {
+    if((loudest <= 0) || (power[window] < quiet)) continue/*a pause*/;
+    const last = runs[runs.length - 1];
+    if(last && (last[1] === window)) last[1] = window + 1;
+    else runs.push([window, window + 1]);
+  }
+  const seconds = (window: number) => Math.min(window * size, sound.length) / sound.sampleRate;
+  const parts = runs.slice(1).map((run, at) => ({ at, pause: seconds(run[0]) - seconds(runs[at][1]) })).filter(({ pause }) => pause >= (minPause - TIME_EPSILON));
+  const kept = (parts.length < most) ? parts : [...parts].sort((a, b) => (b.pause - a.pause) || (a.at - b.at)).slice(0, Math.max(0, most - 1)).sort((a, b) => a.at - b.at);
+  const ends = [...kept.map(({ at }) => at), runs.length - 1]/*the last run of each span*/;
+  return {
+    seconds: sound.length / sound.sampleRate,
+    spans: (runs.length < 1) ? [] : ends.map((end, at) => ({ from: seconds(runs[(at > 0) ? (ends[at - 1] + 1) : 0][0]), to: seconds(runs[end][1]) })),
+    found: (runs.length < 1) ? 0 : (parts.length + 1),
+  };
+};
+
 // == Bank ========================================================================
 /** the film's sounds, read and decoded once each: `readFile` gives a Platform file's
  *  bytes (by its URI), `readShipped` a shipped sound's (by the name a scene plays it
@@ -236,6 +287,14 @@ export class SoundBank {
       return [name, buffer] as const;
     }));
     return new Map(loaded.filter((entry): entry is readonly [string, AudioBuffer] => entry[1] !== undefined));
+  }
+
+  /** the named sound decoded, as a load decodes it; or why it cannot be read or
+   *  decoded */
+  public async read(name: string): Promise<AudioBuffer> {
+    const buffer = await this.buffer(name);
+    if(!buffer) throw new Error(this.failed.get(name) ?? 'it could not be read');
+    return buffer;
   }
 
   // the named sound decoded, read once; a failed read is forgotten, so a later load

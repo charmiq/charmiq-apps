@@ -391,41 +391,48 @@
 }
 
 // == Sheet =======================================================================
-// pictures in a grid under the bar's chrome: the build from the south, east, north
-// and west, or a film's storyboard
+// pictures in a grid over the whole studio: the build from the south, east, north and
+// west, or a film's storyboard. A Charm's screenshot is the whole Application, so the
+// studio's chrome (the bar, the credit, the help, a film's strip and its sprocket
+// bands) rests while the sheet stands and comes back as it closes. The sheet lays its
+// grid (SEE: sheet.ts sheetGrid): its columns and each picture's size
 .sheet {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: calc(var(--sheet-top, 92px) + 4px) 24px 44px;
+  padding: 12px;
   background: var(--stage);
   cursor: pointer;
 
   &.is-busy { cursor: progress; }
 
   figure {
-    position: relative;
     min-width: 0;
-    min-height: 0;
     margin: 0;
-    border: 1px solid var(--edge);
-    border-radius: 2px;
-    overflow: hidden;
   }
 
-  img, canvas { width: 100%; height: 100%; display: block; object-fit: contain; }
+  // the picture, or its place until it is drawn
+  img, canvas, .sheet-picture {
+    width: var(--picture-width);
+    height: var(--picture-height);
+    display: block;
+    box-shadow: 0 0 0 1px var(--edge)/*outside the picture, which keeps its size*/;
+    border-radius: 2px;
+  }
 
+  // the caption on its own strip beneath the picture, one line, never over it
   figcaption {
     @extend %mono-caps;
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    padding: 2px 6px;
+    width: var(--picture-width);
+    padding-top: 5px;
     font-size: 9px;
+    line-height: 12px;
     color: var(--ink);
-    background: var(--stage);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
   }
 }
 
@@ -453,8 +460,15 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template: repeat(var(--rows, 2), minmax(0, 1fr)) / repeat(var(--columns, 2), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--columns, 2), var(--picture-width, minmax(0, 1fr)));
+  align-content: center;
+  justify-content: center;
   gap: 10px;
+}
+
+.studio:has(> .sheet:not([hidden])) {
+  .bar, .credit, .help-button, .staged, .hint { display: none; }
+  &::before, &::after { display: none; }
 }
 
 // == Hint ========================================================================

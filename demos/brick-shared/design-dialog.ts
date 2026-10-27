@@ -30,7 +30,8 @@ export abstract class DesignDialog {
   private searchTimer: number | undefined;
   /** the name last saved or opened, offered by the next save */
   protected lastName = '';
-  /** bumped on every render, so a listing that lands after the view moved on is dropped */
+  /** bumped on every render and close, so a listing that lands or a save's close that
+   *  comes after the view moved on is dropped */
   protected generation = 0;
 
   public constructor(protected readonly dialog: HTMLDialogElement, protected readonly store: DesignStore) {
@@ -116,7 +117,9 @@ export abstract class DesignDialog {
         message.className = 'designs-message is-done';
         const where = saved.folder ? ` ${saved.replaced ? 'in' : 'to'} ${saved.folder.name}` : '';
         message.textContent = `${saved.replaced ? 'Replaced' : 'Saved'} "${saved.name}"${where}.`;
-        window.setTimeout(() => this.dialog.close(), SAVED_SHOWN_MS);
+        // closes only the dialog showing this save: closed or shown anew, it moved on
+        const shown = this.generation;
+        window.setTimeout(() => { if(shown === this.generation) this.dialog.close(); }, SAVED_SHOWN_MS);
       }, error => {
         replace = (error instanceof DesignExists);
         save.textContent = replace ? 'Replace' : 'Save';
