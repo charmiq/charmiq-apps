@@ -2152,6 +2152,10 @@ document.addEventListener('focusin', (event) => {
   if(event.target.id === 'search') $('#searchWrap').classList.add('active');
 });
 
+// keeps the title focused while its flag is pressed: WebKit never focuses a tapped
+// button, so the title would lose focus (and hide the flag it shows) before the tap lands
+document.addEventListener('mousedown', (event) => { if(event.target.closest('.flag-btn')) event.preventDefault(); });
+
 // leaving a reminder's title removes it when empty and trims it otherwise
 const finishTitle = (id) => {
   const found = findItem(id);
