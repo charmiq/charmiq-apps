@@ -1,7 +1,7 @@
-import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
+import { hipsOver, poseRise, type PoseBottoms, HIPS } from '../../brick-shared/rise';
 
 import type { Aim, Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
-import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, median, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
+import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, median, poseOf, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -34,10 +34,6 @@ export const FLOATING = 0.2;
 /** how far a figure's body tilts from upright before it is tipped (degrees): past any
  *  lean a step, a turn or a run gives it */
 const TIPPED = 45;
-/** a figure's hips, its legs' axle, over its soles (plates): the body point its body
- *  is probed about (SEE: clearance.ts BODY) and a camera follows it by when it is not
- *  walking, from the soles under it (SEE: solesUnder, followerOf) */
-export const HIPS = 3.5;
 
 const DEFAULT_TARGET: Point = { x: 0, z: 0, height: 4 };
 const DEFAULT_ORBIT = { angle: 30, distance: 40, height: 30 };
@@ -212,7 +208,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     const kind = own ?? scene.drawn;
     return (kind === 'smooth') ? undefined : { frames: (kind === 'twos') ? 2 : 1, fps: scene.fps };
   };
-  const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [from / scene.fps, to / scene.fps] as const), drawingOf(actor.drawn))]));
+  const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), bottoms, actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [from / scene.fps, to / scene.fps] as const), drawingOf(actor.drawn))]));
   const worlds: Array<Omit<FilmFrame, 'camera' | 'views' | 'transition'>> = []/*each frame but its cameras*/, placements: Array<ReadonlyMap<string, Placed>> = [], drawings: Array<ReadonlyMap<string, number>> = [], walkedOver: Array<ReadonlyMap<string, number>> = [], headed: Array<ReadonlyMap<string, number>> = [];
   const rolled = new Map<string, number>();
   const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();
@@ -258,7 +254,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       } /* else -- riding, unseen, or not a figure on studs */
       const own = placedOf(local);
       const parent = actor.ride && placed.get(actor.ride.parent);
-      const standing = parent ? riding(parent, actor.ride!.offset, own) : own;
+      const standing = parent ? riding(parent, actor.ride!.offset, own, figures.has(actor.name) ? { bottoms } : undefined) : own;
       within(actor, standing.position, time);
       placed.set(actor.name, standing);
       // the time its place stands for: its step's drawing, else its keys'; a rider
@@ -558,18 +554,19 @@ const placedOf = ({ channels }: Local): Placed => {
 export const solesUnder = (height: number, pose: Readonly<Record<string, number>> | undefined, bottoms: PoseBottoms | undefined): number =>
   height - (bottoms ? poseRise(bottoms, pose) : 0);
 
-/** a figure's pose among an actor's values: each limb's angle, by limb */
-const poseOf = (channels: Readonly<Record<string, number>>): Readonly<Record<string, number>> =>
-  Object.fromEntries(Object.entries(channels).filter(([channel]) => channel.startsWith('pose.')).map(([channel, angle]) => [channel.slice('pose.'.length), angle]));
-
 /** a rider where what it rides puts it: its offset and its own position in the
- *  ridden actor's frame, its own turn after the ridden actor's */
-const riding = (parent: Placed, offset: Point, own: Placed): Placed => ({
-  ...own,
-  position: pointIn(parent.position, parent.matrix, { x: offset.x + own.position.x, z: offset.z + own.position.z, height: offset.height + own.position.height }),
-  matrix: multiply(parent.matrix, own.matrix),
-  visible: parent.visible && own.visible,
-});
+ *  ridden actor's frame, its own turn after the ridden actor's. A figure (`figure`, what
+ *  its lowest point is measured from) turns about its hips: placed so in that frame, its
+ *  hips carried with what it rides and its lowest point, turned with it, at its height
+ *  (SEE: brick-shared/rise.ts hipsOver) */
+const riding = (parent: Placed, offset: Point, own: Placed, figure: Readonly<{ bottoms: PoseBottoms | undefined; }> | undefined): Placed => {
+  const matrix = multiply(parent.matrix, own.matrix);
+  const local = { x: offset.x + own.position.x, z: offset.z + own.position.z, height: offset.height + own.position.height };
+  if(!figure) return { ...own, position: pointIn(parent.position, parent.matrix, local), matrix, visible: parent.visible && own.visible };
+  const below = (turn: ReadonlyArray<number>) => hipsOver(figure.bottoms, own.pose, turnOf(turn));
+  const hips = pointIn(parent.position, parent.matrix, { ...local, height: local.height + below(own.matrix) });
+  return { ...own, position: { ...hips, height: hips.height - below(matrix) }, matrix, visible: parent.visible && own.visible };
+};
 
 /** a point at an offset (studs across and along, plates up) in the frame of an actor
  *  standing at `origin` turned by `matrix` (SEE: rotation) */
@@ -733,8 +730,9 @@ const lifted = (point: Point, height: number): Point => ({ ...point, height: poi
  *  made the first time a camera asks for it, from where each frame places it and the
  *  time that place stands for (`drawings`: its drawing's, held on twos). Its height
  *  under a walk's move is the level the walk moves it over (`walkedOver`), never its
- *  body's rise through a step or a leap; elsewhere a figure's is its hips', from the
- *  soles under them (SEE: solesUnder), and any other actor's its own */
+ *  body's rise through a step or a leap; elsewhere a figure's is its hips' less HIPS,
+ *  however it is turned (standing, the soles under them: SEE solesUnder), and any other
+ *  actor's its own */
 const followerOf = (scene: Recorded, figures: ReadonlySet<string>, bottoms: PoseBottoms | undefined, times: ReadonlyArray<number>, placements: ReadonlyArray<ReadonlyMap<string, Placed>>, drawings: ReadonlyArray<ReadonlyMap<string, number>>, walkedOver: ReadonlyArray<ReadonlyMap<string, number>>) => {
   const tracks = new Map<RecordedCamera, Map<string, ReadonlyArray<Point>>>();
   const trackOf = (camera: RecordedCamera, actor: string): ReadonlyArray<Point> => {
@@ -744,7 +742,7 @@ const followerOf = (scene: Recorded, figures: ReadonlySet<string>, bottoms: Pose
     if(known) return known;
     const places = placements.map(placed => placed.get(actor)!/*by contract: recorded*/);
     const cuts = [...cameraShots(camera, scene.length).map(shot => shot.from), ...(scene.sets ?? []).map(key => key.time)];
-    const track = followed(times, drawings.map(drawnAt => drawnAt.get(actor)!), times.map((time, index) => places[index].visible ? cuts.filter(cut => isReached(cut, time)).length : undefined/*hidden*/), places.map((place, index) => ({ ...place.position, height: walkedOver[index].get(actor) ?? (figures.has(actor) ? solesUnder(place.position.height, place.pose, bottoms) : place.position.height) })));
+    const track = followed(times, drawings.map(drawnAt => drawnAt.get(actor)!), times.map((time, index) => places[index].visible ? cuts.filter(cut => isReached(cut, time)).length : undefined/*hidden*/), places.map((place, index) => ({ ...place.position, height: walkedOver[index].get(actor) ?? (figures.has(actor) ? (place.position.height + hipsOver(bottoms, place.pose, turnOf(place.matrix)) - HIPS) : place.position.height) })));
     byActor.set(actor, track);
     return track;
   };

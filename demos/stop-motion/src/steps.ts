@@ -1,3 +1,5 @@
+import { hipsFromSoles, hipsOver, type PoseBottoms } from '../../brick-shared/rise';
+
 import type { Foot, Walk } from './recorder';
 
 // an actor that clicks onto studs (a figure, a creature) moving as one does: on studs
@@ -643,8 +645,10 @@ const timed = (moves: ReadonlyArray<Omit<Move, 'start' | 'end'> & { weight: numb
 // == Posing ======================================================================
 
 /** what a stance and a move set at a time: place, heading, height (plates) and the
- *  legs; what they add: arms, shoulders, lean */
-export type Posed = Readonly<{ set: Readonly<Record<string, number>>; add: Readonly<Record<string, number>>; }>;
+ *  legs; what they add: arms, shoulders, lean. A move rolling a figure about a foot's
+ *  edge (a turn's lean, a shift of weight) sets where its soles stand (`soles`), and its
+ *  hips are placed from there (SEE: Clicked) */
+export type Posed = Readonly<{ set: Readonly<Record<string, number>>; add: Readonly<Record<string, number>>; soles?: true; }>;
 /** how a walk carries a figure: its arms' swing when it names one (its shape's
  *  otherwise) and its lean (degrees), how far it wanders from step to step (0 none; 1
  *  its shape's own wander) and its shape (WALK when it names none) */
@@ -855,7 +859,7 @@ const turning = (move: Move, u: number, figure: boolean, shape: GaitShape, drawn
   return {
     // NOTE: a stage's roll raises the figure's right side, so leaning onto the right foot is negative
     set: { x: cx + (side * rx * out), z: cz + (side * rz * out), yaw, height: move.from.level + (Math.max(up, hop) * PLATES_PER_STUD), ...(figure ? { roll: -side * degreesOf(roll), [`pose.${free}`]: keysAt(shape.turnLeg, u), [`pose.${pivoting}`]: 0 } : {}) },
-    add: {},
+    add: {}, ...(figure ? { soles: true as const } : {}),
   };
 };
 
@@ -974,7 +978,7 @@ const shifting = (move: Move, u: number, figure: boolean, shape: GaitShape): Pos
   const roll = figure ? radians(keysAt(shape.shiftRoll, u)) : 0, side = (move.foot === 'right') ? 1 : -1, [rx, rz] = rightOf(move.from.yaw);
   const out = FOOT_EDGE * (1 - Math.cos(roll)), up = FOOT_EDGE * Math.sin(roll);
   // NOTE: a stage's roll raises the figure's right side, so rolling onto the right foot is negative
-  return { set: { x: move.from.x + (side * rx * out), z: move.from.z + (side * rz * out), yaw: move.from.yaw, height: move.from.level + (up * PLATES_PER_STUD), roll: -side * degreesOf(roll), ...(figure ? { 'pose.leftLeg': 0, 'pose.rightLeg': 0 } : {}) }, add: {} };
+  return { set: { x: move.from.x + (side * rx * out), z: move.from.z + (side * rz * out), yaw: move.from.yaw, height: move.from.level + (up * PLATES_PER_STUD), roll: -side * degreesOf(roll), ...(figure ? { 'pose.leftLeg': 0, 'pose.rightLeg': 0 } : {}) }, add: {}, ...(figure ? { soles: true as const } : {}) };
 };
 
 /** how far a walking figure's head turns ahead of its body at `time` (degrees, clockwise
@@ -1035,7 +1039,7 @@ export class Clicked {
   /** where its keys last moved it, when, and the pace they carried it there at */
   private moved: Readonly<{ x: number; z: number; time: number; pace: number; }> | undefined;
 
-  public constructor(private readonly walks: ReadonlyArray<Walk>, private readonly climb: number | undefined, private readonly figure: boolean, private readonly crowding: ReadonlyArray<readonly [number, number]> = [], private readonly drawing?: Drawing) {}
+  public constructor(private readonly walks: ReadonlyArray<Walk>, private readonly climb: number | undefined, private readonly figure: boolean, private readonly bottoms: PoseBottoms | undefined, private readonly crowding: ReadonlyArray<readonly [number, number]> = [], private readonly drawing?: Drawing) {}
 
   /** a walk's moves, once laid */
   public movesOf(walk: Walk): ReadonlyArray<Move> | undefined { return this.laid.get(walk)?.moves; }
@@ -1073,6 +1077,18 @@ export class Clicked {
     return Math.min(1, Math.floor((u * drawings) + 1e-6) / drawings);
   }
 
+  // `posed` over its values (SEE: applied); a figure its move rolls about a foot's edge
+  // (Posed `soles`) placed by its hips, as its keys place it (SEE: brick-shared/rise.ts):
+  // the move's roll taken about that edge, a pitch its keys give it about its hips as
+  // every keyed turn is (a figure walking lying down lies where its steps put it)
+  private placed(channels: Readonly<Record<string, number>>, posed: Posed): Record<string, number> {
+    const out = applied(channels, posed);
+    if(!posed.soles) return out;
+    const pose = poseOf(out), rolled = { pitch: 0, roll: out.roll ?? 0 };
+    const hips = hipsFromSoles(this.bottoms, pose, rolled, out.yaw ?? 0);
+    return { ...out, x: (out.x ?? 0) + hips.x, z: (out.z ?? 0) + hips.z, height: (out.height ?? 0) + hips.height - hipsOver(this.bottoms, pose, rolled) };
+  }
+
   private walking(walk: Walk, channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
     if(!this.laid.has(walk)) {
       const from = this.stance ?? this.keyedStance(channels, surfaceAt) ?? { x: walk.points[0].x, z: walk.points[0].z, yaw: channels.yaw ?? 0, level: channels.height ?? 0, studded: false };
@@ -1087,7 +1103,7 @@ export class Clicked {
     if(!move) return applied(channels, stood(last));
     const u = this.drawnAt(move, time, walk.shape ?? WALK), drawnTime = move.start + ((move.end - move.start) * u)/*the time its drawing stands for*/;
     const posed = (time < move.start) ? stood(move.from) : posedAt(move, u, this.figure, walk, !!this.drawing);
-    return applied(channels, this.figure ? { ...posed, add: { ...posed.add, 'pose.head': (posed.add['pose.head'] ?? 0) + leadingHead(moves, drawnTime, walk.shape ?? WALK) } } : posed);
+    return this.placed(channels, this.figure ? { ...posed, add: { ...posed.add, 'pose.head': (posed.add['pose.head'] ?? 0) + leadingHead(moves, drawnTime, walk.shape ?? WALK) } } : posed);
   }
 
   private standing(channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
@@ -1095,7 +1111,7 @@ export class Clicked {
     const pace = this.paceAt(channels, time);
     if(this.moving) {
       const { start, end } = this.moving;
-      if(time < end) return applied(channels, posedAt(this.moving, this.drawnAt(this.moving, time, WALK), this.figure, (this.moving.kind === 'step') ? CROWD_GAIT : NO_GAIT, !!this.drawing));
+      if(time < end) return this.placed(channels, posedAt(this.moving, this.drawnAt(this.moving, time, WALK), this.figure, (this.moving.kind === 'step') ? CROWD_GAIT : NO_GAIT, !!this.drawing));
       this.stance = this.moving.to;
       this.moving = undefined;
     }
@@ -1212,3 +1228,7 @@ const applied = (channels: Readonly<Record<string, number>>, posed: Posed): Reco
   for(const [channel, value] of Object.entries(posed.add)) out[channel] = (out[channel] ?? 0) + value;
   return out;
 };
+
+/** a figure's pose among an actor's values: each limb's angle, by limb */
+export const poseOf = (channels: Readonly<Record<string, number>>): Readonly<Record<string, number>> =>
+  Object.fromEntries(Object.entries(channels).filter(([channel]) => channel.startsWith('pose.')).map(([channel, angle]) => [channel.slice('pose.'.length), angle]));

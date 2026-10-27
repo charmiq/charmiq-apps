@@ -196,15 +196,22 @@ const reachOf = (size: Size): number => Math.hypot(size.width / 2, size.depth / 
 export const isSized = (sizes: Readonly<Record<string, Size>>, name: string): boolean => Object.hasOwn(sizes, name);
 
 // == Util ========================================================================
-/** what an actor rides at the bottom of its rides, itself when it rides nothing */
-export const rideRoot = (actors: ReadonlyArray<RecordedActor>, actor: RecordedActor): string => {
-  const seen = new Set<string>();
+/** an actor and each actor it rides in turn, what it rides at the bottom of its rides
+ *  last; itself alone when it rides nothing */
+export const rideChain = (actors: ReadonlyArray<RecordedActor>, actor: RecordedActor): ReadonlyArray<RecordedActor> => {
+  const seen = new Set<string>(), chain = [actor];
   let current = actor;
   while(current.ride && !seen.has(current.name)) {
     seen.add(current.name);
     current = actors.find(each => each.name === current.ride!.parent) ?? current;
+    if(current !== chain[chain.length - 1]) chain.push(current);
   }
-  return current.name;
+  return chain;
+};
+/** what an actor rides at the bottom of its rides, itself when it rides nothing */
+export const rideRoot = (actors: ReadonlyArray<RecordedActor>, actor: RecordedActor): string => {
+  const chain = rideChain(actors, actor);
+  return chain[chain.length - 1].name;
 };
 
 /** a box's eight corners: its footprint's at its bottom, then at its top */

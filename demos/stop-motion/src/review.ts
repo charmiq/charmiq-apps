@@ -1,14 +1,15 @@
 import { channelAt, frameEnd, keyInForce, shotAt, shotFrames, tiltOf, type CameraShot, type Feet, type Film, type FilmFrame, type ShotFrames } from './film';
-import { inBox, isSized, pointGap, rideRoot, segmentEnters, tallOf, type Box, type Size } from './measure';
-import type { Key, Point, Recorded, RecordedCamera, Span } from './recorder';
+import { inBox, isSized, pointGap, rideChain, rideRoot, segmentEnters, tallOf, type Box, type Size } from './measure';
+import type { Key, Point, Recorded, RecordedActor, RecordedCamera, Span } from './recorder';
 import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
 
 // the film reviewed as it looks, for a Charm that sees stills and never playback: what
 // each frame's camera sees (every actor's box on the screen), where the camera goes
 // wrong (inside a part or an actor, or one between it and its target; the actor at a
-// point it aims at, its own subject, before that point apart), and every cut
-// read as an editor reads it. A frame's subject is the actor its camera aims at, else
-// the actor filling most of the screen. A cut is the camera's cut between two shots a
+// point it aims at, its own subject, before that point apart), where an actor pops into
+// or out of the picture within a shot, and every cut read as an editor reads it. A
+// frame's subject is the actor its camera aims at, else the actor filling most of the
+// screen. A cut is the camera's cut between two shots a
 // frame shows (a shot no frame shows is passed over): each side's frame (the last of
 // the shot before, the first after), where its subject stands on the screen and which
 // way it moves across the frame over that side's own shot (its own motion as that
@@ -125,6 +126,16 @@ export type FootingKind = 'into' | 'above' | 'floating' | 'tipped' | 'through';
  *  line), or its keys (the lines of the height keys it eases between, or the one it
  *  holds) */
 export type FootingBy = 'walk' | 'path' | 'keys';
+
+// -- Pops ------------------------------------------------------------------------
+/** how an actor pops: shown where the frame before hid it, or hidden where the frame
+ *  before showed it */
+export type PopChange = 'appears' | 'vanishes';
+/** an actor appearing or vanishing in the picture within one shot: the first frame
+ *  showing the change (its index, and its time in seconds), its shot, where the actor
+ *  stands shown (`at`: in the frame it appears in, or the last before it vanishes) and
+ *  the scene's line keying the change (SEE: popLines) */
+export type Pop = Readonly<{ actor: string; change: PopChange; frame: number; time: number; shot: CameraShot; at: Point; lines: ReadonlyArray<number>; }>;
 
 // -- Cuts ------------------------------------------------------------------------
 /** which way a subject moves on the screen over a few frames */
@@ -423,6 +434,53 @@ export const screenAt = (film: Film, sizes: Readonly<Record<string, Size>>, inde
 /** each sized actor's box in a frame */
 const boxesAt = (film: Film, sizes: Readonly<Record<string, Size>>, frame: FilmFrame): ReadonlyArray<readonly [string, Box]> =>
   frame.actors.filter(shot => isSized(sizes, shot.name)).map(shot => [shot.name, { position: shot.position, yaw: shot.turn.yaw, size: sizes[shot.name] }] as const);
+
+// == Pops ========================================================================
+/** every actor appearing or vanishing in the picture within one shot (SEE: Pop):
+ *  hidden in one frame of the shot and shown in the next, or shown and then hidden,
+ *  any part of its box in frame where it is shown (SEE: screenAt), so a person sees it
+ *  pop in or out. One shown or hidden at a cut, or out of the picture as it changes, is
+ *  no pop; those the stage sized, in the film's order */
+export const popsOf = (film: Film, sizes: Readonly<Record<string, Size>>): ReadonlyArray<Pop> =>
+  shotFrames(film).flatMap(({ shot, first, last }) => {
+    const pops: Pop[] = [];
+    const shownIn = (index: number) => new Map(film.frames[index].actors.map(each => [each.name, each] as const));
+    let before = shownIn(first);
+    for(let index=first+1; index<=last; index++) {
+      const after = shownIn(index);
+      for(const name of new Set([...before.keys(), ...after.keys()])) {
+        if(!isSized(sizes, name) || (before.has(name) === after.has(name))) continue;
+        const appears = after.has(name), seen = appears ? index : (index - 1);
+        if(!screenAt(film, sizes, seen)[name].inFrame) continue/*out of the picture as it changes*/;
+        const time = film.frames[index].time;
+        pops.push({ actor: name, change: appears ? 'appears' : 'vanishes', frame: index, time, shot, at: (appears ? after : before).get(name)!.position, lines: popLines(film, name, time, appears) });
+      }
+      before = after;
+    }
+    return pops;
+  });
+
+/** the scene's line keying an actor shown or hidden at a time: of the actor and each
+ *  actor it rides (a rider is shown only while what it rides is), the key or path
+ *  giving its own `visible` that state from the latest time */
+const popLines = (film: Film, name: string, time: number, shown: boolean): ReadonlyArray<number> => {
+  const actor = film.scene.actors.find(each => each.name === name)!;
+  const giving = rideChain(film.scene.actors, actor).flatMap(each => { const own = visibleAt(film, each, time); return (own && (own.shown === shown)) ? [own] : []; });
+  return linesOf([...giving].sort((a, b) => b.since - a.since).slice(0, 1));
+};
+
+/** an actor's own `visible` at a time and from when it holds: a path keying it (its
+ *  sample then, from then), else its key in force (taken at its key, never eased: SEE
+ *  film.ts channelAt); none for an actor never keying it, always shown */
+const visibleAt = (film: Film, actor: RecordedActor, time: number): Readonly<{ shown: boolean; since: number; line?: number; }> | undefined => {
+  const path = pathAt(film, actor.name, time, ['visible']);
+  if(path) {
+    const sample = path.samples[Math.max(0, Math.min(path.samples.length - 1, Math.round((time * film.scene.fps) - path.from)))];
+    return { shown: (sample.visible ?? 1) >= 0.5, since: time, ...((path.line !== undefined) ? { line: path.line } : {}) };
+  } /* else -- its keys alone key it */
+  const key = keyInForce(actor.keys.filter(each => Object.hasOwn(each.values, 'visible')), time);
+  return key && { shown: key.values.visible >= 0.5, since: key.time, ...((key.line !== undefined) ? { line: key.line } : {}) };
+};
 
 // == Cuts ========================================================================
 /** every cut of the film, read as an editor reads it */

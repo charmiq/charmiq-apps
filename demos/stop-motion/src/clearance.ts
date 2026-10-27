@@ -1,6 +1,6 @@
-import type { PoseBottoms } from '../../brick-shared/rise';
+import { hipsOver, type PoseBottoms, HIPS } from '../../brick-shared/rise';
 
-import { cameraShots, frameEnd, isReached, pointIn, rotation, solesUnder, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING, HIPS } from './film';
+import { cameraShots, frameEnd, isReached, pointIn, rotation, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING } from './film';
 import type { GroundProbe } from './ground';
 import type { Size } from './measure';
 import type { Point, RecordedCamera, Span } from './recorder';
@@ -230,8 +230,8 @@ const keyOf = (track: number, frame: number, share: number): string => `${track}
  *  that part's top (studs, below 0 through it), each point's part read from the ground
  *  under it (`groundProbe`) or, within the part, from its way out, with the point
  *  setting it (SEE: film.ts Feet `through`, `clearance`). Only `figures` are held so,
- *  never one riding, each from its soles, its pose's rise (SEE: brick-shared/rise.ts,
- *  measured from `bottoms`) below its lowest point */
+ *  never one riding, each turned about its hips over its lowest point (SEE:
+ *  brick-shared/rise.ts hipsOver, measured from `bottoms`) */
 export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, bottoms: PoseBottoms | undefined, surfaces: (set: string | undefined) => SurfaceAt, probe: Probe, groundProbe: GroundProbe): Promise<Film> => {
   const riders = new Set(film.scene.actors.filter(actor => actor.ride).map(actor => actor.name));
   const aloft = (frame: FilmFrame, index: number, shot: Shot) => (lowestAbove({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set)) > FLOATING) || flying(film, shot.name, index);
@@ -313,13 +313,13 @@ const footprintAt = (shot: Shot, size: Size, height: number): ReadonlyArray<Poin
     .map(([across, ahead]) => ({ x: shot.position.x + (across * Math.cos(angle)) + (ahead * Math.sin(angle)), z: shot.position.z - (across * Math.sin(angle)) + (ahead * Math.cos(angle)), height }));
 };
 
-/** a figure's body's points where it stands, from its soles (its pose's rise, measured
- *  from `bottoms`, below its lowest point), posed as the rig poses it (SEE: bodyPointAt)
- *  and turned as it is */
+/** a figure's body's points where it stands, posed as the rig poses it (SEE:
+ *  bodyPointAt) and turned about its hips as it is: its hips at its x and z, over its
+ *  lowest point turned (measured from `bottoms`: SEE brick-shared/rise.ts hipsOver) */
 const bodyOf = (shot: Shot, bottoms: PoseBottoms | undefined): ReadonlyArray<Point> => {
   const matrix = rotation(shot.turn);
-  const soles = { ...shot.position, height: solesUnder(shot.position.height, shot.pose, bottoms) };
-  return BODY.map(({ at }) => pointIn(soles, matrix, bodyPointAt(at, shot.pose)));
+  const hips = { ...shot.position, height: shot.position.height + hipsOver(bottoms, shot.pose, shot.turn) };
+  return BODY.map(({ at }) => { const posed = bodyPointAt(at, shot.pose); return pointIn(hips, matrix, { ...posed, height: posed.height - HIPS }); });
 };
 
 /** a body point (unturned, SEE: BODY) as a pose moves it, as Brick Studio's rig turns

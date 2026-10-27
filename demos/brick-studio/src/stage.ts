@@ -1,4 +1,4 @@
-import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
+import { hipsOver, poseRise, type PoseBottoms, HIPS } from '../../brick-shared/rise';
 
 import { toGear, toPosing } from './build';
 import { getStageFace, ALL_FACES, type CatalogPart } from './catalog';
@@ -26,7 +26,7 @@ import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LI
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 13;
+export const STAGE_VERSION = 14;
 /** the widest and narrowest a frame's lens opens (f-numbers) */
 const MIN_APERTURE = 1;
 const MAX_APERTURE = 32;
@@ -72,9 +72,6 @@ export const MAX_GHOST_SECONDS = 10;
 export const MAX_FOCUS_KEYS = 2_000;
 /** the seconds a focus reaches each way when it names none */
 const DEFAULT_GHOST_SECONDS = 2;
-/** a figure's hips over its soles (plates): 1.4 studs, its legs as Stop Motion
- *  measures them; anything else's middle is half its height */
-const FIGURE_HIP = 3.5;
 /** the longest mark label */
 const MAX_LABEL = 40/*characters*/;
 /** the most frames a storyboard shows, and its longest caption */
@@ -92,7 +89,9 @@ export type Point = Readonly<{ x: number; z: number; height: number; }>;
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 
 /** where an actor stands in one frame: the middle of the bottom of its footprint at
- *  `position`, turned about that point; a figure's limbs at `pose` and the face it
+ *  `position`, turned about that point, but a figure's hips (its legs' axle) at its
+ *  `x` and `z` and its lowest point, turned, at its `height`, turned about its hips (SEE:
+ *  brick-shared/rise.ts hipsOver); a figure's limbs at `pose` and the face it
  *  wears in this frame (its own when none is named); its wheel sets' wheels turned as
  *  the actor having rolled `rolled` studs along its own north, each wheel set by its
  *  share (backward turned round, none turned across) */
@@ -174,6 +173,10 @@ type Actor = Readonly<{
   rise: (pose: Pose | undefined) => number;
   /** what its rise is measured from: a figure's (every figure is one shape) */
   bottoms?: PoseBottoms;
+  /** how far a frame's pose and turn stand its hips over its lowest point (plates;
+   *  SEE: brick-shared/rise.ts hipsOver): a figure turns about its hips, its shot's
+   *  height its lowest point turned. None for what turns about its position */
+  hips?: (pose: Pose | undefined, turn: Turn) => number;
   /** it clicks onto studs: a figure or a creature (on studs it stands on them, a stud
    *  at a time) */
   clicks: boolean;
@@ -517,13 +520,14 @@ const filledBy = (set: Model, parts: ReadonlyArray<Placement>): Footprint => {
 /** the level the tallest of some parts reaches (tires above the studs included) */
 const tallestTop = (parts: ReadonlyArray<Placement>): number => Math.max(...parts.map(placement => placement.level + getShape(getPart(placement.part)!/*by contract*/).height));
 
-/** a posable part's bodies' lowest points over its soles at each measured angle
- *  (SEE: brick-shared/rise.ts), from its pose geometry; none for a part that never poses */
+/** a posable part's bodies' boxes over its soles at each measured angle (SEE:
+ *  brick-shared/rise.ts), from its pose geometry; none for a part that never poses */
 export const poseBottomsOf = (part: string): PoseBottoms | undefined => {
   const geometry = POSE_GEOMETRY[part];
   if(!geometry) return undefined;
-  const limbs = Object.fromEntries(Object.entries(geometry.limbs).map(([limb, angles]) => [limb, Object.fromEntries(Object.entries(angles).map(([angle, body]) => [angle, body.bottom]))]));
-  return { core: geometry.core.bottom, limbs };
+  const boxOf = ({ bottom, reach }: (typeof geometry)['core']) => ({ bottom, top: reach.top, x: reach.x, z: reach.z });
+  const limbs = Object.fromEntries(Object.entries(geometry.limbs).map(([limb, angles]) => [limb, Object.fromEntries(Object.entries(angles).map(([angle, body]) => [angle, boxOf(body)]))]));
+  return { core: boxOf(geometry.core), limbs };
 };
 
 /** a catalog part's actor, `standing` as dressed at the origin unturned: a frame's pose
@@ -539,7 +543,7 @@ const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
     size: { ...(POSE_GEOMETRY[catalogPart.key]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height },
     poses: !!catalogPart.limbs,
     rise: pose => bottoms ? poseRise(bottoms, { ...standing.pose, ...pose }) : 0,
-    ...(bottoms ? { bottoms } : {}),
+    ...(bottoms ? { bottoms, hips: (pose: Pose | undefined, turn: Turn) => hipsOver(bottoms, { ...standing.pose, ...pose }, turn) } : {}),
     clicks: !!catalogPart.limbs || (catalogPart.kind === 'creature'),
     faces: catalogPart.facePiece !== undefined,
     rolls: !!catalogPart.wheels,
@@ -650,14 +654,14 @@ export const ghostsOf = (frames: ReadonlyArray<ReelFrame>, fps: number, index: n
   return ghosts;
 };
 
-/** the followed actor's path through the reel: its hips (a figure's FIGURE_HIP over its
- *  soles, anything else's half its height) at every frame it is seen on the set frame
+/** the followed actor's path through the reel: its hips (a figure's, where it turns
+ *  about; anything else's half its height up) at every frame it is seen on the set frame
  *  `index` shows, a point where they move, and its hips at each key's frame */
 export const pathOf = (cast: Cast, frames: ReadonlyArray<ReelFrame>, fps: number, index: number, follow: Follow): GhostPath => {
   const shown = frames[index];
   if(!shown) return { runs: [], keys: [] };
   const actor = cast.actors.get(follow.actor)!/*by contract: followOf*/;
-  const hipOf = ({ position, pose }: Shot): Point => ({ x: position.x, z: position.z, height: position.height + (actor.poses ? (FIGURE_HIP - actor.rise(pose)) : (actor.size.height / 2)) });
+  const hipOf = ({ position, turn, pose }: Shot): Point => ({ x: position.x, z: position.z, height: position.height + (actor.hips ? actor.hips(pose, turn) : (actor.size.height / 2)) });
   const runs: Point[][] = [];
   let run: Point[] | undefined;
   for(const frame of frames) {
@@ -676,10 +680,12 @@ const followedShot = (frame: ReelFrame | undefined, set: number, follow: Follow)
   (frame && (frame.set === set)) ? frame.shots.find(shot => shot.name === follow.actor) : undefined;
 
 /** where a shot puts an actor's frame: its anchor, raised to its lowest point at the
- *  shot's pose, at the shot's position, turned about it */
+ *  shot's pose, at the shot's position, turned about it; a figure's hips, its anchor
+ *  raised HIPS, over the shot's position by as far as they stand over its lowest point
+ *  turned, turned about them */
 const actorTransform = (actor: Actor, { position, turn, pose }: Shot): Transform => {
-  const { matrix, position: at } = turnedAt(position, turn);
-  const [ax, ay, az] = [actor.anchor[0], actor.anchor[1] - (actor.rise(pose) * LDU_PER_PLATE)/*LDraw's y runs down*/, actor.anchor[2]];
+  const { matrix, position: at } = turnedAt(actor.hips ? { ...position, height: position.height + actor.hips(pose, turn) } : position, turn);
+  const [ax, ay, az] = [actor.anchor[0], actor.anchor[1] - ((actor.hips ? HIPS : actor.rise(pose)) * LDU_PER_PLATE)/*LDraw's y runs down*/, actor.anchor[2]];
   const turned = [0, 1, 2].map(row => (matrix[row * 3] * ax) + (matrix[(row * 3) + 1] * ay) + (matrix[(row * 3) + 2] * az));
   return { matrix, position: [at[0] - turned[0], at[1] - turned[1], at[2] - turned[2]] };
 };

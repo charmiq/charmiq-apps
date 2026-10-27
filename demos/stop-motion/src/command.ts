@@ -12,7 +12,7 @@ import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from '
 import { motionOf, MOTION_CHANNELS } from './motion-read';
 import type { Player } from './player';
 import type { Point, RecordedActor, SceneError } from './recorder';
-import { cameraGroups, cameraProblems, clearancesOf, footingProblems, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type FootingKind, type HeldBack, type PartFinding } from './review';
+import { cameraGroups, cameraProblems, clearancesOf, footingProblems, popsOf, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type FootingKind, type HeldBack, type PartFinding, type PopChange } from './review';
 import type { ScreenBox } from './screen';
 import { soundSpans, type Heard } from './sound';
 import type { Surface } from './steps';
@@ -34,10 +34,11 @@ import type { Board, StageState } from './studios';
 // == Constants ===================================================================
 // -- Describing the Film ---------------------------------------------------------
 /** what describeFilm judges wrong, in the order its summary lists them: two actors in
- *  each other, the camera inside something or its target hidden, each way a figure's
+ *  each other, the camera inside something or its target hidden, an actor appearing or
+ *  vanishing in its picture within a shot (SEE: review.ts popsOf), each way a figure's
  *  footing goes wrong (SEE: review.ts FootingKind), and a keyed flight short of a part
  *  it crosses */
-const PROBLEM_KINDS = ['overlap', 'inside', 'hidden', 'into', 'above', 'floating', 'tipped', 'through', 'short'] as const;
+const PROBLEM_KINDS = ['overlap', 'inside', 'hidden', 'pop', 'into', 'above', 'floating', 'tipped', 'through', 'short'] as const;
 /** the camera's kinds, in their detail's order: its problems, then its own subject
  *  standing before the point it aims at (`own`: never a problem, so counted apart and
  *  detailed on request; SEE: review.ts CameraProblem) */
@@ -47,7 +48,10 @@ const FOOTING_KINDS: ReadonlyArray<ProblemKind & FootingKind> = ['into', 'above'
 /** what describeFilm details on request: each problem kind and the camera's own
  *  subject, every keyed flight's clearance, each walk's leaps, and the actors that come
  *  close */
-const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, ...FOOTING_KINDS, 'short', 'clearance', 'leaps', 'close'];
+const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, 'pop', ...FOOTING_KINDS, 'short', 'clearance', 'leaps', 'close'];
+/** what an actor popping into or out of the picture needs: to be out of view as it is
+ *  shown or hidden, moving in or out of the picture on its own feet */
+const POP_FIXES: Readonly<Record<PopChange, string>> = { appears: 'stage it out of view and walk it in', vanishes: 'walk it out of view before hiding it' };
 /** a walk taking fewer steps than this from its start to its first leap, between two of
  *  its leaps or from its last to its end is given its fix (a hurdles race runs three
  *  strides between its hurdles, and from the start and to the finish more) */
@@ -340,6 +344,7 @@ export const detailReport = (measured: Measured, ask: FilmAsk) => {
   return {
     ...((sizes && wants('overlap')) ? { overlaps: ofKinds(['overlap']).map(problem => problem.detail) } : {}),
     ...((staged && wants(...CAMERA_KINDS)) ? { camera: ofKinds(CAMERA_KINDS).map(problem => problem.detail) } : {}),
+    ...((staged && wants('pop')) ? { pops: ofKinds(['pop']).map(problem => problem.detail) } : {}),
     ...((staged && wants(...FOOTING_KINDS)) ? { footing: ofKinds(FOOTING_KINDS).map(problem => problem.detail) } : {}),
     ...((staged && wants('clearance', 'short')) ? { clearances: clearancesReport(staged.film).filter(each => naming([each.actor]) && over(each.from, each.to) && (wants('clearance') || !each.cleared)) } : {}),
     ...((staged && wants('leaps')) ? { leaps: leapsReport(staged.film).filter(each => naming([each.actor]) && over(each.leaps[0], each.leaps[each.leaps.length - 1])) } : {}),
@@ -350,8 +355,8 @@ export const detailReport = (measured: Measured, ask: FilmAsk) => {
 // -- Problems --------------------------------------------------------------------
 /** a problem describeFilm judges (or the camera's own subject before its target): its
  *  kind, the actors it names, its span (seconds) and how much is wrong (studs, or
- *  degrees tipped; a camera problem's span alone), its line in the summary and its full
- *  entry in the detail */
+ *  degrees tipped; a camera problem's span alone, and a pop's moment), its line in the
+ *  summary and its full entry in the detail */
 type Problem = Readonly<{ kind: MeasuredKind; actors: ReadonlyArray<string>; from: number; to: number; amount: number; entry: Readonly<Record<string, unknown>>; detail: Readonly<Record<string, unknown>>; }>;
 
 /** every problem of a measured film, kind by kind (SEE: PROBLEM_KINDS), then the camera's
@@ -361,6 +366,10 @@ const problemsOf = (measured: Measured, spans: ReadonlyArray<CameraProblem> = ca
   const { film, sizes, staged } = measured;
   const overlaps = sizes ? overlapsReport(film, sizes).map(detail => ({ kind: 'overlap' as const, actors: detail.actors, from: detail.from, to: detail.to, amount: detail.most, entry: { kind: 'overlap', actors: detail.actors, from: detail.from, to: detail.to, most: detail.most, unit: 'studs' }, detail })) : [];
   const camera = spans.map(problemReport).map(detail => ({ kind: detail.kind, actors: [detail.by], from: detail.from, to: detail.to, amount: 0, entry: { kind: detail.kind, by: detail.by, from: detail.from, to: detail.to }, detail }));
+  const pops = staged ? popsReport(staged.film, staged.sizes).map(detail => {
+    const { actor, change, from, to, shot, lines, fix } = detail;
+    return { kind: 'pop' as const, actors: [actor], from, to, amount: 0/*each as wrong as the next: the earliest first*/, detail, entry: { kind: 'pop', actor, change, from, to, ...((shot !== undefined) ? { shot } : {}), lines, fix } };
+  }) : [];
   const footing = staged ? footingReport(staged.film).map(detail => ({
     kind: detail.kind, actors: [detail.actor], from: detail.from, to: detail.to, amount: detail.most, detail,
     entry: { kind: detail.kind, actor: detail.actor, from: detail.from, to: detail.to, most: detail.most, unit: (detail.kind === 'tipped') ? 'degrees' : 'studs', ...((detail.part !== undefined) ? { part: detail.part } : {}), lines: detail.lines, ...(detail.heldBack ? { heldBack: detail.heldBack } : {}) },
@@ -369,7 +378,7 @@ const problemsOf = (measured: Measured, spans: ReadonlyArray<CameraProblem> = ca
     const most = hundredths(-detail.margin)/*how far short*/;
     return { kind: 'short' as const, actors: [detail.actor], from: detail.from, to: detail.to, amount: most, detail, entry: { kind: 'short', actor: detail.actor, from: detail.from, to: detail.to, most, unit: 'studs', time: detail.time, point: detail.point, part: detail.part, lines: detail.lines } };
   }) : [];
-  const all: ReadonlyArray<Problem> = [...overlaps, ...camera, ...footing, ...short];
+  const all: ReadonlyArray<Problem> = [...overlaps, ...camera, ...pops, ...footing, ...short];
   const length = ({ from, to }: Problem) => thousandths(to - from)/*its ends' rounding aside*/;
   return [...PROBLEM_KINDS, 'own' as const].flatMap(kind => all.filter(problem => problem.kind === kind).sort((a, b) => (b.amount - a.amount) || (length(b) - length(a)) || (a.from - b.from)));
 };
@@ -400,6 +409,13 @@ const cameraLines = ({ staged }: Measured, camera: ReadonlyArray<CameraProblem>)
     return { kind, held, from: first.from, entry };
   }).sort((a, b) => (b.held - a.held) || (a.from - b.from));
 };
+
+// -- Pops ------------------------------------------------------------------------
+/** describeFilm's pops (SEE: review.ts popsOf): each actor appearing or vanishing in the
+ *  picture within a shot, at the first frame showing it (`from` and `to` its time), its
+ *  shot's name, where it stands shown, the line keying it and the fix */
+export const popsReport = (film: Film, sizes: Readonly<Record<string, Size>>) =>
+  popsOf(film, sizes).map(({ actor, change, frame, time, shot, at, lines }) => ({ actor, change, from: thousandths(time), to: thousandths(time), frame, ...((shot.name !== undefined) ? { shot: shot.name } : {}), at: rounded(at), lines, fix: POP_FIXES[change] }));
 
 // -- Footing, Leaps and Clearances -----------------------------------------------
 /** describeFilm's footing, over the film staged on the set's surfaces: where each

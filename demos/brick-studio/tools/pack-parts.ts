@@ -362,24 +362,33 @@ const fillInFrame = (body: Measure, frame: StandingFrame, openUnderside: boolean
 
 /** a posable part's fill in its standing frame (SEE: fillInFrame), and how high its
  *  lowest point lies above the standing bottom (plates): its own body and every piece
- *  no limb moves (`core`), and each limb's at every angle. A pose fills their union and
- *  stands on its lowest point, so a limb's cells never depend on another's angle. Its
- *  `body` is what it measures standing, every piece in place and nothing worn: studs
- *  across (x) and along (z), to the hundredth, where its cells' footprint counts whole
- *  cells (a figure's hands reach into cells its body barely enters) */
-const measurePose = (library: string, part: CatalogPart, standing: Standing) => {
+ *  no limb moves (`core`), and each limb's at every angle, each with its `reach`, the
+ *  rest of its bounding box: how far it reaches across (x) and along (z) the standing
+ *  footprint's middle (studs) and how high its top lies above the standing bottom
+ *  (plates), so a turned pose's lowest point is measured too (SEE: brick-shared/rise.ts
+ *  hipsOver). A pose fills their union and stands on its lowest point, so a limb's cells
+ *  never depend on another's angle. Its `body` is what it measures standing, every piece
+ *  in place and nothing worn: studs across (x) and along (z), to the hundredth, where
+ *  its cells' footprint counts whole cells (a figure's hands reach into cells its body
+ *  barely enters) */
+const measurePose = (library: string, part: CatalogPart, standing: Standing & Readonly<{ width: number; depth: number; }>) => {
   const frame = standingFrame(standing);
   const open = hasOpenUnderside(part.kind);
-  const measured = (text: string) => {
+  const [middleX, middleZ] = [frame.minX + ((standing.width * LDU_PER_STUD) / 2), frame.minZ + ((standing.depth * LDU_PER_STUD) / 2)];
+  const rounded = (value: number) => Math.round(value * 1e4) / 1e4;
+  const filled = (body: Measure) => ({ fill: fillInFrame(body, frame, open), bottom: rounded((frame.bottomY - body.maxY) / LDU_PER_PLATE) });
+  const measured = (text: string) => filled(bodyOfText(library, text));
+  const reaching = (text: string) => {
     const body = bodyOfText(library, text);
-    return { fill: fillInFrame(body, frame, open), bottom: Math.round(((frame.bottomY - body.maxY) / LDU_PER_PLATE) * 1e4) / 1e4 };
+    const across = (low: number, high: number, middle: number) => [rounded((low - middle) / LDU_PER_STUD), rounded((high - middle) / LDU_PER_STUD)];
+    return { ...filled(body), reach: { x: across(body.minX, body.maxX, middleX), z: across(body.minZ, body.maxZ, middleZ), top: rounded((frame.bottomY - body.minY) / LDU_PER_PLATE) } };
   };
   const moved = new Set(LIMBS.flatMap(limb => part.limbs![limb].pieces));
   const fixed = pieceLines(part).filter((_, index) => !moved.has(index));
-  const core = measured([`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(fixed)].join('\n'));
+  const core = reaching([`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(fixed)].join('\n'));
   const whole = bodyOfText(library, [`1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${part.ldraw}.dat`, lineText(pieceLines(part))].join('\n'));
   const body = { width: Math.round(((whole.maxX - whole.minX) / LDU_PER_STUD) * 100) / 100, depth: Math.round(((whole.maxZ - whole.minZ) / LDU_PER_STUD) * 100) / 100 };
-  const limbs = Object.fromEntries(LIMBS.map(limb => [limb, Object.fromEntries(POSE_ANGLES.map(angle => [angle, measured(lineText(limbLines(part, limb, angle)))]))]));
+  const limbs = Object.fromEntries(LIMBS.map(limb => [limb, Object.fromEntries(POSE_ANGLES.map(angle => [angle, reaching(lineText(limbLines(part, limb, angle)))]))]));
   // each accessory a slot takes, by each of its grips, at every angle of the limb it
   // turns with (SEE: gearKey)
   const gear = Object.fromEntries(SLOTS_IN_ORDER.map(slot => [slot, Object.fromEntries(ACCESSORIES.filter(accessory => accessory.on === ((slot === 'hat') ? 'head' : 'hand'))
@@ -662,14 +671,18 @@ const facts = [
   '/** each posable part\'s fill by pose, in its standing frame (the standing footprint\'s',
   ' *  minimum corner and its bottom; a raised limb reaches past them): the cells its body',
   ' *  and every piece no limb moves fill (`core`), and each limb\'s at every angle, each with',
-  ' *  how high its lowest point lies above the standing bottom (plates), and each accessory\'s',
-  ' *  by slot at every angle of the limb it turns with (`gear`), keyed by catalog part name. A',
-  ' *  pose fills their union and stands on its lowest point (SEE: grid.ts posed). Its `body`',
-  ' *  is what it measures standing, nothing worn: studs across (x) and along (z)',
-  ' *  (SEE: stage.ts partActor) */',
-  `export const POSE_GEOMETRY: Readonly<Record<string, Readonly<{ core: PosedBody; limbs: Readonly<Record<string, Readonly<Record<string, PosedBody>>>>; gear: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, PosedBody>>>>>>; body: Readonly<{ width: number; depth: number; }>; }>>> = ${JSON.stringify(poses)};`,
+  ' *  how high its lowest point lies above the standing bottom (plates), the core\'s and each',
+  ' *  limb\'s with its `reach`, and each accessory\'s by slot at every angle of the limb it',
+  ' *  turns with (`gear`), keyed by catalog part name. A pose fills their union and stands on',
+  ' *  its lowest point (SEE: grid.ts posed). Its `body` is what it measures standing, nothing',
+  ' *  worn: studs across (x) and along (z) (SEE: stage.ts partActor) */',
+  `export const POSE_GEOMETRY: Readonly<Record<string, Readonly<{ core: ReachingBody; limbs: Readonly<Record<string, Readonly<Record<string, ReachingBody>>>>; gear: Readonly<Record<string, Readonly<Record<string, Readonly<Record<string, PosedBody>>>>>>; body: Readonly<{ width: number; depth: number; }>; }>>> = ${JSON.stringify(poses)};`,
   '/** a body\'s fill in its part\'s standing frame and its lowest point (SEE: POSE_GEOMETRY) */',
   'type PosedBody = Readonly<{ fill: ReadonlyArray<readonly [number, number, number, number]>; bottom: number; }>;',
+  '/** a posed body and the rest of its bounding box: how far it reaches across (x) and along',
+  ' *  (z) the standing footprint\'s middle (studs, least first) and its top over the standing',
+  ' *  bottom (plates) */',
+  'type ReachingBody = PosedBody & Readonly<{ reach: Readonly<{ x: readonly [number, number]; z: readonly [number, number]; top: number; }>; }>;',
   '',
   '/** each hinge\'s fill in its standing frame: its base\'s (its own body and every piece',
   ' *  but its top) and its top\'s at every angle, and the cells of its top\'s studs at 0',
