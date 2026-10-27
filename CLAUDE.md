@@ -17,6 +17,11 @@ Apps embedded by the CharmIQ platform via an app iframe. No `package.json` or `t
 
 - **Every new Brick Studio or Stop Motion feature lands in the example films in the same change.** The films a person meets first are Stop Motion's starter scene (`demos/stop-motion/src/films.ts` `STARTER_SCENE`), *The Salon* (`demos/stop-motion/Studio.md`) and *The Shortcut* (`demos/stop-motion/README.md`). Each one uses every feature where the film has a place for it (a sky over the street, a gait for the walkers, a sound on the cut), so the defaults show what the apps can do. A feature that needs the viewer's own files (a picture from their Drive) is shown in the scene's comments, saying how to add one. A feature is not done until the films show it.
 
+## Mobile Applications
+
+- **`mobile/<application>/` holds a `README.md` and one document per phone platform (`iOS.md`).** The phone document is the Application alone (theme `charmiq:none`, a stylesheet zeroing `:root`/`body` spacing, `<iframe-app height="100svh" width="100%">`): it fills the screen, so nothing else in it can be seen. Setup and explanation belong in the READMEs (`mobile/README.md` for the shared home-screen steps).
+- **Mobile Applications are inline** (`<app-source>` in the document), never manifest- or folder-based: inline source arrives with the document and opens with the page, while a manifest Application is fetched and built after it, a wait on every launch. Inline source cannot mount `shared/`; what it needs from there is written into the Application.
+
 ## Tests
 
 - **This repository carries no tests**: it is public. Never add test files, test scripts or test setup here.
