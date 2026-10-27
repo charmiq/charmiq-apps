@@ -283,7 +283,7 @@ const keyChips = (key: Key): ReadonlyArray<string> => {
 const cameraChips = (key: CameraKey): ReadonlyArray<string> => {
   const chips: string[] = (key.ease === 'hold') ? [(key.name !== undefined) ? `"${key.name}"` : 'a cut'] : [];
   if(key.place) chips.push(('orbit' in key.place) ? `orbits at ${round(key.place.orbit.angle)}°, ${round(key.place.orbit.distance)} out` : `at ${point(key.place.point)}`);
-  if(key.target) chips.push(('actor' in key.target) ? `looks at ${key.target.actor}` : `looks at ${point(key.target.point)}`);
+  if(key.target) chips.push(!('actor' in key.target) ? `looks at ${point(key.target.point)}` : ('lock' in key.target) ? `locked on ${key.target.actor}` : `looks at ${key.target.actor}`);
   if(key.fov !== undefined) chips.push(`${round(key.fov)}° lens${key.dollyZoom ? ', a dolly zoom' : ''}`);
   if(key.roll !== undefined) chips.push(`rolled ${round(key.roll)}°`);
   if(key.shift !== undefined) chips.push(`lens shifted ${round(key.shift)}`);

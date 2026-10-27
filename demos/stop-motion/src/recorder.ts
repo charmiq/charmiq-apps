@@ -61,6 +61,10 @@ export type Span = Readonly<{ from: number; to: number; mode: 'set' | 'add'; cha
 
 /** where the camera looks: a point, or an actor's position raised by `height` plates */
 export type Target = Readonly<{ point: Point; } | { actor: string; height: number; }>;
+/** where a camera aims: a point, or an actor followed as a camera operator follows it
+ *  (SEE: film.ts followed), or with `lock` its exact place each frame, every leap and
+ *  step with it (a thrown ball the shot tracks tightly) */
+export type Aim = Target | Readonly<{ actor: string; height: number; lock: true; }>;
 /** where the camera stands: a point, or around its target at `angle` degrees,
  *  `distance` studs out and `height` plates above it. The angle is fixed to the world
  *  (0 south of the target, 90 east) or, `relativeTo: 'heading'`, turns with the target
@@ -76,7 +80,7 @@ export type CameraPlace = Readonly<{ point: Point; } | { orbit: Readonly<{ angle
  *  drawn in or out against the lens). `focus` is what is sharp (its target when no key
  *  names it) and `aperture` the lens's opening as an f-number (a depth of field at
  *  every look once a key names one), each eased into: a rack focus */
-export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Target; fov?: number; roll?: number; shift?: number; dollyZoom?: true; focus?: Focus; aperture?: number; avoid?: 'parts'; ease: Ease; name?: string; transition?: Transition; line?: number; }>;
+export type CameraKey = Readonly<{ time: number; place?: CameraPlace; target?: Aim; fov?: number; roll?: number; shift?: number; dollyZoom?: true; focus?: Focus; aperture?: number; avoid?: 'parts'; ease: Ease; name?: string; transition?: Transition; line?: number; }>;
 /** what a camera focuses on: a point, an actor (raised), or what lies `distance` studs
  *  ahead of it along its view */
 export type Focus = Target | Readonly<{ distance: number; }>;
@@ -276,6 +280,16 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     const { actor: named, height = 0 } = value as Record<string, unknown>;
     if((typeof nameOf(named) !== 'string') || !isFiniteNumber(height)) fail(`${what} is a point, an actor, or { actor, height }`);
     return { actor: nameOf(named) as string, height: height as number };
+  };
+  /** where a camera aims: a target, `{ actor, height, lock: true }` keeping it on the
+   *  actor's exact place; undefined where the key leaves it to the key before */
+  const toAim = (value: unknown, what: string): Aim | undefined => {
+    const target = toTarget(value, what);
+    const lock = ((typeof value === 'object') && (value !== null)) ? (value as { lock?: unknown; }).lock : undefined/*a name*/;
+    if(!target || (lock === undefined)) return target;
+    if(lock !== true) fail(`${what}.lock is true: the camera kept on the actor's exact place, its every leap and step with it (left out, the camera follows the actor as an operator does)`);
+    if(!('actor' in target)) fail(`${what}.lock keeps the camera on an actor's exact place: give it an actor`);
+    return { ...target, lock: true };
   };
 
   // .. Recording .................................................................
@@ -576,7 +590,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
         if((relativeTo !== undefined) && (relativeTo !== 'world') && (relativeTo !== 'heading')) fail(`${what}.orbit.relativeTo is 'world' (its angle fixed to the world: 0 south of the target) or 'heading' (turning with the target actor: 0 behind it)`);
         place = { orbit: { angle: angle as number, distance: distance as number, height: height as number, ...((relativeTo === 'heading') ? { relativeTo: 'heading' as const } : {}) } };
       } /* else -- a position, or where the key before left it */
-      const aim = toTarget(target, `${what}.target`);
+      const aim = toAim(target, `${what}.target`);
       if((fov !== undefined) && (!isFiniteNumber(fov) || ((fov as number) < 5) || ((fov as number) > 120))) fail(`${what}.fov is degrees from 5 to 120`);
       if((avoid !== undefined) && !place) fail(`${what}.avoid keeps the camera a key places out of parts: give it a position or an orbit`);
       cameraKeys.push({

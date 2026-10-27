@@ -1,19 +1,20 @@
 import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
 
-import type { Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
+import type { Aim, Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
 import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, surfaceUnder, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
-// replaces or adds to its values over its span; a rider stands at its offset in the
-// frame of what it rides, turned with it; the camera stands at a point or orbits its
-// target, the orbit's angle eased so it swings round on its circle; a wheeled
+// replaces or adds to its values over its span; a rider stands at its offset in
+// the frame of what it rides, turned with it; the camera stands at a point or
+// orbits its target, the orbit's angle eased so it swings round on its circle, and
+// follows an actor it aims at as its operator would (SEE: followed); a wheeled
 // actor's wheels roll by the distance it moves along its own north. A plan view
-// looks down over everything the film shows; its marks are each actor's path and the
-// camera's, broken at each cut. A frame stands on the set its keys name, held from
-// each key to the next as a cut. A film reaches the studios as a reel: each frame's
-// set, world values, every view's camera, its fade and its title at the opacity it is
-// drawn at, so a studio draws a frame knowing nothing of time
+// looks down over everything the film shows; its marks are each actor's path and
+// the camera's, broken at each cut. A frame stands on the set its keys name, held
+// from each key to the next as a cut. A film reaches the studios as a reel: each
+// frame's set, world values, every view's camera, its fade and its title at the
+// opacity it is drawn at, so a studio draws a frame knowing nothing of time
 // ********************************************************************************
 // == Constants ===================================================================
 const LDU_PER_STUD = 20;
@@ -37,6 +38,10 @@ const TIPPED = 45;
 const DEFAULT_TARGET: Point = { x: 0, z: 0, height: 4 };
 const DEFAULT_ORBIT = { angle: 30, distance: 40, height: 30 };
 export const DEFAULT_FOV = 32/*degrees: the studio's own lens*/;
+/** the window a camera following an actor takes its height and its place across the
+ *  ground over: a height lasting under half of it moves nothing, and a tilt or a pan
+ *  eases over the whole of it (SEE: followed) */
+const FOLLOW_WINDOW = 1/*seconds*/;
 /** how far a key's time may lie past a frame's and still take effect at it: a frame's
  *  time is the quotient of its index and the fps, which rounds */
 const TIME_EPSILON = 1e-9/*seconds*/;
@@ -165,6 +170,9 @@ export type Rest = Readonly<{ position: Point; turn: Turn; pose?: Readonly<Recor
 export type StageFacts = Readonly<{ wheeled?: ReadonlySet<string>; figures?: ReadonlySet<string>; bottoms?: PoseBottoms; clicks?: ReadonlySet<string>; rests?: ReadonlyMap<string, Rest>; grounds?: ReadonlyMap<string, ReadonlyArray<number>>; surfaces?: (set: string | undefined) => SurfaceAt; }>;
 /** an actor where it stands in one frame */
 type Placed = Readonly<{ position: Point; matrix: ReadonlyArray<number>; visible: boolean; pose?: Readonly<Record<string, number>>; }>;
+/** where a camera aims at an actor it follows in one frame, by the actor's name (SEE:
+ *  followed) */
+type Followed = (actor: string) => Point;
 
 // == Film ========================================================================
 /** the film a recorded scene makes with what the stage answered of its cast (`facts`):
@@ -201,13 +209,13 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     return (kind === 'smooth') ? undefined : { frames: (kind === 'twos') ? 2 : 1, fps: scene.fps };
   };
   const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [from / scene.fps, to / scene.fps] as const), drawingOf(actor.drawn))]));
-  const frames: FilmFrame[] = [];
+  const worlds: Array<Omit<FilmFrame, 'camera' | 'views' | 'transition'>> = []/*each frame but its cameras*/, placements: Array<ReadonlyMap<string, Placed>> = [], drawings: Array<ReadonlyMap<string, number>> = [], headed: Array<ReadonlyMap<string, number>> = [];
   const rolled = new Map<string, number>();
   const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();
   let previous: ReadonlyMap<string, Placed> | undefined;
   for(let index=0; index<times.length; index++) {
-    const time = times[index], at = time * scene.fps/*where it stands among the scene's own frames*/;
-    const placed = new Map<string, Placed>(), headings = new Map<string, number>(), steps: Record<string, FrameStep> = {}, levels: Record<string, number> = {}, feet: Record<string, Feet> = {};
+    const time = times[index];
+    const placed = new Map<string, Placed>(), drawnAt = new Map<string, number>(), headings = new Map<string, number>(), steps: Record<string, FrameStep> = {}, levels: Record<string, number> = {}, feet: Record<string, Feet> = {};
     for(const actor of order) {
       const cast = rests.get(actor.name);
       const castRest: Partial<Rest> | undefined = (actor.ride && cast) ? (cast.pose ? { pose: cast.pose } : undefined)/*a rider stands where it rides, in the pose it stood in*/ : cast;
@@ -245,6 +253,9 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       const standing = parent ? riding(parent, actor.ride!.offset, own) : own;
       within(actor, standing.position, time);
       placed.set(actor.name, standing);
+      // the time its place stands for: its step's drawing, else its keys'; a rider
+      // takes its mount's
+      drawnAt.set(actor.name, parent ? drawnAt.get(actor.ride!.parent)! : under ? (under.move.start + ((under.move.end - under.move.start) * under.u)) : drawnTime);
       // its heading as written: what it rides's, and its own yaw, unwrapped (a turn
       // through 180 carries on round), what its ride's tilt adds taken from its turn
       const written = (parent ? headings.get(actor.ride!.parent)! : 0) + (local.channels.yaw ?? 0);
@@ -276,14 +287,22 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       return [{ name, position: standing.position, turn: turnOf(standing.matrix), ...(standing.pose ? { pose: standing.pose } : {}), ...(face ? { face } : {}), ...Object.fromEntries(holding), ...(wheeled.has(name) ? { rolled: rolled.get(name)! } : {}) }];
     });
     const fade = channelAt(scene.fade, 'fade', time) ?? 0;
-    const fading = fadeStyleAt(scene.fade, time);
-    const transition = transitionAt(scene, at, time, placed, headings, setAt(scene.sets, time), frames);
     const title = scene.titles.find(each => (time >= each.from) && (time < each.to));
-    // each camera as its drawing stands
-    const seen = (camera: RecordedCamera) => { const drawnTime = times[drawnFrame(camera.drawn, index)]; return cameraAt(camera, drawnTime * scene.fps, drawnTime, placed, headings); };
-    const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, seen(view)]));
     const set = setAt(scene.sets, time);
-    frames.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, camera: seen(scene.camera), views, fade, ...((fade > 0) ? fading : {}), ...(transition ? { transition } : {}), ...(title ? { title } : {}), ...((Object.keys(steps).length > 0) ? { steps } : {}), ...((Object.keys(levels).length > 0) ? { grounds: levels } : {}), ...((Object.keys(feet).length > 0) ? { feet } : {}) });
+    worlds.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, fade, ...((fade > 0) ? fadeStyleAt(scene.fade, time) : {}), ...(title ? { title } : {}), ...((Object.keys(steps).length > 0) ? { steps } : {}), ...((Object.keys(levels).length > 0) ? { grounds: levels } : {}), ...((Object.keys(feet).length > 0) ? { feet } : {}) });
+    placements.push(placed); drawings.push(drawnAt); headed.push(headings);
+  }
+  // each camera as its drawing stands, aiming at the actors it follows where the whole
+  // film places them (SEE: followed); the shot a transition leaves follows within the
+  // film's camera's shot
+  const following = followerOf(scene, times, placements, drawings);
+  const frames: FilmFrame[] = [];
+  for(const frame of worlds) {
+    const { index, time } = frame;
+    const seen = (camera: RecordedCamera) => { const drawn = drawnFrame(camera.drawn, index), drawnTime = times[drawn]; return cameraAt(camera, drawnTime * scene.fps, drawnTime, placements[index], following(camera, drawn), headed[index]); };
+    const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, seen(view)]));
+    const transition = transitionAt(scene, time * scene.fps/*where it stands among the scene's own frames*/, time, placements[index], following(scene.camera, index), headed[index], frame.set, frames);
+    frames.push({ ...frame, camera: seen(scene.camera), views, ...(transition ? { transition } : {}) });
   }
   const footsteps = footstepsOf(scene, clicked), leaps = walkLeapsOf(scene, clicked);
   const stepped = { ...((footsteps.length > 0) ? { footsteps } : {}), ...((leaps.length > 0) ? { leaps } : {}) };
@@ -526,15 +545,17 @@ const within = (actor: RecordedActor, { x, z, height }: Point, time: number) => 
 };
 
 // == Camera ======================================================================
-/** the camera at a frame: its target, then where it stands (around the target, or
+/** the camera at a frame: its target (an actor where the camera follows it, `followed`,
+ *  or locked, where it stands: `placed`), then where it stands (around the target, or
  *  at a point), its lens, then any shake. An orbit relative to the target's heading
  *  turns with the actor the target key in force names (0 behind it; SEE: keyInForce):
  *  its angle on the world is its own less that actor's heading (`headings`, its yaw as
  *  written, unwrapped; an orbit's angle runs counterclockwise seen from above, a yaw
  *  clockwise). Round a point, an orbit has no heading: its angle is the world's */
-const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: ReadonlyMap<string, Placed>, headings: ReadonlyMap<string, number>): StageCamera => {
+const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: ReadonlyMap<string, Placed>, followed: Followed, headings: ReadonlyMap<string, number>): StageCamera => {
   const keys = camera.keys;
-  const resolve = (target: Target): Point => ('point' in target) ? target.point : lifted(placed.get(target.actor)!.position, target.height);
+  const exact = (target: Target): Point => ('point' in target) ? target.point : lifted(placed.get(target.actor)!.position, target.height);
+  const resolve = (target: Aim): Point => (('point' in target) || ('lock' in target)) ? exact(target) : lifted(followed(target.actor), target.height);
   const target = eased(keys.filter(key => key.target), time, key => resolve(key.target!), lerpPoint) ?? DEFAULT_TARGET;
   const aimed = keyInForce(keys.filter(key => key.target), time)?.target;
   const heading = (aimed && ('actor' in aimed)) ? headings.get(aimed.actor)! : 0;
@@ -557,17 +578,17 @@ const cameraAt = (camera: RecordedCamera, index: number, time: number, placed: R
   const shift = eased(keys.filter(key => key.shift !== undefined), time, key => key.shift!, lerp) ?? 0;
   const drawn = dollied(keys, lensKeys, time);
   const seen = (drawn === 1) ? apart : { x: target.x + ((apart.x - target.x) * drawn), z: target.z + ((apart.z - target.z) * drawn), height: target.height + ((apart.height - target.height) * drawn) };
-  // what is sharp: each key's focus where it stands now (an actor as it moves), eased
-  // from key to key; held by a distance (none eased into, or a cut yet to come) or
-  // racked between two, a distance ahead along the view, which holds however the
-  // camera is drawn in; racked between a distance and a point, points, the distance
-  // read where the camera stands as keyed
+  // what is sharp: each key's focus where it stands now (an actor exactly, as it
+  // moves), eased from key to key; held by a distance (none eased into, or a cut yet
+  // to come) or racked between two, a distance ahead along the view, which holds
+  // however the camera is drawn in; racked between a distance and a point, points, the
+  // distance read where the camera stands as keyed
   const focusKeys = keys.filter(key => key.focus);
   const next = focusKeys.find(key => !isReached(key.time, time));
   const easing = [focusKeys.filter(key => isReached(key.time, time)).pop(), ((next?.ease === 'hold') && (next !== focusKeys[0])) ? undefined/*a cut: never eased into*/ : next].filter(key => key !== undefined);
   const focus = easing.every(key => 'distance' in key.focus!)
     ? eased(focusKeys, time, key => (('distance' in key.focus!) ? key.focus.distance : 0/*not between these keys*/), lerp)
-    : eased(focusKeys, time, key => (('distance' in key.focus!) ? ahead(seen, target, key.focus.distance) : resolve(key.focus!)), lerpPoint);
+    : eased(focusKeys, time, key => (('distance' in key.focus!) ? ahead(seen, target, key.focus.distance) : exact(key.focus!)), lerpPoint);
   const aperture = eased(keys.filter(key => key.aperture !== undefined), time, key => key.aperture!, lerp);
   return { position: seen, target, fov, ...(roll ? { roll } : {}), ...(shift ? { shift } : {}), ...((focus !== undefined) ? { focus } : {}), ...((aperture !== undefined) ? { aperture } : {}) };
 };
@@ -613,7 +634,7 @@ const dollied = (keys: ReadonlyArray<CameraKey>, lensKeys: ReadonlyArray<CameraK
  *  On another set than the frame's, it is the last frame before the cut (`before`, the
  *  frames so far) as it stood: its camera and its actors, one moment, drawn once and
  *  held. A cut no frame stands before leaves no shot */
-const transitionAt = (scene: Recorded, at: number, time: number, placed: ReadonlyMap<string, Placed>, headings: ReadonlyMap<string, number>, standing: string | undefined, before: ReadonlyArray<FilmFrame>): FilmFrame['transition'] => {
+const transitionAt = (scene: Recorded, at: number, time: number, placed: ReadonlyMap<string, Placed>, followed: Followed, headings: ReadonlyMap<string, number>, standing: string | undefined, before: ReadonlyArray<FilmFrame>): FilmFrame['transition'] => {
   const keys = scene.camera.keys;
   const cut = keys.filter(key => (key.ease === 'hold') && isReached(key.time, time)).pop();
   if(!cut?.transition || (time >= (cut.time + cut.transition.seconds))) return undefined;
@@ -621,7 +642,7 @@ const transitionAt = (scene: Recorded, at: number, time: number, placed: Readonl
   const set = setAt(scene.sets, cut.time - LEFT_SET_BEFORE);
   const last = [...before].reverse().find(frame => !isReached(cut.time, frame.time));
   if(!last) return undefined/*nothing filmed before the cut to leave*/;
-  const apart = (set !== standing) ? { camera: last.camera, actors: last.actors } : { camera: cameraAt(leaving, at, time, placed, headings) };
+  const apart = (set !== standing) ? { camera: last.camera, actors: last.actors } : { camera: cameraAt(leaving, at, time, placed, followed, headings) };
   return { ...apart, ...((set !== undefined) ? { set } : {}), frame: last.index, left: 1 - ((time - cut.time) / cut.transition.seconds), shape: cut.transition.shape };
 };
 /** the values of a camera key */
@@ -658,6 +679,104 @@ export const orbitPoint = (target: Point, orbit: Readonly<{ angle: number; dista
 };
 
 const lifted = (point: Point, height: number): Point => ({ ...point, height: point.height + height });
+
+// == Following ===================================================================
+// a camera follows an actor as its operator would: the actor moves within the frame,
+// and the camera follows only what lasts. The film is made whole, so the aim at each
+// frame is smoothed over the frames ahead of it as well as behind: a steady move is
+// aimed at where the actor stands, never behind it. It is smoothed only over the frames
+// in a row the actor is shown in one shot of that camera, never across a cut, a change
+// of set or a moment the actor is hidden, and never from one actor to another. Nothing
+// but the actor's places goes in, so it is the same every run
+
+/** each camera's aim at each actor it follows, at a frame: an actor's whole track is
+ *  made the first time a camera asks for it, from where each frame places it and the
+ *  time that place stands for (`drawings`: its drawing's, held on twos) */
+const followerOf = (scene: Recorded, times: ReadonlyArray<number>, placements: ReadonlyArray<ReadonlyMap<string, Placed>>, drawings: ReadonlyArray<ReadonlyMap<string, number>>) => {
+  const tracks = new Map<RecordedCamera, Map<string, ReadonlyArray<Point>>>();
+  const trackOf = (camera: RecordedCamera, actor: string): ReadonlyArray<Point> => {
+    const byActor = tracks.get(camera) ?? new Map<string, ReadonlyArray<Point>>();
+    tracks.set(camera, byActor);
+    const known = byActor.get(actor);
+    if(known) return known;
+    const places = placements.map(placed => placed.get(actor)!/*by contract: recorded*/);
+    const cuts = [...cameraShots(camera, scene.length).map(shot => shot.from), ...(scene.sets ?? []).map(key => key.time)];
+    const track = followed(times, drawings.map(drawnAt => drawnAt.get(actor)!), times.map((time, index) => places[index].visible ? cuts.filter(cut => isReached(cut, time)).length : undefined/*hidden*/), places.map(place => place.position));
+    byActor.set(actor, track);
+    return track;
+  };
+  return (camera: RecordedCamera, index: number): Followed => actor => trackOf(camera, actor)[index];
+};
+
+/** an actor's aim over the film: at each frame of a run (the frames in a row whose
+ *  `runs` agree, each the shot it is shown in; none where it is hidden) its place
+ *  smoothed within the run, each place weighed at the time it stands for (`drawn`),
+ *  elsewhere its place. Its height is the median of its
+ *  heights within FOLLOW_WINDOW around the frame, those medians then read off the line
+ *  best fitting them over FOLLOW_WINDOW under a Hann window; its place across the
+ *  ground off the line best fitting its places over FOLLOW_WINDOW under one. A window
+ *  reaching past its run takes the run's frames alone */
+// NOTE: a median ignores whatever lasts under half its window (a leap, a hop, a step's
+// bob) wholly, where a mean is still lifted by its share of the window: Track &
+// Field's hurdle leaps lifted a second's Hann mean by 0.8 plates and rippled it 0.7. A
+// median keeps a climb's every tread, so the Hann line after it eases the treads into
+// one tilt. A Hann window's weights fall to nothing at its ends, so a frame coming into
+// it or leaving it never steps the aim (a box's would, at every drawing). Across the
+// ground a median would keep a walk's stud-by-stud steps, so the place takes the Hann
+// line alone, over the same second: over half of one each of Track & Field's hurdle
+// leaps, 3.6 studs on in a sixth of a second, still swung the pan 1.8 studs about his
+// steady run (a second's, 0.35). A line rather than a mean: over a whole window the two
+// are one, and where a run's edge cuts the window short a mean lags a steady move (or
+// leads it) while the line still aims it where the actor stands. A place held on twos
+// stands for its drawing's time, not its frame's: weighed at its frame's, a steady
+// move's aim would trail its drawings by half a frame
+const followed = (times: ReadonlyArray<number>, drawn: ReadonlyArray<number>, runs: ReadonlyArray<number | undefined>, places: ReadonlyArray<Point>): ReadonlyArray<Point> => {
+  const aims = [...places];
+  const smooth = (start: number, end: number) => {
+    // the run's frames within half a window's seconds of a frame, either way
+    const near = (index: number, seconds: number): ReadonlyArray<number> => {
+      const reach = (other: number) => Math.abs(times[other] - times[index]) <= ((seconds / 2) + TIME_EPSILON);
+      let [from, to] = [index, index];
+      while((from > start) && reach(from - 1)) from--;
+      while((to < (end - 1)) && reach(to + 1)) to++;
+      return Array.from({ length: (to - from) + 1 }, (_, offset) => from + offset);
+    };
+    const medians = new Map<number, number>();
+    for(let index=start; index<end; index++) medians.set(index, median(near(index, FOLLOW_WINDOW).map(other => places[other].height)));
+    for(let index=start; index<end; index++) {
+      const around = near(index, FOLLOW_WINDOW);
+      const line = (value: (other: number) => number) => hannLine(times[index], around.map(other => ({ time: drawn[other], value: value(other) })), value(index), FOLLOW_WINDOW);
+      aims[index] = { x: line(other => places[other].x), z: line(other => places[other].z), height: line(other => medians.get(other)!) };
+    }
+  };
+  for(let start=0; start<places.length; ) {
+    let end = start + 1;
+    while((end < places.length) && (runs[end] === runs[start])) end++;
+    if(runs[start] !== undefined) smooth(start, end);
+    start = end;
+  }
+  return aims;
+};
+
+/** the middle of some values: the mean of the middle two of an even count */
+const median = (values: ReadonlyArray<number>): number => {
+  const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
+  return ((sorted.length % 2) === 1) ? sorted[middle] : ((sorted[middle - 1] + sorted[middle]) / 2);
+};
+
+/** a value at a time (`at`) read off the line best fitting its samples around it, each
+ *  weighed under a Hann window `seconds` wide centered on the time (nothing past its
+ *  ends): their weighed mean where the window is whole and even */
+// NOTE: differences are taken from the time and from the frame's own value (`own`), so
+// samples of one value give that value exactly
+const hannLine = (at: number, samples: ReadonlyArray<Readonly<{ time: number; value: number; }>>, own: number, seconds: number): number => {
+  const weighed = samples.map(sample => ({ weight: (Math.abs(sample.time - at) < (seconds / 2)) ? (0.5 * (1 + Math.cos((2 * Math.PI * (sample.time - at)) / seconds))) : 0, time: sample.time - at, value: sample.value - own }));
+  const weights = weighed.reduce((sum, { weight }) => sum + weight, 0);
+  const [time, mean] = [weighed.reduce((sum, each) => sum + (each.weight * each.time), 0) / weights, weighed.reduce((sum, each) => sum + (each.weight * each.value), 0) / weights];
+  const spread = weighed.reduce((sum, each) => sum + (each.weight * (each.time - time) * (each.time - time)), 0);
+  const slope = (spread > 0) ? (weighed.reduce((sum, each) => sum + (each.weight * (each.time - time) * (each.value - mean)), 0) / spread) : 0/*one frame*/;
+  return own + mean - (slope * time);
+};
 
 // == Keys ========================================================================
 /** the face an actor's face keys give at a time: the last keyed at or before it,
