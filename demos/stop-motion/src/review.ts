@@ -43,9 +43,11 @@ const FLIGHT_WINDOW = 0.125/*seconds*/;
  *  side of a frame to travel there: past the boil's shift and an idle's sway, short of
  *  any walk */
 const TRAVELING = 1;
-/** how far a path's or a key's pitch or roll tilts a figure before it is named as what
- *  tips the figure (degrees): past an idle's weight shift, a degree or so */
+/** how far a path's or a key's pitch, roll or lean tilts a figure before it is named as
+ *  what tips the figure (degrees): past an idle's weight shift, a degree or so */
 const TILTING = 10;
+/** each channel that tips a figure (SEE: TiltChannel) and the value its keys name */
+const TILT_CHANNELS: ReadonlyArray<readonly [TiltChannel, string]> = [['pitch', 'pitch'], ['roll', 'roll'], ['lean', 'pose.lean']];
 
 // -- Cuts ------------------------------------------------------------------------
 /** a shot shorter than this (seconds) is flagged */
@@ -89,9 +91,9 @@ export type CameraGroup = Readonly<{ shot: CameraShot; kind: CameraKind; by: str
  *  its lowest point in plates over the baseplate), the top (plates) of the part its feet
  *  are in or of what is under them, the part the ground it follows stands it on (`on`),
  *  and what places its feet with the scene's lines that do (SEE: FootingBy) with the
- *  height keys easing then; tipped, what tips it instead (SEE: tiltedBy), the keys it
- *  holds back from and the moment to key it upright at (`upright`: its last frame
- *  tipped by those keys held back, so a key upright then holds back in their place) */
+ *  height keys easing then; tipped, what tips it instead (SEE: tiltedBy), the keys held
+ *  over it and the moment to key it upright at (SEE: uprightAt), so a key upright then
+ *  holds in their place */
 export type FootingProblem = Readonly<{
   actor: string; from: number; to: number; kind: FootingKind; most: number; at: Point; surface?: number; on?: string; part?: string; points?: ReadonlyArray<string>;
   by: FootingBy; lines: ReadonlyArray<number>; keys?: ReadonlyArray<HeightKey>; tilts?: ReadonlyArray<TiltKey>; heldBack?: ReadonlyArray<HeldBack>; upright?: number;
@@ -105,12 +107,17 @@ export type FootingProblem = Readonly<{
 export type Clearance = Readonly<{ actor: string; from: number; to: number; part: string; margin: number; time: number; point: string; cleared: boolean; lines: ReadonlyArray<number>; }>;
 /** a height key a figure's feet ease from or to: its time (seconds) and height (plates) */
 export type HeightKey = Readonly<{ time: number; height: number; }>;
-/** a pitch or roll key tipping a figure: its time (seconds), its channel and its value
- *  (degrees) */
-export type TiltKey = Readonly<{ time: number; channel: 'pitch' | 'roll'; value: number; }>;
-/** a channel's first key held back to the film's start from its later time (seconds):
- *  its channel and line */
-export type HeldBack = Readonly<{ time: number; channel: 'pitch' | 'roll'; line?: number; }>;
+/** a figure's channel that tips it: its pitch and roll, and its pose's lean (SEE:
+ *  film.ts tiltOf) */
+export type TiltChannel = 'pitch' | 'roll' | 'lean';
+/** a pitch, roll or lean key tipping a figure: its time (seconds), its channel and its
+ *  value (degrees) */
+export type TiltKey = Readonly<{ time: number; channel: TiltChannel; value: number; }>;
+/** a channel's key held over a figure's moves from outside them (its time, seconds):
+ *  its first key held back to the film's start from its later time, or its last, keyed
+ *  before the walk it tips, held on through it (a crouch's lean never keyed back); its
+ *  channel and line */
+export type HeldBack = Readonly<{ time: number; channel: TiltChannel; line?: number; }>;
 /** how a figure's footing goes wrong (SEE: FootingProblem) */
 export type FootingKind = 'into' | 'above' | 'floating' | 'tipped' | 'through';
 /** what places a figure's feet: its walk (its line; off the ground, the height keys
@@ -253,16 +260,19 @@ export const footingProblems = (film: Film): ReadonlyArray<FootingProblem> => {
   return problems.map(problem => problem.heldBack ? { ...problem, upright: uprightAt(film, problems, problem) } : problem);
 };
 
-/** when a figure tipped by keys held back is keyed upright to stand so until then: its
- *  last frame tipped while held back by the same keys, over every such span of its
- *  (a walk on and a run-up held back by one landing key take one), before the earliest
- *  of those keys */
+/** when a figure tipped by keys held over its moves is keyed upright to stand so (SEE:
+ *  HeldBack), over every span of its tipped by the same keys (a walk on and a run-up
+ *  held back by one landing key take one): held back from a later key, its last frame
+ *  tipped before the earliest of them, so the upright key holds back in their place;
+ *  held on from an earlier key, its first frame tipped after the latest, so the upright
+ *  key holds on in its place */
 const uprightAt = (film: Film, problems: ReadonlyArray<FootingProblem>, held: FootingProblem): number => {
   const keysOf = ({ heldBack }: FootingProblem) => (heldBack ?? []).map(key => `${key.channel}@${key.time}`).join();
   const spans = problems.filter(problem => (problem.actor === held.actor) && (problem.kind === 'tipped') && (keysOf(problem) === keysOf(held)));
-  const until = Math.min(...held.heldBack!.map(key => key.time));
-  const frames = film.frames.filter(frame => (frame.time < (until - 1e-9)) && spans.some(span => (frame.time >= (span.from - 1e-9)) && (frame.time < (span.to - 1e-9))));
-  return frames[frames.length - 1]?.time ?? held.from/*its first frame lies at the key*/;
+  const back = held.heldBack!.filter(key => key.time > held.from).map(key => key.time), on = held.heldBack!.filter(key => key.time <= held.from).map(key => key.time);
+  const [after, until] = [Math.max(-Infinity, ...on), Math.min(Infinity, ...back)];
+  const frames = film.frames.filter(frame => (frame.time > (after + 1e-9)) && (frame.time < (until - 1e-9)) && spans.some(span => (frame.time >= (span.from - 1e-9)) && (frame.time < (span.to - 1e-9))));
+  return ((back.length > 0) ? frames[frames.length - 1] : frames[0])?.time ?? held.from/*its first frame lies at the key*/;
 };
 
 /** how far each keyed flight clears each part it crosses, as the film staged on the
@@ -358,26 +368,30 @@ export const placedBy = (film: Film, name: string, time: number): Readonly<{ by:
   return { by: 'keys', lines: [...new Set(linesOf(easing))], ...keysOf(easing) };
 };
 
-/** what tips an actor at a time: the paths whose pitch or roll then tilt it (their
- *  lines; a walk's glide aside, which a figure on studs never takes), else the keys of
- *  each of its pitch and roll that tilt it then, easing (SEE: placedBy), with their
- *  lines. Held back (`heldBack`, each such key) where a channel's first key is the one
- *  in force and lies later: a channel's first key holds back to the film's start, so a
- *  flight's pitch keyed at its landing lies its walker down from the start */
+/** what tips an actor at a time: the paths whose pitch, roll and lean then tilt it
+ *  (their lines; a walk's glide aside, which a figure on studs never takes), else the
+ *  keys of each of its pitch, roll and lean that tilt it then, easing (SEE: placedBy),
+ *  with their lines. Held (`heldBack`, each such key; SEE: HeldBack) where a channel's
+ *  first key is the one in force and lies later, as a channel's first key holds back to
+ *  the film's start (a flight's pitch keyed at its landing lies its walker down from the
+ *  start), or where its last is and lies before the walk then, as a channel's last key
+ *  holds on (a crouch's lean keyed before a race bends its runner the whole race) */
 export const tiltedBy = (film: Film, name: string, time: number): Readonly<{ by: FootingBy; lines: ReadonlyArray<number>; tilts?: ReadonlyArray<TiltKey>; heldBack?: ReadonlyArray<HeldBack>; }> => {
   const actor = film.scene.actors.find(each => each.name === name)!;
   const at = time * film.scene.fps;
   const sampleAt = (span: Span) => span.samples[Math.max(0, Math.min(span.samples.length - 1, Math.round(at - span.from)))];
-  const paths = actor.spans.filter(span => !span.glide && (at >= span.from) && (at <= span.to) && (tiltOf({ pitch: sampleAt(span).pitch ?? 0, roll: sampleAt(span).roll ?? 0 }) >= TILTING));
+  const paths = actor.spans.filter(span => !span.glide && (at >= span.from) && (at <= span.to) && (tiltOf({ pitch: sampleAt(span).pitch ?? 0, roll: sampleAt(span).roll ?? 0 }, sampleAt(span)['pose.lean'] ?? 0) >= TILTING));
   if(paths.length > 0) return { by: 'path', lines: [...new Set(linesOf(paths))] };
-  const easing = (['pitch', 'roll'] as const).flatMap(channel => {
-    const keyed = actor.keys.filter(key => Object.hasOwn(key.values, channel));
-    const value = channelAt(keyed, channel, time) ?? 0/*unkeyed: upright*/;
-    if(tiltOf({ pitch: value, roll: 0 }) < TILTING) return [];
+  const walk = actor.walks?.find(each => (time >= each.start) && (time <= each.end));
+  const easing = TILT_CHANNELS.flatMap(([channel, valued]) => {
+    const keyed = actor.keys.filter(key => Object.hasOwn(key.values, valued));
+    const value = channelAt(keyed, valued, time) ?? 0/*unkeyed: upright*/;
+    if(tiltOf({ pitch: value, roll: 0 }) < TILTING) return []/*one channel alone tilts as a pitch would*/;
     const { keys, heldBack } = easingAt(keyed, time);
-    return [{ channel, keys, heldBack }];
+    const heldOn = !heldBack && (keys.length === 1) && !!walk && (keys[0].time < walk.start)/*its last key, keyed before the walk*/;
+    return [{ channel, valued, keys, heldBack: heldBack || heldOn }];
   });
-  const tilts = easing.flatMap(({ channel, keys }) => keys.map(key => ({ time: key.time, channel, value: key.values[channel] })));
+  const tilts = easing.flatMap(({ channel, valued, keys }) => keys.map(key => ({ time: key.time, channel, value: key.values[valued] })));
   const heldBack = easing.flatMap(({ channel, keys, heldBack: held }) => held ? [{ time: keys[0].time, channel, ...((keys[0].line !== undefined) ? { line: keys[0].line } : {}) }] : []);
   return { by: 'keys', lines: [...new Set(easing.flatMap(({ keys }) => linesOf(keys)))], ...((tilts.length > 0) ? { tilts } : {}), ...((heldBack.length > 0) ? { heldBack } : {}) };
 };

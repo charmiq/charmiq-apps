@@ -1,4 +1,6 @@
-import { cameraShots, frameEnd, isReached, pointIn, rotation, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING } from './film';
+import type { PoseBottoms } from '../../brick-shared/rise';
+
+import { cameraShots, frameEnd, isReached, pointIn, rotation, solesUnder, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING, HIPS } from './film';
 import type { GroundProbe } from './ground';
 import type { Size } from './measure';
 import type { Point, RecordedCamera, Span } from './recorder';
@@ -38,7 +40,7 @@ const KEPT = 1 - 1e-6;
  *  lying down (a stud-wide bar crossed falls between none), and its waist's and chest's
  *  front and back (a figure faces south at yaw 0: its front is south of its middle) */
 const BODY: ReadonlyArray<Readonly<{ name: string; at: Point; }>> = [
-  { name: 'hips', at: { x: 0, z: 0, height: 3.5 } }, { name: 'waist', at: { x: 0, z: 0, height: 5.25 } }, { name: 'chest', at: { x: 0, z: 0, height: 7 } },
+  { name: 'hips', at: { x: 0, z: 0, height: HIPS } }, { name: 'waist', at: { x: 0, z: 0, height: 5.25 } }, { name: 'chest', at: { x: 0, z: 0, height: 7 } },
   { name: 'neck', at: { x: 0, z: 0, height: 8.75 } }, { name: 'head', at: { x: 0, z: 0, height: 10.5 } },
   { name: 'waist front', at: { x: 0, z: -0.5, height: 5.25 } }, { name: 'waist back', at: { x: 0, z: 0.5, height: 5.25 } },
   { name: 'chest front', at: { x: 0, z: -0.5, height: 7 } }, { name: 'chest back', at: { x: 0, z: 0.5, height: 7 } },
@@ -228,8 +230,9 @@ const keyOf = (track: number, frame: number, share: number): string => `${track}
  *  that part's top (studs, below 0 through it), each point's part read from the ground
  *  under it (`groundProbe`) or, within the part, from its way out, with the point
  *  setting it (SEE: film.ts Feet `through`, `clearance`). Only `figures` are held so,
- *  never one riding */
-export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, surfaces: (set: string | undefined) => SurfaceAt, probe: Probe, groundProbe: GroundProbe): Promise<Film> => {
+ *  never one riding, each from its soles, its pose's rise (SEE: brick-shared/rise.ts,
+ *  measured from `bottoms`) below its lowest point */
+export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, bottoms: PoseBottoms | undefined, surfaces: (set: string | undefined) => SurfaceAt, probe: Probe, groundProbe: GroundProbe): Promise<Film> => {
   const riders = new Set(film.scene.actors.filter(actor => actor.ride).map(actor => actor.name));
   const aloft = (frame: FilmFrame, index: number, shot: Shot) => (lowestAbove({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set)) > FLOATING) || flying(film, shot.name, index);
   const floors = new Map<Span, number | undefined>();
@@ -237,7 +240,7 @@ export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, su
     const flight = pathAt(film, shot.name, frame.time, ['height']);
     if(flight && !floors.has(flight)) floors.set(flight, floorOf(film, surfaces, shot.name, flight));
     const floor = flight && floors.get(flight);
-    return { index, set: frame.set, shot, points: bodyOf(shot), ...((floor !== undefined) ? { floor } : {}) };
+    return { index, set: frame.set, shot, points: bodyOf(shot, bottoms), ...((floor !== undefined) ? { floor } : {}) };
   }));
 
   // each point's part, and for each point in one its least way out
@@ -310,10 +313,24 @@ const footprintAt = (shot: Shot, size: Size, height: number): ReadonlyArray<Poin
     .map(([across, ahead]) => ({ x: shot.position.x + (across * Math.cos(angle)) + (ahead * Math.sin(angle)), z: shot.position.z - (across * Math.sin(angle)) + (ahead * Math.cos(angle)), height }));
 };
 
-/** a figure's body's points where it stands, turned as it is */
-const bodyOf = (shot: Shot): ReadonlyArray<Point> => {
+/** a figure's body's points where it stands, from its soles (its pose's rise, measured
+ *  from `bottoms`, below its lowest point), posed as the rig poses it (SEE: bodyPointAt)
+ *  and turned as it is */
+const bodyOf = (shot: Shot, bottoms: PoseBottoms | undefined): ReadonlyArray<Point> => {
   const matrix = rotation(shot.turn);
-  return BODY.map(({ at }) => pointIn(shot.position, matrix, at));
+  const soles = { ...shot.position, height: solesUnder(shot.position.height, shot.pose, bottoms) };
+  return BODY.map(({ at }) => pointIn(soles, matrix, bodyPointAt(at, shot.pose)));
+};
+
+/** a body point (unturned, SEE: BODY) as a pose moves it, as Brick Studio's rig turns
+ *  the pieces about it: its torso twisted on its hips about the vertical through its
+ *  middle (clockwise seen from above), then torso and hips leaning forward together
+ *  about its legs' axle, the hips' point (HIPS; its top toward its front, -z) */
+const bodyPointAt = (at: Point, pose: Shot['pose']): Point => {
+  const [twist, lean] = [pose?.twist ?? 0, pose?.lean ?? 0].map(degrees => degrees * (Math.PI / 180));
+  const x = (at.x * Math.cos(twist)) + (at.z * Math.sin(twist)), z = (at.z * Math.cos(twist)) - (at.x * Math.sin(twist));
+  const up = (at.height - HIPS) * STUDS_PER_PLATE/*studs over the axle*/;
+  return { x, z: (z * Math.cos(lean)) - (up * Math.sin(lean)), height: HIPS + (((z * Math.sin(lean)) + (up * Math.cos(lean))) / STUDS_PER_PLATE) };
 };
 
 /** the floor of a keyed flight (plates): the higher of the surfaces under the figure as

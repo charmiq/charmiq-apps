@@ -1,7 +1,7 @@
 import { poseRise, type PoseBottoms } from '../../brick-shared/rise';
 
 import type { Aim, Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
-import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, surfaceUnder, Clicked, type Drawing, type GaitMove, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
+import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, median, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -31,9 +31,13 @@ const OVER_NOTHING = 1.2;
 /** how far a figure not stepping rests over what is under it before it floats (studs):
  *  half a plate, past a sole's rounding */
 export const FLOATING = 0.2;
-/** how far a figure tilts from upright before it is tipped (degrees): past any lean a
- *  step or a turn gives it */
+/** how far a figure's body tilts from upright before it is tipped (degrees): past any
+ *  lean a step, a turn or a run gives it */
 const TIPPED = 45;
+/** a figure's hips, its legs' axle, over its soles (plates): the body point its body
+ *  is probed about (SEE: clearance.ts BODY) and a camera follows it by when it is not
+ *  walking, from the soles under it (SEE: solesUnder, followerOf) */
+export const HIPS = 3.5;
 
 const DEFAULT_TARGET: Point = { x: 0, z: 0, height: 4 };
 const DEFAULT_ORBIT = { angle: 30, distance: 40, height: 30 };
@@ -104,24 +108,24 @@ export type FilmFrame = Readonly<{
  *  through a landing), as it steps how far they stand over nothing (walked off a
  *  gallery's edge; never in a hop's flight), and as it stands, sits or poses how far
  *  its lowest point rests over what is under it (`floating`: a sitter keyed over its
- *  seat); how far it tilts from upright past TIPPED (`tipped`, degrees: lying, however
- *  it moves); the part its body stands in while it is in the air, the body's points in
- *  it and how deep the deepest is (`through`, studs: its least way out), and over a
- *  keyed flight the body's least clearance over the top of a part it crosses and the
- *  body's point setting it (`clearance`, studs, below 0 through it), as staging probes
- *  them (SEE: clearance.ts bodiesThrough); the top (plates) of the part its feet are
- *  in, else of what is under them (SEE: steps.ts feetIn, surfaceUnder); and following
- *  the ground, the level (plates) the ground stands it on (`ground`) and the part whose
- *  top that is (`on`, as staging probes it: SEE clearance.ts groundedOn) */
+ *  seat); how far its body tilts from upright past TIPPED, its turn with its lean
+ *  (`tipped`, degrees: lying or bent over, however it moves); the part its body
+ *  stands in while it is in the air, the body's points in it and how deep the deepest
+ *  is (`through`, studs: its least way out), and over a keyed flight the body's least
+ *  clearance over the top of a part it crosses and the body's point setting it
+ *  (`clearance`, studs, below 0 through it), as staging probes them (SEE: clearance.ts
+ *  bodiesThrough); the top (plates) of the part its feet are in, else of what is under
+ *  them (SEE: steps.ts feetIn, surfaceUnder); and following the ground, the level
+ *  (plates) the ground stands it on (`ground`) and the part whose top that is (`on`, as
+ *  staging probes it: SEE clearance.ts groundedOn) */
 export type Feet = Readonly<{ into?: number; above?: number; floating?: number; tipped?: number; through?: Readonly<{ part: string; points: ReadonlyArray<string>; depth: number; }>; clearance?: Readonly<{ part: string; studs: number; point: string; }>; surface?: number; ground?: number; on?: string; }>;
 /** a walker's move under way in a frame (SEE: FilmFrame.steps) */
 export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; }>;
 
 export type Film = Readonly<{ scene: Recorded; frames: ReadonlyArray<FilmFrame>; footsteps?: ReadonlyArray<SoundCue>; leaps?: ReadonlyArray<WalkLeaps>; }>;
-/** a walk leaping low parts in its way, as its steps were laid on the set (SEE: steps.ts
- *  leapsOf): its actor and line, when each leap sets off (seconds) and the steps it
- *  takes between each and the next */
-export type WalkLeaps = Readonly<{ actor: string; line?: number; times: ReadonlyArray<number>; stepsBetween: ReadonlyArray<number>; }>;
+/** a walk leaping low parts in its way, as its steps were laid on the set: its actor and
+ *  line, and its leaps (SEE: steps.ts Leaps) */
+export type WalkLeaps = Readonly<{ actor: string; line?: number; }> & Leaps;
 
 /** every sound a film plays: the scene's own, and the footsteps its figures' steps make */
 export const soundCuesOf = (film: Film): ReadonlyArray<SoundCue> => [...(film.scene.sounds ?? []), ...(film.footsteps ?? [])];
@@ -209,13 +213,15 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     return (kind === 'smooth') ? undefined : { frames: (kind === 'twos') ? 2 : 1, fps: scene.fps };
   };
   const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [from / scene.fps, to / scene.fps] as const), drawingOf(actor.drawn))]));
-  const worlds: Array<Omit<FilmFrame, 'camera' | 'views' | 'transition'>> = []/*each frame but its cameras*/, placements: Array<ReadonlyMap<string, Placed>> = [], drawings: Array<ReadonlyMap<string, number>> = [], headed: Array<ReadonlyMap<string, number>> = [];
+  const worlds: Array<Omit<FilmFrame, 'camera' | 'views' | 'transition'>> = []/*each frame but its cameras*/, placements: Array<ReadonlyMap<string, Placed>> = [], drawings: Array<ReadonlyMap<string, number>> = [], walkedOver: Array<ReadonlyMap<string, number>> = [], headed: Array<ReadonlyMap<string, number>> = [];
   const rolled = new Map<string, number>();
   const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();
+  // each walker as its latest drawing stands it, and its move then
+  const walkerDrawn = new Map<string, Readonly<{ local: Local; under: ReturnType<Clicked['moveAt']>; }>>();
   let previous: ReadonlyMap<string, Placed> | undefined;
   for(let index=0; index<times.length; index++) {
     const time = times[index];
-    const placed = new Map<string, Placed>(), drawnAt = new Map<string, number>(), headings = new Map<string, number>(), steps: Record<string, FrameStep> = {}, levels: Record<string, number> = {}, feet: Record<string, Feet> = {};
+    const placed = new Map<string, Placed>(), drawnAt = new Map<string, number>(), over = new Map<string, number>(), headings = new Map<string, number>(), steps: Record<string, FrameStep> = {}, levels: Record<string, number> = {}, feet: Record<string, Feet> = {};
     for(const actor of order) {
       const cast = rests.get(actor.name);
       const castRest: Partial<Rest> | undefined = (actor.ride && cast) ? (cast.pose ? { pose: cast.pose } : undefined)/*a rider stands where it rides, in the pose it stood in*/ : cast;
@@ -230,19 +236,21 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       const keyed = boiled(localAt(actor, drawnTime * scene.fps, drawnTime, (rest?.position && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest), actor, drawn, scene.boil, figures.has(actor.name), clicks.has(actor.name));
       const grounded = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
       if(ground !== undefined) levels[actor.name] = ground;
-      const stepping = clicked.get(actor.name);
-      const local = stepping ? { channels: stepping.at(grounded.channels, time, surfaces(setAt(scene.sets, time))) } : grounded;
-      const under = stepping?.moveAt(time), standingOn = surfaces(setAt(scene.sets, time));
+      // a walker drawn on its drawing's frame, held to the next (on twos, the frames the
+      // film draws its keys on)
+      const stepping = clicked.get(actor.name), held = (drawn === index) ? undefined/*its drawing's frame: drawn afresh*/ : walkerDrawn.get(actor.name);
+      const local = stepping ? (held?.local ?? { channels: stepping.at(grounded.channels, time, surfaces(setAt(scene.sets, time))) }) : grounded;
+      const under = held ? held.under : stepping?.moveAt(time), standingOn = surfaces(setAt(scene.sets, time));
+      if(stepping) walkerDrawn.set(actor.name, { local, under });
       if(under) steps[actor.name] = { move: gaitMoveOf(under.move), u: under.u, ...((under.walk.gait !== undefined) ? { gait: under.walk.gait } : {}) };
       // a figure clicking onto studs, shown: its feet against the set (its soles its
       // pose's rise below its height, its lowest point), not stepping its lowest point
       // over what is under it, as it would stand there, and its tilt from upright
       if(stepping && figures.has(actor.name) && ((local.channels.visible ?? 1) >= 0.5)) {
-        const rise = bottoms ? poseRise(bottoms, poseOf(local.channels)) : 0;
-        const soles = { ...local.channels, height: (local.channels.height ?? 0) - rise };
+        const soles = { ...local.channels, height: solesUnder(local.channels.height ?? 0, poseOf(local.channels), bottoms) };
         const { into, top } = feetIn(soles, standingOn), above = (under && !aloft(under.move, under.u, under.walk.shape)) ? feetAbove(soles, standingOn) : 0/*a hop's flight is in the air*/;
         const floating = under ? 0 : lowestAbove(local.channels, standingOn);
-        const tipped = tiltOf({ pitch: local.channels.pitch ?? 0, roll: local.channels.roll ?? 0 });
+        const tipped = tiltOf({ pitch: local.channels.pitch ?? 0, roll: local.channels.roll ?? 0 }, local.channels['pose.lean'] ?? 0);
         if((into > INTO_SET) || (above > OVER_NOTHING) || (floating > FLOATING) || (tipped > TIPPED)) {
           const surface = (into > INTO_SET) ? top : surfaceUnder((floating > FLOATING) ? local.channels : soles, standingOn);
           feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}), ...((tipped > TIPPED) ? { tipped } : {}), ...((surface !== undefined) ? { surface } : {}), ...((ground !== undefined) ? { ground } : {}) };
@@ -256,6 +264,9 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       // the time its place stands for: its step's drawing, else its keys'; a rider
       // takes its mount's
       drawnAt.set(actor.name, parent ? drawnAt.get(actor.ride!.parent)! : under ? (under.move.start + ((under.move.end - under.move.start) * under.u)) : drawnTime);
+      // the level its walk moves it over: its move's stance's, carried from one to the
+      // next across a stride or a hop onto another
+      if(under) over.set(actor.name, under.move.from.level + ((under.move.to.level - under.move.from.level) * under.u));
       // its heading as written: what it rides's, and its own yaw, unwrapped (a turn
       // through 180 carries on round), what its ride's tilt adds taken from its turn
       const written = (parent ? headings.get(actor.ride!.parent)! : 0) + (local.channels.yaw ?? 0);
@@ -290,16 +301,38 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     const title = scene.titles.find(each => (time >= each.from) && (time < each.to));
     const set = setAt(scene.sets, time);
     worlds.push({ index, time, ...((set !== undefined) ? { set } : {}), actors, fade, ...((fade > 0) ? fadeStyleAt(scene.fade, time) : {}), ...(title ? { title } : {}), ...((Object.keys(steps).length > 0) ? { steps } : {}), ...((Object.keys(levels).length > 0) ? { grounds: levels } : {}), ...((Object.keys(feet).length > 0) ? { feet } : {}) });
-    placements.push(placed); drawings.push(drawnAt); headed.push(headings);
+    placements.push(placed); drawings.push(drawnAt); walkedOver.push(over); headed.push(headings);
   }
   // each camera as its drawing stands, aiming at the actors it follows where the whole
   // film places them (SEE: followed); the shot a transition leaves follows within the
   // film's camera's shot
-  const following = followerOf(scene, times, placements, drawings);
+  const following = followerOf(scene, figures, bottoms, times, placements, drawings, walkedOver);
+  // the frame each actor's drawing at a frame starts on: where its place, or the time
+  // that place stands for, last changed (a step's end and the next's start stand for one
+  // time, its hips' height apart)
+  const drawingStarts = new Map<string, ReadonlyArray<number>>();
+  const drawingStartOf = (actor: string, index: number): number => {
+    let starts = drawingStarts.get(actor);
+    if(!starts) {
+      const each: number[] = [];
+      const unchanged = (at: number) => { const [now, before] = [placements[at].get(actor)!.position, placements[at - 1].get(actor)!.position]; return (drawings[at].get(actor) === drawings[at - 1].get(actor)) && (now.x === before.x) && (now.z === before.z) && (now.height === before.height); };
+      for(let at=0; at<drawings.length; at++) each.push(((at > 0) && unchanged(at)) ? each[at - 1] : at);
+      drawingStarts.set(actor, starts = each);
+    }
+    return starts[index];
+  };
+  // the frame a camera's drawing starts on: on twos, following an actor (never locked on
+  // it), the frame the actor's does, so the set moves with the actor in one exposure,
+  // never before the cut its shot starts at; else its own
+  const cameraDrawn = (camera: RecordedCamera, index: number): number => {
+    const aimed = ((camera.drawn ?? scene.drawn) === 'twos') ? keyInForce(camera.keys.filter(key => key.target), times[index])?.target : undefined/*drawn as it says: its own*/;
+    if(!aimed || !('actor' in aimed) || ('lock' in aimed)) return drawnFrame(camera.drawn, index);
+    return Math.max(drawingStartOf(aimed.actor, index), cuts.filter(each => each <= index).pop() ?? 0);
+  };
   const frames: FilmFrame[] = [];
   for(const frame of worlds) {
     const { index, time } = frame;
-    const seen = (camera: RecordedCamera) => { const drawn = drawnFrame(camera.drawn, index), drawnTime = times[drawn]; return cameraAt(camera, drawnTime * scene.fps, drawnTime, placements[index], following(camera, drawn), headed[index]); };
+    const seen = (camera: RecordedCamera) => { const drawn = cameraDrawn(camera, index), drawnTime = times[drawn]; return cameraAt(camera, drawnTime * scene.fps, drawnTime, placements[index], following(camera, drawn), headed[index]); };
     const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, seen(view)]));
     const transition = transitionAt(scene, time * scene.fps/*where it stands among the scene's own frames*/, time, placements[index], following(scene.camera, index), headed[index], frame.set, frames);
     frames.push({ ...frame, camera: seen(scene.camera), views, ...(transition ? { transition } : {}) });
@@ -518,6 +551,13 @@ const placedOf = ({ channels }: Local): Placed => {
   };
 };
 
+/** how high a figure's soles stand under its hips (plates), its `height` its lowest
+ *  point: its pose's rise (measured from `bottoms`, SEE: brick-shared/rise.ts) below it,
+ *  so its body's place reads the same however its legs raise its lowest point (a
+ *  stride's split, a seat) */
+export const solesUnder = (height: number, pose: Readonly<Record<string, number>> | undefined, bottoms: PoseBottoms | undefined): number =>
+  height - (bottoms ? poseRise(bottoms, pose) : 0);
+
 /** a figure's pose among an actor's values: each limb's angle, by limb */
 const poseOf = (channels: Readonly<Record<string, number>>): Readonly<Record<string, number>> =>
   Object.fromEntries(Object.entries(channels).filter(([channel]) => channel.startsWith('pose.')).map(([channel, angle]) => [channel.slice('pose.'.length), angle]));
@@ -691,8 +731,11 @@ const lifted = (point: Point, height: number): Point => ({ ...point, height: poi
 
 /** each camera's aim at each actor it follows, at a frame: an actor's whole track is
  *  made the first time a camera asks for it, from where each frame places it and the
- *  time that place stands for (`drawings`: its drawing's, held on twos) */
-const followerOf = (scene: Recorded, times: ReadonlyArray<number>, placements: ReadonlyArray<ReadonlyMap<string, Placed>>, drawings: ReadonlyArray<ReadonlyMap<string, number>>) => {
+ *  time that place stands for (`drawings`: its drawing's, held on twos). Its height
+ *  under a walk's move is the level the walk moves it over (`walkedOver`), never its
+ *  body's rise through a step or a leap; elsewhere a figure's is its hips', from the
+ *  soles under them (SEE: solesUnder), and any other actor's its own */
+const followerOf = (scene: Recorded, figures: ReadonlySet<string>, bottoms: PoseBottoms | undefined, times: ReadonlyArray<number>, placements: ReadonlyArray<ReadonlyMap<string, Placed>>, drawings: ReadonlyArray<ReadonlyMap<string, number>>, walkedOver: ReadonlyArray<ReadonlyMap<string, number>>) => {
   const tracks = new Map<RecordedCamera, Map<string, ReadonlyArray<Point>>>();
   const trackOf = (camera: RecordedCamera, actor: string): ReadonlyArray<Point> => {
     const byActor = tracks.get(camera) ?? new Map<string, ReadonlyArray<Point>>();
@@ -701,7 +744,7 @@ const followerOf = (scene: Recorded, times: ReadonlyArray<number>, placements: R
     if(known) return known;
     const places = placements.map(placed => placed.get(actor)!/*by contract: recorded*/);
     const cuts = [...cameraShots(camera, scene.length).map(shot => shot.from), ...(scene.sets ?? []).map(key => key.time)];
-    const track = followed(times, drawings.map(drawnAt => drawnAt.get(actor)!), times.map((time, index) => places[index].visible ? cuts.filter(cut => isReached(cut, time)).length : undefined/*hidden*/), places.map(place => place.position));
+    const track = followed(times, drawings.map(drawnAt => drawnAt.get(actor)!), times.map((time, index) => places[index].visible ? cuts.filter(cut => isReached(cut, time)).length : undefined/*hidden*/), places.map((place, index) => ({ ...place.position, height: walkedOver[index].get(actor) ?? (figures.has(actor) ? solesUnder(place.position.height, place.pose, bottoms) : place.position.height) })));
     byActor.set(actor, track);
     return track;
   };
@@ -756,12 +799,6 @@ const followed = (times: ReadonlyArray<number>, drawn: ReadonlyArray<number>, ru
     start = end;
   }
   return aims;
-};
-
-/** the middle of some values: the mean of the middle two of an even count */
-const median = (values: ReadonlyArray<number>): number => {
-  const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
-  return ((sorted.length % 2) === 1) ? sorted[middle] : ((sorted[middle - 1] + sorted[middle]) / 2);
 };
 
 /** a value at a time (`at`) read off the line best fitting its samples around it, each
@@ -989,9 +1026,12 @@ export const rotation = ({ yaw, pitch, roll }: Turn): number[] => {
 };
 
 /** how far a turn tilts an actor's up from the world's (degrees, 0 to 180): its pitch
- *  and roll together, whatever its yaw, so a pitch of -270 lies as one of 90 */
-export const tiltOf = ({ pitch, roll }: Pick<Turn, 'pitch' | 'roll'>): number =>
-  Math.acos(Math.max(-1, Math.min(1, Math.cos(radians(pitch)) * Math.cos(radians(roll))))) * (180 / Math.PI);
+ *  and roll together, whatever its yaw, so a pitch of -270 lies as one of 90; with a
+ *  figure's `lean` (degrees forward), its body's, the torso and hips leaning over the
+ *  legs within the turn (SEE: brick-studio pose.ts leanTurn), as a pitch lowering its
+ *  front does */
+export const tiltOf = ({ pitch, roll }: Pick<Turn, 'pitch' | 'roll'>, lean = 0): number =>
+  Math.acos(Math.max(-1, Math.min(1, (Math.cos(radians(pitch)) * Math.cos(radians(roll)) * Math.cos(radians(lean))) + (Math.sin(radians(pitch)) * Math.sin(radians(lean)))))) * (180 / Math.PI);
 
 /** the turn of a rotation (degrees): its pitch from its middle row's last, then its
  *  roll and yaw */

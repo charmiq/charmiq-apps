@@ -5,7 +5,7 @@ import { isPlatformFile } from '../../brick-shared/drive';
 import { listed } from '../../brick-shared/words';
 
 import type { Avoided } from './clearance';
-import { cameraShots, filmLengthOf, frameAtTime, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film } from './film';
+import { cameraShots, filmLengthOf, frameAtTime, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type WalkLeaps } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { MAX_AREA_CELLS, type CellArea } from './ground';
 import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from './measure';
@@ -48,8 +48,9 @@ const FOOTING_KINDS: ReadonlyArray<ProblemKind & FootingKind> = ['into', 'above'
  *  subject, every keyed flight's clearance, each walk's leaps, and the actors that come
  *  close */
 const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, ...FOOTING_KINDS, 'short', 'clearance', 'leaps', 'close'];
-/** a walk taking fewer steps than this between two of its leaps is summed up (a hurdles
- *  race runs three strides between its hurdles); every walk's leaps are detailed */
+/** a walk taking fewer steps than this from its start to its first leap, between two of
+ *  its leaps or from its last to its end is given its fix (a hurdles race runs three
+ *  strides between its hurdles, and from the start and to the finish more) */
 const FEW_STEPS = 3;
 
 // -- Sounds ----------------------------------------------------------------------
@@ -283,9 +284,9 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
 // -- Summary and Detail ----------------------------------------------------------
 /** describeFilm's facts of a film: what it is, its shots, sets, sounds (each read
  *  with its length, from `lengths`, and the scene's time one played once ends) and
- *  footsteps, each walk taking fewer than FEW_STEPS steps between two of its leaps (SEE:
- *  leapsReport), where an avoiding camera was drawn in (once staged) and what its scene
- *  logged */
+ *  footsteps, each leaping walk's steps before, between and after its leaps (SEE:
+ *  leapsSummaryOf), where an avoiding camera was drawn in (once staged) and what its
+ *  scene logged */
 export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefined, lengths: ReadonlyMap<string, number>) => ({
   title: film.scene.title, seconds: film.scene.length, ...(film.scene.speed ? { filmSeconds: thousandths(filmLengthOf(film)) } : {}), fps: film.scene.fps, frames: film.frames.length,
   actors: film.scene.actors.map(actor => actor.name), views: film.scene.views.map(view => view.name),
@@ -304,7 +305,7 @@ export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefine
     const steps = film.footsteps!.filter(cue => cue.actor === actor);
     return { actor, steps: steps.length, from: thousandths(steps[0].time), to: thousandths(steps[steps.length - 1].time), sounds: [...new Set(steps.map(cue => cue.name))] };
   }) } : {}),
-  ...fewStepsOf(film),
+  ...leapsSummaryOf(film),
   ...((avoided && (avoided.length > 0)) ? { avoided: avoided.map(({ from, to, kept, view }) => ({ from: thousandths(from), to: thousandths(to), kept: hundredths(kept), ...((view !== undefined) ? { view } : {}) })) } : {}),
   ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
 });
@@ -415,24 +416,51 @@ export const footingReport = (film: Film) =>
     ...((heldBack && (upright !== undefined)) ? { heldBack: heldBackReport(heldBack, upright) } : {}),
   }));
 
-/** a tipped span's keys held back, model-facing: each key's channel, time and line, and
- *  the fix, its channels keyed upright at the moment to (SEE: review.ts FootingProblem) */
+/** a tipped span's keys held over it, model-facing: each key's channel, time and line,
+ *  and the fix, its channels keyed upright at the moment to (SEE: review.ts uprightAt) */
 const heldBackReport = (keys: ReadonlyArray<HeldBack>, upright: number) => ({
   keys: keys.map(({ channel, time, line }) => ({ channel, time: thousandths(time), ...((line !== undefined) ? { line } : {}) })),
   fix: `key ${listed([...new Set(keys.map(key => key.channel))])} 0 at ${thousandths(upright)} s`,
 });
 
-/** describeFilm's summed-up leaps: each walk taking fewer than FEW_STEPS steps between
- *  two of its leaps; none unsaid */
-const fewStepsOf = (film: Film) => {
-  const few = leapsReport(film).filter(walk => walk.stepsBetween.some(steps => steps < FEW_STEPS));
-  return (few.length > 0) ? { leaps: few } : {};
+/** describeFilm's summed-up leaps: each walk leaping, its actor and line, the steps it
+ *  takes before its first leap, between each and the next and after its last, and its
+ *  fix where it takes fewer than FEW_STEPS (SEE: leapsReport); none unsaid */
+const leapsSummaryOf = (film: Film) => {
+  const walks = leapsReport(film).map(({ actor, line, stepsBefore, stepsBetween, stepsAfter, fix }) => ({ actor, ...((line !== undefined) ? { line } : {}), stepsBefore, stepsBetween, stepsAfter, ...((fix !== undefined) ? { fix } : {}) }));
+  return (walks.length > 0) ? { leaps: walks } : {};
 };
 
 /** describeFilm's leaps: each walk leaping a part in its way, its actor and line, when
- *  each leap sets off and the steps between each and the next (SEE: film.ts WalkLeaps) */
+ *  each leap sets off, the steps before the first, between each and the next and after
+ *  the last, the studs each leap and a step carry it, and where it takes fewer than
+ *  FEW_STEPS steps the fix (SEE: film.ts WalkLeaps) */
 export const leapsReport = (film: Film) =>
-  (film.leaps ?? []).map(({ actor, line, times, stepsBetween }) => ({ actor, ...((line !== undefined) ? { line } : {}), leaps: times.map(thousandths), stepsBetween }));
+  (film.leaps ?? []).map(walk => {
+    const { actor, line, times, stepsBefore, stepsBetween, stepsAfter, leapStuds, stepStuds } = walk, fix = fewStepsFix(walk);
+    return {
+      actor, ...((line !== undefined) ? { line } : {}), leaps: times.map(thousandths), stepsBefore, stepsBetween, stepsAfter,
+      leapStuds: leapStuds.map(hundredths), ...((stepStuds !== undefined) ? { stepStuds: hundredths(stepStuds) } : {}), ...((fix !== undefined) ? { fix } : {}),
+    };
+  });
+
+/** what a walk taking fewer than FEW_STEPS steps before its first leap, between two or
+ *  after its last needs: the walk started or ended further from its parts by the steps
+ *  it lacks, or its parts spaced a leap and FEW_STEPS steps apart; none where it takes
+ *  enough */
+const fewStepsFix = ({ stepsBefore, stepsBetween, stepsAfter, leapStuds, stepStuds }: WalkLeaps): string | undefined => {
+  const by = (steps: number) => (stepStuds === undefined) ? ''/*no step to measure*/ : `${studsOf(steps * stepStuds)} `;
+  const leapt = stepsBetween.flatMap((steps, at) => (steps < FEW_STEPS) ? [leapStuds[at]] : [])/*each leap before too few steps*/;
+  const spacing = (stepStuds === undefined) ? 'further apart' : `${studsOf(Math.max(...leapt) + (FEW_STEPS * stepStuds))} apart`;
+  const fixes = [
+    ...((stepsBefore < FEW_STEPS) ? [`start the walk ${by(FEW_STEPS - stepsBefore)}further from its first part`] : []),
+    ...((leapt.length > 0) ? [`space its parts ${spacing}`] : []),
+    ...((stepsAfter < FEW_STEPS) ? [`end the walk ${by(FEW_STEPS - stepsAfter)}further past its last part`] : []),
+  ];
+  return (fixes.length > 0) ? listed(fixes) : undefined;
+};
+/** a length in studs as a sentence reads it: "1 stud", "2.5 studs" */
+const studsOf = (studs: number) => `${hundredths(studs)} ${(hundredths(studs) === 1) ? 'stud' : 'studs'}`;
 
 /** describeFilm's clearances: each keyed flight over each part it crosses, its least
  *  margin (studs) with when it is least and the body's point setting it, and whether it

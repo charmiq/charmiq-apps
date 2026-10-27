@@ -266,7 +266,7 @@ export class Studios {
       const facts = { wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), ...(answer.bottoms ? { bottoms: answer.bottoms } : {}), clicks: new Set(answer.clicks ?? []), rests: restsOf(answer), grounds };
       const surfaces = (facts.clicks.size > 0) ? await surfacesOf(filmFor(facts), facts.clicks, surfaceProbe) : undefined;
       const { film: cleared, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), probe);
-      const held = surfaces ? await bodiesThrough(cleared, new Set([...facts.figures].filter(name => facts.clicks.has(name))), surfaces, probe, groundProbe) : cleared/*no figure on studs*/;
+      const held = surfaces ? await bodiesThrough(cleared, new Set([...facts.figures].filter(name => facts.clicks.has(name))), facts.bottoms, surfaces, probe, groundProbe) : cleared/*no figure on studs*/;
       const film = grounded ? await groundedOn(held, answer.sizes ?? {}, probe) : held;
       const cast = new Set(answer.actors);
       const frames = film.frames.map(frame => reelFrameOf(castOnly(frame, cast)));

@@ -474,8 +474,10 @@ export const changesOf = (shape: GaitShape | Editable, base: GaitShape): Readonl
   return changes;
 };
 
-/** the tab a move under way is on: a hop's by whether it crouches, flies or lands */
-const tabOf = (move: GaitMove, u: number, shape: GaitShape | Editable): GaitTab => {
+/** the tab a move under way is on: a hop's by whether it crouches, flies or lands;
+ *  none for a leap, which no gait's keys shape (SEE: steps.ts leaping) */
+const tabOf = (move: GaitMove, u: number, shape: GaitShape | Editable): GaitTab | undefined => {
+  if(move === GaitMove.Leap) return undefined;
   if(move !== GaitMove.Hop) return (move === GaitMove.Step) ? GaitTab.Walk : (move === GaitMove.Up) ? GaitTab.Up : (move === GaitMove.Down) ? GaitTab.Down : (move === GaitMove.Turn) ? GaitTab.Turn : GaitTab.Shift;
   const { crouch, land } = hopShares(shape);
   return (u < crouch) ? GaitTab.Crouch : (u > (1 - land)) ? GaitTab.Land : GaitTab.Jump;
