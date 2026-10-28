@@ -1035,8 +1035,22 @@ img {
   height: calc(100% + 160px);
   filter: blur(34px) saturate(1.25);
 }
+/* the sheet's top edge starts from exactly the color the status bar above it takes
+   (SEE: paintTop), so the two meet without a seam over the drifting background */
+#np::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(var(--safe-t) + 64px);
+  background: linear-gradient(var(--np-top, transparent), transparent);
+  pointer-events: none;
+}
 .np-in {
   position: relative;
+  z-index: 2;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -2471,6 +2485,13 @@ const pick = (random, items) => items[Math.floor(random() * items.length)];
 const hslColor = (hsl, lightness, alpha) => {
   const hue = ((Math.round(hsl[0]) % 360) + 360) % 360;
   return `hsla(${hue},${hsl[1]}%,${(lightness == null) ? hsl[2] : lightness}%,${(alpha == null) ? 1 : alpha})`;
+};
+// the same triple as an opaque #rrggbb, its lightness replaced and each channel
+// scaled by `dim` (what a black overlay of 1 - `dim` leaves)
+const hexColor = (hsl, lightness, dim) => {
+  const hue = ((hsl[0] % 360) + 360) % 360, saturation = hsl[1] / 100, light = lightness / 100, a = saturation * Math.min(light, 1 - light);
+  const channel = (n) => { const k = (n + hue / 30) % 12; return light - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return '#' + [0, 8, 4].map((n) => Math.round(clamp(channel(n) * dim, 0, 1) * 255).toString(16).padStart(2, '0')).join('');
 };
 
 // == Icons =======================================================================
@@ -4224,6 +4245,7 @@ const renderNowPlayingInfo = () => {
   $('#npT').textContent = track.title; $('#npA').textContent = track.album.artist + ' — ' + (isTake(track.album) ? STUDIO_LABEL + ' Take' : track.album.title);
   const loved = isLoved(track.key), loveButton = $('#npLove'); loveButton.innerHTML = loved ? ICON.heart : ICON.heartO; loveButton.classList.toggle('on', loved);
   currentPalette = art.palette;
+  if(nowPlayingOpen) paintTop();
   const take = isTakeSpec(spec); nowPlaying.classList.toggle('studio', take);
   nowPlaying.classList.toggle('device-volume', take && !Engine.takeVolume())/*the device's buttons set it*/;
   $('#scoreCap').textContent = take ? STUDIO_LABEL + ' Take · ' + MODEL_LABEL : 'Live Score · ' + spec.bpm + ' BPM · ' + NOTE_NAMES[spec.root % 12] + ' ' + spec.genre.mode;
@@ -4493,13 +4515,31 @@ const layoutNowPlaying = () => {
   const stage = $('#npStage'), size = Math.min(stage.clientWidth, stage.clientHeight);
   nowPlaying.style.setProperty('--art', Math.max(120, size) + 'px');
 };
+// the status bar continues what is at the top of the screen: the page's own
+// background, or the Now Playing sheet's base color under its veil (SEE:
+// drawBackground)
+const PAGE_TOP = { light: '#ffffff', dark: '#000000' };
+const SHEET_SLIDE_MS = 550/*the sheet's slide (SEE: #np's transition)*/;
+let topTimer = null/*no change waiting*/;
+const paintTop = () => {
+  clearTimeout(topTimer); topTimer = null;
+  const page = window.charmiq.page; if(!page) return/*a Platform without \`page\` paints its own*/;
+  if(!nowPlayingOpen) { page.setTopColor(PAGE_TOP); return; }
+  const color = hexColor((currentPalette || [[260, 40, 30]])[0], SHEET_BASE_LIGHTNESS, 1 - SHEET_VEIL);
+  nowPlaying.style.setProperty('--np-top', color);
+  page.setTopColor({ light: color, dark: color });
+};
 const openNowPlaying = () => {
   if(!current()) return;
   nowPlayingOpen = true; renderNowPlayingInfo(); setModeClasses();
   nowPlaying.classList.add('open'); app.classList.add('behind');
   requestAnimationFrame(layoutNowPlaying);
 };
-const closeNowPlaying = () => { nowPlayingOpen = false; nowPlaying.classList.remove('open'); app.classList.remove('behind'); nowPlaying.style.transform = ''; };
+// NOTE: the page's color returns once the sheet has slid away, never above it
+const closeNowPlaying = () => {
+  nowPlayingOpen = false; nowPlaying.classList.remove('open'); app.classList.remove('behind'); nowPlaying.style.transform = '';
+  clearTimeout(topTimer); topTimer = setTimeout(paintTop, SHEET_SLIDE_MS);
+};
 const setModeClasses = () => {
   nowPlaying.classList.toggle('mode-score', state.mode === PlayerMode.Score); nowPlaying.classList.toggle('mode-queue', state.mode === PlayerMode.Queue);
   $('#modeScore').classList.toggle('on', state.mode === PlayerMode.Score); $('#modeQueue').classList.toggle('on', state.mode === PlayerMode.Queue);
@@ -4523,10 +4563,14 @@ const renderQueue = () => {
 
 // -- Background ------------------------------------------------------------------
 const backgroundPaint = $('#npBg').getContext('2d');
+// the sheet's base: the cover's top color at this lightness, and the black veil over
+// everything drawn on it
+const SHEET_BASE_LIGHTNESS = 16;
+const SHEET_VEIL = .38;
 // drifting blobs of the cover's palette that swell with the music's energy
 const drawBackground = (time, energy) => {
   const canvas = $('#npBg'), paint = backgroundPaint, W = canvas.width, H = canvas.height, palette = currentPalette || [[260, 40, 30], [320, 60, 40], [200, 60, 40]];
-  paint.fillStyle = hslColor(palette[0], 16); paint.fillRect(0, 0, W, H);
+  paint.fillStyle = hslColor(palette[0], SHEET_BASE_LIGHTNESS); paint.fillRect(0, 0, W, H);
   for(let i=0; i<5; i++) {
     const hsl = palette[i % palette.length], lightness = clamp(hsl[2], 30, 55);
     const x = W * (.5 + .45 * Math.sin(time * .00011 * (i + 1) + i * 2.3)), y = H * (.5 + .42 * Math.cos(time * .00009 * (i + 1.7) + i * 1.1));
@@ -4534,7 +4578,7 @@ const drawBackground = (time, energy) => {
     const blob = paint.createRadialGradient(x, y, 0, x, y, radius); blob.addColorStop(0, hslColor(hsl, lightness, .95)); blob.addColorStop(1, hslColor(hsl, lightness, 0));
     paint.fillStyle = blob; paint.fillRect(0, 0, W, H);
   }
-  paint.fillStyle = 'rgba(0,0,0,.38)'; paint.fillRect(0, 0, W, H);
+  paint.fillStyle = 'rgba(0,0,0,' + SHEET_VEIL + ')'; paint.fillRect(0, 0, W, H);
 };
 
 // -- Live Score ------------------------------------------------------------------
@@ -5020,9 +5064,7 @@ const boot = () => {
   schedulePoll(0);
 };
 const init = async () => {
-  // the status bar continues the navigation bar: the page's own background in each
-  // mode (a Platform without `page` paints its own)
-  window.charmiq.page?.setTopColor({ light: '#ffffff', dark: '#000000' });
+  paintTop();
   paintStatic();
   try { applyState(await window.charmiq.appState.get()); } catch(error) { console.warn('appState.get failed', error); }
   window.charmiq.appContent.content$("[name='" + LIBRARY_NAME + "']").subscribe({
