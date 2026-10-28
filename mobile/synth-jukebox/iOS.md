@@ -1000,12 +1000,12 @@ img {
 .tab-ind {
   position: absolute;
   top: 5px;
-  bottom: 5px;
   left: 6px;
   width: 0;
+  height: 52px;
   border-radius: 26px;
   background: var(--fill);
-  transition: left .5s var(--spring), width .5s var(--spring);
+  transition: left .5s var(--spring), width .5s var(--spring), top .5s var(--spring), height .5s var(--spring);
 }
 
 #np {
@@ -2137,6 +2137,153 @@ img {
 }
 #np.studio .score-cap i {
   background: #AF52DE;
+}
+
+/* the iPad: a sidebar for the tabs, the pages beside it. A phone turned sideways is
+   too short for it and keeps the phone's layout */
+@media (min-width: 768px) and (min-height: 600px) {
+  :root {
+    --side: 240px;
+  }
+  .pane {
+    left: var(--side);
+  }
+  .scroll {
+    padding-bottom: calc(var(--safe-b) + 100px);
+  }
+  .dock {
+    left: var(--side);
+  }
+  .tabbar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: var(--side);
+    max-width: none;
+    height: auto;
+    border-radius: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: calc(var(--safe-t) + 70px) 12px calc(var(--safe-b) + 12px) calc(12px + var(--safe-l));
+    background: var(--card);
+    box-shadow: inset -.5px 0 0 var(--sep);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .tabbar::before {
+    content: "Synth Jukebox";
+    position: absolute;
+    top: calc(var(--safe-t) + 22px);
+    left: calc(24px + var(--safe-l));
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: .35px;
+  }
+  .tab {
+    flex: none;
+    height: 44px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -.41px;
+  }
+  .tab svg {
+    width: 24px;
+    height: 24px;
+  }
+  .tab-ind {
+    border-radius: 10px;
+  }
+  .tab-badge {
+    left: auto;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  /* as many columns as leave a card room to read: a card's own height, never its
+     neighbor's */
+  .takes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    align-items: start;
+  }
+  .np-in {
+    max-width: 640px;
+  }
+  /* Make Something New's two cards side by side */
+  #homeBody .compose {
+    display: inline-block;
+    vertical-align: top;
+    width: calc(50% - 22px);
+    min-height: 168px;
+    margin: 0 0 0 16px;
+  }
+  #homeBody .compose.go-studio {
+    margin-left: 12px;
+  }
+}
+/* landscape: the Studio's booth stands beside its takes, kept in view while they
+   scroll; Now Playing's stage beside its controls */
+@media (min-width: 1000px) and (min-height: 600px) and (orientation: landscape) {
+  #tab-studio .scroll {
+    display: grid;
+    grid-template-columns: minmax(330px, 380px) minmax(0, 1fr);
+    align-items: start;
+    align-content: start;
+  }
+  #tab-studio .lt-row {
+    grid-column: 1 / -1;
+  }
+  #tab-studio .booth {
+    position: sticky;
+    top: calc(var(--safe-t) + 56px);
+    margin-right: 0;
+  }
+  #tab-studio .sec-h {
+    padding-top: 0;
+  }
+  .np-in {
+    max-width: 1240px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-rows: auto 1fr repeat(5, auto) 1fr;
+    column-gap: 56px;
+  }
+  .grab-hit {
+    grid-column: 1 / -1;
+  }
+  .np-stage {
+    grid-column: 1;
+    grid-row: 2 / -1;
+    margin: 6px 0 10px;
+  }
+  .np-info {
+    grid-column: 2;
+    grid-row: 3;
+    margin-top: 0;
+  }
+  .np-scrub {
+    grid-column: 2;
+    grid-row: 4;
+  }
+  .np-ctrl {
+    grid-column: 2;
+    grid-row: 5;
+  }
+  .vol {
+    grid-column: 2;
+    grid-row: 6;
+  }
+  .np-bottom {
+    grid-column: 2;
+    grid-row: 7;
+  }
 }
 </style>
 </head>
@@ -4281,6 +4428,7 @@ const pressDescription = async () => {
 const placeIndicator = () => {
   const tab = $('.tab.on'), indicator = $('#tabInd'); if(!tab) return;
   indicator.style.left = tab.offsetLeft + 'px'; indicator.style.width = tab.offsetWidth + 'px';
+  indicator.style.top = tab.offsetTop + 'px'; indicator.style.height = tab.offsetHeight + 'px';
 };
 // selects a tab; the selected tab again closes its detail page or scrolls it to the top
 const switchTab = (tab) => {
@@ -4767,7 +4915,7 @@ nowPlaying.addEventListener('pointerdown', (event) => {
   nowPlayingDrag = { y: event.clientY, dy: 0, t: performance.now(), active: false };
 });
 detail.addEventListener('pointerdown', (event) => {
-  if(!app.classList.contains('detail-open') || (event.clientX > 24)) return;
+  if(!app.classList.contains('detail-open') || ((event.clientX - detail.getBoundingClientRect().left) > 24)) return;
   edgeSwipe = { x: event.clientX, dx: 0, t: performance.now(), active: false };
 });
 window.addEventListener('pointermove', (event) => {
@@ -4803,7 +4951,7 @@ const endDrags = () => {
     const swipe = edgeSwipe; edgeSwipe = null/*no swipe*/; detail.style.transition = ''; detail.style.transform = '';
     if(swipe.active) {
       suppressClick = true; setTimeout(() => { suppressClick = false; }, 350);
-      if((swipe.dx > (window.innerWidth * .33)) || ((swipe.dx / Math.max(1, performance.now() - swipe.t)) > .6)) goBack();
+      if((swipe.dx > (detail.clientWidth * .33)) || ((swipe.dx / Math.max(1, performance.now() - swipe.t)) > .6)) goBack();
     } /* else -- a tap, not a swipe */
   } /* else -- no edge swipe */
 };

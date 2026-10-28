@@ -3,6 +3,7 @@
 *A music library whose albums are composed and played live on your phone, from their genre and a seed: no audio files, no streaming. Compose a new album whenever you like, or describe a song in the Studio and Lyria 3 Pro writes, plays and sings it for you.*
 
 - **Open it:** [iOS](charmiq://./iOS.md). Home-screen setup: [Mobile](charmiq://../README.md).
+- **On an iPad** it opens the same way and lays out for the screen: the tabs become a sidebar, the Studio's booth stands beside your takes in landscape, and Now Playing puts its stage beside its controls.
 - **Your library** (`library.json`, the Application's app-content): the albums, your Studio takes and your Loved songs. Everyone you share the document with sees the same library.
 - **Where you left off** (the Application's app-state): what is playing, the queue, position, volume and the tab you were on. Launch it again and it picks up there.
 - **Sound:** tap play to start; iOS starts audio only from a tap. It plays even with the phone in Silent mode. A Studio take keeps playing with the screen locked or the app left, its controls and progress on the lock screen, at the volume the phone's buttons set; a composed album is played live by the page, so it stops when the phone sleeps.
