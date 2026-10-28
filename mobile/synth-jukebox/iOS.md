@@ -2467,7 +2467,7 @@ const stepEvents = (spec, step) => {
 // volume, with a shared reverb send). Stopping a session fades out every voice it
 // scheduled
 const Engine = (() => {
-  let ctx = null/*created on the first play, inside a tap*/, compressor, master, analyser, tone, convolver, wet, noiseBuffer, frequencies;
+  let ctx = null/*created on the first play, inside a tap*/, compressor, master, analyser, tone, convolver, wet, noiseBuffer, frequencies, samples;
   let spec = null/*no track loaded*/, playing = false, t0 = 0, step = 0, timer = null/*not scheduling*/, first = true, pausedPosition = 0, volume = .8;
   let session = null/*no session playing*/, sessionReverb = null;
   const api = {
@@ -2542,7 +2542,7 @@ const Engine = (() => {
     compressor = ctx.createDynamicsCompressor(); compressor.threshold.value = -16; compressor.knee.value = 12; compressor.ratio.value = 4; compressor.attack.value = .004; compressor.release.value = .2;
     tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 18000; tone.Q.value = .4;
     analyser = ctx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = .75;
-    frequencies = new Uint8Array(analyser.frequencyBinCount);
+    frequencies = new Uint8Array(analyser.frequencyBinCount); samples = new Uint8Array(analyser.fftSize);
     master = ctx.createGain(); master.gain.value = volume * volume;
     convolver = ctx.createConvolver(); convolver.buffer = impulse(3.2, 2.8);
     wet = ctx.createGain(); wet.gain.value = .3;
@@ -2826,6 +2826,12 @@ const Engine = (() => {
     if(!ctx) return null/*no graph yet*/;
     analyser.getByteFrequencyData(frequencies);
     return frequencies;
+  };
+  // the waveform now (0-255 per sample, 128 the rest line), or null before the first play
+  api.waveform = () => {
+    if(!ctx) return null/*no graph yet*/;
+    analyser.getByteTimeDomainData(samples);
+    return samples;
   };
   return api;
 })();
@@ -4251,25 +4257,173 @@ const drawScore = (spec, position) => {
   }
 };
 
-// -- Spectrum --------------------------------------------------------------------
-// a take has no score to show: its spectrum instead, mirrored about the middle in the
-// cover's colors, each band holding its peak a moment
-const spectrumPeaks = [];
-const drawSpectrum = () => {
+// -- Afterglow -------------------------------------------------------------------
+// a take has no score to show: it plays as light instead, in its cover's colors. A
+// core of light beats at the centre, its waveform rings the core, its spectrum flares
+// around it as a mirrored corona, and each kick throws a shockwave and sparks. Every frame keeps the last one zoomed, turned and
+// faded, so the light streams outward
+const GLOW_RAYS = 64/*per side: the corona is mirrored left and right*/;
+const GLOW_SPARKS = 160/*the most sparks in flight*/;
+const GLOW_TRAIL_SCALE = .5/*the trail's resolution: its softness is the glow*/;
+const glow = { trail: null, spare: null, peaks: new Float32Array(GLOW_RAYS), sparks: [], waves: [], colors: null, palette: null, bass: 0, mids: 0, highs: 0, slowBass: 0, beatAt: 0, spin: 0, swing: 0, last: 0 };
+// a canvas of `w` x `h`, (re)sized only when it changes
+const sizedCanvas = (canvas, w, h) => {
+  const sized = canvas || document.createElement('canvas');
+  if((sized.width !== w) || (sized.height !== h)) { sized.width = w; sized.height = h; }
+  return sized;
+};
+// each ray's color: the palette's hues swept across the corona, lifted bright
+const glowColors = (palette) => {
+  const colors = [];
+  for(let i=0; i<GLOW_RAYS; i++) {
+    const t = i / (GLOW_RAYS - 1) * (palette.length - 1), from = palette[Math.floor(t)], to = palette[Math.min(palette.length - 1, Math.floor(t) + 1)], mix = t - Math.floor(t);
+    let delta = to[0] - from[0]; if(delta > 180) delta -= 360; else if(delta < -180) delta += 360;
+    colors.push(hslColor([from[0] + delta * mix, Math.max(80, from[1]), 0], 58));
+  }
+  return colors;
+};
+const drawAfterglow = (time, playing) => {
   const canvas = $('#score'), dpr = Math.min(2, window.devicePixelRatio || 1), W = canvas.clientWidth, H = canvas.clientHeight; if(!W || !H) return;
   if((canvas.width !== Math.round(W * dpr)) || (canvas.height !== Math.round(H * dpr))) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
-  const paint = canvas.getContext('2d'); paint.setTransform(dpr, 0, 0, dpr, 0, 0); paint.clearRect(0, 0, W, H);
-  const spectrum = Engine.spectrum(), palette = currentPalette || [[260, 40, 30], [320, 60, 40], [200, 60, 40]];
-  const bars = 40, top = 34, mid = top + (H - top) / 2, gap = 3, barW = (W - 24 - gap * (bars - 1)) / bars, reach = (H - top) / 2 - 8;
-  for(let i=0; i<bars; i++) {
-    // bands spaced logarithmically: the low end, where the music lives, gets the most bars
-    const band = spectrum ? spectrum[Math.min(spectrum.length - 1, Math.floor(Math.pow(i / bars, 1.9) * spectrum.length * .7) + 1)] / 255 : 0;
-    spectrumPeaks[i] = Math.max(band, (spectrumPeaks[i] || 0) - .012);
-    const x = 12 + i * (barW + gap), h = Math.max(2, band * reach), hsl = palette[i % palette.length];
-    paint.fillStyle = hslColor(hsl, clamp(hsl[2] + 18, 45, 72), .9);
-    roundedRect(paint, x, mid - h, barW, h * 2, barW / 2); paint.fill();
-    paint.fillStyle = 'rgba(255,255,255,.75)'; paint.fillRect(x, mid - spectrumPeaks[i] * reach - 4, barW, 2); paint.fillRect(x, mid + spectrumPeaks[i] * reach + 2, barW, 2);
+  const dt = Math.min(.05, Math.max(.001, (time - (glow.last || time)) / 1000)) || (1 / 60); glow.last = time;
+  const palette = currentPalette || [[260, 40, 30], [320, 60, 40], [200, 60, 40]];
+  if(glow.palette !== palette) { glow.palette = palette; glow.colors = glowColors(palette); }
+  const spectrum = Engine.spectrum(), waveform = Engine.waveform();
+  const S = Math.min(W, H), cx = W / 2, cy = H / 2 + 8, core = S * .19, reach = S * .27;
+
+  // the bass, and a kick wherever it jumps clear of its own recent level
+  let low = 0; if(spectrum) { for(let i=1; i<=6; i++) low += spectrum[i]; low /= 6 * 255; }
+  if(!playing) low = 0;
+  glow.bass += (low - glow.bass) * ((low > glow.bass) ? .6 : .15);
+  glow.slowBass += (low - glow.slowBass) * Math.min(1, dt * 2.5);
+  const kick = playing && (low > (glow.slowBass * 1.18 + .06)) && ((time - glow.beatAt) > 200);
+  if(kick) {
+    glow.beatAt = time;
+    glow.waves.push({ radius: core, life: 1 });
+    for(let k=0; (k < 18) && (glow.sparks.length < GLOW_SPARKS); k++) {
+      const angle = Math.random() * Math.PI * 2, speed = S * (.35 + Math.random() * .7);
+      glow.sparks.push({ x: cx + Math.cos(angle) * core, y: cy + Math.sin(angle) * core, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 1, color: glow.colors[Math.floor(Math.random() * GLOW_RAYS)] });
+    }
   }
+  glow.spin += dt * (playing ? (.45 + glow.bass * 1.6) : 0);
+  glow.swing += dt * (playing ? .12 : 0);
+
+  // the trail: the last frame zoomed out from the centre, turned and faded, at half
+  // resolution so it blurs into a glow
+  const tw = Math.round(W * dpr * GLOW_TRAIL_SCALE), th = Math.round(H * dpr * GLOW_TRAIL_SCALE), ts = tw / W;
+  glow.trail = sizedCanvas(glow.trail, tw, th); glow.spare = sizedCanvas(glow.spare, tw, th);
+  const spare = glow.spare.getContext('2d'), zoom = Math.pow(2.2 + glow.bass * 4, dt), turn = dt * (.18 + glow.bass * .5) * Math.sin(glow.swing);
+  spare.setTransform(1, 0, 0, 1, 0, 0); spare.clearRect(0, 0, tw, th);
+  spare.globalAlpha = Math.pow(playing ? .86 : .8, dt * 60);
+  spare.translate(cx * ts, cy * ts); spare.rotate(turn); spare.scale(zoom, zoom); spare.translate(-cx * ts, -cy * ts);
+  spare.drawImage(glow.trail, 0, 0);
+  spare.setTransform(ts, 0, 0, ts, 0, 0); spare.globalAlpha = 1; spare.globalCompositeOperation = 'lighter';
+  [glow.trail, glow.spare] = [glow.spare, glow.trail];
+
+  // the corona: each band a ray, lows at the top, mirrored; its peak a moment longer
+  const rays = [];
+  for(let i=0; i<GLOW_RAYS; i++) {
+    const band = (spectrum && playing) ? spectrum[Math.min(spectrum.length - 1, Math.floor(Math.pow(i / GLOW_RAYS, 1.7) * spectrum.length * .62) + 1)] / 255 : 0;
+    const level = Math.pow(band, 1.4);
+    glow.peaks[i] = Math.max(level, glow.peaks[i] - dt * .9);
+    rays.push(level);
+  }
+  const corona = (paint, width, alpha, lengthOf) => {
+    paint.lineCap = 'round'; paint.lineWidth = width;
+    for(let i=0; i<GLOW_RAYS; i++) {
+      const length = lengthOf(i); if(length < .5) continue;
+      paint.strokeStyle = glow.colors[i]; paint.globalAlpha = alpha * (.35 + rays[i] * .65);
+      for(const side of [1, -1]) {
+        const angle = -Math.PI / 2 + side * (i + .5) / GLOW_RAYS * Math.PI + glow.spin * .08, inner = core * (1.12 + glow.bass * .08);
+        const cos = Math.cos(angle), sin = Math.sin(angle);
+        paint.beginPath(); paint.moveTo(cx + cos * inner, cy + sin * inner); paint.lineTo(cx + cos * (inner + length), cy + sin * (inner + length)); paint.stroke();
+      }
+    }
+    paint.globalAlpha = 1;
+  };
+  corona(spare, 3, .3, (i) => rays[i] * reach * 1.05);
+
+  // the waveform as a ring about the record, drawn into the trail too so it swirls
+  const ring = (paint, width, alpha) => {
+    // NOTE: the core is drawn over it, so only the waveform's outward swings show
+    if(!waveform) return;
+    const points = 120, step = Math.floor(waveform.length / points);
+    paint.beginPath();
+    for(let p=0; p<=points; p++) {
+      const sample = playing ? (waveform[(p % points) * step] - 128) / 128 : 0, angle = p / points * Math.PI * 2 - glow.spin * .3;
+      const radius = core * (1.04 + glow.bass * .08) + sample * core * .4;
+      if(p === 0) paint.moveTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius); else paint.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
+    }
+    paint.lineWidth = width; paint.strokeStyle = glow.colors[GLOW_RAYS - 1]; paint.globalAlpha = alpha; paint.stroke(); paint.globalAlpha = 1;
+  };
+  ring(spare, 1.5, .2);
+
+  // shockwaves and sparks live only in the trail, where they streak
+  glow.waves = glow.waves.filter((wave) => {
+    wave.radius += dt * S * 1.1; wave.life -= dt * 1.6; if(wave.life <= 0) return false;
+    spare.globalAlpha = wave.life * .45; spare.strokeStyle = glow.colors[Math.floor(GLOW_RAYS * .2)]; spare.lineWidth = 1 + wave.life * 2.5;
+    spare.beginPath(); spare.arc(cx, cy, wave.radius, 0, Math.PI * 2); spare.stroke();
+    return true;
+  });
+  glow.sparks = glow.sparks.filter((spark) => {
+    spark.x += spark.vx * dt; spark.y += spark.vy * dt; spark.vx *= Math.pow(.4, dt); spark.vy *= Math.pow(.4, dt); spark.life -= dt * .9;
+    if((spark.life <= 0) || (spark.x < 0) || (spark.y < 0) || (spark.x > W) || (spark.y > H)) return false;
+    spare.globalAlpha = spark.life; spare.fillStyle = spark.color; spare.fillRect(spark.x - 1.5, spark.y - 1.5, 3, 3);
+    return true;
+  });
+  spare.globalAlpha = 1; spare.globalCompositeOperation = 'source-over';
+  // NOTE: `spare` and `glow.trail` name the same canvas after the swap above
+
+  // the frame: the trail, then the crisp corona, its peaks, the ring and the core
+  const paint = canvas.getContext('2d'); paint.setTransform(dpr, 0, 0, dpr, 0, 0); paint.clearRect(0, 0, W, H);
+  const stage = paint.createRadialGradient(cx, cy, core, cx, cy, S * .75);
+  stage.addColorStop(0, hslColor(palette[0], 6, .9)); stage.addColorStop(1, 'rgba(0,0,0,.82)');
+  paint.fillStyle = stage; paint.fillRect(0, 0, W, H);
+  paint.imageSmoothingEnabled = true; paint.globalCompositeOperation = 'lighter'; paint.drawImage(glow.trail, 0, 0, W, H);
+  corona(paint, 1.6, .85, (i) => rays[i] * reach);
+  paint.fillStyle = '#fff';
+  for(let i=0; i<GLOW_RAYS; i++) {
+    if(glow.peaks[i] < .04) continue;
+    paint.globalAlpha = Math.min(1, glow.peaks[i] * 1.4);
+    for(const side of [1, -1]) {
+      const angle = -Math.PI / 2 + side * (i + .5) / GLOW_RAYS * Math.PI + glow.spin * .08, radius = core * (1.12 + glow.bass * .08) + glow.peaks[i] * reach + 4;
+      paint.fillRect(cx + Math.cos(angle) * radius - 1, cy + Math.sin(angle) * radius - 1, 2, 2);
+    }
+  }
+  paint.globalAlpha = 1;
+  ring(paint, 2, .9);
+  paint.globalCompositeOperation = 'source-over';
+
+  // the core, drawn from the sound alone: a dark well, a white-hot orb that swells
+  // with the bass, a rose of petals that open with the mids, and two orbits that
+  // stretch with the highs
+  let mids = 0, highs = 0;
+  if(spectrum && playing) { for(let i=20; i<80; i++) mids += spectrum[i]; for(let i=120; i<250; i++) highs += spectrum[i]; mids /= 60 * 255; highs /= 130 * 255; }
+  glow.mids += (mids - glow.mids) * .2; glow.highs += (highs - glow.highs) * .25;
+  const radius = core * (1 + glow.bass * .07);
+  const well = paint.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  well.addColorStop(0, hslColor(palette[0], 8, .95)); well.addColorStop(.8, 'rgba(0,0,0,.9)'); well.addColorStop(1, 'rgba(0,0,0,0)');
+  paint.fillStyle = well; paint.beginPath(); paint.arc(cx, cy, radius, 0, Math.PI * 2); paint.fill();
+  paint.globalCompositeOperation = 'lighter';
+  const orbRadius = radius * (.45 + glow.bass * .35), orb = paint.createRadialGradient(cx, cy, 0, cx, cy, orbRadius);
+  orb.addColorStop(0, 'rgba(255,255,255,.95)'); orb.addColorStop(.25, glow.colors[Math.floor(GLOW_RAYS * .1)]); orb.addColorStop(1, 'rgba(0,0,0,0)');
+  paint.fillStyle = orb; paint.beginPath(); paint.arc(cx, cy, orbRadius, 0, Math.PI * 2); paint.fill();
+  // a rose r = cos(5/3 θ), turning slowly, its petals as long as the mids are loud
+  const petals = radius * (.5 + glow.mids * .5);
+  paint.beginPath();
+  for(let p=0; p<=240; p++) {
+    const theta = p / 240 * Math.PI * 6, r = petals * Math.cos(theta * 5 / 3), angle = theta + glow.spin * .35;
+    if(p === 0) paint.moveTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r); else paint.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+  }
+  paint.lineWidth = 1.2; paint.strokeStyle = glow.colors[Math.floor(GLOW_RAYS * .55)]; paint.globalAlpha = .55 + glow.mids * .45; paint.stroke();
+  // two orbits at the rim, turning against each other
+  paint.lineCap = 'round';
+  for(const [orbit, speed, color] of [[.86, 1, glow.colors[GLOW_RAYS - 1]], [.72, -1.4, glow.colors[Math.floor(GLOW_RAYS * .3)]]]) {
+    const sweep = Math.PI * (.25 + glow.highs * 1.4), at = glow.spin * speed;
+    paint.lineWidth = 2; paint.strokeStyle = color; paint.globalAlpha = .5 + glow.highs * .5;
+    for(const offset of [0, Math.PI]) { paint.beginPath(); paint.arc(cx, cy, radius * orbit, at + offset, at + offset + sweep); paint.stroke(); }
+  }
+  paint.globalAlpha = 1; paint.globalCompositeOperation = 'source-over';
 };
 
 // == Sliders =====================================================================
@@ -4314,7 +4468,7 @@ const frame = (time) => {
     const energy = Engine.energy(); smoothedEnergy += (energy - smoothedEnergy) * ((energy > smoothedEnergy) ? .5 : .12);
     drawBackground(time, smoothedEnergy);
     $('#npArt').style.transform = 'scale(' + (1 + smoothedEnergy * .03).toFixed(4) + ')';
-    if(state.mode === PlayerMode.Score) { if(isTakeSpec(spec)) drawSpectrum(); else drawScore(spec, position); }
+    if(state.mode === PlayerMode.Score) { if(isTakeSpec(spec)) drawAfterglow(time, playing); else drawScore(spec, position); }
   } /* else -- only the mini player's bar shows */
   if(playing && ((time - lastSave) > 5000)) { lastSave = time; saveState(); }
 };
