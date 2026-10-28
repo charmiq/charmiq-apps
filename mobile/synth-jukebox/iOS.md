@@ -4221,7 +4221,18 @@ const typeIdea = () => {
 // the idea being shown, whole
 const shownIdea = () => (ideaShown > 0) ? IDEAS[ideaIndex] : IDEAS[(ideaIndex + IDEAS.length - 1) % IDEAS.length];
 const useIdea = () => { promptField.value = shownIdea(); updatePressLabel(); promptField.focus(); };
-const nextIdea = () => { ideaIndex = (ideaIndex + 1) % IDEAS.length; ideaShown = IDEAS[ideaIndex].length; promptField.placeholder = IDEAS[ideaIndex]; clearTimeout(ideaTimer); ideaTimer = setTimeout(typeIdea, 2800); };
+const nextIdea = () => { ideaIndex = (ideaIndex + 1) % IDEAS.length; ideaShown = IDEAS[ideaIndex].length; promptField.placeholder = IDEAS[ideaIndex]; clearTimeout(ideaTimer); ideaTimer = (document.activeElement === promptField) ? (holdIdeas(), null) : setTimeout(typeIdea, 2800)/*the idea asked for stands whole first*/; };
+// the ideas type only into an empty field the User is not in: focusing it or
+// writing in it clears the idea, and an empty field left types the next idea in from
+// its first letter
+const IDEA_RESUME_MS = 400;
+const holdIdeas = () => { clearTimeout(ideaTimer); ideaTimer = null/*not typing*/; ideaShown = IDEAS[ideaIndex].length; promptField.placeholder = ''; };
+const resumeIdeas = () => {
+  if(ideaTimer || promptField.value || (document.activeElement === promptField)) return;
+  promptField.placeholder = ''; ideaTimer = setTimeout(typeIdea, IDEA_RESUME_MS);
+};
+promptField.addEventListener('focus', holdIdeas);
+promptField.addEventListener('blur', resumeIdeas);
 // puts a take's words and ingredients back in the booth to change and press again
 const editDescription = (take) => {
   switchTab(Tab.Studio); promptField.value = take.prompt;
@@ -4258,7 +4269,7 @@ const pressDescription = async () => {
   pressingDescription = true; $('#pressBtn').disabled = true; promptField.blur();
   const kept = new Set(picked);
   try {
-    promptField.value = ''; picked.clear(); renderChips();
+    promptField.value = ''; picked.clear(); renderChips(); resumeIdeas();
     if(await pressTake(prompt, ingredients)) return;
     // not added: the booth holds the description again to retry
     promptField.value = written; kept.forEach((i) => picked.add(i)); renderChips();
