@@ -1865,9 +1865,66 @@ img {
 }
 .take-t {
   font-weight: 600;
+  line-height: 24px;
+  height: 24px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* the flaps hold the title's one line: a name longer than it fades off its edge */
+.take-t.flaps {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+/* one flap of a departure board: a dark tile split across its middle */
+.flap {
+  position: relative;
+  flex: none;
+  display: inline-block;
+  min-width: .78em;
+  padding: 0 2px;
+  border-radius: 3px;
+  background: #1C1C1E;
+  color: #F2F2F7;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 21px;
+  text-align: center;
+  box-shadow: inset 0 -1px 0 rgba(255,255,255,.08);
+}
+.flap::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(0,0,0,.55);
+}
+.flap.set {
+  color: #FFD60A;
+}
+.flap.fresh {
+  animation: flapSet .35s ease-out;
+}
+.flap.gap {
+  min-width: .45em;
+  background: none;
+  box-shadow: none;
+}
+@keyframes flapSet {
+  from {
+    background: #3A3A3C;
+    transform: scaleY(.6);
+  }
+  to {
+    background: #1C1C1E;
+    transform: none;
+  }
 }
 .take-p {
   font-size: 14px;
@@ -1959,6 +2016,12 @@ img {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* a pressing card keeps its Play button's place, so the button arriving moves nothing */
+.take-play-slot {
+  width: 40px;
+  height: 40px;
+  flex: none;
 }
 .take-play svg {
   width: 18px;
@@ -2965,7 +3028,8 @@ const newAlbum = () => {
 // (`kind` 'take'): { id, kind, title, artist, tracks: [title], prompt (the words
 // written), ingredients (the labels of the ingredients picked), model, status,
 // startedAt (ms), assetId (its Drive file, once the press is accepted), seconds (its
-// length, once measured), failure (what went wrong, a Failure), detail (the
+// length, once measured), renamed (true once the User names it: a generated name
+// never replaces theirs), failure (what went wrong, a Failure), detail (the
 // refusal's own text, kept for diagnosis and never shown) and cover ({ status,
 // assetId, startedAt, detail }: its generated cover, pressed once the song is
 // accepted or painted later from its menu; the
@@ -3027,6 +3091,14 @@ const newTake = (prompt, ingredients) => {
   const { title, artist } = mintNames(seededRandom(hashString(prompt + '|' + Date.now())));
   return { id: randomId(), kind: TAKE_KIND, title, artist, year: new Date().getFullYear(), tracks: [title], prompt, ingredients, model: MUSIC_MODEL, status: TakeStatus.Pressing, startedAt: Date.now() };
 };
+// the instructions a take's name is asked for under: a record title and an artist
+// as JSON, so the reply parses whatever the model's habits
+const NAMING_INSTRUCTIONS = 'You name records. Given a description of a song, invent its record title and its artist (a band or artist name). ' +
+  'The title is at most three words; the artist at most three words. Make both evocative and specific to the song, never generic. ' +
+  'No quotation marks, emoji, or the words song, track or album. ' +
+  'Reply with JSON only, no other text: {"title": "...", "artist": "..."}';
+// a name past this many characters is not a name the cards can show
+const NAME_MAX_LENGTH = 40;
 // what the cover's model is asked for: a record cover the song's own words and
 // style direct, art-directed as a designed cover and kept free of lettering (the
 // app sets the title beside it, and a model's lettering garbles)
@@ -3220,6 +3292,7 @@ const normalize = (data) => {
         assetId: (typeof album.assetId === 'string') && album.assetId ? album.assetId : undefined/*not yet accepted*/,
         seconds: (typeof album.seconds === 'number') && (album.seconds > 0) ? album.seconds : undefined/*not yet measured*/,
         startedAt: (typeof album.startedAt === 'number') ? album.startedAt : 0,
+        renamed: (album.renamed === true) || undefined/*named by the Platform or minted*/,
         failure: (Object.values(Failure).indexOf(album.failure) > -1) ? album.failure : Failure.Unknown,
         cover: (album.cover && (typeof album.cover === 'object') && (Object.values(TakeStatus).indexOf(album.cover.status) > -1)) ? album.cover : undefined/*no cover pressed*/,
       });
@@ -3340,7 +3413,8 @@ const pressTake = async (prompt, ingredients, replaces) => {
   sending.add(take.id);
   try {
     if(!await updateLibrary((data) => ({ ...data, albums: [take, ...data.albums.filter((album) => album.id !== replaces)] }))) return false;
-    toast('Pressing “' + take.title + '”');
+    toast('Pressing your song');
+    nameTake(take.id, prompt, ingredients)/*beside the song; its names stand until a name arrives*/;
     let fields;
     try {
       const result = await callTool('generation', 'create_music', { mode: 'queued', google: { model: MUSIC_MODEL, prompt: modelPrompt(prompt, ingredients) } });
@@ -3351,6 +3425,35 @@ const pressTake = async (prompt, ingredients, replaces) => {
   } finally { sending.delete(take.id); }
   schedulePoll(TAKE_POLL_MS);
   return true;
+};
+
+// -- Naming ----------------------------------------------------------------------
+// a take's title and artist from its description, written by a language model. The
+// minted names stand until it answers and wherever it fails; a name the User gave
+// is never replaced
+// the takes being named on this device: when each began, and the name once it came
+const naming = new Map();
+const NAMING_TIMEOUT_MS = 30 * 1000;
+// the title and artist a reply names, or null when it names none usable
+const parseName = (text) => {
+  const match = String(text || '').match(/\{[\s\S]*\}/); if(!match) return null/*no JSON in the reply*/;
+  let name; try { name = JSON.parse(match[0]); } catch(error) { return null/*not JSON*/; }
+  const clean = (value) => (typeof value === 'string') ? value.replace(/["“”]/g, '').replace(/\s+/g, ' ').trim() : '';
+  const title = clean(name && name.title), artist = clean(name && name.artist);
+  if(!title || (title.length > NAME_MAX_LENGTH) || (artist.length > NAME_MAX_LENGTH)) return null/*not a name the cards can show*/;
+  return { title, artist };
+};
+const nameTake = async (id, prompt, ingredients) => {
+  naming.set(id, { startedAt: Date.now(), name: null/*not yet named*/ });
+  let name = null/*the minted names stand*/;
+  try {
+    const result = await callTool('generation', 'create_text', { prompt: modelPrompt(prompt, ingredients), instructions: NAMING_INSTRUCTIONS });
+    name = result.success ? parseName(result.text) : null/*no text to use*/;
+  } catch(error) { console.warn('take not named', messageOf(error))/*the minted names stand*/; }
+  if(!name || !naming.has(id)) { naming.delete(id); renderStudio(); return; }
+  const saved = await updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => ((album.id === id) && !album.renamed) ? { ...album, title: name.title, artist: name.artist || album.artist, tracks: [name.title] } : album) }));
+  if(!saved || !naming.has(id)) { naming.delete(id); renderStudio(); return; }
+  naming.set(id, { ...naming.get(id), name, lockedAt: Date.now() })/*the flaps settle onto it*/;
 };
 
 // asks for a take's cover; its failure never fails the take (the painted sleeve stays)
@@ -3392,7 +3495,8 @@ const renameTake = async (id) => {
   const take = albumById(id); if(!isTake(take)) return;
   const names = await renameAlert(take); if(!names) return;
   if((names.title === take.title) && (names.artist === take.artist)) return/*unchanged*/;
-  if(await changeTake(id, { title: names.title, artist: names.artist, tracks: [names.title] })) toast('Renamed “' + names.title + '”');
+  naming.delete(id)/*the User's name wins*/;
+  if(await changeTake(id, { title: names.title, artist: names.artist, tracks: [names.title], renamed: true })) toast('Renamed “' + names.title + '”');
 };
 // paints a new cover for a pressed take whose cover failed or that has none
 const paintCover = async (id) => {
@@ -3675,10 +3779,11 @@ const spinningDiscHTML = (take) => {
 // the ingredients a take was pressed with, as chips
 const ingredientsHTML = (take) => (take.ingredients.length > 0) ? '<div class="ings">' + take.ingredients.map((label) => '<span class="ing">' + escapeHtml(label) + '</span>').join('') + '</div>' : '';
 const takeCardHTML = (take) => {
-  const label = hslColor(artFor(take).palette[2]), main = '<div class="take-t">' + escapeHtml(take.title) + '</div><div class="take-p">' + escapeHtml(take.prompt) + '</div>' + ingredientsHTML(take);
+  const title = naming.has(take.id) ? '<div class="take-t flaps" data-flap="' + take.id + '">' + flapsHTML(take.id) + '</div>' : '<div class="take-t">' + escapeHtml(take.title) + '</div>';
+  const label = hslColor(artFor(take).palette[2]), main = title + '<div class="take-p">' + escapeHtml(take.prompt) + '</div>' + ingredientsHTML(take);
   if(take.status === TakeStatus.Pressing) {
     return '<div class="take pressing" data-id="' + take.id + '">' + spinningDiscHTML(take) +
-      '<div class="take-main">' + main + '<div class="take-s"><span class="take-time">' + pressStatus(take) + '</span></div></div></div>';
+      '<div class="take-main">' + main + '<div class="take-s"><span class="take-time">' + pressStatus(take) + '</span></div></div><span class="take-play-slot"></span></div>';
   } /* else -- settled */
   if(take.status === TakeStatus.Failed) {
     return '<div class="take failed"><div class="take-disc"><span class="vinyl" style="--label-color:' + label + '"></span></div><div class="take-main">' + main +
@@ -3693,6 +3798,36 @@ const takeCardHTML = (take) => {
     '<div class="take-main">' + main + '<div class="take-s">' + (awaited ? '<span class="take-time">' + pressStatus(take) + '</span>' : STUDIO_TAG + escapeHtml(take.artist) + (spec.duration > 0 ? ' · ' + durationText(spec) : '')) + '</div></div>' +
     '<button class="take-play" data-action="play-take" data-key="' + key + '" aria-label="Play">' + (isCurrent ? EQUALIZER : ICON.play) + '</button></div>';
 };
+// -- Split Flaps -----------------------------------------------------------------
+// a take's title while it is named: a departure board's flaps cycling, then locking
+// onto the name letter by letter, left to right
+const FLAP_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const FLAP_COUNT = 12/*flaps while no name has come*/;
+const FLAP_LOCK_MS = 55/*between one letter locking and the next*/;
+const randomFlap = () => FLAP_LETTERS.charAt(Math.floor(Math.random() * FLAP_LETTERS.length));
+const flapsHTML = (id) => {
+  const entry = naming.get(id); if(!entry) return '';
+  const target = entry.name ? entry.name.title.toUpperCase() : null/*not yet named*/;
+  const length = target ? target.length : FLAP_COUNT, locked = target ? Math.floor((Date.now() - entry.lockedAt) / FLAP_LOCK_MS) : 0;
+  let html = '';
+  for(let i=0; i<length; i++) {
+    const letter = (i < locked) ? target.charAt(i) : (target && (target.charAt(i) === ' ')) ? ' ' : randomFlap();
+    // NOTE: the flaps are redrawn each turn: only the letter locked last flashes
+    html += (letter === ' ') ? '<span class="flap gap"></span>' : '<span class="flap' + ((i < locked) ? ' set' : '') + ((i === (locked - 1)) ? ' fresh' : '') + '">' + escapeHtml(letter) + '</span>';
+  }
+  return html;
+};
+// turns each naming take's flaps; a name fully locked settles into the card's title,
+// and a name that never comes gives way to the minted one
+const turnFlaps = () => {
+  if(naming.size < 1) return;
+  naming.forEach((entry, id) => {
+    const done = entry.name && ((Date.now() - entry.lockedAt) > ((entry.name.title.length + 6) * FLAP_LOCK_MS));
+    if(done || (!entry.name && ((Date.now() - entry.startedAt) > NAMING_TIMEOUT_MS))) { naming.delete(id); renderStudio(); return; }
+    $$('[data-flap="' + id + '"]').forEach((element) => { element.innerHTML = flapsHTML(id); });
+  });
+};
+
 const renderStudio = () => {
   const all = takes();
   $('#studioBody').innerHTML = '<div class="sec-h">Your Takes</div>' + ((all.length > 0)
@@ -4367,7 +4502,7 @@ const boot = () => {
   setModeClasses(); onTrackChange();
   requestAnimationFrame(() => { placeIndicator(); updateNavSolid(); });
   requestAnimationFrame(frame);
-  typeIdea(); setInterval(tickTakes, 500);
+  typeIdea(); setInterval(tickTakes, 500); setInterval(turnFlaps, 70);
   // takes left pressing when the app last closed are asked after at once
   schedulePoll(0);
 };
