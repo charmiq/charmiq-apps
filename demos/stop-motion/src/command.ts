@@ -12,7 +12,7 @@ import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from '
 import { motionOf, type DriverSpan, MOTION_CHANNELS, POSE_CHANNELS } from './motion-read';
 import type { Player } from './player';
 import type { FigurePart, Point, Recorded, RecordedActor, RecordedAudience, SceneError, SoundCue } from './recorder';
-import { cameraGroups, cameraProblems, clearancesOf, deadAirOf, footingProblems, jumpsOf, popsOf, problemAtTime, reviewCuts, screenAt, strainedPoses, type CameraProblem, type CutSide, type DeadAir, type FootingKind, type HeldBack, type Jump, type PartFinding, type PopChange, type StrainedPose } from './review';
+import { cameraGroups, cameraProblems, clearancesOf, deadAirOf, footingProblems, jumpsOf, popsOf, problemAtTime, reviewCuts, screenAt, strainedPoses, waitingOf, type CameraProblem, type CutSide, type DeadAir, type FootingKind, type HeldBack, type Jump, type PartFinding, type PopChange, type PopDuring, type StrainedPose, BED_SHARE } from './review';
 import type { ScreenBox } from './screen';
 import { soundSpans, type Heard } from './sound';
 import type { Surface } from './steps';
@@ -39,9 +39,10 @@ import type { Board, StageState } from './studios';
  *  vanishing in its picture within a shot (SEE: review.ts popsOf), each way a figure's
  *  footing goes wrong (SEE: review.ts FootingKind), a figure the scene poses past a
  *  person's range (SEE: review.ts strainedPoses), a keyed flight short of a part it
- *  crosses, a shot holding with nothing new (SEE: review.ts deadAirOf), and a cut-out
- *  jumping what a shot shows (SEE: review.ts jumpsOf) */
-const PROBLEM_KINDS = ['overlap', 'inside', 'hidden', 'pop', 'into', 'above', 'floating', 'tipped', 'through', 'strained', 'short', 'dead air', 'jump'] as const;
+ *  crosses, a shot holding with nothing new (SEE: review.ts deadAirOf), a cut-out
+ *  jumping what a shot shows (SEE: review.ts jumpsOf), an actor waiting in frame (SEE:
+ *  review.ts waitingOf), and a line sounding over a camera cut (SEE: linesOverCuts) */
+const PROBLEM_KINDS = ['overlap', 'inside', 'hidden', 'pop', 'into', 'above', 'floating', 'tipped', 'through', 'strained', 'short', 'dead air', 'jump', 'waiting', 'line over cut'] as const;
 /** the camera's kinds, in their detail's order: its problems, then its own subject
  *  standing before the point it aims at (`own`: never a problem, so counted apart and
  *  detailed on request; SEE: review.ts CameraProblem) */
@@ -51,7 +52,7 @@ const FOOTING_KINDS: ReadonlyArray<ProblemKind & FootingKind> = ['into', 'above'
 /** what describeFilm details on request: each problem kind and the camera's own
  *  subject, every keyed flight's clearance, each walk's leaps, and the actors that come
  *  close */
-const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, 'pop', ...FOOTING_KINDS, 'strained', 'short', 'dead air', 'jump', 'clearance', 'leaps', 'close'];
+const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, 'pop', ...FOOTING_KINDS, 'strained', 'short', 'dead air', 'jump', 'waiting', 'line over cut', 'clearance', 'leaps', 'close'];
 /** what an actor popping into or out of the picture needs: to be out of view as it is
  *  shown or hidden, moving in or out of the picture on its own feet */
 const POP_FIXES: Readonly<Record<PopChange, string>> = { appears: 'stage it out of view and walk it in', vanishes: 'walk it out of view before hiding it' };
@@ -69,6 +70,9 @@ const MAX_SWEEP = 24;
 const CONSIDERED_JOINTS: ReadonlyArray<string> = ['rightArm', 'leftArm', 'rightWrist', 'leftWrist', 'lean', 'twist'];
 
 // -- Sounds ----------------------------------------------------------------------
+/** how long before a camera cut a line ends to finish before it (seconds): a breath,
+ *  so the cut never takes its last word */
+const CUT_CLEAR = 0.25;
 /** the least pause (seconds) listen parts a sound's spans at when asked none: a
  *  speaker's breath between phrases, longer than the stops within a word */
 const MIN_PAUSE = 0.3;
@@ -96,14 +100,14 @@ type MeasuredKind = ProblemKind | 'own';
 export type FilmAsk = Readonly<{ actors?: ReadonlyArray<string>; from?: number; to?: number; kinds?: ReadonlyArray<string>; }>;
 /** describeFilm's arguments as a Charm sends them (SEE: FilmAsk) */
 type AskArgs = Readonly<{ actors?: unknown; from?: unknown; to?: unknown; kinds?: unknown; }>;
-/** a film as describeFilm measures it: the length (seconds) of each sound it plays that
- *  can be heard, by name, once read; its actors' boxes once the stage sized them, and the
+/** a film as describeFilm measures it: each sound it plays that can be heard as read,
+ *  by name (SEE: SoundRead); its actors' boxes once the stage sized them, and the
  *  film as staged (the film shown, staged) with the parts each frame's camera met */
 /** a sound the film plays as describeFilm reads it, once: its length (seconds), the
  *  spans it sounds over between its pauses (seconds into it, as listen parts them at
  *  MIN_PAUSE: SEE sound.ts soundSpans) and its file's name when the Drive names it */
 export type SoundRead = Readonly<{ seconds: number; spans: ReadonlyArray<Readonly<{ from: number; to: number; }>>; file?: string; }>;
-export type Measured = Readonly<{ film: Film; lengths?: ReadonlyMap<string, number>; sizes?: Readonly<Record<string, Size>>; staged?: Readonly<{ film: Film; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; }>; }>;
+export type Measured = Readonly<{ film: Film; heard?: ReadonlyMap<string, SoundRead>; sizes?: Readonly<Record<string, Size>>; staged?: Readonly<{ film: Film; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; }>; }>;
 
 // -- Reading an Actor ------------------------------------------------------------
 /** reach's arguments as a Charm sends them: the figure, the hand item, and the moment
@@ -154,8 +158,7 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
     describeFilm: async (asked: AskArgs = {}) => {
       const film = host.film(), error = host.error(), stage = host.stage();
       const sizes = sizesOf(stage), staged = stagedOf(host), heard = film && await soundsReadOf(host, film);
-      const lengths = heard && new Map([...heard].map(([name, read]) => [name, read.seconds] as const));
-      const measured = film && { film, ...(lengths ? { lengths } : {}), ...(sizes ? { sizes } : {}), ...(staged ? { staged } : {}) };
+      const measured = film && { film, ...(heard ? { heard } : {}), ...(sizes ? { sizes } : {}), ...(staged ? { staged } : {}) };
       const errorReport = error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {};
       const ask = askOf(film, asked);
       if(ask) return { studios: host.studios(), editors: host.editors(), ...stageReport(stage), ...(measured ? detailReport(measured, ask) : {}), ...errorReport };
@@ -320,12 +323,15 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
 /** describeFilm's facts of a film: what it is, how long it runs on the screen when its
  *  speed or its cut-outs make that differ, the spans of its time it cuts out (each the
  *  film's time it lies at), its shots (each with the camera keys moving it and their
- *  lines), sets, sounds (each read with its length, from `lengths`, and the scene's time
- *  one played once ends) and
- *  footsteps, each leaping walk's steps before, between and after its leaps (SEE:
+ *  lines), sets, sounds (each as `heard` read it: its file's name, line, length, the
+ *  scene's time one played once ends and its spoken spans, each with the moments within
+ *  or just before it: SEE momentsWithin), footsteps, the film's moments (SEE: momentsOf),
+ *  each leaping walk's steps before, between and after its leaps (SEE:
  *  leapsSummaryOf), where an avoiding camera was drawn in (once staged) and what its
  *  scene logged */
-export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefined, heard: ReadonlyMap<string, SoundRead>) => ({
+export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefined, heard: ReadonlyMap<string, SoundRead>) => factsOf(film, avoided, heard, momentsOf(film));
+// the facts with the film's moments, read once
+const factsOf = (film: Film, avoided: ReadonlyArray<Avoided> | undefined, heard: ReadonlyMap<string, SoundRead>, moments: ReadonlyArray<FilmMoment>) => ({
   title: film.scene.title, seconds: film.scene.length, ...((film.scene.speed || film.scene.cutOuts) ? { filmSeconds: thousandths(filmLengthOf(film)) } : {}), fps: film.scene.fps, frames: film.frames.length,
   ...(film.scene.cutOuts ? { cutOuts: film.scene.cutOuts.map(({ from, to, line }) => ({ from: thousandths(from), to: thousandths(to), at: thousandths(filmTimeOf(film, to)), ...((line !== undefined) ? { line } : {}) })) } : {}),
   actors: film.scene.actors.map(actor => actor.name), views: film.scene.views.map(view => view.name),
@@ -338,13 +344,14 @@ export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefine
       time: thousandths(time), name, ...((read?.file !== undefined) ? { file: read.file } : {}), ...((line !== undefined) ? { line } : {}), ...((seconds !== undefined) ? { seconds: thousandths(seconds) } : {}), volume,
       ...((until !== undefined) ? { until: thousandths(until) } : {}), ...((ends !== undefined) ? { ends: thousandths(ends) } : {}), ...((actor !== undefined) ? { actor } : {}),
       ...((fadeIn !== undefined) ? { fadeIn: thousandths(fadeIn) } : {}), ...((fadeOut !== undefined) ? { fadeOut: thousandths(fadeOut) } : {}),
-      ...(read ? { spans: spansHeard(film, cue, read) } : {}),
+      ...(read ? { spans: spansHeard(film, cue, read).map(([from, to]) => { const named = momentsWithin(moments, from, to); return { from, to, ...((named.length > 0) ? { moments: named } : {}) }; }) } : {}),
     };
   }) } : {}),
   ...(film.footsteps ? { footsteps: [...new Set(film.footsteps.map(cue => cue.actor!))].map(actor => {
     const steps = film.footsteps!.filter(cue => cue.actor === actor);
     return { actor, steps: steps.length, from: thousandths(steps[0].time), to: thousandths(steps[steps.length - 1].time), sounds: [...new Set(steps.map(cue => cue.name))] };
   }) } : {}),
+  ...((moments.length > 0) ? { moments } : {}),
   ...leapsSummaryOf(film),
   ...((avoided && (avoided.length > 0)) ? { avoided: avoided.map(({ from, to, kept, view }) => ({ from: thousandths(from), to: thousandths(to), kept: hundredths(kept), ...((view !== undefined) ? { view } : {}) })) } : {}),
   ...((film.scene.logs.length > 0) ? { logs: film.scene.logs.slice(-20) } : {}),
@@ -387,6 +394,8 @@ export const detailReport = (measured: Measured, ask: FilmAsk) => {
     ...((staged && wants('strained')) ? { poses: ofKinds(['strained']).map(problem => problem.detail) } : {}),
     ...(wants('dead air') && (deadAirIn(measured) !== undefined) ? { deadAir: ofKinds(['dead air']).map(problem => problem.detail) } : {}),
     ...(wants('jump') ? { jumps: ofKinds(['jump']).map(problem => problem.entry) } : {}),
+    ...((staged && wants('waiting')) ? { waiting: ofKinds(['waiting']).map(problem => problem.entry) } : {}),
+    ...(wants('line over cut') ? { linesOverCuts: ofKinds(['line over cut']).map(problem => problem.entry) } : {}),
     ...((staged && wants('clearance', 'short')) ? { clearances: clearancesReport(staged.film).filter(each => naming([each.actor]) && over(each.from, each.to) && (wants('clearance') || !each.cleared)) } : {}),
     ...((staged && wants('leaps')) ? { leaps: leapsReport(staged.film).filter(each => naming([each.actor]) && over(each.leaps[0], each.leaps[each.leaps.length - 1])) } : {}),
     ...((sizes && ask.kinds?.includes('close')) ? { close: { withinStuds: CLOSE_GAP, pairs: closeReport(film, sizes).filter(pair => naming(pair.actors) && over(pair.time, pair.time)) } } : {}),
@@ -425,7 +434,12 @@ const problemsOf = (measured: Measured, spans: ReadonlyArray<CameraProblem> = ca
   }) : [];
   const deadAir = (deadAirIn(measured) ?? []).map(each => deadAirReport(film.scene.length, each)).map(detail => ({ kind: 'dead air' as const, actors: [], from: detail.from, to: detail.to, amount: detail.seconds, detail, entry: detail }));
   const jumps = jumpsOf(film).map(jumpReport).map(detail => ({ kind: 'jump' as const, actors: [], from: detail.from, to: detail.from, amount: 0/*each as wrong as the next: the earliest first*/, detail, entry: { kind: detail.kind, shot: detail.shot, at: detail.at, ...((detail.line !== undefined) ? { line: detail.line } : {}), fix: detail.fix } }));
-  const all: ReadonlyArray<Problem> = [...overlaps, ...camera, ...pops, ...footing, ...strained, ...short, ...deadAir, ...jumps];
+  const waiting = staged ? waitingOf(staged.film, staged.sizes).map(({ actor, shot, from, to, line }) => {
+    const entry = { kind: 'waiting', actor, ...((shot.name !== undefined) ? { shot: shot.name } : {}), from: thousandths(from), to: thousandths(to), ...((line !== undefined) ? { line } : {}), fix: 'walk it in nearer its turn, or give it something to do' };
+    return { kind: 'waiting' as const, actors: [actor], from, to, amount: to - from, detail: entry, entry };
+  }) : [];
+  const overCuts = linesOverCuts(film, measured.heard ?? new Map()).map(entry => ({ kind: 'line over cut' as const, actors: [], from: entry.cut, to: entry.cut, amount: 0/*the earliest first*/, detail: entry, entry }));
+  const all: ReadonlyArray<Problem> = [...overlaps, ...camera, ...pops, ...footing, ...strained, ...short, ...deadAir, ...jumps, ...waiting, ...overCuts];
   const length = ({ from, to }: Problem) => thousandths(to - from)/*its ends' rounding aside*/;
   return [...PROBLEM_KINDS, 'own' as const].flatMap(kind => all.filter(problem => problem.kind === kind).sort((a, b) => (b.amount - a.amount) || (length(b) - length(a)) || (a.from - b.from)));
 };
@@ -457,12 +471,72 @@ const cameraLines = ({ staged }: Measured, camera: ReadonlyArray<CameraProblem>)
   }).sort((a, b) => (b.held - a.held) || (a.from - b.from));
 };
 
+// -- Moments ---------------------------------------------------------------------
+/** a moment of the film a line may name: when (seconds), whose, what happens, the shot
+ *  it falls in and the scene's line making it */
+type FilmMoment = Readonly<{ time: number; actor: string; what: string; shot?: string; line?: number; }>;
+/** how long before a spoken span a moment it names may come (seconds): a line names what
+ *  has just happened as well as what happens as it is said */
+const MOMENT_LEAD = 0.5;
+/** how far apart (seconds) an audience's members start a verb of one call to be one
+ *  moment: a cheer's rise across a stand */
+const VERB_SPREAD = 2;
+
+/** describeFilm's moments, in the film's order: each thing a hand lets go of and where
+ *  it lands (its last path's end), each leap's takeoff and landing, each walk's end (a run
+ *  of walks one after another its last) and path's end, and each audience's cheer and
+ *  wave as its first member starts it; none for an audience's member alone, nor past the
+ *  film's end */
+export const momentsOf = (film: Film): ReadonlyArray<FilmMoment> => {
+  const { scene } = film;
+  const shots = cameraShots(scene.camera, scene.length);
+  const audienceOf = new Map((scene.audiences ?? []).flatMap(each => each.members.map(member => [member.actor, each.name] as const)));
+  const releases = (film.handOffs ?? []).filter(each => each.change === 'released'), released = new Set(releases.map(each => each.thing));
+  const ofActors = scene.actors.filter(actor => !audienceOf.has(actor.name)).flatMap(actor => {
+    const paths = actor.spans.filter(span => span.label === 'path').map(span => ({ end: span.to / scene.fps, line: span.line })).sort((a, b) => a.end - b.end);
+    if(released.has(actor.name)) return paths.slice(-1).map(({ end, line }) => ({ time: end, actor: actor.name, what: 'lands', line }));
+    const walks = (actor.walks ?? []).filter(walk => !(actor.walks ?? []).some(next => (next !== walk) && (Math.abs(next.start - walk.end) < MOMENT_LEAD)));
+    return [...walks.map(walk => ({ time: walk.end, actor: actor.name, what: 'finishes its walk', line: walk.line })), ...paths.map(({ end, line }) => ({ time: end, actor: actor.name, what: 'finishes its path', line }))];
+  });
+  const verbs = new Map<string, Array<Readonly<{ time: number; audience: string; label: string; line?: number; }>>>();
+  for(const actor of scene.actors) {
+    const audience = audienceOf.get(actor.name);
+    if(audience === undefined) continue;
+    for(const span of actor.spans.filter(each => (each.label === 'cheer') || (each.label === 'wave'))) {
+      const key = `${audience}|${span.label}|${span.line ?? ''}`;
+      verbs.set(key, [...(verbs.get(key) ?? []), { time: span.from / scene.fps, audience, label: span.label, line: span.line }]);
+    }
+  }
+  const started = [...verbs.values()].flatMap(each => [...each].sort((a, b) => a.time - b.time).filter((verb, index, sorted) => (index < 1) || ((verb.time - sorted[index - 1].time) > VERB_SPREAD)))
+    .map(({ time, audience, label, line }) => ({ time, actor: audience, what: (label === 'cheer') ? 'cheers' : 'waves', line }));
+  return [
+    ...releases.map(({ time, by, thing, line }) => ({ time, actor: by, what: `releases ${thing}`, line })),
+    ...(film.leaps ?? []).flatMap(walk => walk.times.flatMap((time, at) => [{ time, actor: walk.actor, what: 'takes off', line: walk.line }, { time: walk.lands[at], actor: walk.actor, what: 'lands', line: walk.line }])),
+    ...ofActors, ...started,
+  ].filter(({ time }) => (time >= 0) && (time < (scene.length - 1e-6))).sort((a, b) => a.time - b.time).map(({ time, actor, what, line }) => {
+    const shot = shotAt(shots, time)?.name;
+    return { time: thousandths(time), actor, what, ...((shot !== undefined) ? { shot } : {}), ...((line !== undefined) ? { line } : {}) };
+  });
+};
+
+/** the moments within a spoken span or MOMENT_LEAD before it, each its actor, what and
+ *  its offset into the span (seconds, signed) */
+const momentsWithin = (moments: ReadonlyArray<FilmMoment>, from: number, to: number): ReadonlyArray<string> =>
+  moments.filter(({ time }) => (time >= (from - MOMENT_LEAD)) && (time <= to)).map(({ time, actor, what }) => { const into = hundredths(time - from); return `${actor} ${what} at ${(into < 0) ? '-' : '+'}${Math.abs(into)}`; });
+
 // -- Pops ------------------------------------------------------------------------
 /** describeFilm's pops (SEE: review.ts popsOf): each actor appearing or vanishing in the
  *  picture within a shot, at the first frame showing it (`from` and `to` its time), its
  *  shot's name, where it stands shown, the line keying it and the fix */
 export const popsReport = (film: Film, sizes: Readonly<Record<string, Size>>) =>
-  popsOf(film, sizes).map(({ actor, change, frame, time, shot, at, lines }) => ({ actor, change, from: thousandths(time), to: thousandths(time), frame, ...((shot.name !== undefined) ? { shot: shot.name } : {}), at: rounded(at), lines, fix: POP_FIXES[change] }));
+  popsOf(film, sizes).map(({ actor, change, frame, time, shot, at, lines, during }) => ({ actor, change, from: thousandths(time), to: thousandths(time), frame, ...((shot.name !== undefined) ? { shot: shot.name } : {}), at: rounded(at), lines, fix: during ? duringFix(change, shot, during) : POP_FIXES[change] }));
+
+/** what a pop in the shot a transition leaves needs: shown or hidden only once the
+ *  transition ends and the shot left no longer shows, or kept out of both shots' views */
+const duringFix = (change: PopChange, shot: CameraShot, { shape, seconds, into, until }: PopDuring): string => {
+  const kind = shape.startsWith('wipe') ? 'wipe' : shape, [left, entering] = [shot.name ?? 'the shot it leaves', into.name ?? 'the next shot'];
+  return `${change} during the ${thousandths(seconds)} s ${kind} into ${entering}, still in the ${left} picture: ${(change === 'appears') ? 'show' : 'hide'} it from ${thousandths(until)}, or keep it out of both views`;
+};
 
 // -- Footing, Leaps and Clearances -----------------------------------------------
 /** describeFilm's footing, over the film staged on the set's surfaces: where each
@@ -578,7 +652,7 @@ const strainedLines = (film: Film, problems: ReadonlyArray<Problem>): ReadonlyAr
 // -- Dead Air --------------------------------------------------------------------
 /** where a measured film's shots hold with nothing new, once staged and every sound
  *  heard over the rest has its length (SEE: review.ts deadAirOf); none judged otherwise */
-const deadAirIn = ({ lengths, staged }: Measured): ReadonlyArray<DeadAir> | undefined => staged && deadAirOf(staged.film, staged.sizes, lengths ?? new Map());
+const deadAirIn = ({ heard, staged }: Measured): ReadonlyArray<DeadAir> | undefined => staged && deadAirOf(staged.film, staged.sizes, new Map([...(heard ?? [])].map(([name, read]) => [name, read.seconds] as const)));
 
 /** describeFilm's dead air, model-facing: its shot, its span and how long the film
  *  shows it, what came last before it and its line, and the fix: what follows started
@@ -768,6 +842,21 @@ const soundsReadOf = async (host: FilmHost, film: Film): Promise<ReadonlyMap<str
     const file = await host.soundName(name).catch(() => undefined/*unnamed*/);
     return [[name, { seconds: buffer.duration, spans: soundSpans(buffer, MIN_PAUSE, MAX_SPANS).spans, ...((file !== undefined) ? { file } : {}) }] as const];
   }))).flat());
+};
+
+/** each span a line sounds over (a Platform file played once, louder than a bed: SEE
+ *  review.ts BED_SHARE) crossing a camera cut, or ending under CUT_CLEAR before one: the
+ *  shot the cut starts, the cut, the span's end, the cue's line, and the fix, the cut
+ *  CUT_CLEAR after the span or the line moved; in the film's order */
+export const linesOverCuts = (film: Film, heard: ReadonlyMap<string, SoundRead>) => {
+  const cues = film.scene.sounds ?? [], loudest = Math.max(0, ...cues.map(cue => cue.volume), ...(film.footsteps ?? []).map(cue => cue.volume));
+  const cuts = cameraShots(film.scene.camera, film.scene.length).slice(1);
+  return cues.filter(cue => isPlatformFile(cue.name) && (cue.until === undefined) && (cue.volume >= (BED_SHARE * loudest))).flatMap(cue => {
+    const read = heard.get(cue.name);
+    return read ? spansHeard(film, cue, read).flatMap(([from, to]) => cuts.filter(shot => ((from < shot.from) && (to > shot.from)) || ((to <= shot.from) && (to > (shot.from - CUT_CLEAR)))).map(shot => ({
+      kind: 'line over cut' as const, ...((shot.name !== undefined) ? { shot: shot.name } : {}), cut: thousandths(shot.from), spanTo: to, ...((cue.line !== undefined) ? { line: cue.line } : {}), fix: `cut at ≥ ${hundredths(to + CUT_CLEAR)}, or move the cue so a pause holds the cut, or move the line; a line about an action still starts as the action happens (SEE: moments)`,
+    }))) : [];
+  }).sort((a, b) => a.cut - b.cut);
 };
 
 /** the spans a cue sounds over in the scene's time, to the hundredth: each of its sound's

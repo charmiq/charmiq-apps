@@ -510,12 +510,12 @@ export const layWalk = (walk: Walk, from: Stance, surfaceAt: SurfaceAt, climb: n
   return timed(moves, walk.start, walk.end);
 };
 
-/** a walk's leaps as laid (SEE: leapsOf): when each sets off (seconds); the steps it
+/** a walk's leaps as laid (SEE: leapsOf): when each sets off and lands (seconds); the steps it
  *  takes before the first, between each and the next and after the last; the studs each
  *  leap carries it and the studs its steps on its own level do, their median, so one
  *  odd step (a short first, a last joining a remainder) sets nothing (none where it
  *  takes no such step): parts a leap's studs and n steps' apart leave n steps between */
-export type Leaps = Readonly<{ times: ReadonlyArray<number>; stepsBefore: number; stepsBetween: ReadonlyArray<number>; stepsAfter: number; leapStuds: ReadonlyArray<number>; stepStuds?: number; }>;
+export type Leaps = Readonly<{ times: ReadonlyArray<number>; lands: ReadonlyArray<number>; stepsBefore: number; stepsBetween: ReadonlyArray<number>; stepsAfter: number; leapStuds: ReadonlyArray<number>; stepStuds?: number; }>;
 
 // the studs a move carries its walker over the set
 const studsCarried = (move: Move) => Math.hypot(move.to.x - move.from.x, move.to.z - move.from.z);
@@ -530,7 +530,7 @@ export const leapsOf = (moves: ReadonlyArray<Move>): Leaps | undefined => {
   const stepsIn = (from: number, to: number) => moves.slice(from, to).filter(carries).length;
   const steps = moves.filter(move => gaitMoveOf(move) === GaitMove.Step).map(studsCarried);
   return {
-    times: leaps.map(index => moves[index].start),
+    times: leaps.map(index => moves[index].start), lands: leaps.map(index => moves[index].end),
     stepsBefore: stepsIn(0, leaps[0]), stepsBetween: leaps.slice(1).map((index, at) => stepsIn(leaps[at] + 1, index)), stepsAfter: stepsIn(leaps[leaps.length - 1] + 1, moves.length),
     leapStuds: leaps.map(index => studsCarried(moves[index])), ...((steps.length > 0) ? { stepStuds: median(steps) } : {}),
   };

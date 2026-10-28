@@ -4,7 +4,7 @@ import { cameraShots, channelAt, filmTimeOf, frameAtTime, frameEnd, keyInForce, 
 import { pastRange, withinFrom, type PastRange, type RangedJoint } from './joint-range';
 import { inBox, isSized, pointGap, rideChain, rideRoot, segmentEnters, tallOf, type Box, type Size } from './measure';
 import { driverAt, type Driver } from './motion-read';
-import type { CutOut, Key, Point, Recorded, RecordedActor, RecordedCamera, Span } from './recorder';
+import type { CutOut, Key, Point, Recorded, RecordedActor, RecordedCamera, Span, TransitionShape } from './recorder';
 import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
 
 // the film reviewed as it looks, for a Charm that sees stills and never playback: what
@@ -68,13 +68,27 @@ const MOTION_FRAMES = 3;
 /** a subject moving less than this share of the screen over MOTION_FRAMES is still */
 const STILL = 0.01;
 
+// -- Waiting ---------------------------------------------------------------------
+/** the shortest an actor stands in frame doing nothing but idle, its shot about someone
+ *  else, before it is waiting (seconds): past a beat between events, short of a figure
+ *  parked through someone else's turn */
+export const WAITING = 3;
+/** how fast a keyed value changes for its keys to move an actor (a second): studs across
+ *  the ground, plates up, degrees of a turn or a joint; a slower ease (a lean of 8° over a
+ *  minute) leaves it standing */
+const MOVING_RATES: Readonly<Record<'across' | 'up' | 'angle', number>> = { across: 0.5, up: 1, angle: 15 };
+/** how many times taller on the screen than a figure waiting the frame's subject may
+ *  stand for the two to share the picture (or it the subject): a runner far behind an
+ *  anchor at the desk, or a passer-by under a car the camera follows, never waits */
+const UPSTAGED = 2;
+
 // -- Dead Air --------------------------------------------------------------------
 /** the shortest stretch of a shot with nothing new that is dead air (seconds): past a
  *  beat held between lines or moves, short of the opening desk's 4 s after its voice */
 export const DEAD_AIR = 3.5;
 /** the share of the film's loudest volume a sound plays under to be a bed under the
  *  rest: its start is new, its playing fills no time */
-const BED_SHARE = 0.5;
+export const BED_SHARE = 0.5;
 /** how far from where the camera aims an actor starting a move stands to be what the
  *  shot shows (studs, across the ground): a person's event, not the busy distance behind */
 const FEATURED = 10;
@@ -171,7 +185,10 @@ export type PopChange = 'appears' | 'vanishes';
  *  showing the change (its index, and its time in seconds), its shot, where the actor
  *  stands shown (`at`: in the frame it appears in, or the last before it vanishes) and
  *  the scene's line keying the change (SEE: popLines) */
-export type Pop = Readonly<{ actor: string; change: PopChange; frame: number; time: number; shot: CameraShot; at: Point; lines: ReadonlyArray<number>; }>;
+export type Pop = Readonly<{ actor: string; change: PopChange; frame: number; time: number; shot: CameraShot; at: Point; lines: ReadonlyArray<number>; during?: PopDuring; }>;
+/** the transition a pop in the shot it leaves happens under: its shape, its seconds, the
+ *  shot it enters and when it ends, from which the shot left no longer shows */
+export type PopDuring = Readonly<{ shape: TransitionShape; seconds: number; into: CameraShot; until: number; }>;
 
 // -- Cuts ------------------------------------------------------------------------
 /** which way a subject moves on the screen over a few frames */
@@ -203,6 +220,12 @@ export type DeadAir = Readonly<{ shot: CameraShot; from: number; to: number; sec
 /** a cut-out the film shows within one shot (SEE: jumpsOf): that shot, the cut-out, and
  *  the film's own time it lies at */
 export type Jump = Readonly<{ shot: CameraShot; cut: CutOut; at: number; }>;
+
+// -- Waiting ---------------------------------------------------------------------
+/** an actor standing in frame doing nothing but idle while its shot is about someone
+ *  else (SEE: waitingOf): the actor, its shot, its span (seconds) and the line of the key
+ *  placing it then */
+export type Waiting = Readonly<{ actor: string; shot: CameraShot; from: number; to: number; line?: number; }>;
 
 // == Camera ======================================================================
 // -- Keys in Force ---------------------------------------------------------------
@@ -545,29 +568,62 @@ const boxesAt = (film: Film, sizes: Readonly<Record<string, Size>>, frame: FilmF
 /** every actor appearing or vanishing in the picture within one shot (SEE: Pop):
  *  hidden in one frame of the shot and shown in the next, or shown and then hidden,
  *  any part of its box in frame where it is shown (SEE: screenAt), so a person sees it
- *  pop in or out. One shown or hidden at a cut, out of the picture as it changes, or
- *  leaving a hand or taken into one on its hand-off's frame (SEE: film.ts HandOff), is
- *  no pop; those the stage sized, in the film's order */
+ *  pop in or out. Through a transition both shots show: the shot it leaves over the part
+ *  of the picture it still holds (as it leaves it on the same set), the shot entering
+ *  over the rest, each judged there (SEE: PicturePart). One shown or hidden at a cut in
+ *  the shot entering, out of the picture as it changes, or leaving a hand or taken into
+ *  one on its hand-off's frame (SEE: film.ts HandOff), is no pop; those the stage sized,
+ *  in the film's order */
 export const popsOf = (film: Film, sizes: Readonly<Record<string, Size>>): ReadonlyArray<Pop> => {
   const handed = new Set((film.handOffs ?? []).map(each => `${each.thing}|${each.frame}`));
-  return shotFrames(film).flatMap(({ shot, first, last }) => {
-    const pops: Pop[] = [];
-    const shownIn = (index: number) => new Map(film.frames[index].actors.map(each => [each.name, each] as const));
-    let before = shownIn(first);
-    for(let index=first+1; index<=last; index++) {
-      const after = shownIn(index);
+  const aspect = film.scene.width / film.scene.height, shots = shotFrames(film);
+  const shownIn = (index: number) => new Map(film.frames[index].actors.map(each => [each.name, each] as const));
+  return shots.flatMap(({ shot, first, last }, at) => {
+    const pops: Pop[] = [], left = shots[at - 1];
+    for(let index=Math.max(1, first); index<=last; index++) {
+      const [before, after] = [shownIn(index - 1), shownIn(index)], leaving = film.frames[index].transition;
+      // the shot entering, after its cut, and the shot it leaves while it still shows
+      const pictures = [
+        ...((index > first) ? [{ shot, camera: undefined/*the frame's own*/, part: enteringPart(leaving), during: undefined/*the shot it shows*/ }] : []),
+        ...((left && leaving && !leaving.actors && (leaving.left > 0)) ? [{ shot: left.shot, camera: leaving.camera, part: leavingPart(leaving), during: duringOf(film, shot, leaving) }] : []),
+      ];
       for(const name of new Set([...before.keys(), ...after.keys()])) {
         if(!isSized(sizes, name) || (before.has(name) === after.has(name)) || handed.has(`${name}|${index}`)) continue;
-        const appears = after.has(name), seen = appears ? index : (index - 1);
-        if(!screenAt(film, sizes, seen)[name].inFrame) continue/*out of the picture as it changes*/;
-        const time = film.frames[index].time;
-        pops.push({ actor: name, change: appears ? 'appears' : 'vanishes', frame: index, time, shot, at: (appears ? after : before).get(name)!.position, lines: popLines(film, name, time, appears) });
+        const appears = after.has(name), seen = appears ? index : (index - 1), time = film.frames[index].time;
+        for(const picture of pictures) {
+          const placed = picture.camera && boxesAt(film, sizes, film.frames[seen]).find(([each]) => each === name)?.[1];
+          const box = picture.camera ? (placed && boxOnScreen(picture.camera, aspect, placed)) : screenAt(film, sizes, seen)[name];
+          if(!box?.inFrame || !shows(picture.part, box)) continue/*out of the picture as it changes*/;
+          pops.push({ actor: name, change: appears ? 'appears' : 'vanishes', frame: index, time, shot: picture.shot, at: (appears ? after : before).get(name)!.position, lines: popLines(film, name, time, appears), ...(picture.during ? { during: picture.during } : {}) });
+        }
       }
-      before = after;
     }
     return pops;
   });
 };
+
+/** the transition the shot entering `into` takes, from its cut's key: its shape, its
+ *  seconds and when it ends */
+const duringOf = (film: Film, into: CameraShot, leaving: NonNullable<FilmFrame['transition']>): PopDuring => {
+  const seconds = film.scene.camera.keys.find(key => key.transition && (Math.abs(key.time - into.from) < SAME_TIME))?.transition?.seconds ?? 0;
+  return { shape: leaving.shape, seconds, into, until: into.from + seconds };
+};
+
+/** the part of the picture a shot shows through a transition, as shares of its width
+ *  (x, from the left) and height (y, from the top): the shot a wipe leaves over the part
+ *  it has not yet wiped (SEE: Brick Studio's overlay), the shot entering over the rest; a
+ *  dissolve, or an iris (taken whole), shows both over all of it */
+type PicturePart = Readonly<{ x: readonly [number, number]; y: readonly [number, number]; }>;
+const WHOLE: PicturePart = { x: [0, 1], y: [0, 1] };
+const leavingPart = ({ shape, left }: NonNullable<FilmFrame['transition']>): PicturePart =>
+  (shape === 'wipe-left') ? { x: [0, left], y: [0, 1] } : (shape === 'wipe-right') ? { x: [1 - left, 1], y: [0, 1] } : (shape === 'wipe-up') ? { x: [0, 1], y: [0, left] } : (shape === 'wipe-down') ? { x: [0, 1], y: [1 - left, 1] } : WHOLE;
+const enteringPart = (transition: FilmFrame['transition']): PicturePart => {
+  if(!transition || (transition.left <= 0)) return WHOLE;
+  const { shape, left } = transition;
+  return (shape === 'wipe-left') ? { x: [left, 1], y: [0, 1] } : (shape === 'wipe-right') ? { x: [0, 1 - left], y: [0, 1] } : (shape === 'wipe-up') ? { x: [0, 1], y: [left, 1] } : (shape === 'wipe-down') ? { x: [0, 1], y: [0, 1 - left] } : WHOLE;
+};
+/** whether a box on the screen reaches into a part of the picture */
+const shows = ({ x, y }: PicturePart, box: ScreenBox): boolean => (box.right > x[0]) && (box.left < x[1]) && (box.bottom > y[0]) && (box.top < y[1]);
 
 /** the scene's line keying an actor shown or hidden at a time: of the actor and each
  *  actor it rides (a rider is shown only while what it rides is), the key or path
@@ -783,4 +839,67 @@ export const jumpsOf = (film: Film): ReadonlyArray<Jump> => {
     const shot = shotAt(shots, cut.to);
     return shot ? [{ shot, cut, at: filmTimeOf(film, cut.to) }] : [];
   });
+};
+
+// == Waiting =====================================================================
+/** each stretch of a shot at least WAITING long a figure (not in an audience, riding
+ *  nothing) stands in frame doing nothing but idle (no key moving it at MOVING_RATES,
+ *  walk, path, crowd, face, reaction or hand's change) while someone else is the frame's
+ *  subject and something moves it (the actor the camera aims at, else the largest in
+ *  frame),
+ *  near enough its size on the screen to share the picture with it (SEE: UPSTAGED), and
+ *  it has a turn to come (something moves it later); those the stage sized, in the
+ *  film's order */
+export const waitingOf = (film: Film, sizes: Readonly<Record<string, Size>>): ReadonlyArray<Waiting> => {
+  const { scene, frames } = film;
+  const members = new Set((scene.audiences ?? []).flatMap(each => each.members.map(member => member.actor)));
+  const cast = scene.actors.filter(actor => !members.has(actor.name) && isSized(sizes, actor.name)).map(actor => ({ actor, busy: busyOf(actor, scene.fps) }));
+  const figures = cast.filter(({ actor }) => (actor.source.part === 'figure') && !actor.ride);
+  if(figures.length < 1) return [];
+  const busyAt = (busy: ReadonlyArray<readonly [number, number]>, time: number) => busy.some(([from, to]) => (time >= (from - SAME_TIME)) && (time <= (to + SAME_TIME)));
+  const screens = frames.map((_, index) => screenAt(film, sizes, index));
+  const tall = (box: ScreenBox | undefined) => (box && box.inFrame) ? (Math.min(1, box.bottom) - Math.max(0, box.top)) : 0;
+  // each frame's subject while something moves it: the actor aimed at, else the largest
+  // in frame of those not in an audience
+  const busyOfName = new Map(cast.map(({ actor, busy }) => [actor.name, busy] as const));
+  const subjects = frames.map((frame, index) => {
+    const aimed = subjectAt(scene, frame.time);
+    const subject = (aimed && screens[index][aimed]?.inFrame) ? aimed : cast.map(({ actor }) => actor.name).filter(name => tall(screens[index][name]) > 0).sort((a, b) => tall(screens[index][b]) - tall(screens[index][a]))[0];
+    return ((subject !== undefined) && busyAt(busyOfName.get(subject) ?? [], frame.time)) ? subject : undefined/*no subject doing anything: nobody waits on it*/;
+  });
+  return shotFrames(film).flatMap(({ shot, first, last }) => figures.flatMap(({ actor, busy }) => {
+    const waits: Waiting[] = [];
+    let start: number | undefined;
+    for(let index=first; index<=(last + 1); index++) {
+      const subject = subjects[index], [own, theirs] = [tall(screens[index]?.[actor.name]), (subject === undefined) ? 0 : tall(screens[index][subject])];
+      const waiting = (index <= last) && (own > 0) && (subject !== undefined) && (subject !== actor.name) && ((Math.max(own, theirs) / Math.max(SAME_TIME, Math.min(own, theirs))) <= UPSTAGED) && !busyAt(busy, frames[index].time);
+      if(waiting && (start === undefined)) start = index;
+      if(waiting || (start === undefined)) continue;
+      const [from, to] = [frames[start].time, frameEnd(film, index - 1)];
+      if(((to - from) >= (WAITING - SAME_TIME)) && busy.some(([later]) => later >= (to - SAME_TIME))) waits.push({ actor: actor.name, shot, from, to, ...lineOf(keyInForce(actor.keys.filter(key => key.time <= (from + SAME_TIME)), from)?.line ?? actor.line) });
+      start = undefined;
+    }
+    return waits;
+  })).sort((a, b) => (a.from - b.from) || a.actor.localeCompare(b.actor));
+};
+
+/** the spans (seconds) something moves an actor: its walks, paths and crowd, each span
+ *  its keys move it at MOVING_RATES, a key jumping it a frame, and each face, reaction and
+ *  hand's change */
+const busyOf = (actor: RecordedActor, fps: number): ReadonlyArray<readonly [number, number]> => {
+  const frame = 1 / fps;
+  const rateOf = (channel: string) => ((channel === 'x') || (channel === 'z')) ? MOVING_RATES.across : (channel === 'height') ? MOVING_RATES.up : MOVING_RATES.angle;
+  const keyed = [...new Set(actor.keys.flatMap(key => Object.keys(key.values)))].filter(channel => channel !== 'visible').flatMap(channel => {
+    const giving = actor.keys.filter(key => channel in key.values);
+    return giving.slice(1).flatMap((key, index) => {
+      const before = giving[index], change = Math.abs(key.values[channel] - before.values[channel]);
+      if(change <= SAME_TIME) return [];
+      if(key.ease === 'hold') return [[key.time, key.time + frame] as const];
+      return ((change / Math.max(SAME_TIME, key.time - before.time)) >= rateOf(channel)) ? [[before.time, key.time] as const] : [];
+    });
+  });
+  return [
+    ...(actor.walks ?? []).map(walk => [walk.start, walk.end] as const), ...actor.spans.filter(span => MOVES.has(span.label)).map(span => [span.from / fps, span.to / fps] as const), ...keyed,
+    ...[...(actor.faces ?? []), ...(actor.hands ?? [])].map(key => [key.time, key.time + frame] as const), ...(actor.reactions ?? []).map(each => [each.from, each.to] as const),
+  ];
 };
