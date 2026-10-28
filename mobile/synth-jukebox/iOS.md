@@ -660,6 +660,16 @@ img {
 .is-paused .eq i {
   animation-play-state: paused;
 }
+.loading {
+  animation: spin .9s linear infinite;
+}
+.trk-num .loading, .thumb-eq .loading {
+  width: 16px;
+  height: 16px;
+}
+.thumb-eq .loading {
+  color: #fff;
+}
 
 .ahead {
   display: flex;
@@ -2529,6 +2539,10 @@ const ICON = {
 };
 // the animated equalizer marking the current track
 const EQUALIZER = '<span class="eq"><i></i><i></i><i></i><i></i></span>';
+// a turning ring where a play or the equalizer stands while the track loads
+const LOADING = '<svg class="loading" viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="40 100"/></svg>';
+// the current track's mark: the equalizer, or the ring while it loads
+const currentMark = () => Engine.isLoading() ? LOADING : EQUALIZER;
 const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
 
 // == Music =======================================================================
@@ -2712,6 +2726,8 @@ const Engine = (() => {
     onstopped: null,
     // () when a take began playing without being asked to (SEE: the element's `play`)
     onresumed: null,
+    // () when a take starts or stops loading (SEE: isLoading)
+    onloading: null,
   };
 
   // -- iOS Audio Session ---------------------------------------------------------
@@ -2960,6 +2976,10 @@ const Engine = (() => {
   // the take the element holds; `mediaToken` retires a play its pause or another
   // load overtook
   let media = null/*created on the first take*/, mediaSpec = null/*holds none*/, mediaToken = 0, mediaAnalysis = null/*not yet measured*/;
+  // a take asked to play that does not sound yet: its file still being read, or its
+  // element waiting on data
+  let mediaLoading = false;
+  const setLoading = (loading) => { if(mediaLoading === loading) return; mediaLoading = loading; if(api.onloading) api.onloading(); };
   // whether a page sets an element's volume: iOS leaves it to the device's buttons
   const mediaVolumeWorks = (() => { try { const probe = document.createElement('audio'); probe.volume = .5; return Math.abs(probe.volume - .5) < .01; } catch(error) { return false; } })();
   const mediaElement = () => {
@@ -2971,6 +2991,10 @@ const Engine = (() => {
       // is a stop. The app's own pauses clear `playing` first; a source switch plays
       // again before this runs, and the song's end is `ended`
       media.addEventListener('pause', () => { if(playing && (spec === mediaSpec) && media.paused && !media.ended) stopExternally(); });
+      // NOTE: the silence that unlocks the element plays too: only the take's own
+      //       sound ends the loading
+      media.addEventListener('playing', () => { if(spec === mediaSpec) setLoading(false); });
+      media.addEventListener('waiting', () => { if(playing && (spec === mediaSpec)) setLoading(true); });
       // a play the app did not make: the lock screen's, which iOS gives the element
       // itself. The app's own plays set `playing` first
       media.addEventListener('play', () => { if(!playing && (spec === mediaSpec)) { playing = true; if(api.onresumed) api.onresumed(); } });
@@ -3055,7 +3079,7 @@ const Engine = (() => {
     return takeSpectrum;
   };
 
-  const stopMedia = () => { mediaToken++; if(media && !media.paused) media.pause(); };
+  const stopMedia = () => { mediaToken++; setLoading(false); if(media && !media.paused) media.pause(); };
   // plays the loaded take from `from` once its audio is at hand
   const playMedia = (from) => {
     const element = mediaElement(), token = ++mediaToken, take = spec;
@@ -3065,9 +3089,10 @@ const Engine = (() => {
       const seek = () => { try { element.currentTime = from; } catch(error) { /*not seekable yet: it starts at 0*/ } };
       if(element.readyState >= 1) seek(); else element.addEventListener('loadedmetadata', seek, { once: true });
       const started = element.play();
-      if(started && started.catch) started.catch((error) => { if(token !== mediaToken) return; playing = false; if(api.onerror) api.onerror(error); });
+      if(started && started.catch) started.catch((error) => { if(token !== mediaToken) return; playing = false; setLoading(false); if(api.onerror) api.onerror(error); });
     };
     if(mediaSpec === take) { begin(); return; }
+    setLoading(true)/*its file is read first*/;
     // NOTE: iOS lets an element play outside a tap only once it has played inside
     //       one: silence plays now, inside the tap, and the take once it is read
     mediaSpec = null/*the silence*/; element.src = silence();
@@ -3078,7 +3103,7 @@ const Engine = (() => {
         mediaSpec = take; mediaAnalysis = null; element.src = url; begin();
         analyse(url).then((analysis) => { if(mediaSpec === take) mediaAnalysis = analysis; });
       },
-      (error) => { if(token !== mediaToken) return; playing = false; if(api.onerror) api.onerror(error); });
+      (error) => { if(token !== mediaToken) return; playing = false; setLoading(false); if(api.onerror) api.onerror(error); });
   };
 
   // -- API -----------------------------------------------------------------------
@@ -3133,6 +3158,8 @@ const Engine = (() => {
   };
   api.seek = (position) => { if(playing) api.play(position); else pausedPosition = position; };
   api.isPlaying = () => playing;
+  // whether a take asked to play does not sound yet
+  api.isLoading = () => playing && mediaLoading;
   api.setVolume = (level) => { volume = level; if(master) master.gain.setTargetAtTime(level * level, ctx.currentTime, .03); if(media && mediaVolumeWorks) media.volume = level * level; };
   // whether the volume reaches a take (iOS leaves it to the device's buttons)
   api.takeVolume = () => mediaVolumeWorks;
@@ -3994,8 +4021,8 @@ const rowHTML = (key, context, style) => {
   const track = trackOf(key); if(!track) return '';
   const art = artFor(track.album), spec = specOf(track), playingTrack = current(), isCurrent = !!(playingTrack && (playingTrack.key === key));
   const lead = (style === RowStyle.Number)
-    ? '<div class="trk-num">' + (isCurrent ? EQUALIZER : (track.idx + 1)) + '</div>'
-    : '<div class="trk-thumb"><img alt="" src="' + art.url + '">' + (isCurrent ? '<div class="thumb-eq">' + EQUALIZER + '</div>' : '') + '</div>';
+    ? '<div class="trk-num">' + (isCurrent ? currentMark() : (track.idx + 1)) + '</div>'
+    : '<div class="trk-thumb"><img alt="" src="' + art.url + '">' + (isCurrent ? '<div class="thumb-eq">' + currentMark() + '</div>' : '') + '</div>';
   // NOTE: a row in a list of songs opens its album (played from there); a row on its
   //       album's own page plays
   const action = (style === RowStyle.Thumbnail) ? 'open-album' : 'play';
@@ -4166,7 +4193,7 @@ const takeCardHTML = (take) => {
   return '<div class="take ready' + (awaited ? ' pressing' : '') + '" data-action="open-album" data-id="' + take.id + '">' +
     (awaited ? spinningDiscHTML(take) : '<div class="take-disc"><img alt="" src="' + artFor(take).url + '"></div>') +
     '<div class="take-main">' + main + marqueeHTML('take-s', awaited ? '<span class="take-time">' + pressStatus(take) + '</span>' : STUDIO_TAG + escapeHtml(take.artist) + (spec.duration > 0 ? ' · ' + durationText(spec) : '')) + '</div>' +
-    '<button class="take-play" data-action="play-take" data-key="' + key + '" aria-label="Play">' + (isCurrent ? EQUALIZER : ICON.play) + '</button></div>';
+    '<button class="take-play" data-action="play-take" data-key="' + key + '" aria-label="Play">' + (isCurrent ? currentMark() : ICON.play) + '</button></div>';
 };
 // -- Split Flaps -----------------------------------------------------------------
 // a take's title while it is named: a departure board's flaps cycling, then locking
@@ -4288,8 +4315,9 @@ const updatePlayUI = () => {
   const playing = Engine.isPlaying();
   document.body.classList.toggle('is-paused', !playing);
   nowPlaying.classList.toggle('paused', !playing);
-  $('#miniPlay').innerHTML = playing ? ICON.pause : ICON.play;
-  $('#npPlay').innerHTML = playing ? ICON.pause : ICON.play;
+  // a track asked to play shows the ring until it sounds, then the pause
+  const icon = Engine.isLoading() ? LOADING : playing ? ICON.pause : ICON.play;
+  $('#miniPlay').innerHTML = icon; $('#npPlay').innerHTML = icon;
   try { if(navigator.mediaSession) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch(error) { /*no Media Session: the lock screen shows nothing*/ }
   setMediaPosition();
 };
@@ -4344,6 +4372,13 @@ Engine.source = (spec) => takeUrl(spec.assetId);
 Engine.onerror = (error) => { toast('Could not play: ' + messageOf(error)); updatePlayUI(); };
 Engine.onstopped = () => { updatePlayUI(); saveState(); };
 Engine.onresumed = () => { updatePlayUI(); saveState(); };
+// the ring, wherever the current track's mark stands, while it loads
+Engine.onloading = () => {
+  updatePlayUI();
+  const track = current(), key = track && track.key;
+  $$('.take-play').forEach((button) => { if(button.dataset.key === key) button.innerHTML = currentMark(); });
+  $$('.trk.current').forEach((row) => { const html = rowHTML(row.dataset.key, row.dataset.ctx, row.dataset.mode); if(html) row.outerHTML = html; });
+};
 // records a take's length the first time a play measures it, so every row shows it
 Engine.onduration = (spec) => {
   setMediaPosition();
