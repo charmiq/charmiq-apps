@@ -3409,14 +3409,16 @@ const NAMING_INSTRUCTIONS = 'You name records. Given a description of a song, in
   'Reply with JSON only, no other text: {"title": "...", "artist": "..."}';
 // a name past this many characters is not a name the cards can show
 const NAME_MAX_LENGTH = 40;
-// what the cover's model is asked for: a record cover the song's own words and
-// style direct, art-directed as a designed cover and kept free of lettering (the
-// app sets the title beside it, and a model's lettering garbles)
+// what the cover's model is asked for: a mid-century modern-jazz sleeve, abstract and
+// printed in a few muted inks, its mood the song's; never a glossy rendering. Free of
+// lettering (the app sets the title beside it, and a model's lettering garbles)
 const coverPrompt = (prompt, ingredients) =>
-  'Album cover artwork for this song: ' + modelPrompt(prompt, ingredients) + '\n\n' +
-  'Design a bold, striking record cover that a music fan would frame: one memorable central image or concept drawn from the song\'s story, mood and genre; ' +
-  'a deliberate, distinctive color palette; dramatic lighting, depth and rich texture; and the art style that best fits the music, whether photography, ' +
-  'illustration, painting, collage or graphic design. Square, full-bleed composition with no border or frame. ' +
+  'A record cover for this song: ' + modelPrompt(prompt, ingredients) + '\n\n' +
+  'Make it in the manner of a 1950s modern-jazz LP cover: an abstract, geometric composition that suggests the song\'s mood rather than illustrating its story. ' +
+  'Flat shapes, bold blocks, lines and dots, generous empty space, printed in two or three muted inks on off-white or dark paper, ' +
+  'with the slight misregistration, halftone grain and paper texture of offset printing. ' +
+  'Restrained, desaturated color, chosen for the song (ochre, rust, teal, olive, cream, black), never neon. ' +
+  'No photography, no 3D rendering, no gradients, no glow, no glossy or hyper-detailed finish. Square, full-bleed, no border or frame. ' +
   'No text, letters, words, numbers, logos or watermarks anywhere in the image.';
 // what the model is asked for: the words written, then the ingredients as a style
 // (`Style: jazz, orchestral.`)
