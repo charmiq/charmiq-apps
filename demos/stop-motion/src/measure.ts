@@ -6,7 +6,8 @@ import type { Point, RecordedActor } from './recorder';
 // it. Two boxes' gap is the distance between them, 0 where they touch or overlap.
 // Over a film, every two actors that do not ride together are measured: a pair coming
 // within CLOSE_GAP is close, and a pair standing more than OVERLAP_DEEP in each other
-// (the least their boxes overlap any way) overlaps. A film holds up to 64 actors for
+// (the least their boxes overlap any way) overlaps, but a thing leaving or reaching the
+// hand of the figure letting go of it or taking it up. A film holds up to 64 actors for
 // 7,200 frames, so each actor's track is indexed once per film, a frame is boxed only
 // when the distance between the actors' reaches could beat the nearest found, a pair
 // whose tracks never come within CLOSE_GAP (or never meet, for overlaps) is passed
@@ -95,7 +96,9 @@ export const closePairs = (film: Film, sizes: Readonly<Record<string, Size>>): R
 /** every span two actors of a film stand more than OVERLAP_DEEP in each other, a part
  *  of OVERLAP_GAP or less running on, with the most they stand in and the first frame
  *  they do; the longest first, ties in the scene's order; two that ride together never,
- *  nor an actor the stage gave no size. Found once for a film and the sizes given */
+ *  nor an actor the stage gave no size, nor a thing and the figure whose hand lets go
+ *  of it or takes it up while it leaves or reaches the hand (SEE: handedFrames). Found
+ *  once for a film and the sizes given */
 export const overlapsOf = (film: Film, sizes: Readonly<Record<string, Size>>): ReadonlyArray<Overlap> => {
   const known = overlapsFound.get(film);
   if(known?.sizes === sizes) return known.overlaps;
@@ -109,10 +112,12 @@ export const overlapsOf = (film: Film, sizes: Readonly<Record<string, Size>>): R
       if(apart(extents.get(one.name)!, extents.get(other.name)!) > 0) continue/*their tracks never meet*/;
       const [ones, others, size, otherSize] = [tracks.get(one.name)!, tracks.get(other.name)!, sizes[one.name], sizes[other.name]];
       const reaches = reachOf(size) + reachOf(otherSize);
+      const depthAt = (at: number) => { const [a, b] = [ones[at], others[at]]; return (a && b) ? depthBetween({ position: a.position, yaw: a.turn.yaw, size }, { position: b.position, yaw: b.turn.yaw, size: otherSize }) : 0; };
+      const handed = handedFrames(film, one.name, other.name, depthAt);
       let open: { actors: readonly [string, string]; from: number; to: number; most: number; frame: number; time: number; } | undefined;
       film.frames.forEach((frame, at) => {
         const [a, b] = [ones[at], others[at]];
-        if(!a || !b || (Math.hypot(b.position.x - a.position.x, b.position.z - a.position.z) >= reaches)) return/*hidden, or out of reach*/;
+        if(!a || !b || (Math.hypot(b.position.x - a.position.x, b.position.z - a.position.z) >= reaches) || handed.has(at)) return/*hidden, out of reach, or leaving or reaching a hand*/;
         const depth = depthBetween({ position: a.position, yaw: a.turn.yaw, size }, { position: b.position, yaw: b.turn.yaw, size: otherSize });
         if(depth <= OVERLAP_DEEP) return;
         if(open && ((frame.time - open.to) <= OVERLAP_GAP)) {
@@ -127,6 +132,20 @@ export const overlapsOf = (film: Film, sizes: Readonly<Record<string, Size>>): R
   const sorted = overlaps.sort((a, b) => (b.to - b.from) - (a.to - a.from));
   overlapsFound.set(film, { sizes, overlaps: sorted });
   return sorted;
+};
+
+/** the frames a thing and the figure whose hand lets go of it or takes it up stand
+ *  more than OVERLAP_DEEP in each other (`depthAt`) at that hand-off: from the frame it
+ *  leaves the hand until it stands clear of the figure, and back from the frame before
+ *  the hand takes it to the first it stands clear (SEE: film.ts HandOff) */
+const handedFrames = (film: Film, one: string, other: string, depthAt: (at: number) => number): ReadonlySet<number> => {
+  const frames = new Set<number>();
+  for(const handOff of film.handOffs ?? []) {
+    if(!((handOff.thing === one) && (handOff.by === other)) && !((handOff.thing === other) && (handOff.by === one))) continue;
+    const step = (handOff.change === 'released') ? 1 : -1;
+    for(let at=((step > 0) ? handOff.frame : (handOff.frame - 1)); (at >= 0) && (at < film.frames.length) && (depthAt(at) > OVERLAP_DEEP); at+=step) frames.add(at);
+  }
+  return frames;
 };
 
 // == Tracks ======================================================================

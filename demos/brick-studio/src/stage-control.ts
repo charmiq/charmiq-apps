@@ -7,7 +7,7 @@ import type { Build } from './build';
 import type { PartLine } from './grid';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Refusal, type Rest, type Shot, type Size } from './stage';
+import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, gripsOf, heldShotsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Point, type Refusal, type Rest, type Shot, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -44,9 +44,9 @@ export type StageElements = Readonly<{
 
 /** what a stage call answers: the actors cast, those among them with wheels to roll,
  *  those that pose (figures) and what a figure's rise is measured from, those that
- *  click onto studs, those refused with why, each cast actor's box, and the reel's
- *  number when one is staged */
-export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
+ *  click onto studs, those refused with why, each cast actor's box, where a hand holds
+ *  each hand item, and the reel's number when one is staged */
+export type Staged = Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Refusal>; sizes: Readonly<Record<string, Size>>; grips?: Readonly<Record<string, Point>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>;
 /** what a frame call answers: how many actors it shows, and the frame captured when
  *  one is asked for */
 export type Framed = Readonly<{ shown: number; image?: ImageBitmap; }>;
@@ -192,18 +192,20 @@ export class StageControl {
     this.showControls();
     this.publish({ kind: 'staged', ...(this.reel ? { reel: this.reel.id } : {}) });
     const [wheeled, figures, clicks] = (['rolls', 'poses', 'clicks'] as const).map(can => [...cast.actors].filter(([, actor]) => actor[can]).map(([name]) => name));
-    const bottoms = bottomsOf(cast);
-    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((figures.length > 0) ? { figures } : {}), ...(bottoms ? { bottoms } : {}), ...((clicks.length > 0) ? { clicks } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
+    const [bottoms, grips] = [bottomsOf(cast), gripsOf(cast)];
+    return { actors: [...cast.actors.keys()], ...((wheeled.length > 0) ? { wheeled } : {}), ...((figures.length > 0) ? { figures } : {}), ...(bottoms ? { bottoms } : {}), ...((clicks.length > 0) ? { clicks } : {}), ...((refused.length > 0) ? { refused } : {}), sizes: sizesOf(cast), ...((Object.keys(grips).length > 0) ? { grips } : {}), ...((cast.placed.size > 0) ? { placed: Object.fromEntries(cast.placed) } : {}), ...(this.reel ? { reel: this.reel.id } : {}) };
   }
 
   /** what stands at points and across segments of a set as a stage of those sets and
    *  actors shows it (the pieces cast left out), staged or not: nothing is shown (SEE:
-   *  probe.ts) */
-  public async probe(ldraw: unknown, sets: unknown, actors: unknown, set: unknown, points: unknown, segments: unknown, grounds: unknown): Promise<Probed> {
+   *  probe.ts); and where each figure's hand `held` asks after holds a hand item (SEE:
+   *  stage.ts heldShotsOf) */
+  public async probe(ldraw: unknown, sets: unknown, actors: unknown, set: unknown, points: unknown, segments: unknown, grounds: unknown, held: unknown): Promise<Probed & Readonly<{ held?: ReturnType<typeof heldShotsOf>; }>> {
     await this.build.whenReady();
     const asked = probeInput(points, segments, grounds);
     const { cast } = castOf(setsOf(ldraw, sets, () => this.build.allSets()), actors ?? []);
-    return probe(cast.sets[stagedSetOf(cast, set)].shown, asked.points, asked.segments, asked.grounds);
+    const hands = heldShotsOf(cast, held);
+    return { ...probe(cast.sets[stagedSetOf(cast, set)].shown, asked.points, asked.segments, asked.grounds), ...((held !== undefined) ? { held: hands } : {}) };
   }
 
   /** the shot a transition leaves as the viewer draws it: its actors' lines, when it

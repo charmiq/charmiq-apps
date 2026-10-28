@@ -1,6 +1,7 @@
 import { hipsOver, type PoseBottoms, HIPS } from '../../brick-shared/rise';
+import { rotation } from '../../brick-shared/turn';
 
-import { cameraShots, frameEnd, isReached, pointIn, rotation, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING } from './film';
+import { cameraShots, frameEnd, isReached, pointIn, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING } from './film';
 import type { GroundProbe } from './ground';
 import type { Size } from './measure';
 import type { Point, RecordedCamera, Span } from './recorder';

@@ -399,6 +399,14 @@ const measurePose = (library: string, part: CatalogPart, standing: Standing & Re
   return { core, limbs, gear, body };
 };
 
+/** a hand item's bounding box in its own frame (LDU, least first; y down), as it stands
+ *  an actor of its own (SEE: stage.ts heldActor) */
+const measureHeld = (library: string, ldraw: string) => {
+  const { minX, maxX, minY, maxY, minZ, maxZ } = bodyOfText(library, `1 16 0 0 0 1 0 0 0 1 0 0 0 1 ${ldraw}.dat`);
+  const rounded = (value: number) => Math.round(value * 1e4) / 1e4;
+  return { x: [rounded(minX), rounded(maxX)], y: [rounded(minY), rounded(maxY)], z: [rounded(minZ), rounded(maxZ)] };
+};
+
 /** a hinge's fill in its standing frame (SEE: fillInFrame): its base's (its own body
  *  and every piece but its top), and its top's at every angle, and the cells of its
  *  top's studs at 0 (what a carry stands on). A turned hinge fills their union (SEE:
@@ -634,6 +642,8 @@ const frameKey = (frame: string): string => CATALOG.find(other => other.ldraw ==
 const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.key, { ...measured[frameKey(part.frame)], studs: [], fill: [], drop: paneDrop(library, part.ldraw, part.frame) }]] : [])) };
 // each posable part's fill by pose, in its standing frame
 const poses = Object.fromEntries(CATALOG.filter(part => part.limbs).map(part => [part.key, measurePose(library, part, measured[part.key])]));
+// each hand item's box in its own frame, as an actor of its own stands it
+const held = Object.fromEntries(ACCESSORIES.filter(accessory => accessory.on === 'hand').map(accessory => [accessory.key, measureHeld(library, accessory.ldraw)]));
 // each hinge's base and top, the top at every angle, in its standing frame
 const hinges = Object.fromEntries(CATALOG.filter(part => part.hinge).map(part => [part.key, measureHinge(library, part, measured[part.key])]));
 // each side face a part offers
@@ -683,6 +693,10 @@ const facts = [
   ' *  (z) the standing footprint\'s middle (studs, least first) and its top over the standing',
   ' *  bottom (plates) */',
   'type ReachingBody = PosedBody & Readonly<{ reach: Readonly<{ x: readonly [number, number]; z: readonly [number, number]; top: number; }>; }>;',
+  '',
+  '/** each hand item\'s bounding box in its own frame (LDU, least first; y down): what it',
+  ' *  measures as an actor of its own, keyed by accessory name (SEE: stage.ts heldActor) */',
+  `export const HELD_GEOMETRY: Readonly<Record<string, Readonly<{ x: readonly [number, number]; y: readonly [number, number]; z: readonly [number, number]; }>>> = ${JSON.stringify(held)};`,
   '',
   '/** each hinge\'s fill in its standing frame: its base\'s (its own body and every piece',
   ' *  but its top) and its top\'s at every angle, and the cells of its top\'s studs at 0',

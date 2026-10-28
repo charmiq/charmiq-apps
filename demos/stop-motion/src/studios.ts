@@ -3,10 +3,10 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { PoseBottoms } from '../../brick-shared/rise';
 import { bodiesThrough, clearanceOf, groundedOn, type Avoided, type Probe } from './clearance';
-import { planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type Paint, type Rest, type StageFacts } from './film';
+import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandProbe, type Held, type Paint, type Rest, type StageFacts } from './film';
 import { groundsOf, surfacesIn, surfacesOf, surfacesProbed, type CellArea, type ExtentProbe, type GroundProbe, type SurfaceProbe } from './ground';
 import type { Size } from './measure';
-import type { Recorded } from './recorder';
+import type { Point, Recorded } from './recorder';
 import type { PartFinding } from './review';
 
 // the studios a film is seen on: the Applications in the document that export
@@ -18,7 +18,8 @@ import type { PartFinding } from './review';
 // A film is staged once per scene: the cast and the reel's header (with a plan's
 // marks when the scene has a plan view, and each actor following the ground stood on
 // it; SEE: ground.ts), then the film made with the wheels the stage
-// found, its camera held against the set's parts (drawn in where it avoids them; SEE:
+// found, each thing a hand lets go of standing where the stage says the hand held it
+// and each pick-up within the hand's reach (SEE: film.ts handsOf), its camera held against the set's parts (drawn in where it avoids them; SEE:
 // clearance.ts), each figure's body in the air held against them and the part the ground stands a figure on named, loaded on every screen a page at a time; the stage's sizes of the
 // actors and the parts each frame's camera meets are kept for measuring and review. A
 // plan's camera path is dashed where its camera stands inside a part. A frame is then a number sent to each screen, and each studio's
@@ -35,7 +36,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 14;
+const STAGE_VERSION = 15;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -56,9 +57,9 @@ type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; f
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
-  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; tops?: ReadonlyArray<ReadonlyArray<string | null>>; extent?: CellArea; }>>;
+  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; tops?: ReadonlyArray<ReadonlyArray<string | null>>; extent?: CellArea; held?: ReadonlyArray<Held>; }>>;
   stage$(): Observable<ScreenState>;
-  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
+  stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; grips?: Readonly<Record<string, Point>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
   show(args: object): Promise<Readonly<{ shown: number; image?: ImageBitmap; }>>;
   follow(args: object): Promise<Readonly<{ followed: string | null; ghosts: number; }>>;
@@ -235,6 +236,7 @@ export class Studios {
       const groundProbe: GroundProbe = async (set, grounds) => (await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), grounds })).grounds ?? [];
       const surfaceProbe: SurfaceProbe = async (set, grounds) => surfacesProbed(await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}), grounds }));
       const extentProbe: ExtentProbe = async set => (await main.probeStage({ ...standing, actors, ...((set !== undefined) ? { set } : {}) })).extent;
+      const handProbe: HandProbe = async held => (await main.probeStage({ ...standing, actors, held })).held ?? [];
       const reel = { fps: scene.fps, length: sceneTimesOf(scene).length/*its frames at its speed*/, width: scene.width, height: scene.height };
       // a film staged again leaves each studio's picture standing until its frame shows,
       // the actors never gone between (a first stage shows its set until then)
@@ -265,7 +267,11 @@ export class Studios {
       // actor the stage refused is left out of every frame (the sheet says why)
       const facts = { wheeled: new Set(answer.wheeled ?? []), figures: new Set(answer.figures ?? []), ...(answer.bottoms ? { bottoms: answer.bottoms } : {}), clicks: new Set(answer.clicks ?? []), rests: restsOf(answer), grounds };
       const surfaces = (facts.clicks.size > 0) ? await surfacesOf(filmFor(facts), facts.clicks, surfaceProbe) : undefined;
-      const { film: cleared, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), probe);
+      // where each hand holds its thing at its hand-off: a thing let go of stands there,
+      // and a thing taken up lies within the hand's reach
+      const handing = scene.actors.some(actor => actor.released || actor.pickedUp);
+      const hands = handing ? { hands: await handsOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), handProbe), grips: new Map(Object.entries(answer.grips ?? {})) } : {}/*no hand lets go or takes up*/;
+      const { film: cleared, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}), ...hands }), probe);
       const held = surfaces ? await bodiesThrough(cleared, new Set([...facts.figures].filter(name => facts.clicks.has(name))), facts.bottoms, surfaces, probe, groundProbe) : cleared/*no figure on studs*/;
       const film = grounded ? await groundedOn(held, answer.sizes ?? {}, probe) : held;
       const cast = new Set(answer.actors);

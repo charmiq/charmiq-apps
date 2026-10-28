@@ -26,9 +26,14 @@ export type Key = Readonly<{ time: number; values: Readonly<Record<string, numbe
 /** a figure's face from `time` on, until the next: worn at once, never eased (SEE:
  *  Brick Studio's faces) */
 export type FaceKey = Readonly<{ time: number; face: string; line?: number; }>;
+/** a figure's hand, by the name its dressing and its keys give it */
+export type Hand = 'rightHand' | 'leftHand';
 /** what a figure's hand holds from `time` on, until the next: an accessory (as Brick
  *  Studio's addParts dresses a hand), or nothing (null); taken at once, as a face is */
-export type HandKey = Readonly<{ time: number; hand: 'rightHand' | 'leftHand'; item: Readonly<{ part: string; color: string; grip?: string; }> | null; line?: number; }>;
+export type HandKey = Readonly<{ time: number; hand: Hand; item: Readonly<{ part: string; color: string; grip?: string; }> | null; line?: number; }>;
+/** a hand-off: the figure (`by`) whose hand lets go of a thing, or takes it up, at
+ *  `time`, and the scene's line saying so */
+export type Handing = Readonly<{ by: string; hand: Hand; time: number; line?: number; }>;
 /** a figure's face over a span, over whatever it wears then: a reaction */
 export type Reaction = Readonly<{ from: number; to: number; face: string; line?: number; }>;
 /** a figure turning its head toward a target over a span (an actor, or a point), as
@@ -111,6 +116,13 @@ export type RecordedActor = Readonly<{
   /** what it rides and where on it (studs east and north, plates up, in the
    *  ridden actor's frame) */
   ride?: Readonly<{ parent: string; offset: Point; }>;
+  /** the hand that let go of it, a thing released (its source that hand's item then):
+   *  hidden before, then standing where that hand held it on the frame the hand first
+   *  shows empty, its own keys moving it on from there (SEE: film.ts HandOff) */
+  released?: Handing;
+  /** the hand that takes it up: from the frame that hand first holds it, it is held
+   *  there as that hand's item and hidden as an actor of its own */
+  pickedUp?: Handing;
   keys: ReadonlyArray<Key>;
   /** its face keys, in time order, when it has any */
   faces?: ReadonlyArray<FaceKey>;
@@ -295,8 +307,17 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   // .. Recording .................................................................
   // what the scene declares, as it declares it
   const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, skies: [] as Array<{ given: unknown; line?: number; }> };
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; keys: Key[]; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
+  // `moves` are the times its paths, wobbles, walks and idling start, each with its call
+  // and line: a released thing's begin after its release, a picked-up thing's before it
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; released?: Handing; pickedUp?: Handing; keys: Key[]; moves: Array<{ time: number; what: string; line?: number; }>; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
+  type TakingKey = { -readonly [K in keyof HandKey]: HandKey[K] };
+  /** each pick-up as its call records it: the thing named, and the hand's key taking it,
+   *  its item the thing's own once every actor is known (SEE: Settle) */
+  const pickUps: Array<{ thing: string; holder: Entry; handing: Handing; key: TakingKey; }> = [];
+  /** each release as its call records it: the thing let go of, and the hand's key
+   *  emptying it */
+  const releases: Array<{ thing: Entry; holder: Entry; handing: Handing; key: HandKey; }> = [];
   const cameras = new Map<string, { keys: CameraKey[]; spans: Array<() => Span>; drawn?: Drawn; }>();
   /** the views that are plans, each with the area it names, if any */
   const plans = new Map<string, { area?: Area; }>();
@@ -376,7 +397,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     if(actors.some(each => each.name === name)) fail(`actor '${String(name)}' is declared twice`);
     if(actors.length >= MAX_ACTORS) fail(`a scene holds at most ${MAX_ACTORS} actors`);
     if((typeof source !== 'object') || (source === null)) fail(`actor '${String(name)}' names what it is: { component }, { part, color } or { placed: { x, z, level } }`);
-    const entry: Entry = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], walks: [], footsteps: [], faces: [], hands: [], reactions: [], looks: [], spans: [], line: callerLine() };
+    const entry: Entry = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], moves: [], walks: [], footsteps: [], faces: [], hands: [], reactions: [], looks: [], spans: [], line: callerLine() };
     actors.push(entry);
     const handle = {
       name,
@@ -405,6 +426,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
         if(end <= start) fail(`${String(name)}.path ends after it starts`);
         if(typeof fn !== 'function') fail(`${String(name)}.path takes a function of (u, t) giving values`);
         const line = callerLine();
+        entry.moves.push({ time: start, what: `${String(name)}.path(${start})`, line });
         entry.spans.push(() => sampled(start, end, 'set', 'path', line, (u, t) => channelsOf((fn as (u: number, t: number) => unknown)(u, t), `${String(name)}.path at ${t.toFixed(3)} s`, { name: String(name) })));
         return handle;
       },
@@ -416,6 +438,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
         if(!isFiniteNumber(rate) || !isFiniteNumber(seed)) fail(`${String(name)}.wobble's rate and seed are numbers`);
         const start = toTime(from, `${String(name)}.wobble`);
         const line = callerLine();
+        entry.moves.push({ time: start, what: `${String(name)}.wobble(${String(channel)})`, line });
         entry.spans.push(() => {
           const end = (to === undefined) ? settings.length! : toTime(to, `${String(name)}.wobble`);
           return sampled(start, end, 'add', `wobble ${String(channel)}`, line, (_, t) => ({ [channel as string]: (amount as number) * noise((t * (rate as number)) + ((seed as number) * 17.31)) }));
@@ -447,6 +470,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
         if(!isFiniteNumber(variance) || (variance < 0) || (variance > MAX_VARIANCE)) fail(`${what}'s variance is 0 to ${MAX_VARIANCE}`);
         if((given.gait !== undefined) && (typeof given.gait !== 'string')) fail(`${what}'s gait names a gait of the scene's (gait('name', { ... }))`);
         const line = callerLine();
+        entry.moves.push({ time: start, what: `${what}(${start})`, line });
         const unused = (['stride', 'swing', 'bounce'] as const).filter(key => given[key] !== undefined);
         if(unused.length > 0) logs.push(`${what} (line ${line ?? '?'}): ${unused.join(' and ')} move only an actor that does not click onto studs; a figure's step is a stud, its rise its own`);
         entry.walks.push({ start, end, points: path.points, ...((given.arms !== undefined) ? { arms: gait.rightArm } : {}), lean: gait.lean, lead: (gait.phase < Math.PI) ? 'left' : 'right', variance: variance as number, ...((given.gait !== undefined) ? { gait: given.gait as string } : {}), ...(backward ? { backward: true as const } : {}), ...((line !== undefined) ? { line } : {}) });
@@ -481,6 +505,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
         const [energy, nervous] = [unitOf(given.energy ?? 0.4, `${what}'s energy`), unitOf(given.nervous ?? 0, `${what}'s nervous`)];
         const start = toTime(given.from ?? 0, what);
         const line = callerLine();
+        entry.moves.push({ time: start, what, line });
         entry.spans.push(() => {
           const end = (given.to === undefined) ? settings.length! : toTime(given.to, what);
           return sampled(start, end, 'add', 'idle', line, idleOf(energy, nervous, start, end, given.seed ?? `${String(name)} idle`));
@@ -551,6 +576,41 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
       ride: (parent: unknown, offset: unknown) => {
         if(typeof nameOf(parent) !== 'string') fail(`${String(name)}.ride takes the actor it rides`);
         entry.ride = { parent: nameOf(parent) as string, offset: toPoint(offset ?? { x: 0, z: 0, height: 0 }, `${String(name)}.ride's offset`) };
+        return handle;
+      },
+      /** lets go of what `hand` holds at `time`: from the frame the hand first shows
+       *  empty, what it held is an actor of its own named `thing`, the same part and
+       *  color standing exactly where the hand held it then, its keys and paths (each
+       *  after `time`) moving it on; answers that actor */
+      release: (time: unknown, hand: unknown, thing: unknown) => {
+        const at = toTime(time, `${String(name)}.release`);
+        const what = `${String(name)}.release(${at})`;
+        const held = handOf(hand, what);
+        if((typeof thing !== 'string') || (thing.trim().length < 1) || (thing.length > MAX_NAME)) fail(`${what} names the thing it lets go of: 1 to ${MAX_NAME} characters, an actor from then on`);
+        counted();
+        const line = callerLine();
+        const key: HandKey = { time: at, hand: held, item: null, line };
+        entry.hands.push(key);
+        const released = actor(thing, {}/*the hand's item, once every key is known (SEE: Settle)*/);
+        const handing = { by: entry.name, hand: held, time: at, line };
+        actors[actors.length - 1].released = handing;
+        releases.push({ thing: actors[actors.length - 1], holder: entry, handing, key });
+        return released;
+      },
+      /** takes up `thing` (an actor cast as a hand item, or one a hand released) in `hand`
+       *  at `time`: from the frame the hand first holds it, it is that hand's item and no
+       *  actor of its own. The hand reaches it then (SEE: film.ts REACH) */
+      pickUp: (time: unknown, hand: unknown, thing: unknown) => {
+        const at = toTime(time, `${String(name)}.pickUp`);
+        const what = `${String(name)}.pickUp(${at})`;
+        const held = handOf(hand, what);
+        const taken = nameOf(thing);
+        if(typeof taken !== 'string') fail(`${what} takes the actor it picks up`);
+        counted();
+        const line = callerLine();
+        const key: TakingKey = { time: at, hand: held, item: null, line }/*the thing's item, once every actor is known*/;
+        entry.hands.push(key);
+        pickUps.push({ thing: taken as string, holder: entry, handing: { by: entry.name, hand: held, time: at, line }, key });
         return handle;
       },
     };
@@ -764,6 +824,11 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     const seconds = given.seconds ?? 0.5;
     if(!isFiniteNumber(seconds) || (seconds <= 0) || (seconds > 10)) fail(`${what}'s transition takes seconds, more than 0 and up to 10`);
     return { shape: given.transition as TransitionShape, seconds: seconds as number };
+  };
+  /** a figure's hand, by its name */
+  const handOf = (value: unknown, what: string): Hand => {
+    if((value !== 'rightHand') && (value !== 'leftHand')) fail(`${what}'s hand is 'rightHand' or 'leftHand'`);
+    return value as Hand;
   };
   /** a hand item: `{ part, color, grip? }`, or null for nothing */
   const handItem = (value: unknown, what: string): HandKey['item'] => {
@@ -1203,6 +1268,53 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     });
   };
 
+  // .. Hand-offs .................................................................
+  const HAND_WORDS: Readonly<Record<Hand, string>> = { rightHand: 'right hand', leftHand: 'left hand' };
+  /** the item a figure's hand holds at a time: its latest key by then (`except` the
+   *  hand-off's own), else as it is dressed; null for an empty hand */
+  const heldBy = (holder: Entry, hand: Hand, time: number, except: HandKey): HandKey['item'] => {
+    const keyed = holder.hands.filter(key => (key !== except) && (key.hand === hand) && (key.time <= time)).reduce<HandKey | undefined>((latest, key) => (!latest || (key.time >= latest.time)) ? key : latest, undefined);
+    if(keyed) return keyed.item;
+    const dressed = holder.source[hand];
+    return ((typeof dressed === 'object') && (dressed !== null)) ? handItem(dressed, `${holder.name}'s ${hand}`) : null/*dressed with none*/;
+  };
+  /** a thing's keys and moves as one list, each its time, call and line */
+  const movesOf = (thing: Entry) => [...thing.moves, ...thing.keys.map(key => ({ time: key.time, what: `${thing.name}.at(${key.time})`, line: key.line }))];
+  /** a released thing cast as what its hand held then, standing free where the hand let
+   *  go of it: drawn as its figure is unless it says, riding nothing, never following
+   *  the ground, each key and move of its own after its release */
+  const releasedAs = ({ thing, holder, handing: { by, hand, time, line }, key }: (typeof releases)[number]) => {
+    const call = `${by}.release(${time}, '${hand}', '${thing.name}')`;
+    const keyed = heldBy(holder, hand, time, key);
+    if(!keyed && (holder.source.placed !== undefined)) fail(`${call}: ${by} stands as the set dresses it, which the scene does not read: key what its ${HAND_WORDS[hand]} holds first (${by}.at(0, { ${hand}: { part, color } }))`, line);
+    const item = keyed ?? fail(`${call}: its ${HAND_WORDS[hand]} holds nothing then`, line);
+    thing.source = { ...item };
+    if(!thing.drawn && holder.drawn) thing.drawn = holder.drawn;
+    if(thing.ride) fail(`${thing.name} rides ${thing.ride.parent}, but ${call} stands it where the hand lets go of it: a released thing rides nothing`, thing.line);
+    if(thing.ground) fail(`${thing.name} follows the ground, but ${call} stands it where the hand lets go of it: key its height instead`, thing.line);
+    const early = movesOf(thing).find(move => move.time <= time);
+    if(early) fail(`${early.what} comes before ${call}: a released thing moves from where its hand lets go of it, its keys and paths after its release`, early.line);
+  };
+  /** a thing picked up taken as its own item into an empty hand: the thing a hand item
+   *  (cast as one, or released by a hand before), picked up once, each key and move of
+   *  its own before the pick-up */
+  const takenAs = ({ thing: named, holder, handing, key }: (typeof pickUps)[number]) => {
+    const { by, hand, time, line } = handing;
+    const call = `${by}.pickUp(${time}, '${hand}', '${named}')`;
+    const thing = actors.find(each => each.name === named) ?? fail(`${call}: '${named}' is no actor`, line);
+    if(thing === holder) fail(`${call}: a figure picks up another actor, never itself`, line);
+    if(thing.pickedUp) fail(`${call}: ${named} is picked up at ${thing.pickedUp.time} s already`, line);
+    if(thing.released && (thing.released.time >= time)) fail(`${call}: ${named} is released at ${thing.released.time} s, after it is picked up`, line);
+    const { part, color, grip, ...rest } = thing.source;
+    if((typeof part !== 'string') || (typeof color !== 'string') || ((grip !== undefined) && (typeof grip !== 'string')) || (Object.keys(rest).length > 0)) fail(`${call}: ${named} is no hand item; a hand picks up an actor cast as one ({ part, color } as a hand holds it) or one a hand released`, line);
+    const holding = heldBy(holder, hand, time, key);
+    if(holding) fail(`${call}: its ${HAND_WORDS[hand]} holds a ${holding.color} ${holding.part} then: release it first`, line);
+    key.item = { part: part as string, color: color as string, ...((grip !== undefined) ? { grip: grip as string } : {}) };
+    thing.pickedUp = handing;
+    const late = movesOf(thing).find(move => move.time > time);
+    if(late) fail(`${late.what} comes after ${call}: a thing picked up is held from then on, moving with its hand`, late.line);
+  };
+
   // .. Sampling ..................................................................
   /** the frame at a time, as frames count from 0 */
   const frameOf = (time: number) => Math.round(time * settings.fps);
@@ -1277,6 +1389,10 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   for(const each of actors) for(const look of each.looks) if(('actor' in look.target) && !actors.some(other => other.name === (look.target as { actor: string; }).actor)) fail(`${each.name}.look looks at '${look.target.actor}', which is no actor`, look.line);
   for(const [name, { keys }] of cameras) for(const key of keys) if(key.target && ('actor' in key.target) && !actors.some(other => other.name === (key.target as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) looks at '${(key.target as { actor: string; }).actor}', which is no actor`, key.line);
   for(const [name, { keys }] of cameras) for(const key of keys) if(key.focus && ('actor' in key.focus) && !actors.some(other => other.name === (key.focus as { actor: string; }).actor)) fail(`${(name === 'main') ? 'camera' : `view('${name}')`}.at(${key.time}) focuses on '${(key.focus as { actor: string; }).actor}', which is no actor`, key.line);
+  // each hand-off: a released thing cast as its hand's item first, so a thing picked up
+  // after its release is taken as that item
+  for(const each of releases) releasedAs(each);
+  for(const each of pickUps) takenAs(each);
   const times = [...actors.flatMap(each => [...each.keys, ...each.faces, ...each.hands].map(key => key.time)), ...actors.flatMap(each => each.reactions.map(reaction => reaction.to)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...speedKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to), ...soundCues.map(each => each.until ?? each.time)];
   settings.length ??= Math.max(1, ...times);
   for(const each of crowds) walkCrowd(each);
@@ -1293,8 +1409,8 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   return {
     title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
-    actors: actors.map(({ name, source, ride, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, drawn, spans, line }) => ({
-      name, source, ...(ride ? { ride } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
+    actors: actors.map(({ name, source, ride, released, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, drawn, spans, line }) => ({
+      name, source, ...(ride ? { ride } : {}), ...(released ? { released } : {}), ...(pickedUp ? { pickedUp } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
       ...((reactions.length > 0) ? { reactions } : {}), ...((looks.length > 0) ? { looks: looks.map(look => ({ ...look, to: look.to ?? settings.length! })) } : {}), ...(ground ? { ground } : {}),
       ...(still ? { still } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((footsteps.length > 0) ? { footsteps } : {}), ...((line !== undefined) ? { line } : {}),
     })),

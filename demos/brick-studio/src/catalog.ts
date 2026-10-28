@@ -437,6 +437,7 @@ export const ACCESSORIES: ReadonlyArray<Accessory> = [
   { key: 'flashlight',          ldraw: '3959',  on: 'hand', grips: [{ name: 'handle', axis: 'y', at: 10 }/*the lamp points down a hanging arm*/, { name: 'body', axis: 'z', at: 8 }/*between its handle and its lamp, the lamp ahead*/] },
   { key: 'radio',               ldraw: '19220', on: 'hand', grips: [{ name: 'body', axis: 'y', at: 0 }/*its body's bar, the antenna up a raised hand*/] },
   { key: 'ice-cream',           ldraw: '33120', on: 'hand', grips: [{ name: 'cone', axis: 'y', at: 0 }] },
+  { key: 'shot',                ldraw: '3813',  on: 'hand', grips: [{ name: 'bar', axis: 'z', at: 23 }/*its bar's end in the fist, the ball out of it*/] },
 ];
 
 // == Faces =======================================================================

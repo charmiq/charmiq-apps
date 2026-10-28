@@ -439,17 +439,19 @@ const boxesAt = (film: Film, sizes: Readonly<Record<string, Size>>, frame: FilmF
 /** every actor appearing or vanishing in the picture within one shot (SEE: Pop):
  *  hidden in one frame of the shot and shown in the next, or shown and then hidden,
  *  any part of its box in frame where it is shown (SEE: screenAt), so a person sees it
- *  pop in or out. One shown or hidden at a cut, or out of the picture as it changes, is
+ *  pop in or out. One shown or hidden at a cut, out of the picture as it changes, or
+ *  leaving a hand or taken into one on its hand-off's frame (SEE: film.ts HandOff), is
  *  no pop; those the stage sized, in the film's order */
-export const popsOf = (film: Film, sizes: Readonly<Record<string, Size>>): ReadonlyArray<Pop> =>
-  shotFrames(film).flatMap(({ shot, first, last }) => {
+export const popsOf = (film: Film, sizes: Readonly<Record<string, Size>>): ReadonlyArray<Pop> => {
+  const handed = new Set((film.handOffs ?? []).map(each => `${each.thing}|${each.frame}`));
+  return shotFrames(film).flatMap(({ shot, first, last }) => {
     const pops: Pop[] = [];
     const shownIn = (index: number) => new Map(film.frames[index].actors.map(each => [each.name, each] as const));
     let before = shownIn(first);
     for(let index=first+1; index<=last; index++) {
       const after = shownIn(index);
       for(const name of new Set([...before.keys(), ...after.keys()])) {
-        if(!isSized(sizes, name) || (before.has(name) === after.has(name))) continue;
+        if(!isSized(sizes, name) || (before.has(name) === after.has(name)) || handed.has(`${name}|${index}`)) continue;
         const appears = after.has(name), seen = appears ? index : (index - 1);
         if(!screenAt(film, sizes, seen)[name].inFrame) continue/*out of the picture as it changes*/;
         const time = film.frames[index].time;
@@ -459,6 +461,7 @@ export const popsOf = (film: Film, sizes: Readonly<Record<string, Size>>): Reado
     }
     return pops;
   });
+};
 
 /** the scene's line keying an actor shown or hidden at a time: of the actor and each
  *  actor it rides (a rider is shown only while what it rides is), the key or path

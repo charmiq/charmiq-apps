@@ -8650,7 +8650,7 @@ const car = actor('car', { component: 'car' })
 const driver = actor('driver', { part: 'figure', color: 'blue', face: 'grin', hat: { part: 'construction-helmet', color: 'yellow' } })
 driver.ride(car, { x: 0, z: 0.5, height: 7 })
 const cat = actor('cat', { part: 'cat', color: 'orange' })
-const foreman = actor('foreman', { part: 'figure', color: 'orange', legColor: 'dark-gray', face: 'scowl', hat: { part: 'construction-helmet', color: 'white' } })
+const foreman = actor('foreman', { part: 'figure', color: 'orange', legColor: 'dark-gray', face: 'scowl', hat: { part: 'construction-helmet', color: 'white' }, rightHand: { part: 'radio', color: 'black' } })
 
 // .. the car's road: down the avenue, a swerve, the hard left onto the cross street, the ramp
 const V0 = 8, START_Z = 112, SEES_Z = 36
@@ -8801,6 +8801,15 @@ foreman.at(GATE - 0.1, { z: -19.5, height: 1, pose: { leftArm: 160, rightArm: 16
        .at(GATE + 0.15, { z: -20.6, height: 4 }, 'ease-out')
        .at(GATE + 0.4, { height: 1, pose: { leftArm: 120, rightArm: 120, leftLeg: 20, rightLeg: -20 } }, 'ease-in')
        .at(GATE + 0.9, { pose: { leftArm: 150, rightArm: 150, leftLeg: 0, rightLeg: 0, head: -60 } }, 'ease-out')
+// his radio flies from his hand as he leaps and lands on the sidewalk; once the car has
+// flown he stoops for it and takes it up again
+const radio = foreman.release(GATE + 0.1, 'rightHand', 'radio')
+radio.at(GATE + 0.55, { x: 43.6, z: -19.2, height: 1, pitch: 90 }, 'ease-in')
+const PICK = WATCH + 0.6
+foreman.at(WATCH, { pose: { leftArm: 150, rightArm: 150, lean: 0, head: -60 } })
+       .at(PICK, { pose: { leftArm: 40, rightArm: 0, lean: 90, head: 0 } })
+       .at(PICK + 0.7, { pose: { leftArm: 10, rightArm: 40, lean: 0 } })
+foreman.pickUp(PICK, 'rightHand', radio)
 
 // .. the city: a little crowd, each with somewhere to be ...................................
 // Each walker has a kind (a commuter late for work, a window-shopper, a tourist, someone on

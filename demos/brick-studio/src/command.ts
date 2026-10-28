@@ -355,7 +355,7 @@ export class CommandSurface {
         return framed;
       },
       unstage: () => this.stage.unstage(),
-      probeStage: async ({ ldraw, sets, actors, set, points, segments, grounds }: { ldraw?: unknown; sets?: unknown; actors?: unknown; set?: unknown; points?: unknown; segments?: unknown; grounds?: unknown; }) => this.stage.probe(ldraw, sets, actors, set, points, segments, grounds),
+      probeStage: async ({ ldraw, sets, actors, set, points, segments, grounds, held }: { ldraw?: unknown; sets?: unknown; actors?: unknown; set?: unknown; points?: unknown; segments?: unknown; grounds?: unknown; held?: unknown; }) => this.stage.probe(ldraw, sets, actors, set, points, segments, grounds, held),
     });
   }
 }

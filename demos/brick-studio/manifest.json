@@ -640,7 +640,7 @@
       },
       {
         "name": "probeStage",
-        "description": "What stands where on a stage of these sets and actors (staged or not; the pieces cast left out, nothing shown): the part filling each point, and the first part each segment crosses from its start (glass, a trans- color, window and door frames and fences hide nothing; the part holding a segment's end does not count; a part a hinge or face carries is judged by itself and named by its carrier). Points are the film's: x and z in studs within 400 of the origin, height in plates within 2000 of the baseplate; at most 20000 points, segments and grounds a call; the ground under a footprint answered as every surface an actor there could stand on. Only parts on the grid fill cells, as collisions count them. A film's camera is checked with it: inside a part, or a part between it and its target",
+        "description": "What stands where on a stage of these sets and actors (staged or not; the pieces cast left out, nothing shown): the part filling each point, and the first part each segment crosses from its start (glass, a trans- color, window and door frames and fences hide nothing; the part holding a segment's end does not count; a part a hinge or face carries is judged by itself and named by its carrier). Points are the film's: x and z in studs within 400 of the origin, height in plates within 2000 of the baseplate; at most 20000 points, segments and grounds a call; the ground under a footprint answered as every surface an actor there could stand on. Only parts on the grid fill cells, as collisions count them. A film's camera is checked with it: inside a part, or a part between it and its target. Asked held, it answers where each figure's hand holds a hand item: the position and turn a frame gives an actor cast as that item to stand exactly there, so a film stands a thing a hand lets go of where the hand held it",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -650,7 +650,8 @@
             "set":      { "type": "string", "description": "The set probed, one of sets (the first when left out)" },
             "points":   { "type": "array", "items": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] } },
             "segments": { "type": "array", "items": { "type": "array", "items": { "type": "object" }, "minItems": 2, "maxItems": 2 }, "description": "Each [from, to], two points" },
-            "grounds":  { "type": "array", "items": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "width": { "type": "number" }, "depth": { "type": "number" }, "yaw": { "type": "number" } }, "required": ["x", "z", "width", "depth", "yaw"] }, "description": "Footprints to read the ground under: each its middle and size in studs (at most 64 each way), turned by its yaw" }
+            "grounds":  { "type": "array", "items": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "width": { "type": "number" }, "depth": { "type": "number" }, "yaw": { "type": "number" } }, "required": ["x", "z", "width", "depth", "yaw"] }, "description": "Footprints to read the ground under: each its middle and size in studs (at most 64 each way), turned by its yaw" },
+            "held":     { "type": "array", "maxItems": 64, "items": { "type": "object", "properties": { "shot": { "type": "object", "description": "A figure's shot, as frame takes it" }, "hand": { "type": "string", "enum": ["rightHand", "leftHand"] }, "item": { "type": "object", "description": "A hand item { part, color, grip? }, as addParts dresses a hand" } }, "required": ["shot", "hand", "item"] }, "description": "Hands to answer where they hold a hand item" }
           }
         },
         "outputSchema": {
@@ -661,7 +662,8 @@
             "grounds":  { "type": "array", "items": { "type": "array", "items": { "type": "number" } }, "description": "The surfaces under each footprint in plates, lowest first: each top of a part's cells nothing stands on (seen through or not), and 0 where the baseplate is bare under it" },
             "studded":  { "type": "array", "items": { "type": "array", "items": { "type": "boolean" } }, "description": "Beside grounds, whether each surface is studded under the footprint: the baseplate's studs, or a part's top studs at that level, in every column under it holding the surface (a tile's top is smooth)" },
             "tops":     { "type": "array", "items": { "type": "array", "items": { "type": ["string", "null"] } }, "description": "Beside grounds, the part whose top each surface is, by its kind and color (tile-2x4 orange; a part a hinge or face carries by itself): the one holding it under most of the footprint, the first found of as many; null for the baseplate" },
-            "extent":   { "type": "object", "description": "The area the set's parts stand over, whole studs: its south-west corner and size; absent for a set without parts", "properties": { "x": { "type": "integer" }, "z": { "type": "integer" }, "width": { "type": "integer" }, "depth": { "type": "integer" } }, "required": ["x", "z", "width", "depth"] }
+            "extent":   { "type": "object", "description": "The area the set's parts stand over, whole studs: its south-west corner and size; absent for a set without parts", "properties": { "x": { "type": "integer" }, "z": { "type": "integer" }, "width": { "type": "integer" }, "depth": { "type": "integer" } }, "required": ["x", "z", "width", "depth"] },
+            "held":     { "type": "array", "description": "Beside held, where each hand holds its item: the position and turn a frame gives an actor cast as that item to stand exactly there", "items": { "type": "object", "properties": { "position": { "type": "object" }, "turn": { "type": "object" } }, "required": ["position", "turn"] } }
           },
           "required": ["points", "segments", "grounds", "studded", "tops"]
         }
@@ -686,7 +688,7 @@
             "sets":  { "type": "array", "maxItems": 8, "items": { "type": "string" }, "description": "The sets the stage stands, by name, the first standing first and a frame's set showing in its place (the first set alone when left out)" },
             "actors": {
               "type": "array",
-              "description": "Each actor once, by name: { name, component }, { name, part, color, legColor?, skin?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure, or { name, placed: { x, z, level } }, the part or copy standing there in the set as listPlacedParts gives it, or with placed.inside one part of that copy, cast alone (a clerk in a store's copy, the copy shown without it); a part is cast once, whole or within its copy",
+              "description": "Each actor once, by name: { name, component }, { name, part, color, legColor?, skin?, hat?, rightHand?, leftHand? } dressed as addParts dresses a figure, a hand item { name, part, color, grip? } standing alone (its position its box's bottom middle), or { name, placed: { x, z, level } }, the part or copy standing there in the set as listPlacedParts gives it, or with placed.inside one part of that copy, cast alone (a clerk in a store's copy, the copy shown without it); a part is cast once, whole or within its copy",
               "items": {
                 "type": "object",
                 "properties": {
@@ -700,7 +702,8 @@
                   "face":      { "type": "string", "description": "A figure's face, as addParts takes it" },
                   "hat":       { "type": "object" },
                   "rightHand": { "type": "object" },
-                  "leftHand":  { "type": "object" }
+                  "leftHand":  { "type": "object" },
+                  "grip":      { "type": "string", "description": "A hand item's grip, as addParts takes it: where a hand holds it" }
                 },
                 "required": ["name"]
               }
@@ -735,6 +738,7 @@
             "clicks":  { "type": "array", "description": "The actors that click onto studs (figures and creatures): on studs they stand on them, a stud at a time", "items": { "type": "string" } },
             "refused": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "reason": { "type": "string" } }, "required": ["name", "reason"] } },
             "sizes":   { "type": "object", "description": "Each actor's box, unturned and unposed: studs across (x), studs along (z), plates up; a figure's as it measures, hands included (3.12 by 1.85 studs), never the whole cells it reaches into", "additionalProperties": { "type": "object", "properties": { "width": { "type": "number" }, "depth": { "type": "number" }, "height": { "type": "number" } }, "required": ["width", "depth", "height"] } },
+            "grips":   { "type": "object", "description": "Where a hand holds each hand item actor: its grip's centre from its position in its own frame (studs east, plates up, studs north)", "additionalProperties": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] } },
             "placed":  { "type": "object", "description": "Each placed actor's rest: the position and turn a frame gives it to stand where its piece stood (a posed figure's position is its unposed frame's: a seated one's 2 plates below its seat), and a posed figure's pose there (a frame's pose names only the limbs it turns: what a film adds moves from this)", "additionalProperties": { "type": "object", "properties": { "position": { "type": "object" }, "turn": { "type": "object" }, "pose": { "type": "object" } }, "required": ["position", "turn"] } },
             "reel":    { "type": "integer", "description": "The reel's number, when one is staged" }
           },
