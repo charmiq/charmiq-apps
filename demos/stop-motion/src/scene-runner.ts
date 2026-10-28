@@ -1,3 +1,4 @@
+import { keyEasing } from './key-easing';
 import { readRecorded, recordCode, type FigurePart, type Recorded, type RecordedCode, type SceneError } from './recorder';
 import { WALK } from './steps';
 
@@ -9,11 +10,13 @@ import { WALK } from './steps';
 // == Constants ===================================================================
 const RUN_MILLIS = 4_000/*ms*/;
 
-/** the Worker's source: the recorder as its own text, answering each scene posted
- *  with the studio's sounds, the built-in gait and the figures built into the set */
-export const WORKER_SOURCE = `const record = ${recordCode.toString()};
+/** the Worker's source: the key easing and the recorder as their own text (SEE:
+ *  key-easing.ts), answering each scene posted with the studio's sounds, the built-in
+ *  gait and the figures built into the set */
+export const WORKER_SOURCE = `const easing = (${keyEasing.toString()})();
+const record = ${recordCode.toString()};
 self.onmessage = (event) => {
-  try { self.postMessage({ ok: true, scene: record(event.data.code, event.data.sounds, event.data.gait, event.data.parts) }); }
+  try { self.postMessage({ ok: true, scene: record(easing, event.data.code, event.data.sounds, event.data.gait, event.data.parts) }); }
   catch(error) { self.postMessage({ ok: false, error: { message: String((error && error.message) || error), line: error && error.sceneLine } }); }
 };`;
 

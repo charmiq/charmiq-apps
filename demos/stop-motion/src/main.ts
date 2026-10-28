@@ -656,7 +656,7 @@ if(films) {
   merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
 } /* else -- standalone: no Drive */
 surface.advertise(charmiq);
-if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), surfaces: (set, area) => studios.surfacesIn(set, area), extent: set => studios.extentOf(set), figureParts: () => director.parts, held: asks => studios.held(asks), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames, hear: sound => bank ? bank.read(sound) : Promise.reject(new Error('this Platform delivers no sound files')) });
+if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), surfaces: (set, area) => studios.surfacesIn(set, area), extent: set => studios.extentOf(set), figureParts: () => director.parts, held: asks => studios.held(asks), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames, hear: sound => bank ? bank.read(sound) : Promise.reject(new Error('this Platform delivers no sound files')), soundName: async sound => (drive && isPlatformFile(sound)) ? drive.fileName(sound) : undefined/*a shipped sound: named by its name*/ });
 showSheet();
 showStatus();
 showFile();

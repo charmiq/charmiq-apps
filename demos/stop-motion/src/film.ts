@@ -3,6 +3,7 @@ import { rotation, turnOf, twistedYaw, type Turn } from '../../brick-shared/turn
 import { listed } from '../../brick-shared/words';
 
 import { pastRange, type PastRange, type RangedJoint, RANGED_JOINTS } from './joint-range';
+import { keyEasing } from './key-easing';
 import type { Aim, Area, CameraKey, CameraPlace, CutOut, Ease, Drawn, FaceKey, FadeKey, Hand, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
 import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, median, poseOf, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
@@ -1223,36 +1224,16 @@ const keysGiving = (keys: ReadonlyArray<Key>): ReadonlyMap<string, ReadonlyArray
 };
 const keysByChannel = new WeakMap<ReadonlyArray<Key>, ReadonlyMap<string, ReadonlyArray<Key>>>();
 
-/** whether `time` has reached a key at `at`: a key holds from its own time on,
- *  compared exactly, so a cut's shot and the frames that show it agree */
-export const isReached = (at: number, time: number): boolean => at <= time;
+/** whether a time has reached a key, an ease's curve, and a value at a time over keys
+ *  sorted by time (SEE: key-easing.ts) */
+const KEY_EASING = keyEasing();
+export const { isReached, ease } = KEY_EASING;
+const { eased } = KEY_EASING;
 
 /** the camera key in force at a time, of keys sorted by time: the last it has reached,
  *  else the first, held before it as its values are (SEE: eased) */
 export const keyInForce = <K extends Readonly<{ time: number; }>>(keys: ReadonlyArray<K>, time: number): K | undefined =>
   keys.filter(key => isReached(key.time, time)).pop() ?? keys[0];
-
-/** a value at a time over keys sorted by time: each key's value eased into from the
- *  key before by the later key's ease */
-const eased = <K extends Readonly<{ time: number; ease: Ease; }>, V>(keys: ReadonlyArray<K>, time: number, value: (key: K) => V, between: (from: V, to: V, u: number) => V): V | undefined => {
-  if(keys.length < 1) return undefined;
-  const next = keys.findIndex(key => !isReached(key.time, time));
-  if(next === 0) return value(keys[0]);
-  if(next < 0) return value(keys[keys.length - 1]);
-  const [from, to] = [keys[next - 1], keys[next]];
-  return between(value(from), value(to), ease(to.ease, (time - from.time) / (to.time - from.time)));
-};
-
-/** progress `u` (0 to 1) shaped by an ease */
-export const ease = (kind: Ease, u: number): number => {
-  switch(kind) {
-    case 'linear': return u;
-    case 'ease-in': return u * u * u;
-    case 'ease-out': return 1 - Math.pow(1 - u, 3);
-    case 'ease-in-out': return (u < 0.5) ? (4 * u * u * u) : (1 - (Math.pow((-2 * u) + 2, 3) / 2));
-    case 'hold': return 0;
-  }
-};
 
 /** sets and adds what a frame's spans give: a set span's values replace, an add
  *  span's add */

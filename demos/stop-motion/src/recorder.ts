@@ -1,13 +1,15 @@
 import { skyFrom, type Sky } from '../../brick-shared/sky';
 
+import { keyEasing, type KeyEasing } from './key-easing';
 import type { GaitShape } from './steps';
 
 // the scene recorder: runs a scene's code and records what it declares as plain
 // data: the scene's settings, each actor's keys and the camera's, the fade, the
 // titles and the sounds, every function of time sampled once per frame. `recordCode`
 // runs inside a Worker (SEE: scene-runner.ts), so it is self-contained: it reaches
-// nothing outside its own body but the Worker's globals, and is shipped as its own
-// source text. What brick-shared's readers check (the sky, in Brick Studio's words) it
+// nothing outside its own body but the Worker's globals and the key easing it is given
+// (the film's own, shipped beside it as its own source text, SEE: key-easing.ts), and
+// is shipped as its own source text. What brick-shared's readers check (the sky, in Brick Studio's words) it
 // keeps as the scene wrote it, with its line, and `readRecorded` reads it on the page;
 // `record` is the two
 // ********************************************************************************
@@ -257,10 +259,11 @@ export const castAs = (source: Readonly<Record<string, unknown>>): Readonly<{ wo
  *  from the `shipped` sounds, its audiences lifted from the figure `parts` built into
  *  the set (none until a studio lists them); throws a SceneError-shaped error for a
  *  scene that fails or declares something no film can show */
-export const record = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape, parts?: ReadonlyArray<FigurePart>): Recorded => readRecorded(recordCode(code, shipped, builtIn, parts));
+export const record = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape, parts?: ReadonlyArray<FigurePart>): Recorded => readRecorded(recordCode(keyEasing(), code, shipped, builtIn, parts));
 
-/** a scene recorded as its Worker records it (SEE: the header) */
-export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape, parts?: ReadonlyArray<FigurePart>): RecordedCode => {
+/** a scene recorded as its Worker records it (SEE: the header), its keys read with the
+ *  film's own `easing` (SEE: key-easing.ts) */
+export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape, parts?: ReadonlyArray<FigurePart>): RecordedCode => {
   // .. Limits ....................................................................
   const MAX_LENGTH = 120/*seconds*/;
   const MAX_FPS = 60;
@@ -1382,8 +1385,10 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   const WAVE_RISE = 0.35, WAVE_HOLD = 0.25, WAVE_FALL = 0.5, WAVE_ARMS = 160, WAVE_STRAY = 0.06;
   /** how much later each row back rises in a wave (seconds) */
   const WAVE_ROW = 0.05;
-  /** an audience's liveliness where it names none (0 still to 1) */
+  /** an audience's liveliness where it names none (0 to 1), and how much of an idle's
+   *  every movement a member makes at the least: never so still it looks stuck */
   const AUDIENCE_ENERGY = 0.5;
+  const IDLE_FLOOR = 0.6;
 
   /** a cheer as a member takes it: from when it rises (its own moment within the
    *  cheer's `rise`), until when (the cheer's `to`, else the member's next sit), on its
@@ -1402,11 +1407,22 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     side: string; row: number; seat: number; along: number;
     energies: Array<Readonly<{ from: number; to?: number; energy: number; }>>; cheers: Cheer[]; sits: number[]; waves: Array<Readonly<{ time: number; stand: boolean; }>>;
   };
-  /** the latest value an actor's keys give a channel by a time (its first key's before
-   *  it), none where no key gives it */
+  /** each actor's keys giving each channel, in time order, read once its keys are all
+   *  known (a key added since reads them again) */
+  const keysGiving = new Map<Entry, { count: number; by: Map<string, Key[]>; }>();
+  /** the value an actor's keys give a channel at a time, eased into from the key before
+   *  by the later key's ease, held before the first and after the last, as the film reads
+   *  them (SEE: film.ts channelAt); none where no key gives it */
   const keyedAt = (entry: Entry, channel: string, time: number): number | undefined => {
-    const giving = entry.keys.filter(key => channel in key.values).sort((a, b) => a.time - b.time);
-    return (giving.filter(key => key.time <= time).pop() ?? giving[0])?.values[channel];
+    const own = keysGiving.get(entry);
+    const giving = ((own?.count === entry.keys.length) ? own.by.get(channel) : undefined) ?? (() => {
+      const by = (own?.count === entry.keys.length) ? own.by : new Map<string, Key[]>();
+      const sorted = entry.keys.filter(key => channel in key.values).sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
+      by.set(channel, sorted);
+      keysGiving.set(entry, { count: entry.keys.length, by });
+      return sorted;
+    })();
+    return easing.eased(giving, time, key => key.values[channel], (from, to, u) => from + ((to - from) * u));
   };
 
   /** an audience: the figures built into each of the set's copies of a component a
@@ -1616,9 +1632,10 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
    *  shifting from side to side and leaning a little; glances held a moment; each arm as
    *  it was posed, gesturing, now and then up to its face, a seated member's hand on its
    *  lap besides, held a while and moved on (the arm's own angle, so an arm the build
-   *  raised moves no further than one hanging). Its liveliness the latest `idle` over the
-   *  time (its audience's `energy` elsewhere, 0 still); its glances and hands left to a
-   *  cheer or a wave while one moves them */
+   *  raised moves no further than one hanging); a seated member's knees and feet shifting,
+   *  a standing one's weight moving through its knees. Its liveliness the latest `idle`
+   *  over the time (its audience's `energy` elsewhere), from IDLE_FLOOR of every movement
+   *  at 0; its glances, hands and legs left to a cheer or a wave while one moves them */
   const memberIdle = (member: Member, energy: number) => {
     const name = member.entry.name, end = settings.length!;
     const next = random(`${name} seated`);
@@ -1627,10 +1644,20 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     const gesture = (hand: string, channel: string) => {
       const drawn = random(`${name} ${hand}`), posed = member.base(channel, 0);
       const lap = member.seated ? 0.35 : 0/*standing, no lap to rest a hand on*/;
-      const held = heldValues(0, end, () => 1.2 + (3.5 * drawn()), () => { const kind = drawn(), reach = drawn(); return (kind < 0.35) ? posed : (kind < (0.35 + lap)) ? (20 + (25 * reach)) : (kind < 0.93) ? (45 + (35 * reach)) : (95 + (20 * reach)); }, GESTURE_SECONDS, posed);
+      let resting = true/*as it was posed, from 0*/;
+      const held = heldValues(0, end, () => (0.8 + (2.4 * drawn())) * (1.3 - (0.6 * energy))/*livelier, more often*/, () => {
+        const kind = resting ? (0.35 + (0.65 * drawn()))/*never resting twice running*/ : drawn(), reach = drawn();
+        resting = kind < 0.35;
+        return resting ? posed : (kind < (0.35 + lap)) ? (20 + (25 * reach)) : (kind < 0.93) ? (45 + (35 * reach)) : (95 + (20 * reach));
+      }, GESTURE_SECONDS, posed);
       return (t: number) => held(t) - posed/*what it adds to the arm as it was posed*/;
     };
     const [right, left] = [gesture('right hand', 'pose.rightArm'), gesture('left hand', 'pose.leftArm')];
+    // its legs: seated, each knee and foot shifting a few degrees and held a while;
+    // standing, its weight rocking from one knee to the other
+    const shift = (leg: string) => { const drawn = random(`${name} ${leg}`); return heldValues(0, end, () => 1 + (2 * drawn()), () => (drawn() * 2) - 1, 0.4); };
+    const [rightShift, leftShift] = [shift('right leg'), shift('left leg')];
+    const [rockRate, rockPhase] = [0.25 + (0.15 * next()), next() * 2 * Math.PI];
     const energyAt = (t: number) => member.energies.filter(each => (t >= each.from) && (t < (each.to ?? Infinity))).pop()?.energy ?? energy;
     // each cheer's and wave's span, eased in and out: read once every verb is known
     let busy: ReadonlyArray<Readonly<{ from: number; to: number; at: (t: number) => number; }>> | undefined;
@@ -1644,11 +1671,12 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
       return most;
     };
     return (_: number, t: number): Record<string, number> => {
-      const lively = energyAt(t), alive = Math.min(1, lively * 5), free = 1 - busyAt(t);
-      if(alive <= 0) return {};
-      const breath = Math.sin((2 * Math.PI * breathRate * t) + breathPhase), arms = alive * (1.5 + (2 * lively)) * breath, reach = free * alive * (0.5 + (0.8 * lively));
+      const lively = energyAt(t), alive = IDLE_FLOOR + ((1 - IDLE_FLOOR) * lively), free = 1 - busyAt(t);
+      const breath = Math.sin((2 * Math.PI * breathRate * t) + breathPhase), arms = alive * (1.5 + (2 * lively)) * breath, reach = free/*each gesture to its own angle*/;
+      const knees = free * (4 + (4 * lively)), rock = Math.sin((2 * Math.PI * rockRate * t) + rockPhase);
       return {
         'pose.rightArm': arms + (reach * right(t)), 'pose.leftArm': arms + (reach * left(t)),
+        'pose.rightLeg': knees * (member.seated ? rightShift(t) : rock), 'pose.leftLeg': knees * (member.seated ? leftShift(t) : -rock),
         'pose.lean': alive * ((0.8 * breath) + ((2 + (3 * lively)) * noise((t * 0.25) + lean))),
         roll: alive * (1.5 + (2 * lively)) * ((0.6 * Math.sin((2 * Math.PI * swayRate * t) + swayPhase)) + (0.4 * noise((t * 0.35) + sway)))/*its weight shifting: a toy figure turns on no waist*/,
         'pose.head': free * alive * (15 + (25 * lively)) * glance(t),
@@ -1666,16 +1694,17 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     const next = random(`${name} cheering ${index}`);
     const [peak, rate, phase, together, hop, hopPhase] = [CHEER_ARMS + (CHEER_ARMS_SPREAD * next()), 1.6 + (0.8 * next()), next() * 2 * Math.PI, next() < 0.5, HOP_SECONDS * (1 + (0.25 * next())), next()];
     const ends = cheerEnd(member, cheer) + sitDelay(member, cheer);
-    const [legs, arms] = [['pose.leftLeg', 'pose.rightLeg'], ['pose.rightArm', 'pose.leftArm']].map(channels => channels.map(channel => [channel, member.base(channel, cheer.rises)] as const));
+    const [legs, arms] = [['pose.leftLeg', 'pose.rightLeg'], ['pose.rightArm', 'pose.leftArm']];
     return (_: number, t: number): Record<string, number> => {
+      const posed = (channel: string) => member.base(channel, t)/*its own pose then, which the cheer takes over*/;
       const standing = (cheer.stand && member.seated) ? (eased((t - cheer.rises) / STAND_SECONDS) * (1 - eased((t - ends) / SIT_SECONDS))) : 0;
       const raised = eased((t - cheer.rises - 0.15) / 0.4) * (1 - eased((t - ends) / (SIT_SECONDS * 0.75)));
       const pump = (offset: number) => CHEER_PUMP * Math.sin((2 * Math.PI * rate * t) + phase + offset);
       const hopping = cheer.jump && (t > (cheer.rises + (member.seated ? STAND_SECONDS : 0.15))) && (t < ends);
       const hopped = hopping ? (HOP_HEIGHT * (1 + (0.25 * hopPhase)) * Math.max(0, Math.sin((2 * Math.PI * ((t - cheer.rises) / hop)) + (hopPhase * 2 * Math.PI)))) : 0;
       return {
-        ...Object.fromEntries(legs.map(([channel, seated]) => [channel, -seated * standing])),
-        ...Object.fromEntries(arms.map(([channel, seated], arm) => [channel, (peak + pump(together ? 0 : (arm * Math.PI)) - seated) * raised])),
+        ...Object.fromEntries(legs.map(channel => [channel, -posed(channel) * standing])),
+        ...Object.fromEntries(arms.map((channel, arm) => [channel, (peak + pump(together ? 0 : (arm * Math.PI)) - posed(channel)) * raised])),
         roll: 2.5 * raised * Math.sin((Math.PI * rate * t) + phase),
         height: (member.onFeet * standing) + hopped,
       };
@@ -1685,13 +1714,13 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   /** a member's part in a wave (SEE: audience): up at its own moment, a seated member on
    *  its feet with `stand`, its arms up over its head, held a moment and back down */
   const waving = (member: Member, wave: Readonly<{ time: number; stand: boolean; }>) => {
-    const [legs, arms] = [['pose.leftLeg', 'pose.rightLeg'], ['pose.rightArm', 'pose.leftArm']].map(channels => channels.map(channel => [channel, member.base(channel, wave.time)] as const));
+    const [legs, arms] = [['pose.leftLeg', 'pose.rightLeg'], ['pose.rightArm', 'pose.leftArm']];
     const peak = WAVE_ARMS + (10 * random(`${member.entry.name} waving ${member.waves.indexOf(wave)}`)());
     return (_: number, t: number): Record<string, number> => {
       const up = eased((t - wave.time) / WAVE_RISE) * (1 - eased((t - wave.time - WAVE_RISE - WAVE_HOLD) / WAVE_FALL));
       return {
-        ...((wave.stand && member.seated) ? { ...Object.fromEntries(legs.map(([channel, seated]) => [channel, -seated * up])), height: member.onFeet * up } : {}),
-        ...Object.fromEntries(arms.map(([channel, seated]) => [channel, (peak - seated) * up])),
+        ...((wave.stand && member.seated) ? { ...Object.fromEntries(legs.map(channel => [channel, -member.base(channel, t) * up])), height: member.onFeet * up } : {}),
+        ...Object.fromEntries(arms.map(channel => [channel, (peak - member.base(channel, t)) * up])),
       };
     };
   };

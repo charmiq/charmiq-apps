@@ -5,13 +5,13 @@ import { isPlatformFile } from '../../brick-shared/drive';
 import { listed } from '../../brick-shared/words';
 
 import type { Avoided } from './clearance';
-import { cameraShots, channelAt, filmLengthOf, filmTimeOf, flightsAt, frameAtTime, holdingOf, pointingsAt, reachOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type Pointing, type Shot, type WalkLeaps, REACH } from './film';
+import { cameraShots, channelAt, filmLengthOf, filmTimeOf, flightsAt, frameAtTime, holdingOf, pointingsAt, reachOf, sceneTimeOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type Pointing, type Shot, type WalkLeaps, REACH } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { MAX_AREA_CELLS, type CellArea } from './ground';
 import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from './measure';
 import { motionOf, type DriverSpan, MOTION_CHANNELS, POSE_CHANNELS } from './motion-read';
 import type { Player } from './player';
-import type { FigurePart, Point, Recorded, RecordedActor, RecordedAudience, SceneError } from './recorder';
+import type { FigurePart, Point, Recorded, RecordedActor, RecordedAudience, SceneError, SoundCue } from './recorder';
 import { cameraGroups, cameraProblems, clearancesOf, deadAirOf, footingProblems, jumpsOf, popsOf, problemAtTime, reviewCuts, screenAt, strainedPoses, type CameraProblem, type CutSide, type DeadAir, type FootingKind, type HeldBack, type Jump, type PartFinding, type PopChange, type StrainedPose } from './review';
 import type { ScreenBox } from './screen';
 import { soundSpans, type Heard } from './sound';
@@ -99,6 +99,10 @@ type AskArgs = Readonly<{ actors?: unknown; from?: unknown; to?: unknown; kinds?
 /** a film as describeFilm measures it: the length (seconds) of each sound it plays that
  *  can be heard, by name, once read; its actors' boxes once the stage sized them, and the
  *  film as staged (the film shown, staged) with the parts each frame's camera met */
+/** a sound the film plays as describeFilm reads it, once: its length (seconds), the
+ *  spans it sounds over between its pauses (seconds into it, as listen parts them at
+ *  MIN_PAUSE: SEE sound.ts soundSpans) and its file's name when the Drive names it */
+export type SoundRead = Readonly<{ seconds: number; spans: ReadonlyArray<Readonly<{ from: number; to: number; }>>; file?: string; }>;
 export type Measured = Readonly<{ film: Film; lengths?: ReadonlyMap<string, number>; sizes?: Readonly<Record<string, Size>>; staged?: Readonly<{ film: Film; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; }>; }>;
 
 // -- Reading an Actor ------------------------------------------------------------
@@ -139,6 +143,8 @@ export type FilmHost = Readonly<{
   /** a sound decoded as the film plays it (a Platform file's URI or a shipped sound's
    *  name), read once; or why it cannot be read or decoded */
   hear: (sound: string) => Promise<AudioBuffer>;
+  /** a Platform file's name as the Drive names it (a voice's often its script), or none */
+  soundName: (sound: string) => Promise<string | undefined>;
 }>;
 
 // == Commands ====================================================================
@@ -147,14 +153,15 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
     // -- Describing the Film -----------------------------------------------------
     describeFilm: async (asked: AskArgs = {}) => {
       const film = host.film(), error = host.error(), stage = host.stage();
-      const sizes = sizesOf(stage), staged = stagedOf(host), lengths = film && await lengthsOf(host, film);
+      const sizes = sizesOf(stage), staged = stagedOf(host), heard = film && await soundsReadOf(host, film);
+      const lengths = heard && new Map([...heard].map(([name, read]) => [name, read.seconds] as const));
       const measured = film && { film, ...(lengths ? { lengths } : {}), ...(sizes ? { sizes } : {}), ...(staged ? { staged } : {}) };
       const errorReport = error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {};
       const ask = askOf(film, asked);
       if(ask) return { studios: host.studios(), editors: host.editors(), ...stageReport(stage), ...(measured ? detailReport(measured, ask) : {}), ...errorReport };
       return {
         studios: host.studios(), editors: host.editors(), ...stageReport(stage),
-        ...(film ? { ...filmFacts(film, staged?.avoided, lengths ?? new Map()), ...audienceFacts(film, staged?.sizes) } : {}),
+        ...(film ? { ...filmFacts(film, staged?.avoided, heard ?? new Map()), ...audienceFacts(film, staged?.sizes) } : {}),
         ...(staged ? await extentsReport(staged.film, host.extent).catch(() => ({})/*a studio not answering: its sets' extents unsaid*/) : {}),
         ...(measured ? summaryReport(measured) : {}),
         ...(film ? figurePartsReport(film.scene, host.figureParts()) : {}),
@@ -318,19 +325,20 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
  *  footsteps, each leaping walk's steps before, between and after its leaps (SEE:
  *  leapsSummaryOf), where an avoiding camera was drawn in (once staged) and what its
  *  scene logged */
-export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefined, lengths: ReadonlyMap<string, number>) => ({
+export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefined, heard: ReadonlyMap<string, SoundRead>) => ({
   title: film.scene.title, seconds: film.scene.length, ...((film.scene.speed || film.scene.cutOuts) ? { filmSeconds: thousandths(filmLengthOf(film)) } : {}), fps: film.scene.fps, frames: film.frames.length,
   ...(film.scene.cutOuts ? { cutOuts: film.scene.cutOuts.map(({ from, to, line }) => ({ from: thousandths(from), to: thousandths(to), at: thousandths(filmTimeOf(film, to)), ...((line !== undefined) ? { line } : {}) })) } : {}),
   actors: film.scene.actors.map(actor => actor.name), views: film.scene.views.map(view => view.name),
   shots: shotsReport(film),
   ...(film.scene.sets ? { sets: film.scene.sets.map(({ time, set }) => ({ time: thousandths(time), set })) } : {}),
   ...(film.scene.sounds ? { sounds: film.scene.sounds.map(cue => {
-    const { time, name, volume, until, actor, fadeIn, fadeOut } = cue;
-    const seconds = lengths.get(name), ends = (until === undefined) ? soundEndOf(film, cue, seconds) : undefined/*its until*/;
+    const { time, name, volume, until, actor, fadeIn, fadeOut, line } = cue;
+    const read = heard.get(name), seconds = read?.seconds, ends = (until === undefined) ? soundEndOf(film, cue, seconds) : undefined/*its until*/;
     return {
-      time: thousandths(time), name, ...((seconds !== undefined) ? { seconds: thousandths(seconds) } : {}), volume,
+      time: thousandths(time), name, ...((read?.file !== undefined) ? { file: read.file } : {}), ...((line !== undefined) ? { line } : {}), ...((seconds !== undefined) ? { seconds: thousandths(seconds) } : {}), volume,
       ...((until !== undefined) ? { until: thousandths(until) } : {}), ...((ends !== undefined) ? { ends: thousandths(ends) } : {}), ...((actor !== undefined) ? { actor } : {}),
       ...((fadeIn !== undefined) ? { fadeIn: thousandths(fadeIn) } : {}), ...((fadeOut !== undefined) ? { fadeOut: thousandths(fadeOut) } : {}),
+      ...(read ? { spans: spansHeard(film, cue, read) } : {}),
     };
   }) } : {}),
   ...(film.footsteps ? { footsteps: [...new Set(film.footsteps.map(cue => cue.actor!))].map(actor => {
@@ -638,7 +646,7 @@ export const audienceFacts = (film: Film, sizes: Readonly<Record<string, Size>> 
     const boxes = screenAt(film, sizes, middle);
     const seen = audiences.flatMap(audience => {
       const inView = audience.members.filter(member => boxes[member.actor]?.inFrame);
-      return (inView.length < 1) ? [] : [{ name: audience.name, inView: inView.length, of: audience.members.length, sides: [...new Set(inView.map(member => member.side))], doing: audienceDoing(film, audience, shot.from, shot.to) }];
+      return (inView.length < 1) ? [] : [{ name: audience.name, inView: inView.length, of: audience.members.length, sides: [...new Set(inView.map(member => member.side))], doing: audienceDoing(film, audience, shot.from, shot.to, new Set(inView.map(member => member.actor))) }];
     });
     return (seen.length > 0) ? { ...shot, audience: seen } : shot;
   });
@@ -654,26 +662,52 @@ const namesOf = (names: ReadonlyArray<string>): string => {
 };
 
 /** what an audience does over a span (seconds), each in the span alone, in the order it
- *  starts: its idle; each look its members share (its target, from and to; one after
- *  what the camera follows named so); and each
+ *  starts, with who takes part where that is not every member `inView` (its rows, stand
+ *  by stand): its idle; each look its members share (its target, from and to; one after
+ *  what the camera follows named so); the moves actors given as members make by their
+ *  own keys (who always named, rows and names); and each
  *  cheer (its sitting back down with it) and wave, from its first member's start to its
  *  last member's end */
-const audienceDoing = (film: Film, audience: RecordedAudience, from: number, to: number): ReadonlyArray<string> => {
-  const members = new Set(audience.members.map(member => member.actor)), fps = film.scene.fps;
-  const acts = new Map<string, { what: string; from: number; to: number; }>();
-  const join = (key: string, what: string, start: number, end: number) => { const known = acts.get(key); acts.set(key, known ? { what, from: Math.min(known.from, start), to: Math.max(known.to, end) } : { what, from: start, to: end }); };
-  for(const actor of film.scene.actors.filter(each => members.has(each.name))) {
+const audienceDoing = (film: Film, audience: RecordedAudience, from: number, to: number, inView: ReadonlySet<string>): ReadonlyArray<string> => {
+  const seated = new Map(audience.members.map(member => [member.actor, member])), fps = film.scene.fps;
+  const moves: Array<Readonly<{ key: string; what: string; from: number; to: number; actor: string; own?: true; }>> = [];
+  for(const actor of film.scene.actors.filter(each => seated.has(each.name))) {
     for(const look of actor.looks ?? []) {
       const target = ('actor' in look.target) ? look.target.actor : `x ${hundredths(look.target.point.x)} z ${hundredths(look.target.point.z)}`;
-      join(`look|${target}|${look.from}|${look.to}|${look.camera ?? ''}`, `look at ${target}${look.camera ? ' (camera)' : ''}`, look.from, look.to);
+      moves.push({ key: `look|${target}|${look.from}|${look.to}|${look.camera ?? ''}`, what: `look at ${target}${look.camera ? ' (camera)' : ''}`, from: look.from, to: look.to, actor: actor.name });
     }
     for(const span of actor.spans.filter(each => ['cheer', 'sit', 'wave'].includes(each.label))) {
       const what = (span.label === 'wave') ? 'wave' : 'cheer';
-      join(`${what}|${span.line ?? ''}`, what, span.from / fps, span.to / fps);
+      moves.push({ key: `${what}|${span.line ?? ''}`, what, from: span.from / fps, to: span.to / fps, actor: actor.name });
     }
+    // an actor given as a member moving by its own keys within the span
+    const keyed = actor.keys.filter(key => (key.time > 0) && (key.time >= from) && (key.time <= to)).map(key => key.time);
+    if(keyed.length > 0) moves.push({ key: 'own', what: 'own keys', from: Math.min(...keyed), to: Math.max(...keyed), actor: actor.name, own: true });
   }
-  const shown = [...acts.values()].filter(act => (act.from < to) && (act.to > from)).sort((a, b) => a.from - b.from);
-  return ['idle', ...shown.map(act => `${act.what} ${thousandths(Math.max(from, act.from))}–${thousandths(Math.min(to, act.to))}`)];
+  const acts = new Map<string, { what: string; from: number; to: number; who: Set<string>; own?: true; }>();
+  for(const move of moves.filter(each => (each.from < to) && (each.to > from))) {
+    const known = acts.get(move.key);
+    if(known) { known.from = Math.min(known.from, move.from); known.to = Math.max(known.to, move.to); known.who.add(move.actor); }
+    else acts.set(move.key, { what: move.what, from: move.from, to: move.to, who: new Set([move.actor]), ...(move.own ? { own: true as const } : {}) });
+  }
+  // who takes part, where it is not every member in view: rows by stand, an own move's
+  // actors by their names besides
+  const whoOf = ({ who, own }: { who: ReadonlySet<string>; own?: true; }) => {
+    if(!own && [...inView].every(name => who.has(name))) return '';
+    const sides = [...new Set(audience.members.map(member => member.side))].flatMap(side => {
+      const rows = [...who].map(name => seated.get(name)!).filter(member => member.side === side).map(member => member.row);
+      return (rows.length < 1) ? [] : [`${side} ${(new Set(rows).size > 1) ? 'rows' : 'row'} ${rangeOf(rows)}`];
+    });
+    return ` (${sides.join(', ')}${own ? `: ${namesOf([...who])}` : ''})`;
+  };
+  const shown = [...acts.values()].sort((a, b) => a.from - b.from);
+  return ['idle', ...shown.map(act => `${act.what} ${thousandths(Math.max(from, act.from))}–${thousandths(Math.min(to, act.to))}${whoOf(act)}`)];
+};
+
+/** whole numbers as a span where they run on (`1–2`), one alone as itself, else listed */
+const rangeOf = (numbers: ReadonlyArray<number>): string => {
+  const sorted = [...new Set(numbers)].sort((a, b) => a - b);
+  return sorted.every((each, at) => (at < 1) || (each === (sorted[at - 1] + 1))) ? ((sorted.length > 1) ? `${sorted[0]}–${sorted[sorted.length - 1]}` : `${sorted[0]}`) : sorted.join(', ');
 };
 
 // -- Figures Built into the Set --------------------------------------------------
@@ -699,14 +733,13 @@ export const figurePartsReport = (scene: Recorded, parts: ReadonlyArray<FigurePa
     const tier = copy ? copy.tiers.findIndex(level => Math.abs(level - (height ?? 0)) < 1.5) + 1 : 0;
     return (tier > 0) ? [{ name: actor.name, tier }] : [];
   });
-  const tiersOf = (tiers: ReadonlyArray<number>) => { const sorted = [...new Set(tiers)].sort((a, b) => a - b); return sorted.every((tier, at) => (at < 1) || (tier === (sorted[at - 1] + 1))) ? ((sorted.length > 1) ? `${sorted[0]}–${sorted[sorted.length - 1]}` : `${sorted[0]}`) : sorted.join(', '); };
   return (builds.length < 1) ? {} : { figureParts: builds.map(build => {
     const built = still.filter(part => part.component === build), seated = seatedIn(build);
-    const rows = tiersOf(built.map(part => part.tiers.indexOf(part.copy.level + part.inside.level) + 1));
+    const rows = rangeOf(built.map(part => part.tiers.indexOf(part.copy.level + part.inside.level) + 1));
     const actorsRows = [...new Set(seated.map(each => each.tier))].sort((a, b) => a - b).map(tier => namesOf(seated.filter(each => each.tier === tier).map(each => each.name)));
     return {
       build, copies: new Set(built.map(({ copy }) => `${copy.x}|${copy.z}|${copy.level}`)).size, figures: built.length, rows,
-      ...((seated.length > 0) ? { seated: `rows ${tiersOf(seated.map(each => each.tier))} seat ${actorsRows.join(', ')} (${seated.length} actors)` } : {}),
+      ...((seated.length > 0) ? { seated: `rows ${rangeOf(seated.map(each => each.tier))} seat ${actorsRows.join(', ')} (${seated.length} actors)` } : {}),
       fix: (seated.length > 0) ? `audience('${build}', those actors) makes them one audience, every row filled` : `audience('${build}') makes them actors`,
     };
   }) };
@@ -725,11 +758,25 @@ export const listenReport = (sound: string, minPause: number, heard: Heard) => (
   ...((heard.found > heard.spans.length) ? { capped: { found: heard.found } } : {}),
 });
 
-/** the length (seconds) of each sound the scene plays, by name: those that can be
+/** each sound the scene plays as read, by name (SEE: SoundRead): those that can be
  *  heard, each decoded once */
-const lengthsOf = async (host: FilmHost, film: Film): Promise<ReadonlyMap<string, number>> => {
+const soundsReadOf = async (host: FilmHost, film: Film): Promise<ReadonlyMap<string, SoundRead>> => {
   const names = [...new Set((film.scene.sounds ?? []).map(cue => cue.name))];
-  return new Map((await Promise.all(names.map(name => host.hear(name).then(buffer => [[name, buffer.duration] as const], () => []/*unreadable: no length*/)))).flat());
+  return new Map((await Promise.all(names.map(async name => {
+    const buffer = await host.hear(name).catch(() => undefined/*unreadable: not read*/);
+    if(!buffer) return [];
+    const file = await host.soundName(name).catch(() => undefined/*unnamed*/);
+    return [[name, { seconds: buffer.duration, spans: soundSpans(buffer, MIN_PAUSE, MAX_SPANS).spans, ...((file !== undefined) ? { file } : {}) }] as const];
+  }))).flat());
+};
+
+/** the spans a cue sounds over in the scene's time, to the hundredth: each of its sound's
+ *  from its time on at the film's pace (as it plays, SEE: film.ts soundEndOf), its first
+ *  play's alone, cut where it stops (its until) or at the film's end */
+const spansHeard = (film: Film, cue: SoundCue, read: SoundRead): ReadonlyArray<readonly [number, number]> => {
+  const start = filmTimeOf(film, cue.time), stop = Math.min(cue.until ?? Infinity, film.scene.length);
+  const sceneAt = (into: number) => Math.min(stop, sceneTimeOf(film, start + into));
+  return read.spans.map(({ from, to }) => [sceneAt(from), sceneAt(to)] as const).filter(([from, to]) => to > from).map(([from, to]) => [hundredths(from), hundredths(to)] as const);
 };
 
 // -- Motion ----------------------------------------------------------------------
