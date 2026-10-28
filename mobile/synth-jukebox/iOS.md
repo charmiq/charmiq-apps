@@ -3362,9 +3362,9 @@ const newAlbum = () => {
 // length, once measured), renamed (true once the User names it: a generated name
 // never replaces theirs), failure (what went wrong, a Failure), detail (the
 // refusal's own text, kept for diagnosis and never shown) and cover ({ status,
-// assetId, startedAt, detail }: its generated cover, pressed once the song is
-// accepted or painted later from its menu; the
-// painted sleeve stands in until it is ready and wherever it fails) }. Its file
+// assetId, startedAt, style (the COVER_STYLES id it was painted in), detail }: its
+// generated cover, pressed once the song is accepted or painted later from its menu;
+// the painted sleeve stands in until it is ready and wherever it fails) }. Its file
 // plays; nothing of it is composed here
 const TAKE_KIND = 'take';
 const TakeStatus = Object.freeze({ Pressing: 'pressing', Ready: 'ready', Failed: 'failed' });
@@ -3430,17 +3430,48 @@ const NAMING_INSTRUCTIONS = 'You name records. Given a description of a song, in
   'Reply with JSON only, no other text: {"title": "...", "artist": "..."}';
 // a name past this many characters is not a name the cards can show
 const NAME_MAX_LENGTH = 40;
-// what the cover's model is asked for: a mid-century modern-jazz sleeve, abstract and
-// printed in a few muted inks, its mood the song's; never a glossy rendering. Free of
-// lettering (the app sets the title beside it, and a model's lettering garbles)
-const coverPrompt = (prompt, ingredients) =>
-  'A record cover for this song: ' + modelPrompt(prompt, ingredients) + '\n\n' +
-  'Make it in the manner of a 1950s modern-jazz LP cover: an abstract, geometric composition that suggests the song\'s mood rather than illustrating its story. ' +
-  'Flat shapes, bold blocks, lines and dots, generous empty space, printed in two or three muted inks on off-white or dark paper, ' +
-  'with the slight misregistration, halftone grain and paper texture of offset printing. ' +
-  'Restrained, desaturated color, chosen for the song (ochre, rust, teal, olive, cream, black), never neon. ' +
-  'No photography, no 3D rendering, no gradients, no glow, no glossy or hyper-detailed finish. Square, full-bleed, no border or frame. ' +
+// the styles a cover is painted in, one picked at random for each cover: each a
+// mid-century print or painting idiom with its own palette, so covers differ while
+// keeping one restraint (COVER_RULES). `id` is recorded on the cover
+const COVER_STYLES = [
+  { id: 'jazz-sleeve', text: 'Make it in the manner of a 1950s modern-jazz LP cover: an abstract, geometric composition that suggests the song\'s mood rather than illustrating its story. ' +
+    'Flat shapes, bold blocks, lines and dots, generous empty space, printed in two or three muted inks on off-white or dark paper, with the slight misregistration, halftone grain and paper texture of offset printing. ' +
+    'Restrained, desaturated color chosen for the song: ochre, rust, teal, olive, cream, black.' },
+  { id: 'cut-paper', text: 'Make it a cut-paper collage in the manner of mid-century modernist paper cut-outs: a few large organic and geometric shapes cut with scissors and torn by hand, layered flat on a plain paper ground. ' +
+    'Visible paper fibers, deckled torn edges, slightly uneven gouache-painted color in each shape. ' +
+    'Four colors at most, warm and earthy: terracotta, mustard, sage, ink blue, bone white.' },
+  { id: 'bauhaus-poster', text: 'Make it in the manner of a 1950s Swiss and Bauhaus-influenced modernist poster: circles, half-circles, quarter-circles and bars arranged on a strict grid with bold asymmetric balance. ' +
+    'Screen-printed flat color with a faint ink texture and a hint of overprint where shapes overlap. ' +
+    'A muted primary palette: brick red, mustard yellow, slate blue, black on warm white.' },
+  { id: 'brush-ink', text: 'Make it a brush-and-ink composition in the manner of 1950s abstract calligraphic painting: a few bold, gestural brush strokes and dry-brush drags, with splatter and ink pooling, and wide empty space around them. ' +
+    'One or two inks on cream rice paper or warm card, the paper\'s grain showing through. ' +
+    'Mostly black ink, with at most one muted accent such as vermilion, indigo or ochre.' },
+  { id: 'linocut', text: 'Make it a linocut relief print: a bold, simplified image or emblem drawn from the song, carved in confident shapes with visible gouge marks, crisp cut edges and the uneven ink coverage of a hand-pulled print. ' +
+    'Black ink plus one accent color, printed on off-white paper, slightly imperfect registration. ' +
+    'The accent muted: oxblood, moss green, burnt orange or petrol blue.' },
+  { id: 'op-art', text: 'Make it a mid-century op-art composition: rhythmic stripes, concentric lines, interlocking curves or a moiré pattern that seems to pulse with the song\'s tempo, precise yet hand-printed. ' +
+    'Two inks only, flat, with the slight wobble and grain of screen printing. ' +
+    'A restrained pairing: black and cream, navy and sand, or forest green and ivory.' },
+  { id: 'risograph', text: 'Make it a risograph print: simple overlapping translucent shapes whose colors mix where they cross, loose and playful in composition. ' +
+    'Visible riso grain, slight misregistration, uneven ink density, uncoated paper. ' +
+    'Two or three muted riso inks: teal, burgundy, mustard or medium blue, never fluorescent.' },
+  { id: 'color-field', text: 'Make it a small color-field painting in the manner of mid-century abstract painters: two to four large soft-edged rectangles or bands of color floating on a ground, edges feathered by the brush. ' +
+    'Matte gouache or oil on board, visible brushwork and thin, layered paint. ' +
+    'Deep, quiet color chosen for the song: maroon, umber, dusky rose, slate, ochre.' },
+  { id: 'illustration', text: 'Make it in the manner of a 1950s illustrated record sleeve: a whimsical, flat, stylized illustration of a few figures or objects from the song, drawn with simplified geometric forms, playful exaggeration and lots of negative space. ' +
+    'Gouache and ink with offset-print texture and slight misregistration. ' +
+    'A limited palette of three or four colors: coral, teal, mustard, charcoal on cream.' },
+  { id: 'textile', text: 'Make it a mid-century modern textile print: a repeating pattern of abstract motifs (leaves, stars, boomerangs, seeds or waves suited to the song) across the whole square, like a screen-printed fabric. ' +
+    'Visible woven-linen texture under flat ink, the motifs slightly irregular as if hand-cut. ' +
+    'Two or three colors: olive, rust and cream, or teal, mustard and charcoal.' },
+];
+// what every cover keeps, whatever its style. Free of lettering: the app sets the
+// title beside the cover, and a model's lettering garbles
+const COVER_RULES = 'Square, full-bleed, no border or frame. No photography, no 3D rendering, no glow, no neon, no glossy or hyper-detailed finish. ' +
   'No text, letters, words, numbers, logos or watermarks anywhere in the image.';
+// what the cover's model is asked for: the song, then the cover's style and rules
+const coverPrompt = (prompt, ingredients, style) =>
+  'A record cover for this song: ' + modelPrompt(prompt, ingredients) + '\n\n' + style.text + ' ' + COVER_RULES;
 // what the model is asked for: the words written, then the ingredients as a style
 // (`Style: jazz, orchestral.`)
 const modelPrompt = (prompt, ingredients) => {
@@ -3790,13 +3821,15 @@ const nameTake = async (id, prompt, ingredients) => {
   naming.set(id, { ...naming.get(id), name, lockedAt: Date.now() })/*the flaps settle onto it*/;
 };
 
-// asks for a take's cover; its failure never fails the take (the painted sleeve stays)
+// asks for a take's cover in a style picked at random; its failure never fails the
+// take (the painted sleeve stays)
 const pressCover = async (prompt, ingredients) => {
+  const style = pick(Math.random, COVER_STYLES);
   try {
-    const result = await callTool('generation', 'create_image', { mode: 'queued', prompt: coverPrompt(prompt, ingredients), openai: { model: COVER_MODEL, size: COVER_SIZE, quality: COVER_QUALITY } });
+    const result = await callTool('generation', 'create_image', { mode: 'queued', prompt: coverPrompt(prompt, ingredients, style), openai: { model: COVER_MODEL, size: COVER_SIZE, quality: COVER_QUALITY } });
     const assetId = Array.isArray(result.assetIds) && result.assetIds[0];
-    return assetId ? { status: TakeStatus.Pressing, assetId, startedAt: Date.now() } : { status: TakeStatus.Failed, detail: 'create_image answered without an assetId' };
-  } catch(error) { return { status: TakeStatus.Failed, detail: failureDetail(messageOf(error)) }; }
+    return assetId ? { status: TakeStatus.Pressing, assetId, startedAt: Date.now(), style: style.id } : { status: TakeStatus.Failed, style: style.id, detail: 'create_image answered without an assetId' };
+  } catch(error) { return { status: TakeStatus.Failed, style: style.id, detail: failureDetail(messageOf(error)) }; }
 };
 // asks for a take's new title and artist; resolves them, or null when cancelled.
 // The title is required; an empty artist keeps the take's own
