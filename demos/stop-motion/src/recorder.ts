@@ -1382,9 +1382,10 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   const HOP_HEIGHT = 1.2, HOP_SECONDS = 0.55;
   /** a wave's rise to its peak, its hold there and its fall (seconds), its arms' peak
    *  (degrees), and the most a member's own moment strays from its place's (seconds) */
-  const WAVE_RISE = 0.35, WAVE_HOLD = 0.25, WAVE_FALL = 0.5, WAVE_ARMS = 160, WAVE_STRAY = 0.06;
-  /** how much later each row back rises in a wave (seconds) */
-  const WAVE_ROW = 0.05;
+  const WAVE_RISE = 0.175, WAVE_HOLD = 0.125, WAVE_FALL = 0.25, WAVE_ARMS = 160, WAVE_STRAY = 0.03;
+  /** how much later each row back rises in a wave, and how long a wave takes to sweep
+   *  along a stand where it names no `seconds` (seconds) */
+  const WAVE_ROW = 0.025, WAVE_SECONDS = 2;
   /** an audience's liveliness where it names none (0 to 1), and how much of an idle's
    *  every movement a member makes at the least: never so still it looks stuck */
   const AUDIENCE_ENERGY = 0.5;
@@ -1577,7 +1578,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
       wave: (time: unknown, options: unknown = {}) => {
         const call = `${what}.wave`;
         const start = toTime(time, call);
-        const { seconds = 4, from = 'left', stand = true } = optionsOf(options, call);
+        const { seconds = WAVE_SECONDS, from = 'left', stand = true } = optionsOf(options, call);
         if(!isFiniteNumber(seconds) || (seconds <= 0) || (seconds > 30)) fail(`${call}'s seconds is how long it takes to sweep along a stand: more than 0 and up to 30`);
         if((from !== 'left') && (from !== 'right')) fail(`${call}'s from is the end it starts at, as seen facing the stand: 'left' or 'right'`);
         if(typeof stand !== 'boolean') fail(`${call}'s stand is true or false`);
