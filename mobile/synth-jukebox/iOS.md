@@ -3233,10 +3233,15 @@ const loadCover = async (assetId) => {
   }
   renderAll(); onTrackChange();
 };
+// the Asset id of the cover a take shows: its cover once ready, otherwise the one a
+// repaint replaces (shown until the new one is ready, and kept if it fails)
+const shownCoverId = (album) => {
+  const cover = isTake(album) && album.cover; if(!cover) return undefined/*none*/;
+  return ((cover.status === TakeStatus.Ready) && cover.assetId) ? cover.assetId : (cover.previousAssetId || undefined/*none yet*/);
+};
 // a take's generated cover once it is read; undefined (its painted sleeve) until then
 const generatedCover = (album) => {
-  if(!isTake(album) || !album.cover || (album.cover.status !== TakeStatus.Ready) || !album.cover.assetId) return undefined/*none to show*/;
-  const assetId = album.cover.assetId;
+  const assetId = shownCoverId(album); if(!assetId) return undefined/*none to show*/;
   if(!(assetId in coverArt)) loadCover(assetId);
   return coverArt[assetId] || undefined/*still being read*/;
 };
@@ -3394,10 +3399,11 @@ const newAlbum = () => {
 // length, once measured), renamed (true once the User names it: a generated name
 // never replaces theirs), failure (what went wrong, a Failure), detail (the
 // refusal's own text, kept for diagnosis and never shown) and cover ({ status,
-// assetId, startedAt, style (the COVER_STYLES id it was painted in), detail }: its
-// generated cover, pressed once the song is accepted or painted later from its menu;
-// the painted sleeve stands in until it is ready and wherever it fails) }. Its file
-// plays; nothing of it is composed here
+// assetId, startedAt, style (the COVER_STYLES id it was painted in),
+// previousAssetId (the cover it replaces, shown meanwhile and kept if it fails),
+// detail }: its generated cover, pressed once the song is accepted or painted later
+// from its menu; the painted sleeve stands in until one is ready and wherever none
+// is) }. Its file plays; nothing of it is composed here
 const TAKE_KIND = 'take';
 const TakeStatus = Object.freeze({ Pressing: 'pressing', Ready: 'ready', Failed: 'failed' });
 const MUSIC_MODEL = 'lyria-3-pro-preview';
@@ -3897,12 +3903,14 @@ const renameTake = async (id) => {
   naming.delete(id)/*the User's name wins*/;
   if(await changeTake(id, { title: names.title, artist: names.artist, tracks: [names.title], renamed: true })) toast('Renamed “' + names.title + '”');
 };
-// paints a new cover for a pressed take whose cover failed or that has none
+// paints a new cover for a pressed take, in a newly picked style; the cover it shows
+// stands until the new one is ready, and stays if the new one fails
 const paintCover = async (id) => {
-  const take = albumById(id); if(!isTake(take) || !needsCover(take)) return;
-  const cover = await pressCover(take.prompt, take.ingredients);
+  const take = albumById(id); if(!canPaintCover(take)) return;
+  const standing = shownCoverId(take), cover = await pressCover(take.prompt, take.ingredients);
+  if(standing) cover.previousAssetId = standing;
   if(!await updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => (album.id === id) ? { ...album, cover } : album) }))) return;
-  toast((cover.status === TakeStatus.Pressing) ? 'Painting a cover for “' + take.title + '”' : 'The cover could not be started');
+  toast((cover.status === TakeStatus.Pressing) ? 'Painting ' + (standing ? 'a new' : 'a') + ' cover for “' + take.title + '”' : 'The cover could not be started');
   schedulePoll(TAKE_POLL_MS);
 };
 // changes take `id`'s cover by `fields` while it is still pressing
@@ -3931,9 +3939,9 @@ const measureTake = (assetId) => takeUrl(assetId).then((url) => new Promise((res
   probe.src = url;
 }), () => undefined/*unreadable: its first play reads it again*/);
 
-// whether a pressed take can have a cover painted: none was, or it failed
-const needsCover = (album) => isTake(album) && (album.status === TakeStatus.Ready) && (!album.cover || (album.cover.status === TakeStatus.Failed));
 const isCoverPressing = (album) => !!album.cover && (album.cover.status === TakeStatus.Pressing) && !!album.cover.assetId;
+// whether a cover can be painted for a take: it is pressed, and no cover is being painted
+const canPaintCover = (album) => isTake(album) && (album.status === TakeStatus.Ready) && !isCoverPressing(album);
 // the takes whose song or cover is still pressing
 const awaitedTakes = () => library ? library.albums.filter((album) => isTake(album) && ((album.status === TakeStatus.Pressing) || isCoverPressing(album))) : [];
 // the storage status of the Asset `assetId`, or null when it could not be asked
@@ -4975,10 +4983,12 @@ try {
 
 // == Events ======================================================================
 // -- Actions ---------------------------------------------------------------------
+// a take's menu item painting its cover, or null while one is being painted
+const paintCoverItem = (take) => canPaintCover(take) ? { label: shownCoverId(take) ? 'Paint New Cover' : 'Paint Cover', icon: ICON.album, action: 'paint-cover', id: take.id } : null;
 const trackMenu = (button, key, fromNowPlaying) => {
   const track = trackOf(key); if(!track) return;
   const items = [{ label: isLoved(key) ? 'Unlove' : 'Love', icon: isLoved(key) ? ICON.heart : ICON.heartO, action: 'm-love', key }];
-  if(isTake(track.album)) items.unshift({ label: 'Rename', icon: ICON.pencil, action: 'rename-take', id: track.album.id });
+  if(isTake(track.album)) items.unshift(...[{ label: 'Rename', icon: ICON.pencil, action: 'rename-take', id: track.album.id }, paintCoverItem(track.album)].filter(Boolean));
   if(!fromNowPlaying) items.push({ label: 'Play Next', icon: ICON.playNext, action: 'm-next', key });
   const onItsAlbum = state.route && (state.route.type === RouteType.Album) && (state.route.id === track.album.id) && app.classList.contains('detail-open');
   if(fromNowPlaying || !onItsAlbum) items.push({ label: 'Go to Album', icon: ICON.album, action: 'm-album', key });
@@ -5015,7 +5025,7 @@ document.addEventListener('click', (event) => {
     case 'cycle-repeat': cycleRepeat(); break;
     case 'jump': state.qi = +element.dataset.i; startCurrent(0, true); break;
     case 'album-menu': openMenu(element, isTake(albumById(id))
-      ? [{ label: 'Rename', icon: ICON.pencil, action: 'rename-take', id }, { label: 'Press Again', icon: ICON.remix, action: 'press-again', id }].concat(needsCover(albumById(id)) ? [{ label: 'Paint Cover', icon: ICON.album, action: 'paint-cover', id }] : []).concat([{ label: 'Remove from Library', icon: ICON.trash, action: 'm-delete', id, destructive: true }])
+      ? [{ label: 'Rename', icon: ICON.pencil, action: 'rename-take', id }, { label: 'Press Again', icon: ICON.remix, action: 'press-again', id }].concat([paintCoverItem(albumById(id))].filter(Boolean)).concat([{ label: 'Remove from Library', icon: ICON.trash, action: 'm-delete', id, destructive: true }])
       : [{ label: 'Remix Album', icon: ICON.remix, action: 'm-remix', id }, { label: 'Delete from Library', icon: ICON.trash, action: 'm-delete', id, destructive: true }]); break;
     case 'm-love': toggleLove(key); break;
     case 'm-next': playNext(key); break;
