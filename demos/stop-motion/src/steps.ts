@@ -1242,5 +1242,8 @@ const applied = (channels: Readonly<Record<string, number>>, posed: Posed): Reco
 };
 
 /** a figure's pose among an actor's values: each limb's angle, by limb */
-export const poseOf = (channels: Readonly<Record<string, number>>): Readonly<Record<string, number>> =>
-  Object.fromEntries(Object.entries(channels).filter(([channel]) => channel.startsWith('pose.')).map(([channel, angle]) => [channel.slice('pose.'.length), angle]));
+export const poseOf = (channels: Readonly<Record<string, number>>): Readonly<Record<string, number>> => {
+  const pose: Record<string, number> = {};
+  for(const channel in channels) if(channel.startsWith('pose.')) pose[channel.slice('pose.'.length)] = channels[channel];
+  return pose;
+};

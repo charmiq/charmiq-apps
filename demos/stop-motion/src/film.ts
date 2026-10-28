@@ -3,7 +3,7 @@ import { rotation, turnOf, twistedYaw, type Turn } from '../../brick-shared/turn
 import { listed } from '../../brick-shared/words';
 
 import { pastRange, type PastRange, type RangedJoint, RANGED_JOINTS } from './joint-range';
-import type { Aim, Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, Hand, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
+import type { Aim, Area, CameraKey, CameraPlace, CutOut, Ease, Drawn, FaceKey, FadeKey, Hand, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
 import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, median, poseOf, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
@@ -194,8 +194,8 @@ export type Rest = Readonly<{ position: Point; turn: Turn; pose?: Readonly<Recor
  *  (`clicks`), where each actor cast from a piece of the set stood (`rests`), where
  *  each hand holds its thing at its hand-off (`hands`, SEE: handsOf) and where a hand
  *  holds each hand item (`grips`, from its position in its own frame), the
- *  surface under each actor following the ground at each frame (`grounds`, plates;
- *  SEE: groundsOf), and the surfaces in each cell of each set an actor clicking onto
+ *  surface under each actor following the ground at each frame the film shows
+ *  (`grounds`, plates; SEE: groundsOf), and the surfaces in each cell of each set an actor clicking onto
  *  studs stands on (`surfaces`; SEE: surfacesOf; the baseplate alone when none) */
 export type StageFacts = Readonly<{ wheeled?: ReadonlySet<string>; figures?: ReadonlySet<string>; bottoms?: PoseBottoms; clicks?: ReadonlySet<string>; rests?: ReadonlyMap<string, Rest>; hands?: Hands; grips?: ReadonlyMap<string, Point>; grounds?: ReadonlyMap<string, ReadonlyArray<number>>; surfaces?: (set: string | undefined) => SurfaceAt; }>;
 /** an actor where it stands in one frame */
@@ -219,10 +219,13 @@ type Followed = (actor: string) => Point;
  *  shown from its hand-off's frame, standing where its hand let go of it (`hands`),
  *  moving on by its own keys from there and held where each of its paths leaves it,
  *  until a key hides it, and each thing a hand takes up hidden from its
- *  hand-off's frame (SEE: HandOff). Throws, naming the scene's line, when an actor rides
+ *  hand-off's frame (SEE: HandOff); the frames each `cutOut` cuts out cut, as an
+ *  editor's cut does (SEE: cutFrom). Throws, naming the scene's line, when an actor rides
  *  in a circle, leaves the stage's reach or lies past a hand's reach as it takes it up,
  *  or a thing a hand lets go of is never shown */
-export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
+export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => cutFrom(everyFrameOf(scene, facts));
+/** the film at every time of its scene, nothing cut out (SEE: filmOf) */
+const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
   const { wheeled = new Set<string>(), figures = new Set<string>(), bottoms, clicks = new Set<string>(), rests = new Map<string, Rest>(), hands, grips = new Map<string, Point>(), grounds = new Map<string, ReadonlyArray<number>>(), surfaces = () => BASEPLATE } = facts;
   // where a figure's arms hang: as the gait its walks take, else the scene's own walk
   const sceneHang = scene.gaits?.find(gait => gait.name === 'walk')?.shape.hang ?? HANG;
@@ -231,7 +234,12 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
   // drawing starts on (on twos every second frame from the cut its shot starts at, a
   // camera's or a set's, so no frame after a cut is drawn from before it), and a
   // walker's drawings (none, smooth)
-  const times = sceneTimesOf(scene);
+  const times = everyTimeOf(scene);
+  // the frame of the film each of the scene's times is shown on, its cut-outs cut: a
+  // time cut out the first after it (the stage answers each frame shown)
+  let shownCount = 0;
+  const shownAt = times.map(time => { const at = shownCount; if(!cutOutAt(scene, time)) shownCount++; return at; });
+  const shownIndex = (index: number) => shownAt[index] ?? 0;
   const cuts = [...new Set([...cameraShots(scene.camera, scene.length).map(shot => shot.from), ...(scene.sets ?? []).map(key => key.time)].map(cut => times.findIndex(time => time >= (cut - TIME_EPSILON))).filter(index => index > 0))].sort((a, b) => a - b);
   const drawnFrame = (own: Drawn | undefined, index: number) => {
     if((own ?? scene.drawn) !== 'twos') return index;
@@ -255,6 +263,8 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
   const worlds: Array<Omit<FilmFrame, 'camera' | 'views' | 'transition'>> = []/*each frame but its cameras*/, placements: Array<ReadonlyMap<string, Placed>> = [], drawings: Array<ReadonlyMap<string, number>> = [], walkedOver: Array<ReadonlyMap<string, number>> = [], headed: Array<ReadonlyMap<string, number>> = [];
   const rolled = new Map<string, number>();
   const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();
+  // each body a look turns toward its target past its head's reach (degrees, SEE: looking)
+  const turned = new Map<string, number>();
   // each walker as its latest drawing stands it, and its move then
   const walkerDrawn = new Map<string, Readonly<{ local: Local; under: ReturnType<Clicked['moveAt']>; }>>();
   let previous: ReadonlyMap<string, Placed> | undefined;
@@ -269,11 +279,12 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       // its keys, paths, ground and boil as its drawing stands (a walker's steps drawn by
       // their own drawings: SEE Clicked)
       const drawn = drawnFrame(actor.drawn, index), drawnTime = times[drawn];
-      const ground = grounds.get(actor.name)?.[drawn];
+      const ground = grounds.get(actor.name)?.[shownIndex(drawn)];
       // following the ground, its own height counts from the ground (its piece's place
       // and turn kept): what its keys and paths give it, over the ground under it
       const keyed = boiled(localAt(actor, drawnTime * scene.fps, drawnTime, (rest?.position && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest), actor, drawn, scene.boil, figures.has(actor.name), clicks.has(actor.name));
-      const grounded = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
+      const lifted = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
+      const grounded = turned.get(actor.name) ? { channels: { ...lifted.channels, yaw: (lifted.channels.yaw ?? 0) + turned.get(actor.name)! } } : lifted;
       if(ground !== undefined) levels[actor.name] = ground;
       // a walker drawn on its drawing's frame, held to the next (on twos, the frames the
       // film draws its keys on)
@@ -287,7 +298,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       // a figure clicking onto studs, shown: its feet against the set (its soles its
       // pose's rise below its height, its lowest point), not stepping its lowest point
       // over what is under it, as it would stand there, and its tilt from upright
-      if(stepping && figures.has(actor.name) && ((local.channels.visible ?? 1) >= 0.5)) {
+      if(stepping && figures.has(actor.name) && (actor.seat === undefined)/*an audience's seat is the build's own*/ && ((local.channels.visible ?? 1) >= 0.5)) {
         const soles = { ...local.channels, height: solesUnder(local.channels.height ?? 0, poseOf(local.channels), bottoms) };
         const { into, top } = feetIn(soles, standingOn), above = (under && !aloft(under.move, under.u, under.walk.shape)) ? feetAbove(soles, standingOn) : 0/*a hop's flight is in the air*/;
         const floating = under ? 0 : lowestAbove(local.channels, standingOn);
@@ -328,7 +339,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       if(!actor.looks) continue;
       const drawn = drawnFrame(actor.drawn, index), before = (index > 0) ? drawnFrame(actor.drawn, index - 1) : -1;
       const step = (drawn !== index) ? 0/*a held frame*/ : (before >= 0) ? (time - times[before]) : (1 / scene.fps);
-      looking(actor, times[drawn], step, placed, headings, looked);
+      looking(actor, times[drawn], step, placed, (lag: number) => placements[index - Math.round(lag * scene.fps)], headings, looked, turned);
     }
 
     const actors = scene.actors.flatMap(({ name, faces, reactions, hands, drawn }) => {
@@ -393,6 +404,26 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
   const plans = new Map(scene.views.flatMap(view => view.plan ? [[view.name, { plan: view.plan.area ?? shown! }] as const] : []));
   return { scene, frames: frames.map(frame => ({ ...frame, views: Object.fromEntries(scene.views.map(view => [view.name, plans.get(view.name) ?? frame.views[view.name]])) })), ...stepped };
 };
+
+/** a film with the frames its scene's cut-outs span cut, as an editor cuts them: every
+ *  frame before a cut as it was, every frame after showing what it showed, each frame
+ *  numbered afresh; a hand-off cut out on the first frame after it, a transition
+ *  leaving the last frame shown before it, a footstep cut out unheard */
+const cutFrom = (film: Film): Film => {
+  const { scene } = film;
+  if(!scene.cutOuts) return film;
+  const kept = film.frames.flatMap((frame, index) => cutOutAt(scene, frame.time) ? [] : [index]);
+  const after = (index: number) => Math.max(0, kept.findIndex(each => each >= index)), before = (index: number) => Math.max(0, kept.filter(each => each <= index).length - 1);
+  return {
+    ...film,
+    frames: kept.map((old, index) => { const frame = film.frames[old]; return { ...frame, index, ...(frame.transition ? { transition: { ...frame.transition, frame: before(frame.transition.frame) } } : {}) }; }),
+    ...(film.handOffs ? { handOffs: film.handOffs.map(each => ({ ...each, frame: after(each.frame) })) } : {}),
+    ...(film.footsteps ? { footsteps: film.footsteps.filter(cue => !cutOutAt(scene, cue.time)) } : {}),
+  };
+};
+
+/** the scene's cut-out a time lies within: from its start up to its end */
+export const cutOutAt = (scene: Recorded, time: number): CutOut | undefined => scene.cutOuts?.find(cut => (time >= (cut.from - TIME_EPSILON)) && (time < (cut.to - TIME_EPSILON)));
 
 /** the footsteps a film's figures make (`a.footsteps`): a sound where each foot is set
  *  down within the span its footsteps name, following the figure, one of their sounds
@@ -771,11 +802,18 @@ const rideOrder = (actors: ReadonlyArray<RecordedActor>): ReadonlyArray<Recorded
  *  there with it), its keys eased over them, then its spans (what one adds, a
  *  figure's idling among them, added to the pose it rests in) */
 const localAt = (actor: RecordedActor, index: number, time: number, rest: Partial<Rest> | undefined): Local => {
-  const channels: Record<string, number> = rest ? { ...rest.position, ...rest.turn, ...Object.fromEntries(Object.entries(rest.pose ?? {}).map(([limb, angle]) => [`pose.${limb}`, angle])) }/*its keys and paths from there*/ : {};
-  for(const channel of new Set(actor.keys.flatMap(key => Object.keys(key.values)))) channels[channel] = channelAt(actor.keys, channel, time)!;
+  const channels: Record<string, number> = rest ? { ...restChannelsOf(rest) }/*its keys and paths from there*/ : {};
+  for(const channel of keysGiving(actor.keys).keys()) channels[channel] = channelAt(actor.keys, channel, time)!;
   applySpans(channels, actor.spans, index);
   return { channels };
 };
+/** a rest's values as channels, read once a rest (every frame of a film reads them) */
+const restChannelsOf = (rest: Partial<Rest>): Readonly<Record<string, number>> => {
+  let channels = restChannels.get(rest);
+  if(!channels) restChannels.set(rest, channels = { ...rest.position, ...rest.turn, ...Object.fromEntries(Object.entries(rest.pose ?? {}).map(([limb, angle]) => [`pose.${limb}`, angle])) });
+  return channels;
+};
+const restChannels = new WeakMap<Partial<Rest>, Readonly<Record<string, number>>>();
 
 /** an actor's values shifted at a frame (its index in the film) by the scene's boil
  *  (0 to 1), as bricks moved by hand between exposures: its place and turn, a
@@ -1118,18 +1156,29 @@ const ENGAGE_RATE = 4;
  *  target stands within its reach, the one begun latest (a reaction's over a lasting
  *  look, which takes back over once the reaction ends), as far as its `max` either way
  *  of where its torso faces (its heading, its twist's turn with it); the turn eased from the last frame's at LOOK_RATE, its own head's keyed
- *  turn giving way to it as it engages, and back as it lets go (SEE: Look) */
-const looking = (actor: RecordedActor, time: number, step: number, placed: Map<string, Placed>, headings: ReadonlyMap<string, number>, looked: Map<string, Readonly<{ angle: number; engaged: number; }>>) => {
+ *  turn giving way to it as it engages, and back as it lets go (SEE: Look). A look
+ *  with a `lag` follows where its target stood that long before (`lagged`: the frames
+ *  placed then, none before the film's first); one that `turn`s the body turns it a
+ *  quarter at a time toward a target past `max`, and back once the target is within
+ *  it, from the next frame on (`turned`) */
+const looking = (actor: RecordedActor, time: number, step: number, placed: Map<string, Placed>, lagged: (lag: number) => ReadonlyMap<string, Placed> | undefined, headings: ReadonlyMap<string, number>, looked: Map<string, Readonly<{ angle: number; engaged: number; }>>, turned: Map<string, number>) => {
   const standing = placed.get(actor.name)!;
-  const target = (look: Look): Point | undefined => ('point' in look.target) ? look.target.point : placed.get(look.target.actor)?.position;
-  const begun = actor.looks!.map((look, order) => ({ look, order })).filter(({ look }) => (time >= (look.from - TIME_EPSILON)) && (time < (look.to - TIME_EPSILON)));
-  const active = begun.sort((a, b) => (b.look.from - a.look.from) || (b.order - a.order)).map(({ look }) => look).find(look => {
-    const at = target(look);
-    return at && (Math.hypot(at.x - standing.position.x, at.z - standing.position.z) <= look.within);
-  });
-  const at = active && target(active)!;
+  const target = (look: Look): Point | undefined => ('point' in look.target) ? look.target.point : (((look.lag !== undefined) ? lagged(look.lag) : undefined) ?? placed).get(look.target.actor)?.position;
+  // of those under way and in reach, the one begun latest (declared latest of two at once)
+  let active: Look | undefined, at: Point | undefined;
+  for(const look of actor.looks!) {
+    if((time < (look.from - TIME_EPSILON)) || (time >= (look.to - TIME_EPSILON)) || (active && (look.from < active.from))) continue;
+    const aimed = target(look);
+    if(aimed && (Math.hypot(aimed.x - standing.position.x, aimed.z - standing.position.z) <= look.within)) [active, at] = [look, aimed];
+  }
   const facing = headings.get(actor.name)! + FRONT/*its front, a catalog part's 180 past its yaw*/;
-  const wanted = (active && at) ? Math.max(-active.max, Math.min(active.max, wrapped((Math.atan2(at.x - standing.position.x, at.z - standing.position.z) * (180 / Math.PI)) - facing))) : 0;
+  const toward = (active && at) ? wrapped((Math.atan2(at.x - standing.position.x, at.z - standing.position.z) * (180 / Math.PI)) - facing) : 0;
+  const wanted = active ? Math.max(-active.max, Math.min(active.max, toward)) : 0;
+  const body = turned.get(actor.name) ?? 0, unturned = toward + body/*the target from where its body faces unturned*/;
+  if(active?.turn || (body !== 0)) {
+    const quarters = (!active?.turn || (Math.abs(unturned) <= active.max)) ? 0 : (Math.sign(unturned) * Math.ceil((Math.abs(unturned) - active.max) / 90));
+    if((Math.abs(toward) > (active?.max ?? 0)) || (quarters === 0)) turned.set(actor.name, quarters * 90);
+  } /* else -- no look turns its body */
   const before = looked.get(actor.name) ?? { angle: 0, engaged: 0 };
   const angle = before.angle + Math.max(-LOOK_RATE * step, Math.min(LOOK_RATE * step, wanted - before.angle));
   const engaged = Math.max(0, Math.min(1, before.engaged + ((active ? 1 : -1) * ENGAGE_RATE * step)));
@@ -1157,9 +1206,22 @@ export const setAt = (keys: ReadonlyArray<SetKey> | undefined, time: number): st
  *  first before it and the last after (`visible` taken at each key and held to the
  *  next, as shown or not, never eased); undefined for a channel no key gives */
 export const channelAt = (keys: ReadonlyArray<Key>, channel: string, time: number): number | undefined => {
-  const giving = keys.filter(key => channel in key.values);
+  const giving = keysGiving(keys).get(channel) ?? [];
   return (channel === 'visible') ? keyInForce(giving, time)?.values.visible : eased(giving, time, key => key.values[channel], lerp);
 };
+
+/** an actor's keys by each channel they give, in their order, read once a list of keys
+ *  (every frame of a film reads them) */
+const keysGiving = (keys: ReadonlyArray<Key>): ReadonlyMap<string, ReadonlyArray<Key>> => {
+  let giving = keysByChannel.get(keys);
+  if(!giving) {
+    const grouped = new Map<string, Key[]>();
+    for(const key of keys) for(const channel of Object.keys(key.values)) grouped.set(channel, [...(grouped.get(channel) ?? []), key]);
+    keysByChannel.set(keys, giving = grouped);
+  }
+  return giving;
+};
+const keysByChannel = new WeakMap<ReadonlyArray<Key>, ReadonlyMap<string, ReadonlyArray<Key>>>();
 
 /** whether `time` has reached a key at `at`: a key holds from its own time on,
  *  compared exactly, so a cut's shot and the frames that show it agree */
@@ -1216,7 +1278,8 @@ const FRAME_EPSILON = 1e-6;
 // the one before, the scene's time it shows advancing by its speed (1 unless the scene
 // keys speed: 0.25 a quarter as fast, slow motion; 2 twice). A frame stands at the
 // scene's time it shows (FilmFrame.time); the film's time is its index over its fps
-// (SEE: filmTimeOf)
+// (SEE: filmTimeOf). A cut-out's times no frame shows: a time within one shows at the
+// first frame after it
 
 /** the most frames a film runs (Brick Studio's reel's most) */
 const MAX_FILM_FRAMES = 7_200;
@@ -1224,11 +1287,14 @@ const MAX_FILM_FRAMES = 7_200;
 export const MIN_SPEED = 0.05;
 export const MAX_SPEED = 8;
 
-/** the scene's time each film frame shows: each frame its fps after the one before at
- *  the speed there; a frame stands while it shows a time less than half a frame from
- *  the scene's end, as a film of the scene's own frames would. Throws, naming the
- *  speed's line, past MAX_FILM_FRAMES */
-export const sceneTimesOf = (scene: Recorded): ReadonlyArray<number> => {
+/** the scene's time each film frame shows, its cut-outs' cut (SEE: everyTimeOf) */
+export const sceneTimesOf = (scene: Recorded): ReadonlyArray<number> => everyTimeOf(scene).filter(time => !cutOutAt(scene, time));
+
+/** the scene's time each frame of its film shows before its cut-outs are cut: each frame
+ *  its fps after the one before at the speed there; a frame stands while it shows a time
+ *  less than half a frame from the scene's end, as a film of the scene's own frames
+ *  would. Throws, naming the speed's line, past MAX_FILM_FRAMES */
+const everyTimeOf = (scene: Recorded): ReadonlyArray<number> => {
   if(!scene.speed || (scene.speed.length < 1)) return Array.from({ length: scene.frames }, (_, index) => index / scene.fps);
   const times: number[] = [];
   for(let time=0; ;) {
@@ -1246,6 +1312,8 @@ export const sceneTimesOf = (scene: Recorded): ReadonlyArray<number> => {
  *  frames' pace */
 export const filmTimeOf = (film: Film, time: number): number => {
   const { frames, scene } = film;
+  const cut = cutOutAt(scene, time);
+  if(cut) return filmTimeOf(film, cut.to)/*its first frame after*/;
   const step = (index: number) => paceAt(film, index);
   if(time <= frames[0].time) return (time - frames[0].time) / (step(0) * scene.fps);
   let low = 0, high = frames.length - 1;
@@ -1271,7 +1339,11 @@ export const soundEndOf = (film: Film, cue: SoundCue, seconds: number | undefine
  *  last frame's as the one before it (a film of one frame at its scene's own pace) */
 const paceAt = (film: Film, index: number): number => {
   const { frames, scene } = film;
-  if(index < (frames.length - 1)) return frames[index + 1].time - frames[index].time;
+  if(index < (frames.length - 1)) {
+    const [time, next] = [frames[index].time, frames[index + 1].time];
+    const cut = scene.cutOuts?.find(each => (each.from > (time + TIME_EPSILON)) && (each.from < (next - TIME_EPSILON)))/*the frame before a cut-out ends at it*/;
+    return (cut?.from ?? next) - time;
+  } /* else -- the last frame: as long as the one before */
   return (index > 0) ? (frames[index].time - frames[index - 1].time) : (1 / scene.fps);
 };
 

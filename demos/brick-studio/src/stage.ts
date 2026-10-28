@@ -30,7 +30,7 @@ import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LI
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 15;
+export const STAGE_VERSION = 16;
 /** the widest and narrowest a frame's lens opens (f-numbers) */
 const MIN_APERTURE = 1;
 const MAX_APERTURE = 32;
@@ -40,8 +40,8 @@ const MAX_SHIFT = 1;
 /** the most sets a stage stands */
 export const MAX_STAGED_SETS = 8;
 
-/** the most actors a stage casts */
-export const MAX_ACTORS = 64;
+/** the most actors a stage casts: a film's cast and the audience lifted from its stands */
+export const MAX_ACTORS = 200;
 /** the longest actor name */
 const MAX_NAME = 40;
 /** how far from the baseplate a shot may put an actor or the camera, up or down */
@@ -210,6 +210,14 @@ export type Cast = Readonly<{ sets: ReadonlyArray<StagedSet>; actors: ReadonlyMa
 
 /** an actor a stage refused, and why */
 export type Refusal = Readonly<{ name: string; reason: string; }>;
+
+/** a figure built as a part of a copy of a component (a spectator seated in a stand):
+ *  the component, where its copy stands and where the figure stands inside it, as a
+ *  placed actor names it (`{ placed: { ...copy, inside } }`), and the rest it is cast
+ *  at there; and of its copy, the area its cells cover in the set (whole studs: its
+ *  south-west corner and size) and its seat tiers: each level a part of it other than a
+ *  figure tops out at, lowest first (a stand's steps) */
+export type FigurePart = Readonly<{ component: string; copy: Readonly<{ x: number; z: number; level: number; }>; inside: Readonly<{ x: number; z: number; level: number; }>; rest: Rest; area: Readonly<{ x: number; z: number; width: number; depth: number; }>; tiers: ReadonlyArray<number>; }>;
 
 // == Stage =======================================================================
 // the stage call: its set, the area its baseplate covers and its cast
@@ -477,6 +485,24 @@ export const insideParts = (set: Model, copy: number): ReadonlyArray<Placement |
     return [own ? { ...placed, ...where } : { ...placed, ...where, color: 'inherited' as const }];
   });
 };
+
+/** every figure built as a part of a copy of a component in a set, copy by copy in
+ *  the set's order, each at the address that casts it in place (SEE: castOf); a figure
+ *  of the set's own is no copy's part */
+export const figurePartsOf = (set: Model): ReadonlyArray<FigurePart> =>
+  (set.copies ?? []).flatMap((copy, index) => {
+    if(!set.components?.find(each => each.name === copy.component)?.footprint) return []/*a copy of nothing on the grid*/;
+    const at = { x: copy.x, z: copy.z, level: copy.level };
+    const parts = copyParts(set, index).placements.map(each => set.placements[each]), cells = filledBy(set, parts);
+    const area = { x: cells.minX, z: cells.minZ, width: cells.maxX - cells.minX, depth: cells.maxZ - cells.minZ };
+    const tiers = [...new Set(parts.filter(part => getPart(part.part)?.kind !== 'figure').map(part => part.level + getShape(getPart(part.part)!/*by contract*/).height))].sort((a, b) => a - b);
+    return insideParts(set, index).flatMap(part => {
+      if(getPart(part.part)?.kind !== 'figure') return [];
+      const inside = { x: part.x, z: part.z, level: part.level };
+      const piece = pieceOf(set, { placed: { ...at, inside } });
+      return (typeof piece === 'string') ? []/*its rest past a frame's reach*/ : [{ component: copy.component, copy: at, inside, rest: piece.rest, area, tiers }];
+    });
+  });
 
 /** a copy's actor: its own parts as the set draws them (each inherited color its
  *  copy's), in the frame of its rest, which is its anchor, `size` its box */

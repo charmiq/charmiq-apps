@@ -6,7 +6,7 @@ import { bodiesThrough, clearanceOf, groundedOn, type Avoided, type Probe } from
 import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandAsk, type HandProbe, type HeldItem, type Paint, type Rest, type StageFacts } from './film';
 import { groundsOf, surfacesIn, surfacesOf, surfacesProbed, type CellArea, type ExtentProbe, type GroundProbe, type SurfaceProbe } from './ground';
 import type { Size } from './measure';
-import type { Point, Recorded } from './recorder';
+import type { FigurePart, Point, Recorded } from './recorder';
 import type { PartFinding } from './review';
 
 // the studios a film is seen on: the Applications in the document that export
@@ -36,7 +36,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 15;
+const STAGE_VERSION = 16;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -56,7 +56,7 @@ type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; f
 
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
-  describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
+  describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; figures?: ReadonlyArray<FigurePart>; }>>;
   probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; tops?: ReadonlyArray<ReadonlyArray<string | null>>; extent?: CellArea; held?: ReadonlyArray<HeldItem>; }>>;
   stage$(): Observable<ScreenState>;
   stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; grips?: Readonly<Record<string, Point>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
@@ -377,6 +377,15 @@ export class Studios {
   }
 
   // == Set =======================================================================
+  /** every figure built as a part of a copy in the main studio's build (SEE: Brick
+   *  Studio's describeStage figures), for a scene's audience to lift; none while no
+   *  studio holds the set or it does not answer */
+  public async figureParts(): Promise<ReadonlyArray<FigurePart> | undefined> {
+    if(this.screens.length < 1) return undefined/*no set yet: the scene runs again once one is found*/;
+    try { return (await this.screens[0].describeStage({ figures: true })).figures ?? []; }
+    catch(error) { console.warn('stop-motion: the studio did not list its figures:', error); return undefined; }
+  }
+
   /** the main studio's build, the film's set, as LDraw text */
   public async readSet(): Promise<string> { return buildText(this.main()); }
 

@@ -1,8 +1,10 @@
-import { channelAt, frameEnd, keyInForce, shotAt, shotFrames, tiltOf, type CameraShot, type Feet, type Film, type FilmFrame, type ShotFrames } from './film';
+import { isPlatformFile } from '../../brick-shared/drive';
+
+import { cameraShots, channelAt, filmTimeOf, frameAtTime, frameEnd, keyInForce, shotAt, shotFrames, soundEndOf, tiltOf, type CameraShot, type Feet, type Film, type FilmFrame, type ShotFrames } from './film';
 import { pastRange, withinFrom, type PastRange, type RangedJoint } from './joint-range';
 import { inBox, isSized, pointGap, rideChain, rideRoot, segmentEnters, tallOf, type Box, type Size } from './measure';
 import { driverAt, type Driver } from './motion-read';
-import type { Key, Point, Recorded, RecordedActor, RecordedCamera, Span } from './recorder';
+import type { CutOut, Key, Point, Recorded, RecordedActor, RecordedCamera, Span } from './recorder';
 import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
 
 // the film reviewed as it looks, for a Charm that sees stills and never playback: what
@@ -10,7 +12,8 @@ import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
 // wrong (inside a part or an actor, or one between it and its target; the actor at a
 // point it aims at, its own subject, before that point apart), where an actor pops into
 // or out of the picture within a shot, where the scene poses a figure past a person's
-// range (SEE: joint-range.ts), and every cut read as an editor reads it. A
+// range (SEE: joint-range.ts), every cut read as an editor reads it, where a shot
+// holds with nothing new (dead air), and where a cut-out jumps what a shot shows. A
 // frame's subject is the actor its camera aims at, else the actor filling most of the
 // screen. A cut is the camera's cut between two shots a
 // frame shows (a shot no frame shows is passed over): each side's frame (the last of
@@ -64,6 +67,19 @@ const JUMP_ACROSS = 1 / 3;
 const MOTION_FRAMES = 3;
 /** a subject moving less than this share of the screen over MOTION_FRAMES is still */
 const STILL = 0.01;
+
+// -- Dead Air --------------------------------------------------------------------
+/** the shortest stretch of a shot with nothing new that is dead air (seconds): past a
+ *  beat held between lines or moves, short of the opening desk's 4 s after its voice */
+export const DEAD_AIR = 3.5;
+/** the share of the film's loudest volume a sound plays under to be a bed under the
+ *  rest: its start is new, its playing fills no time */
+const BED_SHARE = 0.5;
+/** how far from where the camera aims an actor starting a move stands to be what the
+ *  shot shows (studs, across the ground): a person's event, not the busy distance behind */
+const FEATURED = 10;
+/** how near two times (seconds), or two keyed values, are to be one */
+const SAME_TIME = 1e-6;
 
 // == Types =======================================================================
 // -- Camera ----------------------------------------------------------------------
@@ -176,6 +192,17 @@ export type Cut = Readonly<{
   /** what an editor would flag, in a phrase each */
   flags: ReadonlyArray<string>;
 }>;
+
+// -- Dead Air --------------------------------------------------------------------
+/** a stretch of a shot with nothing new (SEE: deadAirOf): its shot, its span (seconds),
+ *  how long the film shows it (seconds, its cut-outs cut) and what came last before it,
+ *  a phrase and the scene's line making it */
+export type DeadAir = Readonly<{ shot: CameraShot; from: number; to: number; seconds: number; after: Readonly<{ what: string; line?: number; }>; }>;
+
+// -- Jumps -----------------------------------------------------------------------
+/** a cut-out the film shows within one shot (SEE: jumpsOf): that shot, the cut-out, and
+ *  the film's own time it lies at */
+export type Jump = Readonly<{ shot: CameraShot; cut: CutOut; at: number; }>;
 
 // == Camera ======================================================================
 // -- Keys in Force ---------------------------------------------------------------
@@ -623,3 +650,137 @@ const flagsOf = (before: CutSide, after: CutSide, angle: number, shots: Readonly
 };
 
 const share = (value: number): string => `${Math.round(value * 100)}%`;
+
+// == Dead Air ====================================================================
+/** each stretch of a shot the film shows at least DEAD_AIR long (its cut-outs cut)
+ *  where nothing new happens: nothing heard starting or playing over the rest (SEE:
+ *  BED_SHARE), no fade under way, the camera following no walk or path of its subject
+ *  (a camera move alone fills nothing), and no actor the shot shows (SEE: FEATURED)
+ *  starting one (its keys moving it from rest outside its
+ *  walks and paths, a walk, a path, a crowd, a face, a reaction or a hand's change; its
+ *  idling never), with what came last before it; in the film's order.
+ *  None while a sound heard over the rest has no known length (`lengths`, seconds by
+ *  name, unless it plays until a time) */
+export const deadAirOf = (film: Film, sizes: Readonly<Record<string, Size>>, lengths: ReadonlyMap<string, number>): ReadonlyArray<DeadAir> | undefined => {
+  const { scene } = film;
+  type Moment = Readonly<{ time: number; what: string; line?: number; }>;
+  type Filled = Readonly<{ from: number; to: number; what: string; line?: number; }>;
+  const news: Moment[] = [], filled: Filled[] = [];
+  // .. Sound and Picture ..........................................................
+  const cues = scene.sounds ?? [], steps = film.footsteps ?? [];
+  const loudest = Math.max(0, ...[...cues, ...steps].map(cue => cue.volume));
+  for(const cue of cues) {
+    const named = isPlatformFile(cue.name) ? 'the sound' : `the sound '${cue.name}'`;
+    news.push({ time: cue.time, what: `${named} at ${secondsOf(cue.time)} s starts`, ...lineOf(cue.line) });
+    if(cue.volume < (BED_SHARE * loudest)) continue/*a bed under the rest*/;
+    const seconds = lengths.get(cue.name), end = (cue.until !== undefined) ? cue.until : ((seconds !== undefined) ? soundEndOf(film, cue, seconds) : undefined);
+    if(end === undefined) return undefined/*how long it plays unknown*/;
+    filled.push({ from: cue.time, to: end, what: `${named} from ${secondsOf(cue.time)} s ends`, ...lineOf(cue.line) });
+  }
+  for(const step of steps) news.push({ time: step.time, what: `${step.actor ?? 'a figure'}'s footstep at ${secondsOf(step.time)} s`, ...lineOf(step.line) });
+  scene.fade.forEach((key, index) => {
+    const before = scene.fade[index - 1];
+    if(!before || (Math.abs(key.values.fade - before.values.fade) < SAME_TIME)) return;
+    if(key.ease === 'hold') news.push({ time: key.time, what: `the fade at ${secondsOf(key.time)} s`, ...lineOf(key.line) });
+    else filled.push({ from: before.time, to: key.time, what: `the fade to ${secondsOf(key.time)} s ends`, ...lineOf(key.line) });
+  });
+  for(const title of scene.titles) news.push({ time: title.from, what: `the title at ${secondsOf(title.from)} s`, ...lineOf(title.line) });
+  for(const key of scene.sets ?? []) news.push({ time: key.time, what: `the set at ${secondsOf(key.time)} s`, ...lineOf(key.line) });
+  // .. What the Shot Shows .......................................................
+  // an actor the shot shows within FEATURED of where its camera aims, in frame
+  const screens = new Map<number, Readonly<Record<string, ScreenBox>>>();
+  const featured = (name: string, time: number) => {
+    const index = frameAtTime(film, time), frame = film.frames[index], shown = frame.actors.find(shot => shot.name === name);
+    if(!isSized(sizes, name) || !shown || (Math.hypot(shown.position.x - frame.camera.target.x, shown.position.z - frame.camera.target.z) > FEATURED)) return false;
+    const screen = screens.get(index) ?? screens.set(index, screenAt(film, sizes, index)).get(index)!;
+    return !!screen[name]?.inFrame;
+  };
+  // the camera's own subject under way: each span of its keys aiming at one actor
+  const keys = scene.camera.keys.filter(key => key.target);
+  const aimed = keys.map((key, index) => ({ from: key.time, to: keys[index + 1]?.time ?? scene.length, actor: subjectAt(scene, key.time) }));
+  for(const actor of scene.actors) {
+    const moved = actor.spans.filter(span => MOVES.has(span.label)), own: Moment[] = [];
+    const under = [...(actor.walks ?? []).map(walk => [walk.start, walk.end, walk.line] as const), ...moved.map(span => [span.from / scene.fps, span.to / scene.fps, span.line] as const)];
+    for(const [from, to, line] of under) for(const aim of aimed.filter(each => each.actor === actor.name)) {
+      const [start, end] = [Math.max(from, aim.from), Math.min(to, aim.to)];
+      if(end > start) filled.push({ from: start, to: end, what: `${actor.name}'s move the camera follows ends at ${secondsOf(end)} s`, ...lineOf(line) });
+    }
+    for(const walk of actor.walks ?? []) own.push({ time: walk.start, what: `${actor.name}'s walk at ${secondsOf(walk.start)} s`, ...lineOf(walk.line) });
+    for(const span of moved) own.push({ time: span.from / scene.fps, what: `${actor.name}'s ${span.label} at ${secondsOf(span.from / scene.fps)} s`, ...lineOf(span.line) });
+    // an audience's member in view cheering, sitting back down or waving: action while it lasts
+    for(const span of moved.filter(each => ACTING.has(each.label))) {
+      const [from, to] = [span.from / scene.fps, span.to / scene.fps];
+      if(featured(actor.name, from)) filled.push({ from, to, what: `${actor.name}'s ${span.label} ends at ${secondsOf(to)} s`, ...lineOf(span.line) });
+    }
+    for(const start of keyedStarts(actor.keys)) if(!under.some(([from, to]) => (start.time >= (from - SAME_TIME)) && (start.time <= (to + SAME_TIME)))) own.push({ time: start.time, what: `${actor.name}'s keys move it at ${secondsOf(start.time)} s`, ...lineOf(start.line) });
+    for(const key of actor.faces ?? []) own.push({ time: key.time, what: `${actor.name}'s face at ${secondsOf(key.time)} s`, ...lineOf(key.line) });
+    for(const each of actor.reactions ?? []) own.push({ time: each.from, what: `${actor.name}'s reaction at ${secondsOf(each.from)} s`, ...lineOf(each.line) });
+    for(const key of actor.hands ?? []) own.push({ time: key.time, what: `${actor.name}'s hand at ${secondsOf(key.time)} s`, ...lineOf(key.line) });
+    news.push(...own.filter(each => featured(actor.name, each.time)));
+  }
+  // .. Stretches ..................................................................
+  // a shot's times parted at everything new and at the ends of what fills time, each
+  // part filled or not, the unfilled run together where nothing new parts them
+  const at = (time: number) => (each: Readonly<{ time: number; }>) => Math.abs(each.time - time) < SAME_TIME;
+  return cameraShots(scene.camera, scene.length).flatMap(shot => {
+    const within = (time: number) => (time > (shot.from + SAME_TIME)) && (time < (shot.to - SAME_TIME));
+    const points = [...new Set([shot.from, shot.to, ...news.map(each => each.time).filter(within), ...filled.flatMap(each => [each.from, each.to]).filter(within)])].sort((a, b) => a - b);
+    const stretches: Array<{ from: number; to: number; }> = [];
+    for(let index=0; index<points.length-1; index++) {
+      const [from, to] = [points[index], points[index + 1]];
+      if(filled.some(each => (each.from < (to - SAME_TIME)) && (each.to > (from + SAME_TIME)))) continue;
+      const last = stretches[stretches.length - 1];
+      if(last && (Math.abs(last.to - from) < SAME_TIME) && !news.some(at(from))) last.to = to;
+      else stretches.push({ from, to });
+    }
+    const afterOf = (from: number): DeadAir['after'] => {
+      if(Math.abs(from - shot.from) < SAME_TIME) return { what: 'the cut' };
+      const { what, line } = news.find(at(from)) ?? filled.find(each => Math.abs(each.to - from) < SAME_TIME) ?? { what: 'the cut' };
+      return { what, ...lineOf(line) };
+    };
+    const shown = ({ from, to }: Readonly<{ from: number; to: number; }>) => (to - from) - (scene.cutOuts ?? []).reduce((cut, each) => cut + Math.max(0, Math.min(to, each.to) - Math.max(from, each.from)), 0);
+    return stretches.map(each => ({ ...each, seconds: shown(each) })).filter(each => each.seconds >= (DEAD_AIR - SAME_TIME)).map(each => ({ shot, ...each, after: afterOf(each.from) }));
+  });
+};
+
+/** the spans that move an actor of themselves, each a movement starting where it starts
+ *  and under way to its end: an audience's cheer, its sitting back down after one and
+ *  its part in a wave among them, never its seated idle */
+const MOVES = new Set(['path', 'crowd', 'cheer', 'sit', 'wave']);
+/** of them, an audience's: action under way while it lasts wherever the camera aims, as
+ *  a move the camera follows is (SEE: recorder.ts audience) */
+const ACTING = new Set(['cheer', 'sit', 'wave']);
+/** where an actor's keys start moving it from rest: each channel but `visible` changing
+ *  from one key to the next after holding (at the key it leaves), or jumping at a held
+ *  key; with the line of the key it moves to */
+const keyedStarts = (keys: ReadonlyArray<Key>): ReadonlyArray<Readonly<{ time: number; line?: number; }>> => {
+  const channels = [...new Set(keys.flatMap(key => Object.keys(key.values)))].filter(channel => channel !== 'visible');
+  return channels.flatMap(channel => {
+    const giving = keys.filter(key => channel in key.values), starts: Array<Readonly<{ time: number; line?: number; }>> = [];
+    let moving = false;
+    for(let index=1; index<giving.length; index++) {
+      const [before, key] = [giving[index - 1], giving[index]];
+      const changes = Math.abs(key.values[channel] - before.values[channel]) > SAME_TIME;
+      if(changes && (key.ease === 'hold')) { starts.push({ time: key.time, ...lineOf(key.line) }); moving = false; continue; }
+      if(changes && !moving) starts.push({ time: before.time, ...lineOf(key.line) });
+      moving = changes;
+    }
+    return starts;
+  });
+};
+const lineOf = (line: number | undefined) => (line !== undefined) ? { line } : {};
+/** seconds as a phrase writes them: to the thousandth */
+const secondsOf = (time: number): number => Math.round(time * 1000) / 1000;
+
+// == Jumps =======================================================================
+/** each cut-out whose frames on either side stand in one shot on one set: no camera cut
+ *  or set change from its start to its end, so everything in view jumps on there; one
+ *  reaching the film's end none */
+export const jumpsOf = (film: Film): ReadonlyArray<Jump> => {
+  const { scene } = film;
+  const shots = cameraShots(scene.camera, scene.length), cutting = [...shots.map(shot => shot.from), ...(scene.sets ?? []).map(key => key.time)];
+  return (scene.cutOuts ?? []).filter(cut => (cut.to < (scene.length - SAME_TIME)) && !cutting.some(time => (time >= (cut.from - SAME_TIME)) && (time <= (cut.to + SAME_TIME)))).flatMap(cut => {
+    const shot = shotAt(shots, cut.to);
+    return shot ? [{ shot, cut, at: filmTimeOf(film, cut.to) }] : [];
+  });
+};

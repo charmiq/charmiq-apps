@@ -7,7 +7,7 @@ import type { Build } from './build';
 import type { PartLine } from './grid';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, floorOf, followOf, ghostsOf, gripsOf, heldShotsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Point, type Refusal, type Rest, type Shot, type Size } from './stage';
+import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, figurePartsOf, floorOf, followOf, ghostsOf, gripsOf, heldShotsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Point, type Refusal, type Rest, type Shot, type Size } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -129,11 +129,14 @@ export class StageControl {
   // == Stage =====================================================================
   /** whether a stage is shown, whether the person went back to the build since the
    *  last stage call, whether the studio holds a build of its own, its sets, and the
-   *  actor it follows through the film, while it follows one */
-  public async describe() {
+   *  actor it follows through the film, while it follows one; asked `figures`, every
+   *  figure built as a part of a copy in its first set (SEE: stage.ts figurePartsOf) */
+  public async describe(figures?: unknown) {
+    if((figures !== undefined) && (typeof figures !== 'boolean')) throw new Error('figures is whether the figures built as parts of the build\'s copies are listed: true or false');
     await this.build.whenReady();
     this.tellBuild()/*the stream says the same from now on*/;
-    return { stage: STAGE_VERSION, staged: !!this.cast, left: this.left, build: this.holds, sets: this.sets, ...(this.followed ? { followed: this.followed.actor } : {}) };
+    const [first] = this.build.allSets();
+    return { stage: STAGE_VERSION, staged: !!this.cast, left: this.left, build: this.holds, sets: this.sets, ...(this.followed ? { followed: this.followed.actor } : {}), ...((figures === true) ? { figures: first ? figurePartsOf(first) : [] } : {}) };
   }
 
   /** the screen's state, from now on */

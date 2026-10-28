@@ -38,8 +38,11 @@ export type Handing = Readonly<{ by: string; hand: Hand; time: number; line?: nu
 export type Reaction = Readonly<{ from: number; to: number; face: string; line?: number; }>;
 /** a figure turning its head toward a target over a span (an actor, or a point), as
  *  far as `max` degrees either way, while the target stands within `within` studs; of
- *  two at once, the one begun latest (SEE: film.ts looking) */
-export type Look = Readonly<{ from: number; to: number; target: Target; within: number; max: number; line?: number; }>;
+ *  two at once, the one begun latest (SEE: film.ts looking). An audience's member
+ *  follows where its target stood `lag` seconds before, and `turn`s its body a quarter
+ *  toward a target past its head's reach; its look after what the film's camera follows,
+ *  where the scene gives it none, is the `camera`'s */
+export type Look = Readonly<{ from: number; to: number; target: Target; within: number; max: number; lag?: number; turn?: true; camera?: true; line?: number; }>;
 /** the build's set standing from `time` on, until the next: a cut, never eased (SEE:
  *  Brick Studio's sets) */
 export type SetKey = Readonly<{ time: number; set: string; line?: number; }>;
@@ -106,6 +109,10 @@ export type Title = Readonly<{ from: number; to: number; text: string; style: 'c
  *  every frame between its keys (`smooth`) */
 export type Drawn = 'ones' | 'twos' | 'smooth';
 
+/** a span of the scene's time a film cuts out, as an editor cuts frames (`cutOut`):
+ *  from `from` up to `to` (seconds, each on a frame), and the scene's line */
+export type CutOut = Readonly<{ from: number; to: number; line?: number; }>;
+
 export type RecordedCamera = Readonly<{ keys: ReadonlyArray<CameraKey>; spans: ReadonlyArray<Span>; /** how it is drawn, when it says (the scene's otherwise) */ drawn?: Drawn; }>;
 
 export type RecordedActor = Readonly<{
@@ -138,6 +145,10 @@ export type RecordedActor = Readonly<{
   ground?: Readonly<{ step: number; start?: number; }>;
   /** it stands as keyed alone: no figure's idling where nothing else moves it, no boil */
   still?: true;
+  /** an audience's member lifted from the set: the level its feet stand on standing
+   *  (plates). It sits or stands where the build placed it, rising and hopping in place,
+   *  so the film never measures its footing (SEE: audience) */
+  seat?: number;
   /** how it is drawn, when it says (the scene's otherwise) */
   drawn?: Drawn;
   spans: ReadonlyArray<Span>;
@@ -177,6 +188,8 @@ export type Recorded = Readonly<{
   /** the film's sky over every set's own, when the scene says (SEE: brick-shared/sky.ts) */
   sky?: Sky;
   actors: ReadonlyArray<RecordedActor>;
+  /** the audiences it seats, in the order seated, when it seats any (SEE: audience) */
+  audiences?: ReadonlyArray<RecordedAudience>;
   camera: RecordedCamera;
   /** more cameras, by name: each a second studio's view of the scene. A plan looks
    *  straight down over `area`, or over everything the film shows when it names none */
@@ -194,8 +207,32 @@ export type Recorded = Readonly<{
    *  0.25 a quarter as fast), eased between keys, in time order, when it keys any
    *  (SEE: film.ts Clock) */
   speed?: ReadonlyArray<Key>;
+  /** the spans of its time the film cuts out (`cutOut`), in time order, when it cuts
+   *  any: no frame shows them (SEE: film.ts Clock) */
+  cutOuts?: ReadonlyArray<CutOut>;
   /** what the scene logged (console.log) */
   logs: ReadonlyArray<string>;
+}>;
+
+/** an audience as the scene seats it: its name, each member by its actor's name, stand
+ *  by stand (its side), row from the front and seat from the left as seen from the
+ *  field, a figure lifted from the set naming the build it was lifted from, and how many
+ *  rows each stand has (its seat tiers, empty ones too) */
+export type RecordedAudience = Readonly<{ name: string; members: ReadonlyArray<Readonly<{ actor: string; side: string; row: number; seat: number; build?: string; }>>; stands: ReadonlyArray<Readonly<{ side: string; rows: number; }>>; line?: number; }>;
+
+/** a figure built as a part of a copy in the set, as the studio lists it (SEE: Brick
+ *  Studio's stage FigurePart): its component, where its copy stands and where the figure
+ *  stands inside it (`{ placed: { ...copy, inside } }` casts it), and where it rests
+ *  there: its lowest point (studs, studs, plates), its turn and its pose (degrees) */
+export type FigurePart = Readonly<{
+  component: string;
+  copy: Readonly<{ x: number; z: number; level: number; }>;
+  inside: Readonly<{ x: number; z: number; level: number; }>;
+  rest: Readonly<{ position: Point; turn: Readonly<{ yaw: number; pitch: number; roll: number; }>; pose?: Readonly<Record<string, number>>; }>;
+  /** its copy's cells in the set (whole studs: the south-west corner and size), and its
+   *  seat tiers: the levels its parts other than figures top out at, lowest first */
+  area: Readonly<{ x: number; z: number; width: number; depth: number; }>;
+  tiers: ReadonlyArray<number>;
 }>;
 
 /** a scene that failed to run: why, and the line of the scene it failed on */
@@ -217,16 +254,17 @@ export const castAs = (source: Readonly<Record<string, unknown>>): Readonly<{ wo
 
 // == Recorder ====================================================================
 /** runs a scene's code and records it, its sounds Platform files (by URI) or named
- *  from the `shipped` sounds; throws a SceneError-shaped error for a scene that
- *  fails or declares something no film can show */
-export const record = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape): Recorded => readRecorded(recordCode(code, shipped, builtIn));
+ *  from the `shipped` sounds, its audiences lifted from the figure `parts` built into
+ *  the set (none until a studio lists them); throws a SceneError-shaped error for a
+ *  scene that fails or declares something no film can show */
+export const record = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape, parts?: ReadonlyArray<FigurePart>): Recorded => readRecorded(recordCode(code, shipped, builtIn, parts));
 
 /** a scene recorded as its Worker records it (SEE: the header) */
-export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape): RecordedCode => {
+export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], builtIn?: GaitShape, parts?: ReadonlyArray<FigurePart>): RecordedCode => {
   // .. Limits ....................................................................
   const MAX_LENGTH = 120/*seconds*/;
   const MAX_FPS = 60;
-  const MAX_ACTORS = 64;
+  const MAX_ACTORS = 200/*a film's cast and the audience it lifts from its stands*/;
   const MAX_KEYS = 2_000;
   const MAX_NAME = 40/*characters*/;
   const MAX_VOLUME = 4;
@@ -310,8 +348,10 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, skies: [] as Array<{ given: unknown; line?: number; }> };
   // `moves` are the times its paths, wobbles, walks and idling start, each with its call
   // and line: a released thing's begin after its release, a picked-up thing's before it
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; released?: Handing; pickedUp?: Handing; keys: Key[]; moves: Array<{ time: number; what: string; line?: number; }>; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; released?: Handing; pickedUp?: Handing; keys: Key[]; moves: Array<{ time: number; what: string; line?: number; }>; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; seat?: number; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
+  /** each actor's handle, the actor it keys: an audience takes actors by their handles */
+  const handles = new Map<unknown, Entry>();
   type TakingKey = { -readonly [K in keyof HandKey]: HandKey[K] };
   /** each pick-up as its call records it: the thing named, and the hand's key taking it,
    *  its item the thing's own once every actor is known (SEE: Settle) */
@@ -615,6 +655,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
         return handle;
       },
     };
+    handles.set(handle, entry);
     return handle;
   };
 
@@ -769,6 +810,27 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
       return set;
     },
   };
+
+  // .. Cut Outs ..................................................................
+  /** each span of the scene's time the film cuts out, as the scene writes it */
+  const cutOuts: Array<{ from: number; to: number; line?: number; }> = [];
+  /** cuts the scene's time from `from` up to `to` out of the film, as an editor cuts its
+   *  frames: what stands before is as it was, and from there the film shows what `to`
+   *  and on showed */
+  const cutOut = (from: unknown, to: unknown) => {
+    const [start, end] = [toTime(from, 'cutOut'), toTime(to, 'cutOut')];
+    if(end <= start) fail(`cutOut(${start}, ${end}) ends after it starts`);
+    cutOuts.push({ from: start, to: end, line: callerLine() });
+  };
+  /** the cuts on a film `length` seconds long, each on its frames, in time order;
+   *  refuses one starting at or past the film's end or cutting out less than a frame */
+  const cutsMade = (length: number): ReadonlyArray<CutOut> => cutOuts.map(({ from, to, line }) => {
+    const call = `cutOut(${from}, ${to})`;
+    if(from >= length) fail(`${call} starts at or past the film's end, ${length} s`, line);
+    const [start, end] = [frameOf(from) / settings.fps, frameOf(Math.min(to, length)) / settings.fps];
+    if(end <= start) fail(`${call} cuts out less than a frame at ${settings.fps} fps`, line);
+    return { from: start, to: end, ...((line !== undefined) ? { line } : {}) };
+  }).sort((a, b) => a.from - b.from);
 
   // .. Sounds ....................................................................
   /** a sound from `time` (a Platform file by its `charmiq://file/<assetId>` URI, or a
@@ -946,6 +1008,24 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     const smooth = (u: number) => u * u * (3 - (2 * u));
     return smooth(Math.min(up, down));
   };
+  /** a value held a while and then eased over `turn` seconds to the next, from `first`
+   *  at `start` until `end`: each held `gap()` seconds, the next `value()` (a glance, a
+   *  hand's gesture) */
+  const heldValues = (start: number, end: number, gap: () => number, value: () => number, turn: number, first = 0) => {
+    const held: Array<{ time: number; value: number; }> = [{ time: start, value: first }];
+    for(let t=start; t<end;) {
+      t += gap();
+      held.push({ time: t, value: value() });
+    }
+    let index = 0/*where the last time asked stood: times are asked in order*/;
+    return (t: number): number => {
+      if(held[index].time > t) index = 0;
+      while(((index + 1) < held.length) && (held[index + 1].time <= t)) index++;
+      const [now, before] = [held[index], held[Math.max(0, index - 1)]];
+      const u = Math.min(1, (t - now.time) / turn);
+      return before.value + ((now.value - before.value) * (u * u * (3 - (2 * u))));
+    };
+  };
   /** standing alive (SEE: idle): a function of time giving what it adds, `scale` of
    *  each movement */
   const idleOf = (energy: number, nervous: number, start: number, end: number, seed: unknown, scale = 1) => {
@@ -953,19 +1033,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     const offsets = Array.from({ length: 6 }, () => Math.floor(next() * 1000));
     const breathRate = 0.22 + (0.12 * nervous) + (0.05 * next()), breathPhase = next() * 2 * Math.PI;
     // glances: each held a while, then turned to over a moment
-    const glances: Array<{ time: number; angle: number; }> = [{ time: start, angle: 0 }];
-    for(let t=start; t<end;) {
-      t += (2.6 - (1.8 * nervous)) * (0.6 + (0.8 * next()));
-      glances.push({ time: t, angle: ((next() * 2) - 1) * (18 + (45 * nervous) + (15 * energy)) });
-    }
-    const turnTime = 0.32 - (0.16 * nervous);
-    const headAt = (t: number) => {
-      let index = 0;
-      while(((index + 1) < glances.length) && (glances[index + 1].time <= t)) index++;
-      const [held, before] = [glances[index], glances[Math.max(0, index - 1)]];
-      const u = Math.min(1, (t - held.time) / turnTime);
-      return before.angle + ((held.angle - before.angle) * (u * u * (3 - (2 * u))));
-    };
+    const headAt = heldValues(start, end, () => (2.6 - (1.8 * nervous)) * (0.6 + (0.8 * next())), () => ((next() * 2) - 1) * (18 + (45 * nervous) + (15 * energy)), 0.32 - (0.16 * nervous));
     return (_: number, t: number): Record<string, number> => {
       const breath = Math.sin((2 * Math.PI * breathRate * t) + breathPhase);
       const settle = envelope(t, start, end, 0.3);
@@ -1098,6 +1166,10 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   type Walker = { entry: Entry; handle: unknown; personality: Personality; direction: 1 | -1; partner?: number; gait: Gait; seed: string; };
   type Crowd = Readonly<{ what: string; line?: number; path: Path; width: number; walkers: ReadonlyArray<Walker>; from: number; to?: number; stops: ReadonlyArray<Readonly<{ x: number; z: number; }>>; reacts: ReadonlyArray<Readonly<{ at: number; where: Readonly<{ x: number; z: number; }>; within: number; look: Target; lasting: number; }>>; go?: number; seed: unknown; }>;
   const crowds: Crowd[] = [];
+  /** the audiences seated, each as recorded (SEE: RecordedAudience), and every member of
+   *  them */
+  const audiences: RecordedAudience[] = [];
+  const audienceMembers: Member[] = [];
 
   /** a crowd: `count` walkers named `<name>-1` on, dressed from a wardrobe, walking
    *  `along` a path both ways over its `width` (studs, 4), each by its personality,
@@ -1275,6 +1347,355 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     });
   };
 
+  // .. Audiences .................................................................
+  /** the most an audience holds, and the longest name it takes: its members lifted from
+   *  the set are named `<name>-<side>-<row>-<seat>` */
+  const MAX_AUDIENCE = 160;
+  const MAX_AUDIENCE_NAME = 20;
+  /** how far apart two of a stand's rows sit at least (studs back, plates up): nearer,
+   *  two members sit in one row */
+  const ROW_DEPTH = 1.5, ROW_RISE = 1.5;
+  /** the side a stand stands on, by the quarter its members face (north, east, south,
+   *  west): the stand facing west is the east stand */
+  const STAND_SIDES = ['south', 'west', 'north', 'east'];
+  /** how far a member's head turns (a person's reach, SEE: joint-range.ts
+   *  PERSON_RANGE), how far its look reaches (studs: across any stadium), and how far
+   *  behind its target it follows, at least and at most (seconds) */
+  const AUDIENCE_HEAD = 80, AUDIENCE_WITHIN = 1_000;
+  const LAG_LEAST = 0.08, LAG_MOST = 0.35;
+  /** how long a member takes to get to its feet and to sit back down, and the longest it
+   *  waits after a cheer ends before it sits (seconds) */
+  const STAND_SECONDS = 0.5, SIT_SECONDS = 0.6, SIT_WAIT = 0.3;
+  /** how long a member's hand takes from one hold to the next (seconds) */
+  const GESTURE_SECONDS = 0.5;
+  /** how far a member's legs bend forward at 0 (degrees, the two's mean) for it to sit:
+   *  less, it stands (a ring round a fight), and idles, cheers and waves on its feet */
+  const SEATED_LEGS = 45;
+  /** a member's arms at a cheer's peak (degrees forward from hanging: up over its head,
+   *  never past a person's reach with the pump added), and how far they pump either way */
+  const CHEER_ARMS = 145, CHEER_ARMS_SPREAD = 20, CHEER_PUMP = 15;
+  /** a cheering member's hop: its height (plates) and how long one takes (seconds), at
+   *  least; each its own, a quarter more at most */
+  const HOP_HEIGHT = 1.2, HOP_SECONDS = 0.55;
+  /** a wave's rise to its peak, its hold there and its fall (seconds), its arms' peak
+   *  (degrees), and the most a member's own moment strays from its place's (seconds) */
+  const WAVE_RISE = 0.35, WAVE_HOLD = 0.25, WAVE_FALL = 0.5, WAVE_ARMS = 160, WAVE_STRAY = 0.06;
+  /** how much later each row back rises in a wave (seconds) */
+  const WAVE_ROW = 0.05;
+  /** an audience's liveliness where it names none (0 still to 1) */
+  const AUDIENCE_ENERGY = 0.5;
+
+  /** a cheer as a member takes it: from when it rises (its own moment within the
+   *  cheer's `rise`), until when (the cheer's `to`, else the member's next sit), on its
+   *  feet or seated, hopping, and the line asking it */
+  type Cheer = Readonly<{ from: number; rises: number; to?: number; stand: boolean; jump: boolean; line?: number; }>;
+  /** an audience's member: its actor and handle, and the figure it was lifted from (none
+   *  for an actor given); where it sits or stands (its lowest point), the heading it
+   *  faces, whether it sits (its legs bent past SEATED_LEGS at 0), and how far its lowest
+   *  point moves as it gets to its feet (plates:
+   *  a figure lifted from the set stands on the level its seat is built at, an actor
+   *  where its keys sit it); its pose there, by channel, at a time; its stand's side, its row
+   *  (from 1 at the front) and seat (from 1 at the left as seen from what it faces), how
+   *  far along its row it sits from that left (0 to 1); and what its audience asks of it */
+  type Member = {
+    entry: Entry; handle: unknown; lift?: FigurePart; at: Point; facing: number; seated: boolean; onFeet: number; base: (channel: string, time: number) => number;
+    side: string; row: number; seat: number; along: number;
+    energies: Array<Readonly<{ from: number; to?: number; energy: number; }>>; cheers: Cheer[]; sits: number[]; waves: Array<Readonly<{ time: number; stand: boolean; }>>;
+  };
+  /** the latest value an actor's keys give a channel by a time (its first key's before
+   *  it), none where no key gives it */
+  const keyedAt = (entry: Entry, channel: string, time: number): number | undefined => {
+    const giving = entry.keys.filter(key => channel in key.values).sort((a, b) => a.time - b.time);
+    return (giving.filter(key => key.time <= time).pop() ?? giving[0])?.values[channel];
+  };
+
+  /** an audience: the figures built into each of the set's copies of a component a
+   *  `source` names (by its name), each lifted out of the set as an actor where it was,
+   *  and the actors a source gives (an actor, or a list); its members' rows and seats
+   *  read from where they are, stand by stand, seated or standing as each is posed. Each idles where it is, lively
+   *  (SEE: memberIdle); answers the audience (SEE: audienceOf) */
+  const audience = (...given: unknown[]) => {
+    const last = given[given.length - 1];
+    const options = ((typeof last === 'object') && (last !== null) && !Array.isArray(last) && !handles.has(last)) ? optionsOf(given.pop(), 'audience') : {};
+    const name = options.name ?? 'Crowd';
+    if((typeof name !== 'string') || !/^[A-Za-z][A-Za-z0-9-]*$/.test(name) || (name.length > MAX_AUDIENCE_NAME)) fail(`an audience is named in letters, digits and dashes, up to ${MAX_AUDIENCE_NAME}, starting with a letter: its members lifted from the set are <name>-<side>-<row>-<seat>`);
+    const what = `audience('${String(name)}')`;
+    const energy = unitOf(options.energy ?? AUDIENCE_ENERGY, `${what}'s energy`);
+    if(given.length < 1) fail(`${what} takes what its members are: a build's name (its figures lifted from the set), an actor, or a list of actors`);
+    const line = callerLine();
+    // each seated figure a build gives, where it sits; each actor a source gives, where
+    // its keys first sit it
+    type Found = Omit<Member, 'side' | 'row' | 'seat' | 'along' | 'seated' | 'energies' | 'cheers' | 'sits' | 'waves' | 'entry' | 'handle'> & Readonly<{ entry?: Entry; handle?: unknown; tiers?: ReadonlyArray<number>; tier?: number; }>;
+    const found: Found[] = [];
+    for(const source of given.flatMap(each => Array.isArray(each) ? each : [each])) {
+      if(typeof source === 'string') {
+        if(!parts) { logs.push(`${what} (line ${line ?? '?'}): no studio lists the set's figures yet; ${source}'s join once one does`); continue; }
+        const built = parts.filter(part => part.component === source);
+        if(built.length < 1) {
+          const holding = [...new Set(parts.map(part => part.component))];
+          fail(`${what}: no figures are built into '${source}' in the set${(holding.length > 0) ? ` (builds holding figures: ${holding.join(', ')})` : ' (none of its builds holds figures)'}${actors.some(each => each.name === source) ? `; '${source}' is an actor: give the actor itself` : ''}`);
+        }
+        for(const part of built) {
+          const placed = { ...part.copy, inside: part.inside };
+          if(actors.some(each => JSON.stringify(each.source.placed) === JSON.stringify(placed))) continue/*cast already, as an actor of the scene's own*/;
+          const pose = part.rest.pose ?? {};
+          const tier = part.tiers.indexOf(part.copy.level + part.inside.level) + 1/*0: its seat on no tier of its copy*/;
+          found.push({ lift: part, ...((tier > 0) ? { tiers: part.tiers, tier } : {}), at: part.rest.position, facing: part.rest.turn.yaw + FIGURE_FACING, onFeet: (part.copy.level + part.inside.level) - part.rest.position.height, base: channel => (channel.startsWith('pose.') ? pose[channel.slice('pose.'.length)] : undefined) ?? 0 });
+        }
+        continue;
+      } /* else -- an actor */
+      const entry = handles.get(source) ?? fail(`${what} takes a build's name, an actor or a list of actors: ${JSON.stringify(source) ?? String(source)} is none of them`);
+      const [x, z] = [keyedAt(entry, 'x', 0), keyedAt(entry, 'z', 0)];
+      if((x === undefined) || (z === undefined)) fail(`${what}: ${entry.name} sits where its keys place it: key its x and z (${entry.name}.at(0, { x, z, height, yaw }))`);
+      if(found.some(each => each.entry === entry)) fail(`${what} takes ${entry.name} twice`);
+      const at = { x: x!, z: z!, height: keyedAt(entry, 'height', 0) ?? 0 };
+      const copy = (parts ?? []).find(({ area }) => (at.x >= area.x) && (at.x <= (area.x + area.width)) && (at.z >= area.z) && (at.z <= (area.z + area.depth)))/*seated in a copy of a build*/;
+      const tier = copy ? copy.tiers.findIndex(level => Math.abs(level - at.height) < ROW_RISE) + 1 : 0;
+      found.push({ entry, handle: source, ...((copy && (tier > 0)) ? { tiers: copy.tiers, tier } : {}), at, facing: (keyedAt(entry, 'yaw', 0) ?? 0) + facingOf(entry.source), onFeet: 0, base: (channel, time) => keyedAt(entry, channel, time) ?? 0 });
+    }
+    if(found.length > MAX_AUDIENCE) fail(`${what} holds ${found.length} members: at most ${MAX_AUDIENCE}`);
+
+    // stand by stand (the quarter its members face), its rows from the front, each row's
+    // seats from the left as seen from what they face
+    const quarterOf = (heading: number) => ((Math.round(heading / 90) % 4) + 4) % 4;
+    const members: Member[] = [], stands: Array<Readonly<{ side: string; rows: number; }>> = [];
+    for(const quarter of [0, 1, 2, 3]) {
+      const stand = found.filter(each => quarterOf(each.facing) === quarter);
+      if(stand.length < 1) continue;
+      const heading = quarter * 90 * (Math.PI / 180);
+      const [fx, fz, rx, rz] = [Math.sin(heading), Math.cos(heading), Math.cos(heading), -Math.sin(heading)]/*its front, and its right*/;
+      const back = (each: Found) => -((each.at.x * fx) + (each.at.z * fz)), across = (each: Found) => (each.at.x * rx) + (each.at.z * rz);
+      // a stand built with seat tiers numbers its rows by them, a tier nobody sits on empty;
+      // one seated otherwise (actors keyed anywhere), by depth back and level up
+      const tiered = stand.every(each => each.tier !== undefined);
+      const rows: Found[][] = tiered ? Array.from({ length: Math.max(...stand.map(each => each.tiers!.length)) }, (_, at) => stand.filter(each => each.tier === (at + 1))) : [];
+      if(!tiered) for(const each of [...stand].sort((a, b) => (back(a) - back(b)) || (a.at.height - b.at.height))) {
+        const row = rows[rows.length - 1];
+        if(row && (Math.abs(back(each) - back(row[0])) < ROW_DEPTH) && (Math.abs(each.at.height - row[0].at.height) < ROW_RISE)) row.push(each);
+        else rows.push([each]);
+      }
+      stands.push({ side: STAND_SIDES[quarter], rows: rows.length });
+      const [leftmost, rightmost] = [Math.max(...stand.map(across)), Math.min(...stand.map(across))]/*the left as seen facing it is its members' right*/;
+      rows.forEach((row, index) => [...row].sort((a, b) => across(b) - across(a)).forEach((each, place) => {
+        const side = STAND_SIDES[quarter], numbered = { side, row: index + 1, seat: place + 1, along: (leftmost > rightmost) ? ((leftmost - across(each)) / (leftmost - rightmost)) : 0 };
+        const handle = each.handle ?? actor(`${String(name)}-${side}-${numbered.row}-${numbered.seat}`, { placed: { ...each.lift!.copy, inside: each.lift!.inside } });
+        const entry = each.entry ?? actors[actors.length - 1];
+        if(each.lift) entry.seat = each.lift.copy.level + each.lift.inside.level;
+        const seated = ((each.base('pose.leftLeg', 0) + each.base('pose.rightLeg', 0)) / 2) >= SEATED_LEGS;
+        members.push({ ...each, entry, handle, ...numbered, seated, energies: [], cheers: [], sits: [], waves: [] });
+      }));
+    }
+    for(const member of members) {
+      member.entry.moves.push({ time: 0, what: `${what} idle`, line });
+      member.entry.spans.push(() => sampled(0, settings.length!, 'add', 'idle', line, memberIdle(member, energy)));
+    }
+    audienceMembers.push(...members);
+    audiences.push({ name: name as string, members: members.map(member => ({ actor: member.entry.name, side: member.side, row: member.row, seat: member.seat, ...(member.lift ? { build: member.lift.component } : {}) })), stands, ...((line !== undefined) ? { line } : {}) });
+    return audienceOf(members, what);
+  };
+
+  /** an audience's members (or a row or a stand of them) as the scene keys them: each
+   *  member seeded on its own, so none moves in step with another. `idle` sets how
+   *  lively they sit over a span; `look` turns every head after an actor or a point, a
+   *  moment behind it, the body a quarter toward it past a head's reach; `cheer` gets
+   *  them to their feet over `rise` seconds (seated with `stand: false`), arms up and
+   *  pumping, hopping with `jump`, until `to` or their next `sit`; `wave` sweeps a rise
+   *  along each stand from its `from` end over `seconds`; `row(n)` and `side(name)`
+   *  answer the members there */
+  const audienceOf = (members: ReadonlyArray<Member>, what: string): unknown => {
+    const sides = [...new Set(members.map(member => member.side))], rows = Math.max(0, ...members.map(member => member.row));
+    const group = {
+      members: members.map(member => member.handle), rows, sides,
+      row: (number: unknown) => {
+        const chosen = members.filter(member => member.row === number);
+        if(chosen.length < 1) fail(`${what}.row(${String(number)}): its rows are 1 (the front) to ${rows}`);
+        return audienceOf(chosen, `${what}.row(${String(number)})`);
+      },
+      side: (side: unknown) => {
+        const chosen = members.filter(member => member.side === side);
+        if(chosen.length < 1) fail(`${what}.side('${String(side)}'): its stands are ${sides.join(', ')}`);
+        return audienceOf(chosen, `${what}.side('${String(side)}')`);
+      },
+      idle: (options: unknown = {}) => {
+        const given = optionsOf(options, `${what}.idle`);
+        const energy = unitOf(given.energy ?? AUDIENCE_ENERGY, `${what}.idle's energy`);
+        const [from, to] = [toTime(given.from ?? 0, `${what}.idle`), (given.to === undefined) ? undefined : toTime(given.to, `${what}.idle`)];
+        if((to !== undefined) && (to <= from)) fail(`${what}.idle ends after it starts`);
+        for(const member of members) member.energies.push({ from, ...((to !== undefined) ? { to } : {}), energy });
+        return group;
+      },
+      look: (target: unknown, options: unknown = {}) => {
+        const given = optionsOf(options, `${what}.look`);
+        const aim = toTarget(target, `${what}.look's target`) ?? fail(`${what}.look takes an actor or a point to look at`);
+        const [from, to] = [toTime(given.from ?? 0, `${what}.look`), (given.to === undefined) ? undefined : toTime(given.to, `${what}.look`)];
+        const line = callerLine();
+        for(const member of members) member.entry.looks.push({ from, ...((to !== undefined) ? { to } : {}), target: aim, within: AUDIENCE_WITHIN, max: AUDIENCE_HEAD, lag: LAG_LEAST + ((LAG_MOST - LAG_LEAST) * random(`${member.entry.name} look ${member.entry.looks.length}`)()), turn: true, line });
+        return group;
+      },
+      cheer: (from: unknown, to?: unknown, options: unknown = {}) => {
+        const call = `${what}.cheer`;
+        const start = toTime(from, call), end = (to === undefined) ? undefined : toTime(to, call);
+        if((end !== undefined) && (end <= start)) fail(`${call} ends after it starts`);
+        const given = optionsOf(options, call);
+        const { stand = true, jump = false, rise = 1 } = given;
+        if((typeof stand !== 'boolean') || (typeof jump !== 'boolean')) fail(`${call}'s stand and jump are true or false`);
+        if(!isFiniteNumber(rise) || (rise < 0) || (rise > 10)) fail(`${call}'s rise is the seconds its members take to get up, one after another: 0 to 10`);
+        if(jump && !stand) fail(`${call} hops on its feet: jump takes stand`);
+        const line = callerLine();
+        for(const member of members) {
+          const cheer: Cheer = { from: start, rises: start + ((rise as number) * random(`${member.entry.name} cheer ${member.cheers.length}`)()), ...((end !== undefined) ? { to: end } : {}), stand: stand as boolean, jump: jump as boolean, line };
+          member.cheers.push(cheer);
+          member.entry.moves.push({ time: start, what: call, line });
+          // its cheer, and its sitting back down after it: each a movement of its own
+          const sits = () => Math.min(settings.length!, cheerEnd(member, cheer) + sitDelay(member, cheer));
+          member.entry.spans.push(() => sampled(cheer.rises, sits(), 'add', 'cheer', line, cheering(member, cheer)));
+          member.entry.spans.push(() => { const from = Math.min(settings.length!, sits() + (1 / settings.fps)); return sampled(from, Math.max(from, Math.min(settings.length!, sits() + SIT_SECONDS)), 'add', 'sit', line, cheering(member, cheer)); });
+        }
+        return group;
+      },
+      sit: (time: unknown) => {
+        const at = toTime(time, `${what}.sit`);
+        for(const member of members) member.sits.push(at);
+        return group;
+      },
+      wave: (time: unknown, options: unknown = {}) => {
+        const call = `${what}.wave`;
+        const start = toTime(time, call);
+        const { seconds = 4, from = 'left', stand = true } = optionsOf(options, call);
+        if(!isFiniteNumber(seconds) || (seconds <= 0) || (seconds > 30)) fail(`${call}'s seconds is how long it takes to sweep along a stand: more than 0 and up to 30`);
+        if((from !== 'left') && (from !== 'right')) fail(`${call}'s from is the end it starts at, as seen facing the stand: 'left' or 'right'`);
+        if(typeof stand !== 'boolean') fail(`${call}'s stand is true or false`);
+        const line = callerLine();
+        for(const member of members) {
+          const at = start + ((seconds as number) * ((from === 'left') ? member.along : (1 - member.along))) + (WAVE_ROW * (member.row - 1)) + (WAVE_STRAY * random(`${member.entry.name} wave ${member.waves.length}`)());
+          const wave = { time: at, stand: stand as boolean };
+          member.waves.push(wave);
+          member.entry.moves.push({ time: at, what: call, line });
+          member.entry.spans.push(() => sampled(at, Math.min(settings.length!, at + WAVE_RISE + WAVE_HOLD + WAVE_FALL), 'add', 'wave', line, waving(member, wave)));
+        }
+        return group;
+      },
+    };
+    return group;
+  };
+
+  /** every member's look after what the film's camera follows where the scene gives it
+   *  none: over each span the camera aims at an actor (from its key to the next naming
+   *  another target), the spans the member's own looks cover left out, each member its
+   *  own lag; none while the camera aims at a point */
+  const watchCamera = () => {
+    if(audienceMembers.length < 1) return;
+    const keys = [...cameras.get('main')!.keys].filter(key => key.target).sort((a, b) => a.time - b.time);
+    const aimed: Array<{ from: number; to: number; actor: string; line?: number; }> = [];
+    keys.forEach((key, index) => {
+      const to = keys[index + 1]?.time ?? settings.length!, target = key.target!;
+      if(!('actor' in target) || (to <= key.time)) return;
+      const last = aimed[aimed.length - 1];
+      if(last && (last.actor === target.actor) && (Math.abs(last.to - key.time) < 1e-9)) last.to = to/*the same actor followed on*/;
+      else aimed.push({ from: key.time, to, actor: target.actor, ...((key.line !== undefined) ? { line: key.line } : {}) });
+    });
+    for(const member of audienceMembers) {
+      const own = member.entry.looks.map(look => [look.from, look.to ?? settings.length!] as const), lag = LAG_LEAST + ((LAG_MOST - LAG_LEAST) * random(`${member.entry.name} camera`)());
+      for(const span of aimed) {
+        let free: Array<readonly [number, number]> = [[span.from, span.to]];
+        for(const [from, to] of own) free = free.flatMap(([a, b]) => ((to <= a) || (from >= b)) ? [[a, b] as const] : [...((from > a) ? [[a, from] as const] : []), ...((to < b) ? [[to, b] as const] : [])]);
+        for(const [from, to] of free) member.entry.looks.push({ from, to, target: { actor: span.actor, height: 0 }, within: AUDIENCE_WITHIN, max: AUDIENCE_HEAD, lag, turn: true, camera: true, ...((span.line !== undefined) ? { line: span.line } : {}) });
+      }
+    }
+  };
+
+  /** when a member's cheer ends: its `to`, else the member's first sit after it rises,
+   *  else the film's end */
+  const cheerEnd = (member: Member, cheer: Cheer): number => cheer.to ?? [...member.sits].sort((a, b) => a - b).find(time => time > cheer.from) ?? settings.length!;
+  /** a member's own moment to sit after a cheer ends (seconds after it) */
+  const sitDelay = (member: Member, cheer: Cheer): number => SIT_WAIT * random(`${member.entry.name} sits ${member.cheers.indexOf(cheer)}`)();
+  /** 0 to 1 over a span, eased */
+  const eased = (u: number): number => { const v = Math.min(1, Math.max(0, u)); return v * v * (3 - (2 * v)); };
+
+  /** a member alive where it sits or stands (SEE: audience): breathing; its weight
+   *  shifting from side to side and leaning a little; glances held a moment; each arm as
+   *  it was posed, gesturing, now and then up to its face, a seated member's hand on its
+   *  lap besides, held a while and moved on (the arm's own angle, so an arm the build
+   *  raised moves no further than one hanging). Its liveliness the latest `idle` over the
+   *  time (its audience's `energy` elsewhere, 0 still); its glances and hands left to a
+   *  cheer or a wave while one moves them */
+  const memberIdle = (member: Member, energy: number) => {
+    const name = member.entry.name, end = settings.length!;
+    const next = random(`${name} seated`);
+    const [breathRate, breathPhase, swayRate, swayPhase, sway, lean] = [0.2 + (0.08 * next()), next() * 2 * Math.PI, 0.12 + (0.1 * next()), next() * 2 * Math.PI, Math.floor(next() * 1000), Math.floor(next() * 1000)];
+    const glance = heldValues(0, end, () => 1.6 + (2.6 * next()), () => (next() * 2) - 1, 0.3);
+    const gesture = (hand: string, channel: string) => {
+      const drawn = random(`${name} ${hand}`), posed = member.base(channel, 0);
+      const lap = member.seated ? 0.35 : 0/*standing, no lap to rest a hand on*/;
+      const held = heldValues(0, end, () => 1.2 + (3.5 * drawn()), () => { const kind = drawn(), reach = drawn(); return (kind < 0.35) ? posed : (kind < (0.35 + lap)) ? (20 + (25 * reach)) : (kind < 0.93) ? (45 + (35 * reach)) : (95 + (20 * reach)); }, GESTURE_SECONDS, posed);
+      return (t: number) => held(t) - posed/*what it adds to the arm as it was posed*/;
+    };
+    const [right, left] = [gesture('right hand', 'pose.rightArm'), gesture('left hand', 'pose.leftArm')];
+    const energyAt = (t: number) => member.energies.filter(each => (t >= each.from) && (t < (each.to ?? Infinity))).pop()?.energy ?? energy;
+    // each cheer's and wave's span, eased in and out: read once every verb is known
+    let busy: ReadonlyArray<Readonly<{ from: number; to: number; at: (t: number) => number; }>> | undefined;
+    const busyAt = (t: number) => {
+      busy ??= [
+        ...member.cheers.map(cheer => { const ends = cheerEnd(member, cheer) + sitDelay(member, cheer); return { from: cheer.rises, to: ends + SIT_SECONDS, at: (u: number) => eased((u - cheer.rises) / STAND_SECONDS) * (1 - eased((u - ends) / SIT_SECONDS)) }; }),
+        ...member.waves.map(wave => ({ from: wave.time - 0.2, to: wave.time + WAVE_RISE + WAVE_HOLD + WAVE_FALL + 0.2, at: (u: number) => eased((u - wave.time + 0.2) / 0.2) * (1 - eased((u - wave.time - WAVE_RISE - WAVE_HOLD - WAVE_FALL) / 0.2)) })),
+      ];
+      let most = 0;
+      for(const each of busy) if((t >= each.from) && (t <= each.to)) most = Math.max(most, each.at(t));
+      return most;
+    };
+    return (_: number, t: number): Record<string, number> => {
+      const lively = energyAt(t), alive = Math.min(1, lively * 5), free = 1 - busyAt(t);
+      if(alive <= 0) return {};
+      const breath = Math.sin((2 * Math.PI * breathRate * t) + breathPhase), arms = alive * (1.5 + (2 * lively)) * breath, reach = free * alive * (0.5 + (0.8 * lively));
+      return {
+        'pose.rightArm': arms + (reach * right(t)), 'pose.leftArm': arms + (reach * left(t)),
+        'pose.lean': alive * ((0.8 * breath) + ((2 + (3 * lively)) * noise((t * 0.25) + lean))),
+        roll: alive * (1.5 + (2 * lively)) * ((0.6 * Math.sin((2 * Math.PI * swayRate * t) + swayPhase)) + (0.4 * noise((t * 0.35) + sway)))/*its weight shifting: a toy figure turns on no waist*/,
+        'pose.head': free * alive * (15 + (25 * lively)) * glance(t),
+      };
+    };
+  };
+
+  /** a member cheering (SEE: audience): from its own moment, a seated member getting to
+   *  its feet (its legs from its seat's pose to standing) and one standing staying so,
+   *  its arms up and pumping, each member its own height, beat and whether its arms pump
+   *  together or in turn, swaying, hopping on its feet, and a seated member back down to
+   *  its seat after the cheer ends */
+  const cheering = (member: Member, cheer: Cheer) => {
+    const name = member.entry.name, index = member.cheers.indexOf(cheer);
+    const next = random(`${name} cheering ${index}`);
+    const [peak, rate, phase, together, hop, hopPhase] = [CHEER_ARMS + (CHEER_ARMS_SPREAD * next()), 1.6 + (0.8 * next()), next() * 2 * Math.PI, next() < 0.5, HOP_SECONDS * (1 + (0.25 * next())), next()];
+    const ends = cheerEnd(member, cheer) + sitDelay(member, cheer);
+    const [legs, arms] = [['pose.leftLeg', 'pose.rightLeg'], ['pose.rightArm', 'pose.leftArm']].map(channels => channels.map(channel => [channel, member.base(channel, cheer.rises)] as const));
+    return (_: number, t: number): Record<string, number> => {
+      const standing = (cheer.stand && member.seated) ? (eased((t - cheer.rises) / STAND_SECONDS) * (1 - eased((t - ends) / SIT_SECONDS))) : 0;
+      const raised = eased((t - cheer.rises - 0.15) / 0.4) * (1 - eased((t - ends) / (SIT_SECONDS * 0.75)));
+      const pump = (offset: number) => CHEER_PUMP * Math.sin((2 * Math.PI * rate * t) + phase + offset);
+      const hopping = cheer.jump && (t > (cheer.rises + (member.seated ? STAND_SECONDS : 0.15))) && (t < ends);
+      const hopped = hopping ? (HOP_HEIGHT * (1 + (0.25 * hopPhase)) * Math.max(0, Math.sin((2 * Math.PI * ((t - cheer.rises) / hop)) + (hopPhase * 2 * Math.PI)))) : 0;
+      return {
+        ...Object.fromEntries(legs.map(([channel, seated]) => [channel, -seated * standing])),
+        ...Object.fromEntries(arms.map(([channel, seated], arm) => [channel, (peak + pump(together ? 0 : (arm * Math.PI)) - seated) * raised])),
+        roll: 2.5 * raised * Math.sin((Math.PI * rate * t) + phase),
+        height: (member.onFeet * standing) + hopped,
+      };
+    };
+  };
+
+  /** a member's part in a wave (SEE: audience): up at its own moment, a seated member on
+   *  its feet with `stand`, its arms up over its head, held a moment and back down */
+  const waving = (member: Member, wave: Readonly<{ time: number; stand: boolean; }>) => {
+    const [legs, arms] = [['pose.leftLeg', 'pose.rightLeg'], ['pose.rightArm', 'pose.leftArm']].map(channels => channels.map(channel => [channel, member.base(channel, wave.time)] as const));
+    const peak = WAVE_ARMS + (10 * random(`${member.entry.name} waving ${member.waves.indexOf(wave)}`)());
+    return (_: number, t: number): Record<string, number> => {
+      const up = eased((t - wave.time) / WAVE_RISE) * (1 - eased((t - wave.time - WAVE_RISE - WAVE_HOLD) / WAVE_FALL));
+      return {
+        ...((wave.stand && member.seated) ? { ...Object.fromEntries(legs.map(([channel, seated]) => [channel, -seated * up])), height: member.onFeet * up } : {}),
+        ...Object.fromEntries(arms.map(([channel, seated]) => [channel, (peak - seated) * up])),
+      };
+    };
+  };
+
   // .. Hand-offs .................................................................
   const HAND_WORDS: Readonly<Record<Hand, string>> = { rightHand: 'right hand', leftHand: 'left hand' };
   /** the item a figure's hand holds at a time: its latest key by then (`except` the
@@ -1369,7 +1790,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   // .. Run .......................................................................
   // the scene's code, given the API alone
   const api: Record<string, unknown> = {
-    scene, actor, crowd, gait, camera, view, set, fade, speed, title, sound, noise, random,
+    scene, actor, crowd, audience, gait, camera, view, set, fade, speed, cutOut, title, sound, noise, random,
     /** the language's Math, its random seeded by the scene: the same film every run */
     Math: Object.assign(Object.create(Math) as Math, { random: random('Math.random') }),
     /** a jump's height (plates) at time t from leaving at `up` plates a second, under
@@ -1403,6 +1824,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   const times = [...actors.flatMap(each => [...each.keys, ...each.faces, ...each.hands].map(key => key.time)), ...actors.flatMap(each => each.reactions.map(reaction => reaction.to)), ...[...cameras.values()].flatMap(each => each.keys.map(key => key.time)), ...fadeKeys.map(key => key.time), ...speedKeys.map(key => key.time), ...setKeys.map(key => key.time), ...titles.map(each => each.to), ...soundCues.map(each => each.until ?? each.time)];
   settings.length ??= Math.max(1, ...times);
   for(const each of crowds) walkCrowd(each);
+  watchCamera();
   // each walk's gait: the one it names, or the scene's `walk` when it names none
   for(const each of actors) each.walks = each.walks.map(walk => {
     const named = walk.gait ?? (gaits.has('walk') ? 'walk' : undefined);
@@ -1413,17 +1835,18 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   /** keys in time order, a held key after any other at its time, so a move may end
    *  exactly where a cut jumps */
   const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
+  const cuts = cutsMade(settings.length);
   return {
     title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
-    actors: actors.map(({ name, source, ride, released, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, drawn, spans, line }) => ({
+    actors: actors.map(({ name, source, ride, released, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, seat, drawn, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), ...(released ? { released } : {}), ...(pickedUp ? { pickedUp } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
       ...((reactions.length > 0) ? { reactions } : {}), ...((looks.length > 0) ? { looks: looks.map(look => ({ ...look, to: look.to ?? settings.length! })) } : {}), ...(ground ? { ground } : {}),
-      ...(still ? { still } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((footsteps.length > 0) ? { footsteps } : {}), ...((line !== undefined) ? { line } : {}),
+      ...(still ? { still } : {}), ...((seat !== undefined) ? { seat } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((footsteps.length > 0) ? { footsteps } : {}), ...((line !== undefined) ? { line } : {}),
     })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()), ...(cameras.get('main')!.drawn ? { drawn: cameras.get('main')!.drawn } : {}) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans, drawn }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(drawn ? { drawn } : {}), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
-    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), ...((soundCues.length > 0) ? { sounds: byTime(soundCues) } : {}), ...((gaits.size > 0) ? { gaits: [...gaits].map(([name, { keys, line }]) => ({ name, keys, shape: shapeOf(keys), ...((line !== undefined) ? { line } : {}) })) } : {}), ...((speedKeys.length > 0) ? { speed: byTime(speedKeys) } : {}), logs,
+    fade: byTime(fadeKeys), titles, ...((setKeys.length > 0) ? { sets: byTime(setKeys) } : {}), ...((soundCues.length > 0) ? { sounds: byTime(soundCues) } : {}), ...((gaits.size > 0) ? { gaits: [...gaits].map(([name, { keys, line }]) => ({ name, keys, shape: shapeOf(keys), ...((line !== undefined) ? { line } : {}) })) } : {}), ...((speedKeys.length > 0) ? { speed: byTime(speedKeys) } : {}), ...((cuts.length > 0) ? { cutOuts: cuts } : {}), ...((audiences.length > 0) ? { audiences } : {}), logs,
   };
 };
 

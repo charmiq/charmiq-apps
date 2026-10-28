@@ -651,7 +651,7 @@
             "points":   { "type": "array", "items": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] } },
             "segments": { "type": "array", "items": { "type": "array", "items": { "type": "object" }, "minItems": 2, "maxItems": 2 }, "description": "Each [from, to], two points" },
             "grounds":  { "type": "array", "items": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "width": { "type": "number" }, "depth": { "type": "number" }, "yaw": { "type": "number" } }, "required": ["x", "z", "width", "depth", "yaw"] }, "description": "Footprints to read the ground under: each its middle and size in studs (at most 64 each way), turned by its yaw" },
-            "held":     { "type": "array", "maxItems": 64, "items": { "type": "object", "properties": { "shot": { "type": "object", "description": "A figure's shot, as frame takes it" }, "hand": { "type": "string", "enum": ["rightHand", "leftHand"] }, "item": { "type": "object", "description": "A hand item { part, color, grip? }, as addParts dresses a hand" } }, "required": ["shot", "hand", "item"] }, "description": "Hands to answer where they hold a hand item" }
+            "held":     { "type": "array", "maxItems": 200, "items": { "type": "object", "properties": { "shot": { "type": "object", "description": "A figure's shot, as frame takes it" }, "hand": { "type": "string", "enum": ["rightHand", "leftHand"] }, "item": { "type": "object", "description": "A hand item { part, color, grip? }, as addParts dresses a hand" } }, "required": ["shot", "hand", "item"] }, "description": "Hands to answer where they hold a hand item" }
           }
         },
         "outputSchema": {
@@ -670,11 +670,12 @@
       },
       {
         "name": "describeStage",
-        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, whether the studio holds a build of its own, its build's sets, and the actor it follows through the film (follow), while it follows one",
-        "inputSchema": { "type": "object", "properties": {} },
+        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, whether the studio holds a build of its own, its build's sets, and the actor it follows through the film (follow), while it follows one. Asked figures, every figure built as a part of a copy of a component in the first set, at the placed address that casts it (a stand's seated audience)",
+        "inputSchema": { "type": "object", "properties": { "figures": { "type": "boolean", "description": "List the figures built as parts of the first set's copies" } } },
         "outputSchema": {
           "type": "object",
-          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" }, "sets": { "type": "array", "items": { "type": "string" }, "description": "The build's sets by name, the first first" }, "followed": { "type": "string", "description": "The actor followed through the film, its ghosts and path drawn" } },
+          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" }, "sets": { "type": "array", "items": { "type": "string" }, "description": "The build's sets by name, the first first" }, "followed": { "type": "string", "description": "The actor followed through the film, its ghosts and path drawn" },
+            "figures": { "type": "array", "description": "Asked figures, each figure built as a part of a copy, copy by copy: its component, where the copy stands and where the figure stands inside it (placed { ...copy, inside } casts it) and where it rests there, as stage's placed answers it", "items": { "type": "object", "properties": { "component": { "type": "string" }, "copy": { "type": "object" }, "inside": { "type": "object" }, "rest": { "type": "object" } }, "required": ["component", "copy", "inside", "rest"] } } },
           "required": ["stage", "staged", "left", "build", "sets"]
         }
       },

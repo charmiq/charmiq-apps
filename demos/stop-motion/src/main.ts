@@ -135,8 +135,9 @@ const soundStore = documentState && drive && new DesignStore(drive, documentStat
 const soundDialog = soundStore && new PickDialog(element('sounds'), soundStore, file => addSoundAt(file), 'The sound was not added');
 
 // -- Director --------------------------------------------------------------------
-/** runs the scene once its shipped sounds are listed, and shows the film it makes */
-const director = new Director(studios, async code => {
+/** runs the scene once its shipped sounds are listed, its audiences lifted from the
+ *  figures built into the set, and shows the film it makes */
+const director = new Director(studios, async (code, parts) => {
   let names: ReadonlyArray<string>;
   try {
     names = await shippedNames();
@@ -146,7 +147,7 @@ const director = new Director(studios, async code => {
     return { ok: false, error: { message: `The sounds Stop Motion ships could not be listed (${shippedFailure}).` } };
   }
   shippedFailure = undefined;
-  return runScene(code, names);
+  return runScene(code, names, parts);
 }, { show: next => showFilm(next), error: next => showError(next) });
 
 // -- Playback --------------------------------------------------------------------
@@ -447,8 +448,8 @@ const unread = (sounds: ReadonlyArray<string>) => `${sounds.map(soundsKnown.labe
  *  (`before`; both run as the film runs them, `holds` saying why not); undefined once
  *  the scene holds it, else why not */
 const editScene = async (scene: MeasuredScene, edit: SceneEdit, holds: (before: Recorded, after: Recorded) => string | undefined): Promise<string | undefined> => {
-  const names = await shippedNames();
-  const [before, after] = await Promise.all([runScene(edit.measured, names), runScene(applyEdit(edit), names)]);
+  const [names, parts] = await Promise.all([shippedNames(), studios.figureParts()]);
+  const [before, after] = await Promise.all([runScene(edit.measured, names, parts), runScene(applyEdit(edit), names, parts)]);
   if(!before.ok) return `The scene has a mistake to fix first: ${before.error.message}`;
   if(!after.ok) return after.error.message;
   const why = holds(before.scene, after.scene);
@@ -655,7 +656,7 @@ if(films) {
   merge(source.text$, studios.setChanges$).pipe(debounceTime(RECHECK_MS)).subscribe(() => void films.recheck())/*the scene or the set changed*/;
 } /* else -- standalone: no Drive */
 surface.advertise(charmiq);
-if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), surfaces: (set, area) => studios.surfacesIn(set, area), extent: set => studios.extentOf(set), held: asks => studios.held(asks), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames, hear: sound => bank ? bank.read(sound) : Promise.reject(new Error('this Platform delivers no sound files')) });
+if(charmiq) exportFilmCommands(charmiq, { film: () => film, error: () => error, studios: () => studios.count, editors: () => editors, stage: () => studios.stageState, staged: () => studios.film, restage: () => director.restage(), player, shown: index => studios.whenShown(index), surfaces: (set, area) => studios.surfacesIn(set, area), extent: set => studios.extentOf(set), figureParts: () => director.parts, held: asks => studios.held(asks), storyboard: (frames, view) => studios.storyboard(frames, view), films: films!, shippedSounds: shippedNames, hear: sound => bank ? bank.read(sound) : Promise.reject(new Error('this Platform delivers no sound files')) });
 showSheet();
 showStatus();
 showFile();

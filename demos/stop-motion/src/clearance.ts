@@ -231,13 +231,15 @@ const keyOf = (track: number, frame: number, share: number): string => `${track}
  *  that part's top (studs, below 0 through it), each point's part read from the ground
  *  under it (`groundProbe`) or, within the part, from its way out, with the point
  *  setting it (SEE: film.ts Feet `through`, `clearance`). Only `figures` are held so,
- *  never one riding, each turned about its hips over its lowest point (SEE:
+ *  never one riding nor an audience's seated member, each turned about its hips over its lowest point (SEE:
  *  brick-shared/rise.ts hipsOver, measured from `bottoms`) */
 export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, bottoms: PoseBottoms | undefined, surfaces: (set: string | undefined) => SurfaceAt, probe: Probe, groundProbe: GroundProbe): Promise<Film> => {
-  const riders = new Set(film.scene.actors.filter(actor => actor.ride).map(actor => actor.name));
+  // never one riding, nor an audience's member lifted from the set: it rises and hops in
+  // place over the seat the build gave it
+  const unheld = new Set(film.scene.actors.filter(actor => actor.ride || (actor.seat !== undefined)).map(actor => actor.name));
   const aloft = (frame: FilmFrame, index: number, shot: Shot) => (lowestAbove({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set)) > FLOATING) || flying(film, shot.name, index);
   const floors = new Map<Span, number | undefined>();
-  const bodies = film.frames.flatMap((frame, index) => frame.actors.filter(shot => figures.has(shot.name) && !riders.has(shot.name) && aloft(frame, index, shot)).map(shot => {
+  const bodies = film.frames.flatMap((frame, index) => frame.actors.filter(shot => figures.has(shot.name) && !unheld.has(shot.name) && aloft(frame, index, shot)).map(shot => {
     const flight = pathAt(film, shot.name, frame.time, ['height']);
     if(flight && !floors.has(flight)) floors.set(flight, floorOf(film, surfaces, shot.name, flight));
     const floor = flight && floors.get(flight);

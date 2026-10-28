@@ -5,14 +5,14 @@ import { isPlatformFile } from '../../brick-shared/drive';
 import { listed } from '../../brick-shared/words';
 
 import type { Avoided } from './clearance';
-import { cameraShots, filmLengthOf, flightsAt, frameAtTime, holdingOf, pointingsAt, reachOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type Pointing, type Shot, type WalkLeaps, REACH } from './film';
+import { cameraShots, channelAt, filmLengthOf, filmTimeOf, flightsAt, frameAtTime, holdingOf, pointingsAt, reachOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type Pointing, type Shot, type WalkLeaps, REACH } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { MAX_AREA_CELLS, type CellArea } from './ground';
 import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from './measure';
 import { motionOf, type DriverSpan, MOTION_CHANNELS, POSE_CHANNELS } from './motion-read';
 import type { Player } from './player';
-import type { Point, RecordedActor, SceneError } from './recorder';
-import { cameraGroups, cameraProblems, clearancesOf, footingProblems, popsOf, problemAtTime, reviewCuts, screenAt, strainedPoses, type CameraProblem, type CutSide, type FootingKind, type HeldBack, type PartFinding, type PopChange, type StrainedPose } from './review';
+import type { FigurePart, Point, Recorded, RecordedActor, RecordedAudience, SceneError } from './recorder';
+import { cameraGroups, cameraProblems, clearancesOf, deadAirOf, footingProblems, jumpsOf, popsOf, problemAtTime, reviewCuts, screenAt, strainedPoses, type CameraProblem, type CutSide, type DeadAir, type FootingKind, type HeldBack, type Jump, type PartFinding, type PopChange, type StrainedPose } from './review';
 import type { ScreenBox } from './screen';
 import { soundSpans, type Heard } from './sound';
 import type { Surface } from './steps';
@@ -38,9 +38,10 @@ import type { Board, StageState } from './studios';
  *  each other, the camera inside something or its target hidden, an actor appearing or
  *  vanishing in its picture within a shot (SEE: review.ts popsOf), each way a figure's
  *  footing goes wrong (SEE: review.ts FootingKind), a figure the scene poses past a
- *  person's range (SEE: review.ts strainedPoses), and a keyed flight short of a part it
- *  crosses */
-const PROBLEM_KINDS = ['overlap', 'inside', 'hidden', 'pop', 'into', 'above', 'floating', 'tipped', 'through', 'strained', 'short'] as const;
+ *  person's range (SEE: review.ts strainedPoses), a keyed flight short of a part it
+ *  crosses, a shot holding with nothing new (SEE: review.ts deadAirOf), and a cut-out
+ *  jumping what a shot shows (SEE: review.ts jumpsOf) */
+const PROBLEM_KINDS = ['overlap', 'inside', 'hidden', 'pop', 'into', 'above', 'floating', 'tipped', 'through', 'strained', 'short', 'dead air', 'jump'] as const;
 /** the camera's kinds, in their detail's order: its problems, then its own subject
  *  standing before the point it aims at (`own`: never a problem, so counted apart and
  *  detailed on request; SEE: review.ts CameraProblem) */
@@ -50,7 +51,7 @@ const FOOTING_KINDS: ReadonlyArray<ProblemKind & FootingKind> = ['into', 'above'
 /** what describeFilm details on request: each problem kind and the camera's own
  *  subject, every keyed flight's clearance, each walk's leaps, and the actors that come
  *  close */
-const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, 'pop', ...FOOTING_KINDS, 'strained', 'short', 'clearance', 'leaps', 'close'];
+const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, 'pop', ...FOOTING_KINDS, 'strained', 'short', 'dead air', 'jump', 'clearance', 'leaps', 'close'];
 /** what an actor popping into or out of the picture needs: to be out of view as it is
  *  shown or hidden, moving in or out of the picture on its own feet */
 const POP_FIXES: Readonly<Record<PopChange, string>> = { appears: 'stage it out of view and walk it in', vanishes: 'walk it out of view before hiding it' };
@@ -95,9 +96,10 @@ type MeasuredKind = ProblemKind | 'own';
 export type FilmAsk = Readonly<{ actors?: ReadonlyArray<string>; from?: number; to?: number; kinds?: ReadonlyArray<string>; }>;
 /** describeFilm's arguments as a Charm sends them (SEE: FilmAsk) */
 type AskArgs = Readonly<{ actors?: unknown; from?: unknown; to?: unknown; kinds?: unknown; }>;
-/** a film as describeFilm measures it: its actors' boxes once the stage sized them, and
- *  the film as staged (the film shown, staged) with the parts each frame's camera met */
-export type Measured = Readonly<{ film: Film; sizes?: Readonly<Record<string, Size>>; staged?: Readonly<{ film: Film; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; }>; }>;
+/** a film as describeFilm measures it: the length (seconds) of each sound it plays that
+ *  can be heard, by name, once read; its actors' boxes once the stage sized them, and the
+ *  film as staged (the film shown, staged) with the parts each frame's camera met */
+export type Measured = Readonly<{ film: Film; lengths?: ReadonlyMap<string, number>; sizes?: Readonly<Record<string, Size>>; staged?: Readonly<{ film: Film; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; }>; }>;
 
 // -- Reading an Actor ------------------------------------------------------------
 /** reach's arguments as a Charm sends them: the figure, the hand item, and the moment
@@ -123,6 +125,9 @@ export type FilmHost = Readonly<{
   surfaces: (set: string | undefined, area: CellArea) => Promise<ReadonlyArray<ReadonlyArray<ReadonlyArray<Surface>>>>;
   /** the area a set's parts stand over, the film staged; none for a set without parts */
   extent: (set: string | undefined) => Promise<CellArea | undefined>;
+  /** the figures built as parts of the set's copies the latest scene ran with (SEE:
+   *  director.ts), none while no studio lists them */
+  figureParts: () => ReadonlyArray<FigurePart> | undefined;
   /** where hands hold things, the film staged (SEE: studios.ts held) */
   held: HandProbe;
   /** shows frames on the main studio's storyboard sheet, answering how many */
@@ -142,16 +147,17 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
     // -- Describing the Film -----------------------------------------------------
     describeFilm: async (asked: AskArgs = {}) => {
       const film = host.film(), error = host.error(), stage = host.stage();
-      const sizes = sizesOf(stage), staged = stagedOf(host);
-      const measured = film && { film, ...(sizes ? { sizes } : {}), ...(staged ? { staged } : {}) };
+      const sizes = sizesOf(stage), staged = stagedOf(host), lengths = film && await lengthsOf(host, film);
+      const measured = film && { film, ...(lengths ? { lengths } : {}), ...(sizes ? { sizes } : {}), ...(staged ? { staged } : {}) };
       const errorReport = error ? { error: { message: error.message, ...((error.line !== undefined) ? { line: error.line } : {}) } } : {};
       const ask = askOf(film, asked);
       if(ask) return { studios: host.studios(), editors: host.editors(), ...stageReport(stage), ...(measured ? detailReport(measured, ask) : {}), ...errorReport };
       return {
         studios: host.studios(), editors: host.editors(), ...stageReport(stage),
-        ...(film ? filmFacts(film, staged?.avoided, await lengthsOf(host, film)) : {}),
+        ...(film ? { ...filmFacts(film, staged?.avoided, lengths ?? new Map()), ...audienceFacts(film, staged?.sizes) } : {}),
         ...(staged ? await extentsReport(staged.film, host.extent).catch(() => ({})/*a studio not answering: its sets' extents unsaid*/) : {}),
         ...(measured ? summaryReport(measured) : {}),
+        ...(film ? figurePartsReport(film.scene, host.figureParts()) : {}),
         ...errorReport,
         ...(await host.shippedSounds().then(shippedSounds => ({ shippedSounds }), (failure: unknown) => ({ shippedSounds: [], shippedSoundsError: (failure as Error).message }))),
         file: host.films.state,
@@ -304,15 +310,19 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
 
 // == Report ======================================================================
 // -- Summary and Detail ----------------------------------------------------------
-/** describeFilm's facts of a film: what it is, its shots, sets, sounds (each read
- *  with its length, from `lengths`, and the scene's time one played once ends) and
+/** describeFilm's facts of a film: what it is, how long it runs on the screen when its
+ *  speed or its cut-outs make that differ, the spans of its time it cuts out (each the
+ *  film's time it lies at), its shots (each with the camera keys moving it and their
+ *  lines), sets, sounds (each read with its length, from `lengths`, and the scene's time
+ *  one played once ends) and
  *  footsteps, each leaping walk's steps before, between and after its leaps (SEE:
  *  leapsSummaryOf), where an avoiding camera was drawn in (once staged) and what its
  *  scene logged */
 export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefined, lengths: ReadonlyMap<string, number>) => ({
-  title: film.scene.title, seconds: film.scene.length, ...(film.scene.speed ? { filmSeconds: thousandths(filmLengthOf(film)) } : {}), fps: film.scene.fps, frames: film.frames.length,
+  title: film.scene.title, seconds: film.scene.length, ...((film.scene.speed || film.scene.cutOuts) ? { filmSeconds: thousandths(filmLengthOf(film)) } : {}), fps: film.scene.fps, frames: film.frames.length,
+  ...(film.scene.cutOuts ? { cutOuts: film.scene.cutOuts.map(({ from, to, line }) => ({ from: thousandths(from), to: thousandths(to), at: thousandths(filmTimeOf(film, to)), ...((line !== undefined) ? { line } : {}) })) } : {}),
   actors: film.scene.actors.map(actor => actor.name), views: film.scene.views.map(view => view.name),
-  shots: cameraShots(film.scene.camera, film.scene.length).map(shot => { const set = setAt(film.scene.sets, shot.from); return (set !== undefined) ? { ...shot, set } : shot; }),
+  shots: shotsReport(film),
   ...(film.scene.sets ? { sets: film.scene.sets.map(({ time, set }) => ({ time: thousandths(time), set })) } : {}),
   ...(film.scene.sounds ? { sounds: film.scene.sounds.map(cue => {
     const { time, name, volume, until, actor, fadeIn, fadeOut } = cue;
@@ -333,7 +343,8 @@ export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefine
 });
 
 /** describeFilm's summary of a film's problems: how many of each kind it measured (two
- *  actors in each other once the stage sized them, the rest once staged), how many
+ *  actors in each other once the stage sized them, the rest once staged; poses past a
+ *  person's range by their lines, SEE: strainedLines), how many
  *  moments the camera's own subject stands before the point it aims at (`own`, apart
  *  from the problems; none unsaid), and every problem in a line, the worst first within
  *  each kind (SEE: Problem), a shot's camera problems of one kind and one cause in one
@@ -341,10 +352,11 @@ export const filmFacts = (film: Film, avoided: ReadonlyArray<Avoided> | undefine
 export const summaryReport = (measured: Measured) => {
   const camera = cameraOf(measured);
   const problems = problemsOf(measured, camera), lines = cameraLines(measured, camera);
-  const kinds = PROBLEM_KINDS.filter(kind => (kind === 'overlap') ? (measured.sizes !== undefined) : (measured.staged !== undefined));
-  const linesOf = (kind: ProblemKind) => (kind === 'strained') ? strainedLines(problems.filter(problem => problem.kind === kind)) : (CAMERA_KINDS.includes(kind) ? lines : problems).filter(problem => problem.kind === kind).map(({ entry }) => entry);
+  const kinds = PROBLEM_KINDS.filter(kind => (kind === 'overlap') ? (measured.sizes !== undefined) : (kind === 'dead air') ? (deadAirIn(measured) !== undefined) : (measured.staged !== undefined));
+  const strained = measured.staged ? strainedLines(measured.staged.film, problems.filter(problem => problem.kind === 'strained')) : [];
+  const linesOf = (kind: ProblemKind) => (kind === 'strained') ? strained : (CAMERA_KINDS.includes(kind) ? lines : problems).filter(problem => problem.kind === kind).map(({ entry }) => entry);
   const own = problems.filter(problem => problem.kind === 'own').length;
-  return (kinds.length < 1) ? {} : { counts: Object.fromEntries(kinds.map(kind => [kind, problems.filter(problem => problem.kind === kind).length])), ...((own > 0) ? { own } : {}), problems: PROBLEM_KINDS.flatMap(linesOf) };
+  return (kinds.length < 1) ? {} : { counts: Object.fromEntries(kinds.map(kind => [kind, (kind === 'strained') ? strained.length : problems.filter(problem => problem.kind === kind).length])), ...((own > 0) ? { own } : {}), problems: PROBLEM_KINDS.flatMap(linesOf) };
 };
 
 /** describeFilm's detail of the problems, the camera's own subject, clearances, leaps
@@ -365,6 +377,8 @@ export const detailReport = (measured: Measured, ask: FilmAsk) => {
     ...((staged && wants('pop')) ? { pops: ofKinds(['pop']).map(problem => problem.detail) } : {}),
     ...((staged && wants(...FOOTING_KINDS)) ? { footing: ofKinds(FOOTING_KINDS).map(problem => problem.detail) } : {}),
     ...((staged && wants('strained')) ? { poses: ofKinds(['strained']).map(problem => problem.detail) } : {}),
+    ...(wants('dead air') && (deadAirIn(measured) !== undefined) ? { deadAir: ofKinds(['dead air']).map(problem => problem.detail) } : {}),
+    ...(wants('jump') ? { jumps: ofKinds(['jump']).map(problem => problem.entry) } : {}),
     ...((staged && wants('clearance', 'short')) ? { clearances: clearancesReport(staged.film).filter(each => naming([each.actor]) && over(each.from, each.to) && (wants('clearance') || !each.cleared)) } : {}),
     ...((staged && wants('leaps')) ? { leaps: leapsReport(staged.film).filter(each => naming([each.actor]) && over(each.leaps[0], each.leaps[each.leaps.length - 1])) } : {}),
     ...((sizes && ask.kinds?.includes('close')) ? { close: { withinStuds: CLOSE_GAP, pairs: closeReport(film, sizes).filter(pair => naming(pair.actors) && over(pair.time, pair.time)) } } : {}),
@@ -401,7 +415,9 @@ const problemsOf = (measured: Measured, spans: ReadonlyArray<CameraProblem> = ca
     const most = hundredths(-detail.margin)/*how far short*/;
     return { kind: 'short' as const, actors: [detail.actor], from: detail.from, to: detail.to, amount: most, detail, entry: { kind: 'short', actor: detail.actor, from: detail.from, to: detail.to, most, unit: 'studs', time: detail.time, point: detail.point, part: detail.part, lines: detail.lines } };
   }) : [];
-  const all: ReadonlyArray<Problem> = [...overlaps, ...camera, ...pops, ...footing, ...strained, ...short];
+  const deadAir = (deadAirIn(measured) ?? []).map(each => deadAirReport(film.scene.length, each)).map(detail => ({ kind: 'dead air' as const, actors: [], from: detail.from, to: detail.to, amount: detail.seconds, detail, entry: detail }));
+  const jumps = jumpsOf(film).map(jumpReport).map(detail => ({ kind: 'jump' as const, actors: [], from: detail.from, to: detail.from, amount: 0/*each as wrong as the next: the earliest first*/, detail, entry: { kind: detail.kind, shot: detail.shot, at: detail.at, ...((detail.line !== undefined) ? { line: detail.line } : {}), fix: detail.fix } }));
+  const all: ReadonlyArray<Problem> = [...overlaps, ...camera, ...pops, ...footing, ...strained, ...short, ...deadAir, ...jumps];
   const length = ({ from, to }: Problem) => thousandths(to - from)/*its ends' rounding aside*/;
   return [...PROBLEM_KINDS, 'own' as const].flatMap(kind => all.filter(problem => problem.kind === kind).sort((a, b) => (b.amount - a.amount) || (length(b) - length(a)) || (a.from - b.from)));
 };
@@ -532,19 +548,168 @@ const strainedFix = ({ joint, time, nearest, most, by, added, swung, rekey }: St
 };
 
 /** the summary's lines of the poses past a person's range, one for each actor, joint
- *  and the lines driving and adding to it (a crowd's walkers each their own): a lone
- *  span its own line; several their span from the first to the last, how many (`moments`)
- *  and when the worst goes furthest, its fix the worst's. `problems` the worst first */
-const strainedLines = (problems: ReadonlyArray<Problem>): ReadonlyArray<Readonly<Record<string, unknown>>> => {
+ *  and the lines driving and adding to it (a crowd's walkers each their own): its span
+ *  from its first frame past the range to its last, the most it goes past, how many of
+ *  `film`'s frames it is past (`frames`) and when the worst goes furthest (`time`), its
+ *  fix the worst's: one line however many frames, so a pack's arm swing all film long
+ *  never buries the rest. `problems` the worst first */
+const strainedLines = (film: Film, problems: ReadonlyArray<Problem>): ReadonlyArray<Readonly<Record<string, unknown>>> => {
   const groups = new Map<string, Problem[]>();
   for(const problem of problems) {
     const { actor, joint, lines } = problem.entry as Readonly<{ actor: string; joint: string; lines: ReadonlyArray<number>; }>;
     const key = `${actor}|${joint}|${lines.join()}`;
     groups.set(key, [...(groups.get(key) ?? []), problem]);
   }
-  return [...groups.values()].map(([worst, ...rest]) => (rest.length < 1) ? worst.entry : {
-    ...worst.entry, from: Math.min(worst.from, ...rest.map(each => each.from)), to: Math.max(worst.to, ...rest.map(each => each.to)), moments: rest.length + 1, time: (worst.detail as Readonly<{ time: number; }>).time,
+  const framesOver = (spans: ReadonlyArray<Problem>) => film.frames.filter(frame => spans.some(span => (frame.time >= (span.from - 1e-6)) && (frame.time < (span.to - 1e-6)))).length;
+  return [...groups.values()].map(group => {
+    const [worst, ...rest] = group, { fix, ...entry } = worst.entry;
+    return { ...entry, from: Math.min(worst.from, ...rest.map(each => each.from)), to: Math.max(worst.to, ...rest.map(each => each.to)), frames: framesOver(group), time: (worst.detail as Readonly<{ time: number; }>).time, fix };
   });
+};
+
+// -- Dead Air --------------------------------------------------------------------
+/** where a measured film's shots hold with nothing new, once staged and every sound
+ *  heard over the rest has its length (SEE: review.ts deadAirOf); none judged otherwise */
+const deadAirIn = ({ lengths, staged }: Measured): ReadonlyArray<DeadAir> | undefined => staged && deadAirOf(staged.film, staged.sizes, lengths ?? new Map());
+
+/** describeFilm's dead air, model-facing: its shot, its span and how long the film
+ *  shows it, what came last before it and its line, and the fix: what follows started
+ *  sooner (what comes next in the shot, the next shot, or the film's end), or, where the
+ *  next shot's cut hides the jump a cut-out makes in whatever moves, the span cut out;
+ *  the film `length` seconds long */
+export const deadAirReport = (length: number, { shot, from, to, seconds, after }: DeadAir) => {
+  const cutting = `cutOut(${thousandths(from)}, ${thousandths(to)})`;
+  const fix = (to < (shot.to - 1e-6)) ? `start what comes at ${thousandths(to)} s sooner (a cutOut within the shot jumps whatever moves in it)` : (to < (length - 1e-6)) ? `cut to the next shot sooner, or ${cutting}` : `end the film sooner, or ${cutting}`;
+  return {
+    kind: 'dead air' as const, ...((shot.name !== undefined) ? { shot: shot.name } : {}), from: thousandths(from), to: thousandths(to), seconds: thousandths(seconds),
+    after: after.what, ...((after.line !== undefined) ? { lines: [after.line] } : {}), fix,
+  };
+};
+
+// -- Jumps -----------------------------------------------------------------------
+/** describeFilm's jump, model-facing: the shot a cut-out lies within, the film's time it
+ *  lies at, its line and the fix: a camera cut where it ends, hiding the jump, or what
+ *  comes started sooner in place of the cut-out; `from`, the scene's time it ends at */
+const jumpReport = ({ shot, cut, at }: Jump) => ({
+  kind: 'jump' as const, ...((shot.name !== undefined) ? { shot: shot.name } : {}), at: thousandths(at), from: cut.to, ...((cut.line !== undefined) ? { line: cut.line } : {}),
+  fix: `put a camera cut at ${thousandths(cut.to)} s, or start what comes sooner`,
+});
+
+/** describeFilm's shots: each from its cut to the next, with the set it starts on and
+ *  its camera's keys moving it */
+const shotsReport = (film: Film) => cameraShots(film.scene.camera, film.scene.length).map(shot => {
+  const set = setAt(film.scene.sets, shot.from), keys = film.scene.camera.keys.filter(key => (key.ease !== 'hold') && (key.time > shot.from) && (key.time <= shot.to));
+  return { ...shot, ...((set !== undefined) ? { set } : {}), ...((keys.length > 0) ? { keys: keys.map(key => ({ time: thousandths(key.time), ...((key.line !== undefined) ? { line: key.line } : {}) })) } : {}) };
+});
+
+// -- Audiences -------------------------------------------------------------------
+/** describeFilm's facts of the film's audiences, over its facts (SEE: filmFacts): the
+ *  actors with each audience's members one entry; each audience once, its stands' rows
+ *  from the front, each saying who fills it (the figures lifted from a build, or the
+ *  actors given, by their names' shared start); and, the stage having sized the actors,
+ *  each shot showing members of an audience at its middle frame, how many of how many,
+ *  their stands, and what the audience does over the shot. None for a film seating none */
+export const audienceFacts = (film: Film, sizes: Readonly<Record<string, Size>> | undefined) => {
+  const audiences = film.scene.audiences ?? [];
+  if(audiences.length < 1) return {};
+  const of = new Map(audiences.flatMap(audience => audience.members.map(member => [member.actor, audience] as const)));
+  const named = new Set<string>();
+  const actors = film.scene.actors.flatMap(({ name }) => {
+    const audience = of.get(name);
+    if(!audience) return [name];
+    if(named.has(audience.name)) return [];
+    named.add(audience.name);
+    return [`${audience.name}: ${audience.members.length} audience members (audiences)`];
+  });
+  const rowsOf = (members: RecordedAudience['members'], rows: number) => Array.from({ length: Math.max(rows, ...members.map(member => member.row)) }, (_, at) => {
+    const seated = members.filter(member => member.row === (at + 1)).sort((a, b) => a.seat - b.seat);
+    if(seated.length < 1) return `row ${at + 1}: empty`;
+    const builds = [...new Set(seated.flatMap(member => (member.build !== undefined) ? [member.build] : []))], given = seated.filter(member => member.build === undefined).length;
+    const counted = (count: number, noun: string) => `${count} ${noun}${(count === 1) ? '' : 's'}`;
+    const who = [...builds.map(build => `${counted(seated.filter(member => member.build === build).length, 'figure')} from ${build}`), ...((given > 0) ? [counted(given, 'actor')] : [])].join(', ');
+    return `row ${at + 1}: ${namesOf(seated.map(member => member.actor))} (${who})`;
+  });
+  const summary = audiences.map(audience => ({ name: audience.name, members: audience.members.length, sides: Object.fromEntries(audience.stands.map(({ side, rows }) => [side, rowsOf(audience.members.filter(member => member.side === side), rows)])) }));
+  if(!sizes) return { actors, audiences: summary };
+  const middles = new Map(shotFrames(film).map(({ shot, middle }) => [shot.from, middle]));
+  const shots = shotsReport(film).map(shot => {
+    const middle = middles.get(shot.from);
+    if(middle === undefined) return shot/*no frame of it shown*/;
+    const boxes = screenAt(film, sizes, middle);
+    const seen = audiences.flatMap(audience => {
+      const inView = audience.members.filter(member => boxes[member.actor]?.inFrame);
+      return (inView.length < 1) ? [] : [{ name: audience.name, inView: inView.length, of: audience.members.length, sides: [...new Set(inView.map(member => member.side))], doing: audienceDoing(film, audience, shot.from, shot.to) }];
+    });
+    return (seen.length > 0) ? { ...shot, audience: seen } : shot;
+  });
+  return { actors, audiences: summary, shots };
+};
+
+/** some actors' names by what they share: `Fan-0-*` for Fan-0-0 to Fan-0-6, a lone one
+ *  by its name */
+const namesOf = (names: ReadonlyArray<string>): string => {
+  if(names.length < 2) return names[0] ?? '';
+  const shared = names.reduce((prefix, each) => { let at = 0; while((at < prefix.length) && (prefix[at] === each[at])) at++; return prefix.slice(0, at); });
+  return `${shared}*`;
+};
+
+/** what an audience does over a span (seconds), each in the span alone, in the order it
+ *  starts: its idle; each look its members share (its target, from and to; one after
+ *  what the camera follows named so); and each
+ *  cheer (its sitting back down with it) and wave, from its first member's start to its
+ *  last member's end */
+const audienceDoing = (film: Film, audience: RecordedAudience, from: number, to: number): ReadonlyArray<string> => {
+  const members = new Set(audience.members.map(member => member.actor)), fps = film.scene.fps;
+  const acts = new Map<string, { what: string; from: number; to: number; }>();
+  const join = (key: string, what: string, start: number, end: number) => { const known = acts.get(key); acts.set(key, known ? { what, from: Math.min(known.from, start), to: Math.max(known.to, end) } : { what, from: start, to: end }); };
+  for(const actor of film.scene.actors.filter(each => members.has(each.name))) {
+    for(const look of actor.looks ?? []) {
+      const target = ('actor' in look.target) ? look.target.actor : `x ${hundredths(look.target.point.x)} z ${hundredths(look.target.point.z)}`;
+      join(`look|${target}|${look.from}|${look.to}|${look.camera ?? ''}`, `look at ${target}${look.camera ? ' (camera)' : ''}`, look.from, look.to);
+    }
+    for(const span of actor.spans.filter(each => ['cheer', 'sit', 'wave'].includes(each.label))) {
+      const what = (span.label === 'wave') ? 'wave' : 'cheer';
+      join(`${what}|${span.line ?? ''}`, what, span.from / fps, span.to / fps);
+    }
+  }
+  const shown = [...acts.values()].filter(act => (act.from < to) && (act.to > from)).sort((a, b) => a.from - b.from);
+  return ['idle', ...shown.map(act => `${act.what} ${thousandths(Math.max(from, act.from))}–${thousandths(Math.min(to, act.to))}`)];
+};
+
+// -- Figures Built into the Set --------------------------------------------------
+/** describeFilm's notice of the figures built as parts of the set's copies, which
+ *  never move (a stand's audience): a line a build, how many of its copies hold any and
+ *  how many figures in all no actor of the scene lifts, the rows (its seat tiers, from
+ *  the front) they sit in, the figures the scene keys seated in its copies at 0 with
+ *  the rows they hold (`seated`), and what makes them actors, those actors with them; a
+ *  notice, never a problem, and none while no studio lists them */
+export const figurePartsReport = (scene: Recorded, parts: ReadonlyArray<FigurePart> | undefined) => {
+  const lifted = (part: FigurePart) => scene.actors.some(({ source }) => {
+    const placed = source.placed as Readonly<{ x?: unknown; z?: unknown; level?: unknown; inside?: Readonly<{ x?: unknown; z?: unknown; level?: unknown; }>; }> | undefined;
+    return !!placed && (placed.x === part.copy.x) && (placed.z === part.copy.z) && (placed.level === part.copy.level) && (placed.inside?.x === part.inside.x) && (placed.inside?.z === part.inside.z) && (placed.inside?.level === part.inside.level);
+  });
+  const still = (parts ?? []).filter(part => !lifted(part));
+  const builds = [...new Set(still.map(part => part.component))];
+  // each figure the scene keys seated in a copy of a build at 0: the tier it sits on
+  const seatedIn = (build: string) => scene.actors.flatMap(actor => {
+    if((actor.source.part !== 'figure') || (actor.source.placed !== undefined)) return [];
+    const [x, z, height] = ['x', 'z', 'height'].map(channel => channelAt(actor.keys, channel, 0));
+    if((x === undefined) || (z === undefined)) return [];
+    const copy = (parts ?? []).find(({ component, area }) => (component === build) && (x >= area.x) && (x <= (area.x + area.width)) && (z >= area.z) && (z <= (area.z + area.depth)));
+    const tier = copy ? copy.tiers.findIndex(level => Math.abs(level - (height ?? 0)) < 1.5) + 1 : 0;
+    return (tier > 0) ? [{ name: actor.name, tier }] : [];
+  });
+  const tiersOf = (tiers: ReadonlyArray<number>) => { const sorted = [...new Set(tiers)].sort((a, b) => a - b); return sorted.every((tier, at) => (at < 1) || (tier === (sorted[at - 1] + 1))) ? ((sorted.length > 1) ? `${sorted[0]}–${sorted[sorted.length - 1]}` : `${sorted[0]}`) : sorted.join(', '); };
+  return (builds.length < 1) ? {} : { figureParts: builds.map(build => {
+    const built = still.filter(part => part.component === build), seated = seatedIn(build);
+    const rows = tiersOf(built.map(part => part.tiers.indexOf(part.copy.level + part.inside.level) + 1));
+    const actorsRows = [...new Set(seated.map(each => each.tier))].sort((a, b) => a - b).map(tier => namesOf(seated.filter(each => each.tier === tier).map(each => each.name)));
+    return {
+      build, copies: new Set(built.map(({ copy }) => `${copy.x}|${copy.z}|${copy.level}`)).size, figures: built.length, rows,
+      ...((seated.length > 0) ? { seated: `rows ${tiersOf(seated.map(each => each.tier))} seat ${actorsRows.join(', ')} (${seated.length} actors)` } : {}),
+      fix: (seated.length > 0) ? `audience('${build}', those actors) makes them one audience, every row filled` : `audience('${build}') makes them actors`,
+    };
+  }) };
 };
 
 // -- Sounds ----------------------------------------------------------------------
