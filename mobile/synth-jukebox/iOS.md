@@ -15,7 +15,7 @@ theme: charmiq:none
   }
 </style>
 
-<iframe-app height="100svh" width="100%">
+<iframe-app height="100svh" width="100%" requested-scopes="%5B%22mcp.platform.generation%22%2C%22mcp.platform.vfs%22%5D">
   <app-source>
 <!doctype html>
 <html lang="en">
@@ -244,6 +244,13 @@ img {
   gap: 5px;
   font-size: 17px;
   transition: opacity .15s;
+}
+/* a back button names the page it returns to, an album's title included */
+#backLabel {
+  max-width: 42vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .nav-btn:active {
   opacity: .3;
@@ -1494,11 +1501,31 @@ img {
 .alert-btns button + button {
   border-left: .5px solid var(--menu-sep);
 }
-.alert-btns .cancel {
+.alert-btns .cancel, .alert-btns .primary {
   font-weight: 600;
 }
 .alert-btns .destructive {
   color: #FF3B30;
+}
+.alert-btns button[disabled] {
+  opacity: .35;
+}
+/* 16px: iOS zooms the page into a smaller field it focuses */
+.alert-field {
+  display: block;
+  width: 100%;
+  height: 34px;
+  margin-top: 14px;
+  padding: 0 9px;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 .5px var(--menu-sep);
+  font-size: 16px;
+  text-align: left;
+  letter-spacing: -.3px;
+}
+.alert-field + .alert-field {
+  margin-top: 8px;
 }
 /* the resting toast is hidden, not only moved: an offset from its own height leaves
    a short (empty) toast's edge and shadow showing under the status bar. Hiding waits
@@ -1534,6 +1561,458 @@ img {
   visibility: visible;
   transition: transform .5s var(--spring), visibility 0s;
 }
+.toast span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toast-act {
+  flex: none;
+  color: var(--accent);
+  font-weight: 700;
+  padding: 4px 2px 4px 10px;
+  margin: -4px 0;
+  border-left: .5px solid var(--sep);
+}
+
+/* the Studio: the booth a song is described in, and its takes */
+.booth {
+  margin: 0 16px;
+  border-radius: 22px;
+  padding: 16px 16px 14px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(120deg,#1B1035,#5856D6,#AF52DE,#FA2D48,#1B1035);
+  background-size: 400% 400%;
+  animation: flow 18s ease infinite;
+  box-shadow: 0 12px 34px rgba(88,86,214,.35);
+}
+.booth > * {
+  position: relative;
+}
+.booth .compose-glyph {
+  position: absolute;
+}
+/* the record glyph cuts its grooves in the page's background color: on the cards'
+   gradients that is a dark cut in either color scheme */
+.compose-glyph {
+  --bg: rgba(0,0,0,.6);
+}
+.booth-field {
+  display: block;
+  margin-top: 10px;
+  border-radius: 14px;
+  background: rgba(0,0,0,.28);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.22);
+  padding: 12px 14px;
+}
+.booth-field textarea {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  font: inherit;
+  font-size: 17px;
+  line-height: 23px;
+  letter-spacing: -.3px;
+  color: #fff;
+  background: none;
+  border: 0;
+  outline: 0;
+  resize: none;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-appearance: none;
+  appearance: none;
+  caret-color: #fff;
+}
+.booth-field textarea::placeholder {
+  color: rgba(255,255,255,.62);
+}
+.booth-ideas {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.booth-ideas button {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  font-size: 14px;
+  font-weight: 600;
+  background: rgba(255,255,255,.16);
+  white-space: nowrap;
+}
+.booth-ideas button:active {
+  background: rgba(255,255,255,.3);
+}
+.chips {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  margin: 12px -16px 0;
+  padding: 0 16px 2px;
+  scrollbar-width: none;
+}
+.chips::-webkit-scrollbar {
+  display: none;
+}
+.chip {
+  flex: none;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.4);
+  transition: background-color .2s, color .2s, transform .2s var(--spring);
+}
+.chip.on {
+  background: #fff;
+  color: #5856D6;
+  box-shadow: none;
+}
+.chip:active {
+  transform: scale(.94);
+}
+/* the press: a pressing plate, its grooves ringing out from the record it presses */
+.press {
+  width: 100%;
+  height: 64px;
+  margin-top: 14px;
+  padding: 0 10px 0 10px;
+  border-radius: 32px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background:
+    repeating-radial-gradient(circle at 32px 50%, rgba(255,255,255,.07) 0 1px, transparent 1.5px 4px),
+    linear-gradient(110deg,#121016,#24163A 55%,#3A1430);
+  box-shadow: 0 10px 26px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.22), 0 0 22px rgba(255,55,95,.35);
+  transition: transform .25s var(--spring), opacity .2s;
+}
+/* a light sweeping across the plate now and then */
+.press::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 30%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.16), transparent);
+  transform: skewX(-18deg);
+  animation: sheen 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes sheen {
+  0%, 62% {
+    left: -40%;
+  }
+  100% {
+    left: 130%;
+  }
+}
+.press:active {
+  transform: scale(.97);
+}
+.press[disabled] {
+  opacity: .75;
+}
+.press .vinyl {
+  width: 44px;
+  height: 44px;
+  --label-color: #FF375F;
+  animation: spin 4s linear infinite;
+}
+.press:active .vinyl, .press[disabled] .vinyl {
+  animation-duration: .7s;
+}
+.press-txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+.press-t {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  line-height: 22px;
+}
+.press-s {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  opacity: .7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.press-go {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg,#FF375F,#AF52DE);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(255,55,95,.45);
+}
+.press-go svg {
+  width: 22px;
+  height: 22px;
+}
+.booth-fine {
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+  opacity: .8;
+  margin-top: 10px;
+}
+.vinyl {
+  display: block;
+  flex: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #111 0 5%, var(--label-color, #FA2D48) 6% 31%, transparent 32%),
+    conic-gradient(transparent 0 12%, rgba(255,255,255,.2) 17%, transparent 22% 62%, rgba(255,255,255,.12) 67%, transparent 72%),
+    repeating-radial-gradient(circle, #141414 0 1.5px, #262626 2px 3px);
+  box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+.takes {
+  margin: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.take {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 6px 10px 10px;
+  border-radius: 16px;
+  background: var(--card);
+  text-align: left;
+  width: 100%;
+  transition: transform .25s var(--spring);
+}
+.take.ready {
+  cursor: pointer;
+}
+.take.ready:active {
+  transform: scale(.98);
+}
+.take-play:active {
+  transform: scale(.9);
+}
+.take-disc {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  flex: none;
+}
+.take-disc img {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.take-disc .vinyl {
+  position: absolute;
+  inset: 6px;
+}
+.take-disc .vinyl.picture {
+  background:
+    radial-gradient(circle, #111 0 5%, rgba(255,255,255,.35) 5.5% 7%, transparent 7.5%),
+    conic-gradient(transparent 0 12%, rgba(255,255,255,.22) 17%, transparent 22% 62%, rgba(255,255,255,.14) 67%, transparent 72%),
+    var(--picture) center / cover no-repeat;
+}
+.take.pressing .take-disc .vinyl {
+  animation: spin 1.6s linear infinite;
+}
+.take.failed .take-disc .vinyl {
+  filter: grayscale(1);
+  opacity: .5;
+}
+.take-ring {
+  position: absolute;
+  inset: 0;
+  width: 58px;
+  height: 58px;
+  transform: rotate(-90deg);
+}
+.take-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+.take-ring .ring-bg {
+  stroke: var(--fill2);
+}
+.take-ring .ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset .5s linear;
+}
+.take-main {
+  flex: 1;
+  min-width: 0;
+}
+.take-t {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.take-p {
+  font-size: 14px;
+  line-height: 18px;
+  color: var(--label2);
+  margin-top: 1px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  letter-spacing: -.15px;
+}
+.take-s {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--label2);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.take.pressing .take-s {
+  color: var(--accent);
+}
+.take-err {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
+  color: #FF3B30;
+  min-width: 0;
+}
+.take-err span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+.ing {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--fill);
+  color: var(--label2);
+  white-space: nowrap;
+}
+.afoot .ings {
+  margin: 6px 0 8px;
+}
+.take-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.take-acts button {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: var(--fill);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+}
+.take-acts button.destructive {
+  color: #FF3B30;
+}
+.take-play {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.take-play svg {
+  width: 18px;
+  height: 18px;
+}
+.take-play .eq i {
+  background: #fff;
+}
+.studio-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .4px;
+  line-height: 13px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--label2);
+  color: var(--bg);
+  vertical-align: 1px;
+  margin-right: 5px;
+}
+.studio-empty {
+  margin: 4px 16px 0;
+  color: var(--label2);
+  font-size: 15px;
+  line-height: 21px;
+}
+.compose.go-studio {
+  margin-top: 12px;
+  background: linear-gradient(120deg,#1B1035,#5856D6,#AF52DE,#1B1035);
+  background-size: 400% 400%;
+  box-shadow: 0 10px 30px rgba(88,86,214,.3);
+}
+.tab-badge {
+  position: absolute;
+  top: 3px;
+  left: calc(50% + 6px);
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+.tab.pressing svg {
+  animation: spin 2.4s linear infinite;
+}
+#np.studio .score-cap i {
+  background: #AF52DE;
+}
 </style>
 </head>
 <body class="is-paused">
@@ -1550,6 +2029,22 @@ img {
     <div class="scroll" data-th="34">
       <div class="lt-row"><h1 class="large-title">Library</h1></div>
       <div id="libBody"></div>
+    </div>
+  </section>
+  <section class="pane tabpane" id="tab-studio">
+    <header class="nav"><div class="nav-bar"><span class="nav-title">Studio</span></div></header>
+    <div class="scroll" data-th="34">
+      <div class="lt-row"><h1 class="large-title">Studio</h1></div>
+      <div class="booth">
+        <div class="compose-glyph" id="boothGlyph"></div>
+        <div class="compose-k">Infinite Record Label · Studio</div>
+        <label class="booth-field"><textarea id="prompt" rows="3" maxlength="2000" enterkeyhint="send" autocomplete="off" spellcheck="true" aria-label="Describe a song"></textarea></label>
+        <div class="booth-ideas"><button data-action="use-idea">Use This Idea</button><button data-action="next-idea">Another Idea</button></div>
+        <div class="chips" id="chips"></div>
+        <button class="press" id="pressBtn" data-action="press"><span class="vinyl"></span><span class="press-txt"><span class="press-t">Press It</span><span class="press-s" id="pressSub"></span></span><span class="press-go" id="pressGo"></span></button>
+        <div class="booth-fine">Lyria 3 Pro writes and sings a whole song, up to three minutes. Pressing takes about half a minute and uses credits.</div>
+      </div>
+      <div id="studioBody"></div>
     </div>
   </section>
   <section class="pane tabpane" id="tab-search">
@@ -1586,6 +2081,7 @@ img {
       <div class="tab-ind" id="tabInd"></div>
       <button class="tab" data-action="tab" data-t="home" id="tabHome"></button>
       <button class="tab" data-action="tab" data-t="library" id="tabLibrary"></button>
+      <button class="tab" data-action="tab" data-t="studio" id="tabStudio"></button>
       <button class="tab" data-action="tab" data-t="search" id="tabSearch"></button>
     </nav>
   </div>
@@ -1630,11 +2126,23 @@ img {
     <div class="alert-btns"><button class="cancel" data-alert="0">Cancel</button><button class="destructive" data-alert="1" id="alertOk">Delete</button></div>
   </div>
 </div>
+<div class="alert-wrap" id="renameWrap">
+  <div class="alert">
+    <div class="alert-text">
+      <div class="alert-title">Rename Take</div>
+      <div class="alert-msg">Give your song a title and artist of your own.</div>
+      <input class="alert-field" id="renameTitle" maxlength="100" placeholder="Title" autocomplete="off" autocorrect="off" enterkeyhint="next" aria-label="Title">
+      <input class="alert-field" id="renameArtist" maxlength="100" placeholder="Artist" autocomplete="off" autocorrect="off" enterkeyhint="done" aria-label="Artist">
+    </div>
+    <div class="alert-btns"><button data-rename="0">Cancel</button><button class="primary" data-rename="1" id="renameSave">Save</button></div>
+  </div>
+</div>
 <div class="toast glass" id="toast"></div>
 
 <script>
-// the Synth Jukebox: a music library whose every song is composed live on this
-// device from its album's seed; there are no audio files. The library is the
+// the Synth Jukebox: a music library of albums composed live on this device from
+// their seed (no audio files), beside the Studio's takes: songs Lyria 3 Pro writes
+// from a description, each an audio file in the User's Drive. The library is the
 // app-content (`library.json`); the player's place (tab, page, queue, position) is
 // the app-state
 // ********************************************************************************
@@ -1708,6 +2216,7 @@ const ICON = {
   home: '<svg viewBox="0 0 28 28" width="26" height="26"><path fill="currentColor" d="M14 3.2c.4 0 .8.1 1.1.4l9.3 8.1c.6.5.2 1.5-.6 1.5H22v9.6c0 1-.8 1.8-1.8 1.8h-3.7v-6.3c0-.6-.5-1-1-1h-3c-.6 0-1 .4-1 1v6.3H7.8c-1 0-1.8-.8-1.8-1.8v-9.6H4.2c-.8 0-1.2-1-.6-1.5l9.3-8.1c.3-.3.7-.4 1.1-.4z"/></svg>',
   library: '<svg viewBox="0 0 28 28" width="26" height="26"><rect x="5" y="9" width="18" height="15" rx="3.2" fill="currentColor"/><rect x="7" y="5.6" width="14" height="2" rx="1" fill="currentColor" opacity=".7"/><rect x="9.2" y="2.8" width="9.6" height="1.8" rx=".9" fill="currentColor" opacity=".45"/><path style="fill:var(--bg)" d="M17.6 12.4v6.8a2 2 0 1 1-1.4-1.9v-3.4l-4 1v4.6a2 2 0 1 1-1.4-1.9v-4.6c0-.4.3-.7.6-.8l5.4-1.4c.4-.1.8.2.8.6z"/></svg>',
   search: '<svg viewBox="0 0 28 28" width="26" height="26"><circle cx="12.3" cy="12.3" r="7.6" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M18 18l6 6" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>',
+  studio: '<svg viewBox="0 0 28 28" width="26" height="26"><circle cx="14" cy="14" r="11.5" fill="currentColor"/><circle cx="14" cy="14" r="8" fill="none" style="stroke:var(--bg)" stroke-width=".9" opacity=".45"/><path d="M14 4.6a9.4 9.4 0 0 1 8.2 4.8" fill="none" style="stroke:var(--bg)" stroke-width="1.1" stroke-linecap="round" opacity=".6"/><circle cx="14" cy="14" r="3.6" style="fill:var(--bg)"/><circle cx="14" cy="14" r="1.2" fill="currentColor"/></svg>',
   note: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M18 3.2v11.6a3 3 0 1 1-2-2.8V7.4l-7 1.9v7.5a3 3 0 1 1-2-2.8V6.8c0-.5.3-.9.8-1l9-2.4c.6-.2 1.2.3 1.2.8z"/></svg>',
   spark: '<svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M12 2.5l2.1 6.2c.2.5.6.9 1.1 1.1l6.3 2.2-6.3 2.1c-.5.2-.9.6-1.1 1.1L12 21.5l-2.1-6.3c-.2-.5-.6-.9-1.1-1.1L2.5 12l6.3-2.2c.5-.2.9-.6 1.1-1.1z"/></svg>',
   plus: '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>',
@@ -1721,6 +2230,8 @@ const ICON = {
   trash: '<svg viewBox="0 0 24 24"><path d="M4 6.5h16M9.5 6.5V4.8c0-.5.4-.8.8-.8h3.4c.5 0 .8.4.8.8v1.7M6.2 6.5l.9 12.6c.1 1 .9 1.9 2 1.9h5.8c1 0 1.9-.8 2-1.9l.9-12.6M10 10.5v6.5M14 10.5v6.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
   remix: '<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12a8 8 0 0 1 14.3-4.9M18.5 3.5v3.8h-3.8M5.5 20.5v-3.8h3.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   playNext: '<svg viewBox="0 0 24 24"><path d="M4 6h12M4 11h12M4 16h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14 14v7l6-3.5z" fill="currentColor"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24"><path d="M4 20l1-4.2L15.6 5.2a2 2 0 0 1 2.8 0l.4.4a2 2 0 0 1 0 2.8L8.2 19 4 20zM13.5 7.3l3.2 3.2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M12 7v6" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="16.6" r="1.4" fill="#fff"/></svg>',
   album: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
 };
 // the animated equalizer marking the current track
@@ -1822,6 +2333,10 @@ const makeSpec = (album, index) => {
     prog, scale: SCALES[genre.mode], motifA, motifB, bpc: genre.bpc, swing: genre.swing,
   };
 };
+// a take's spec ({ kind: 'take', assetId, duration }) where a composition's would
+// stand: its file plays whole, its `duration` (seconds) 0 until measured
+const TAKE_SPEC = 'take';
+const isTakeSpec = (spec) => !!spec && (spec.kind === TAKE_SPEC);
 // which parts play in bar `bar`: an intro, a breakdown at the middle and an outro
 // thin the arrangement
 const layers = (spec, bar) => {
@@ -1892,7 +2407,17 @@ const Engine = (() => {
   let ctx = null/*created on the first play, inside a tap*/, compressor, master, analyser, tone, convolver, wet, noiseBuffer, frequencies;
   let spec = null/*no track loaded*/, playing = false, t0 = 0, step = 0, timer = null/*not scheduling*/, first = true, pausedPosition = 0, volume = .8;
   let session = null/*no session playing*/, sessionReverb = null;
-  const api = { onended: null/*nothing follows the end*/ };
+  const api = {
+    onended: null/*nothing follows the end*/,
+    // (spec) => Promise of an object URL holding a take's audio
+    source: null/*no takes to play*/,
+    // (spec) once a take's element measures its length
+    onduration: null,
+    // (error) when a take cannot be read or played
+    onerror: null,
+    // () when playback stopped without being asked to (SEE: stopExternally)
+    onstopped: null,
+  };
 
   // -- iOS Audio Session ---------------------------------------------------------
   // iOS mutes Web Audio with the ring/silent switch unless the audio session is
@@ -1909,12 +2434,14 @@ const Engine = (() => {
     let binary = ''; for(let i=0; i<bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     return 'data:audio/wav;base64,' + btoa(binary);
   };
+  let silentUrl = null/*made on first use*/;
+  const silence = () => silentUrl || (silentUrl = silentWav());
   const unlockSession = () => {
     try { if(navigator.audioSession && (navigator.audioSession.type !== 'playback')) navigator.audioSession.type = 'playback'; } catch(error) { /*no audio session API: the keep-alive covers older iOS*/ }
     try {
       if(!keepAlive) {
         keepAlive = document.createElement('audio');
-        keepAlive.src = silentWav(); keepAlive.loop = true; keepAlive.preload = 'auto';
+        keepAlive.src = silence(); keepAlive.loop = true; keepAlive.preload = 'auto';
         keepAlive.setAttribute('playsinline', ''); keepAlive.setAttribute('x-webkit-airplay', 'deny');
       } /* else -- created by an earlier unlock */
       if(keepAlive.paused) { const started = keepAlive.play(); if(started && started.catch) started.catch(() => {/*refused outside a tap: the next tap retries*/}); }
@@ -1925,7 +2452,9 @@ const Engine = (() => {
     if(!ctx || (ctx.state === 'running') || (ctx.state === 'closed')) return;
     const resumed = ctx.resume(); if(resumed && resumed.catch) resumed.catch(() => {/*refused outside a tap: the next tap retries*/});
   };
-  document.addEventListener('visibilitychange', () => { if(!document.hidden && playing) { unlockSession(); wake(); } });
+  // NOTE: returning to the app never resumes playback by itself: iOS stopped it
+  //       (SEE: stopExternally) and only a tap starts it again
+  document.addEventListener('visibilitychange', () => { if(!document.hidden && playing && ctx && (ctx.state !== 'running')) stopExternally(); });
 
   // -- Graph ---------------------------------------------------------------------
   // a decaying stereo noise burst: the reverb's impulse response
@@ -1943,6 +2472,10 @@ const Engine = (() => {
     if(ctx) return true;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext; if(!AudioContextClass) return false;
     ctx = new AudioContextClass();
+    // NOTE: a context leaving `running` stops playback only while the page is hidden
+    //       (the screen locked, the app left); one stopped while in front is caught
+    //       when it is next shown
+    ctx.addEventListener('statechange', () => { if(document.hidden && (ctx.state !== 'running')) stopExternally(); });
     compressor = ctx.createDynamicsCompressor(); compressor.threshold.value = -16; compressor.knee.value = 12; compressor.ratio.value = 4; compressor.attack.value = .004; compressor.release.value = .2;
     tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 18000; tone.Q.value = .4;
     analyser = ctx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = .75;
@@ -2125,14 +2658,66 @@ const Engine = (() => {
     }
   };
 
+  // -- Takes ---------------------------------------------------------------------
+  // a take plays from one <audio> element routed into the analyser, past the tone
+  // filter and the compressor (a take arrives mixed and mastered). `mediaSpec` is
+  // the take the element holds; `mediaToken` retires a play its pause or another
+  // load overtook
+  let media = null/*created on the first take*/, mediaRouted = false, mediaSpec = null/*holds none*/, mediaToken = 0;
+  const mediaElement = () => {
+    if(!media) {
+      media = document.createElement('audio');
+      media.preload = 'auto'; media.setAttribute('playsinline', ''); media.setAttribute('x-webkit-airplay', 'deny');
+      media.addEventListener('ended', () => { if(playing && (spec === mediaSpec)) finish(); });
+      media.addEventListener('loadedmetadata', () => {
+        if(!mediaSpec || !isFinite(media.duration) || (media.duration <= 0)) return;
+        mediaSpec.duration = media.duration;
+        if(api.onduration) api.onduration(mediaSpec);
+      });
+    } /* else -- created by an earlier take */
+    if(!mediaRouted && ctx) {
+      mediaRouted = true;
+      try { const source = ctx.createMediaElementSource(media); source.connect(analyser); } catch(error) { /*plays straight out: no pulse, no volume on iOS*/ }
+    } /* else -- routed already, or no graph yet */
+    return media;
+  };
+  const stopMedia = () => { mediaToken++; if(media && !media.paused) media.pause(); };
+  // plays the loaded take from `from` once its audio is at hand
+  const playMedia = (from) => {
+    const element = mediaElement(), token = ++mediaToken, take = spec;
+    pausedPosition = from; playing = true;
+    const begin = () => {
+      if((token !== mediaToken) || !playing) return;
+      const seek = () => { try { element.currentTime = from; } catch(error) { /*not seekable yet: it starts at 0*/ } };
+      if(element.readyState >= 1) seek(); else element.addEventListener('loadedmetadata', seek, { once: true });
+      const started = element.play();
+      if(started && started.catch) started.catch((error) => { if(token !== mediaToken) return; playing = false; if(api.onerror) api.onerror(error); });
+    };
+    if(mediaSpec === take) { begin(); return; }
+    // NOTE: iOS lets an element play outside a tap only once it has played inside
+    //       one: silence plays now, inside the tap, and the take once it is read
+    mediaSpec = null/*the silence*/; element.src = silence();
+    const unlocked = element.play(); if(unlocked && unlocked.catch) unlocked.catch(() => {/*the take's own play reports*/});
+    api.source(take).then(
+      (url) => { if((token !== mediaToken) || (spec !== take)) return; mediaSpec = take; element.src = url; begin(); },
+      (error) => { if(token !== mediaToken) return; playing = false; if(api.onerror) api.onerror(error); });
+  };
+
   // -- API -----------------------------------------------------------------------
-  api.load = (nextSpec, position) => { if(playing) { playing = false; clearInterval(timer); killSession(); } spec = nextSpec; pausedPosition = position || 0; };
+  api.load = (nextSpec, position) => { if(playing) { playing = false; clearInterval(timer); killSession(); } stopMedia(); spec = nextSpec; pausedPosition = position || 0; };
   // the composition loaded, or null when none is
   api.spec = () => spec;
   // plays from `position` (absent: where it paused); false where Web Audio is unavailable
   api.play = (position) => {
     if(!spec || !ensure()) return false;
     wake();
+    if(isTakeSpec(spec)) {
+      killSession(); clearInterval(timer);
+      const end = (spec.duration > 0) ? Math.max(0, spec.duration - .05) : Infinity/*not yet measured*/;
+      playMedia(clamp((position == null) ? pausedPosition : position, 0, end));
+      return true;
+    } /* else -- a composition */
+    stopMedia();
     killSession(); newSession();
     const now = ctx.currentTime;
     tone.frequency.setTargetAtTime(spec.genre.tone, now, .05); wet.gain.setTargetAtTime(spec.genre.wet, now, .05);
@@ -2144,12 +2729,23 @@ const Engine = (() => {
   };
   api.pause = () => {
     if(!playing) return;
-    pausedPosition = api.position(); playing = false; clearInterval(timer); killSession();
+    pausedPosition = api.position(); playing = false; clearInterval(timer); killSession(); stopMedia();
     try { if(keepAlive) keepAlive.pause(); } catch(error) { /*the keep-alive is already stopped*/ }
+  };
+  // a stop the app did not ask for: iOS suspends or interrupts the context when the
+  // screen locks, the app leaves or a call arrives. Playback stops where it was,
+  // as a pause does, so what the app shows is what is heard
+  const stopExternally = () => {
+    if(!playing) return;
+    pausedPosition = api.position(); playing = false; clearInterval(timer); killSession(); stopMedia();
+    try { if(keepAlive) keepAlive.pause(); } catch(error) { /*the keep-alive is already stopped*/ }
+    if(api.onstopped) api.onstopped();
   };
   api.position = () => {
     if(!spec) return 0;
-    return playing ? clamp(ctx.currentTime - t0, 0, spec.duration) : pausedPosition;
+    if(!playing) return pausedPosition;
+    if(isTakeSpec(spec)) return (mediaSpec === spec) ? media.currentTime : pausedPosition/*still being read*/;
+    return clamp(ctx.currentTime - t0, 0, spec.duration);
   };
   api.seek = (position) => { if(playing) api.play(position); else pausedPosition = position; };
   api.isPlaying = () => playing;
@@ -2162,6 +2758,12 @@ const Engine = (() => {
     const energy = sum / 5 / 255;
     return Math.max(0, (energy - .35) / .65);
   };
+  // the spectrum now (0-255 per band, lowest first), or null before the first play
+  api.spectrum = () => {
+    if(!ctx) return null/*no graph yet*/;
+    analyser.getByteFrequencyData(frequencies);
+    return frequencies;
+  };
   return api;
 })();
 
@@ -2169,14 +2771,74 @@ const Engine = (() => {
 // each album's cover, painted once from its seed and genre: a JPEG data URL and the
 // palette the Now Playing background and the Top Picks captions take from it
 const artCache = {};
+// each take's generated cover, read once per launch and redrawn at the painted
+// covers' size: by Asset id, { url, palette } once read, null while being read,
+// false when it could not be
+const coverArt = {};
+const COVER_SIZE_PX = 480;
+// an image's palette: the average color of its top, middle and bottom thirds
+const paletteOf = (paint, size) => {
+  const data = paint.getImageData(0, 0, size, size).data, bands = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+  for(let y=0; y<size; y+=8) for(let x=0; x<size; x+=8) { const i = (y * size + x) * 4, band = bands[Math.min(2, Math.floor(y * 3 / size))]; band[0] += data[i]; band[1] += data[i + 1]; band[2] += data[i + 2]; band[3]++; }
+  return bands.map(([r, g, b, n]) => {
+    r /= n * 255; g /= n * 255; b /= n * 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+    const s = (d === 0) ? 0 : d / (1 - Math.abs(2 * l - 1));
+    const h = (d === 0) ? 0 : (max === r) ? 60 * (((g - b) / d) % 6) : (max === g) ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+    return [h, Math.round(s * 100), Math.round(l * 100)];
+  });
+};
+// reads a take's cover, then shows it wherever the take's art appears
+const loadCover = async (assetId) => {
+  coverArt[assetId] = null/*being read*/;
+  try {
+    const read = await callTool('vfs', 'read_file', { uri: fileUri(assetId) });
+    const binary = atob(read.content), bytes = new Uint8Array(binary.length);
+    for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const source = URL.createObjectURL(new Blob([bytes], { type: read.contentType || 'image/png' }));
+    const image = await new Promise((resolve, reject) => { const element = new Image(); element.onload = () => resolve(element); element.onerror = () => reject(new Error('the cover did not decode')); element.src = source; });
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = COVER_SIZE_PX;
+    const paint = canvas.getContext('2d'); paint.drawImage(image, 0, 0, COVER_SIZE_PX, COVER_SIZE_PX);
+    URL.revokeObjectURL(source);
+    coverArt[assetId] = { url: canvas.toDataURL('image/jpeg', .88), palette: paletteOf(paint, COVER_SIZE_PX) };
+  } catch(error) {
+    coverArt[assetId] = false/*unreadable: the painted sleeve stays this launch*/;
+    console.warn('cover not shown', error);
+  }
+  renderAll(); onTrackChange();
+};
+// a take's generated cover once it is read; undefined (its painted sleeve) until then
+const generatedCover = (album) => {
+  if(!isTake(album) || !album.cover || (album.cover.status !== TakeStatus.Ready) || !album.cover.assetId) return undefined/*none to show*/;
+  const assetId = album.cover.assetId;
+  if(!(assetId in coverArt)) loadCover(assetId);
+  return coverArt[assetId] || undefined/*still being read*/;
+};
 const artFor = (album) => {
-  const key = album.seed + '|' + album.genre; if(artCache[key]) return artCache[key];
+  const cover = generatedCover(album); if(cover) return cover;
+  const key = isTake(album) ? 'take|' + album.prompt : album.seed + '|' + album.genre; if(artCache[key]) return artCache[key];
   const S = 480, canvas = document.createElement('canvas'); canvas.width = canvas.height = S;
   const paint = canvas.getContext('2d');
   const random = seededRandom(hashString('art|' + key)), H = Math.floor(random() * 360);
   const color = (hue, saturation, lightness, alpha) => hslColor([hue, saturation, lightness], lightness, alpha);
   let palette, grain = 10;
-  if(album.genre === 'synthwave') {
+  if(isTake(album)) {
+    // a pressed record sliding out of its sleeve, colored by its description
+    const sleeve = paint.createLinearGradient(0, 0, S, S); sleeve.addColorStop(0, color(H, 70, 46)); sleeve.addColorStop(1, color(H + 70, 75, 20));
+    paint.fillStyle = sleeve; paint.fillRect(0, 0, S, S);
+    for(let i=0; i<5; i++) { paint.fillStyle = color(H + 30 + i * 25, 80, 60, .12); paint.beginPath(); paint.arc(random() * S, random() * S, S * (.15 + random() * .3), 0, Math.PI * 2); paint.fill(); }
+    const cx = S * (.56 + random() * .08), cy = S * .5, R = S * .4;
+    paint.save(); paint.shadowColor = 'rgba(0,0,0,.55)'; paint.shadowBlur = 30; paint.fillStyle = '#111'; paint.beginPath(); paint.arc(cx, cy, R, 0, Math.PI * 2); paint.fill(); paint.restore();
+    paint.lineWidth = 1;
+    for(let r=R * .36; r<R; r+=3.2) { paint.strokeStyle = 'rgba(255,255,255,' + (.03 + random() * .05).toFixed(3) + ')'; paint.beginPath(); paint.arc(cx, cy, r, 0, Math.PI * 2); paint.stroke(); }
+    paint.strokeStyle = 'rgba(255,255,255,.22)'; paint.lineWidth = R * .5;
+    paint.beginPath(); paint.arc(cx, cy, R * .66, -1.15, -.75); paint.stroke(); paint.beginPath(); paint.arc(cx, cy, R * .66, 2, 2.3); paint.stroke();
+    paint.fillStyle = color(H + 180, 85, 60); paint.beginPath(); paint.arc(cx, cy, R * .32, 0, Math.PI * 2); paint.fill();
+    paint.fillStyle = color(H + 180, 85, 45); paint.beginPath(); paint.arc(cx, cy, R * .22, 0, Math.PI * 2); paint.fill();
+    paint.fillStyle = '#0B0B0B'; paint.beginPath(); paint.arc(cx, cy, R * .035, 0, Math.PI * 2); paint.fill();
+    paint.fillStyle = color(H, 60, 12, .9); paint.fillRect(0, 0, S * .14, S);
+    palette = [[H, 70, 40], [H + 70, 75, 30], [H + 180, 85, 55]]; grain = 12;
+  } else if(album.genre === 'synthwave') {
     // a striped sun over a neon grid
     const hue = 270 + Math.floor(random() * 70) - 20, horizon = S * .62;
     const sky = paint.createLinearGradient(0, 0, 0, horizon);
@@ -2275,14 +2937,19 @@ const WORDS = {
   a2: ['Static', 'Coast', 'Engine', 'Ghosts', 'Society', 'Hands', 'Tapes', 'Choir', 'Machines', 'Moth', 'Department', 'Weather'],
   t: ['Rain', 'Tuesday', 'Headlights', 'Ceiling Fan', 'Payphone', 'Window Seat', 'Fog', 'Dial Tone', 'Sunburn', 'Overpass', 'Snow Globe', 'Ferris Wheel', 'Lost Mitten', 'Night Bus', 'Porch Light', 'Low Tide', 'Afterglow', 'Elevator', 'Vending Machine', 'Leap Year', 'Gravity', 'Small Talk'],
 };
-// an album that has never existed: a random genre, title, artist, track names and seed
-const newAlbum = () => {
-  const random = seededRandom((Math.random() * 4294967296) >>> 0);
-  const genre = pick(random, Object.keys(GENRES));
+// a record title and an artist that have never existed, drawn from `random`
+const mintNames = (random) => {
   const first = pick(random, WORDS.noun), second = pick(random, WORDS.noun), adjective = pick(random, WORDS.adj), form = random();
   const title = (form < .5) ? adjective + ' ' + first : (form < .75) ? 'The ' + first : first + ' & ' + ((second === first) ? 'Weather' : second);
   const artistFirst = pick(random, WORDS.a1); let artistSecond = pick(random, WORDS.a2); if(artistFirst === artistSecond) artistSecond = 'Machines';
   const artist = ((random() < .3) ? 'The ' : '') + artistFirst + ' ' + artistSecond;
+  return { title, artist };
+};
+// an album that has never existed: a random genre, title, artist, track names and seed
+const newAlbum = () => {
+  const random = seededRandom((Math.random() * 4294967296) >>> 0);
+  const genre = pick(random, Object.keys(GENRES));
+  const { title, artist } = mintNames(random);
   const used = {}, tracks = [], count = 4 + Math.floor(random() * 3);
   const forms = [
     (word) => word, (word) => pick(random, WORDS.adj) + ' ' + word, (word) => 'The ' + word + ' Song',
@@ -2293,12 +2960,130 @@ const newAlbum = () => {
   return { id: randomId(), title, artist, genre, year: 2026, seed: randomId() + randomId(), tracks, composed: true };
 };
 
+// .. Studio Takes ................................................................
+// a take is a one-track album Lyria 3 Pro generates from the User's description
+// (`kind` 'take'): { id, kind, title, artist, tracks: [title], prompt (the words
+// written), ingredients (the labels of the ingredients picked), model, status,
+// startedAt (ms), assetId (its Drive file, once the press is accepted), seconds (its
+// length, once measured), failure (what went wrong, a Failure), detail (the
+// refusal's own text, kept for diagnosis and never shown) and cover ({ status,
+// assetId, startedAt, detail }: its generated cover, pressed once the song is
+// accepted or painted later from its menu; the
+// painted sleeve stands in until it is ready and wherever it fails) }. Its file
+// plays; nothing of it is composed here
+const TAKE_KIND = 'take';
+const TakeStatus = Object.freeze({ Pressing: 'pressing', Ready: 'ready', Failed: 'failed' });
+const MUSIC_MODEL = 'lyria-3-pro-preview';
+const MODEL_LABEL = 'Lyria 3 Pro';
+// a cover's model and quality: at `low`, 196 output tokens (about $0.006) a cover
+const COVER_MODEL = 'gpt-image-2.5-flare';
+const COVER_QUALITY = 'low';
+const COVER_SIZE = '1024x1024';
+const STUDIO_LABEL = 'Studio';
+// what a take's search matches on and its Browse tile shows
+const STUDIO_GENRE = { label: STUDIO_LABEL, grad: ['#1B1035', '#AF52DE'] };
+// a press usually takes this long (ms): the progress ring fills toward it
+const PRESS_EXPECTED_MS = 35 * 1000;
+// a press still unaccepted after this long (ms) was interrupted before the studio
+// answered; one accepted but still pressing after this long (ms) never settled. The
+// Platform settles every accepted generation within ten minutes
+const PRESS_UNANSWERED_MS = 3 * 60 * 1000;
+const PRESS_UNSETTLED_MS = 15 * 60 * 1000;
+// what went wrong with a press, each shown as one line
+const Failure = Object.freeze({ Unavailable: 'unavailable', NotIncluded: 'not-included', OutOfCredits: 'out-of-credits', NotAllowed: 'not-allowed', Refused: 'refused', Interrupted: 'interrupted', Unfinished: 'unfinished', Unknown: 'unknown' });
+const FAILURE_LINE = {
+  [Failure.Unavailable]: 'The studio is closed right now',
+  [Failure.NotIncluded]: 'Music isn’t in your plan',
+  [Failure.OutOfCredits]: 'You’re out of credits for now',
+  [Failure.NotAllowed]: 'The studio needs your OK',
+  [Failure.Refused]: 'Lyria couldn’t make this one',
+  [Failure.Interrupted]: 'This press was interrupted',
+  [Failure.Unfinished]: 'This press never finished',
+  [Failure.Unknown]: 'This press hit a snag',
+};
+// the failures a retry cannot change
+const FINAL_FAILURES = [Failure.NotIncluded];
+// what a refusal's text says went wrong, by the bridge's and the Platform's own
+// wording: a consent refusal, the usage cap, a Feature the plan lacks, a tool or
+// argument the Platform does not offer
+const failureOf = (text) => {
+  if(/consent gate/i.test(text)) return Failure.NotAllowed;
+  if(/current usage|credit/i.test(text)) return Failure.OutOfCredits;
+  if(/\[permission-denied\]/.test(text)) return Failure.NotIncluded;
+  if(/-3260[12]|input validation|invalid arguments|not found/i.test(text)) return Failure.Unavailable;
+  return Failure.Unknown;
+};
+// the refusal's text as a take keeps it: bounded, for diagnosis
+const failureDetail = (text) => String(text).slice(0, 500);
+const isTake = (album) => !!album && (album.kind === TAKE_KIND);
+// whether an album's tracks can play: every composed album, and a take once pressed
+const isPlayable = (album) => !!album && (!isTake(album) || ((album.status === TakeStatus.Ready) && !!album.assetId));
+// what an album is filed under: a take under the Studio, an album under its genre
+const albumLabel = (album) => isTake(album) ? STUDIO_LABEL : GENRES[album.genre].label;
+const fileUri = (assetId) => 'charmiq://file/' + assetId;
+
+// what a description presses as: its title and artist minted from its words
+const newTake = (prompt, ingredients) => {
+  const { title, artist } = mintNames(seededRandom(hashString(prompt + '|' + Date.now())));
+  return { id: randomId(), kind: TAKE_KIND, title, artist, year: new Date().getFullYear(), tracks: [title], prompt, ingredients, model: MUSIC_MODEL, status: TakeStatus.Pressing, startedAt: Date.now() };
+};
+// what the cover's model is asked for: a record cover the song's own words and
+// style direct, art-directed as a designed cover and kept free of lettering (the
+// app sets the title beside it, and a model's lettering garbles)
+const coverPrompt = (prompt, ingredients) =>
+  'Album cover artwork for this song: ' + modelPrompt(prompt, ingredients) + '\n\n' +
+  'Design a bold, striking record cover that a music fan would frame: one memorable central image or concept drawn from the song\'s story, mood and genre; ' +
+  'a deliberate, distinctive color palette; dramatic lighting, depth and rich texture; and the art style that best fits the music, whether photography, ' +
+  'illustration, painting, collage or graphic design. Square, full-bleed composition with no border or frame. ' +
+  'No text, letters, words, numbers, logos or watermarks anywhere in the image.';
+// what the model is asked for: the words written, then the ingredients as a style
+// (`Style: jazz, orchestral.`)
+const modelPrompt = (prompt, ingredients) => {
+  if(ingredients.length < 1) return prompt;
+  const texts = ingredients.map((label) => { const ingredient = INGREDIENTS.find((candidate) => candidate.label === label); return ingredient ? ingredient.text : label.toLowerCase(); });
+  return prompt.replace(/\s+$/, '') + (/[.!?]$/.test(prompt.trim()) ? ' ' : '. ') + 'Style: ' + texts.join(', ') + '.';
+};
+// descriptions the booth offers, each a song worth hearing
+const IDEAS = [
+  'Rainy-window lo-fi for a laundromat at 2AM: dusty Rhodes, vinyl crackle, a sleepy saxophone',
+  'A sea shanty about forgetting your password, stomping boots and the whole crew singing',
+  'Ambient music for houseplants: slow warm pads, distant birdsong, nothing happens, beautifully',
+  'Gospel house sermon for the last train home, a choir, handclaps and a rolling piano',
+  'An 80s synthwave anthem for a tollbooth attendant who dreams of the open road',
+  'A chiptune boss battle against a printer that will not print, frantic and triumphant',
+  'A cozy jazz trio for a Sunday crossword, brushed drums and walking bass',
+  'A breakup ballad sung by a lighthouse to a ship that stopped visiting',
+  'Surf rock for a cat chasing a laser pointer, reverb-soaked guitar, a big drum fill',
+  'A bossa nova lullaby for a robot learning to sleep, soft nylon guitar and humming',
+  'A marching band fanfare for finally finishing your taxes, brass and cymbals',
+  'Dreamy shoegaze about the moon forgetting its lines, washed-out vocals',
+];
+// what a chip adds to the description; `group` chips exclude each other
+const INGREDIENTS = [
+  { label: 'Instrumental', text: 'instrumental, no vocals', group: 'voice' },
+  { label: 'With Vocals', text: 'with sung vocals and lyrics', group: 'voice' },
+  { label: 'Dreamy', text: 'dreamy' },
+  { label: 'Euphoric', text: 'euphoric' },
+  { label: 'Melancholy', text: 'melancholy' },
+  { label: 'Spooky', text: 'spooky' },
+  { label: 'Cinematic', text: 'cinematic' },
+  { label: 'Lo-Fi', text: 'lo-fi hip hop' },
+  { label: 'Synthwave', text: 'synthwave' },
+  { label: 'House', text: 'deep house' },
+  { label: 'Jazz', text: 'jazz' },
+  { label: 'Orchestral', text: 'orchestral' },
+  { label: 'Punk', text: 'punk rock' },
+  { label: 'Slow', text: 'slow tempo', group: 'tempo' },
+  { label: 'Fast', text: 'fast tempo', group: 'tempo' },
+];
+
 // == State =======================================================================
 // .. Vocabulary ..................................................................
-const Tab = Object.freeze({ Home: 'home', Library: 'library', Search: 'search' });
-const TAB_LABEL = { [Tab.Home]: 'Home', [Tab.Library]: 'Library', [Tab.Search]: 'Search' };
-// the page a detail view shows: an album, the Loved Songs list or every song
-const RouteType = Object.freeze({ Album: 'album', Loved: 'loved', Songs: 'songs' });
+const Tab = Object.freeze({ Home: 'home', Library: 'library', Studio: 'studio', Search: 'search' });
+const TAB_LABEL = { [Tab.Home]: 'Home', [Tab.Library]: 'Library', [Tab.Studio]: 'Studio', [Tab.Search]: 'Search' };
+// the page a detail view shows: an album, the Loved Songs list, every song or every
+// pressed take
+const RouteType = Object.freeze({ Album: 'album', Loved: 'loved', Songs: 'songs', Takes: 'takes' });
 const Repeat = Object.freeze({ Off: 'off', All: 'all', One: 'one' });
 // what the Now Playing stage shows
 const PlayerMode = Object.freeze({ Art: 'art', Score: 'score', Queue: 'queue' });
@@ -2334,16 +3119,30 @@ const trackOf = (key) => {
   if(!key || !library) return null/*no track*/;
   const colon = key.lastIndexOf(':');
   const album = albumById(key.slice(0, colon)), index = +key.slice(colon + 1);
-  if(!album || (album.tracks[index] == null)) return null/*the album or the track is gone*/;
+  if(!album || (album.tracks[index] == null) || !isPlayable(album)) return null/*the album or the track is gone, or still pressing*/;
   return { key, album, idx: index, title: album.tracks[index] };
 };
-// the track's composition, composed once per seed, genre and index
+// the track's composition, composed once per seed, genre and index; a take's spec,
+// one per file, its length the measured one
 const specOf = (track) => {
-  const key = track.album.seed + '|' + track.album.genre + '|' + track.idx;
-  return specCache[key] || (specCache[key] = makeSpec(track.album, track.idx));
+  const album = track.album;
+  if(isTake(album)) {
+    const key = TAKE_SPEC + '|' + album.assetId;
+    const spec = specCache[key] || (specCache[key] = { kind: TAKE_SPEC, assetId: album.assetId, duration: 0/*not yet measured*/ });
+    if(!(spec.duration > 0) && (album.seconds > 0)) spec.duration = album.seconds;
+    return spec;
+  } /* else -- a composition */
+  const key = album.seed + '|' + album.genre + '|' + track.idx;
+  return specCache[key] || (specCache[key] = makeSpec(album, track.idx));
 };
+// a track's length as a row shows it: blank until a take is measured
+const durationText = (spec) => (spec.duration > 0) ? formatTime(spec.duration) : '';
 const current = () => trackOf(state.queue[state.qi]);
-const keysOf = (album) => album.tracks.map((_, index) => album.id + ':' + index);
+const keysOf = (album) => isPlayable(album) ? album.tracks.map((_, index) => album.id + ':' + index) : []/*a take still pressing plays nothing*/;
+const playableAlbums = () => library.albums.filter(isPlayable);
+// every take, the newest first, and the keys of those pressed
+const takes = () => library.albums.filter(isTake).sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+const takeKeys = () => takes().flatMap(keysOf);
 const isLoved = (key) => library.loved.indexOf(key) > -1;
 // shuffles `items` in place (Fisher-Yates)
 const shuffleArray = (items) => {
@@ -2374,10 +3173,14 @@ const confirmAlert = (title, message, confirmLabel) => new Promise((resolve) => 
   wrap.addEventListener('click', onClick, true);
 });
 let toastTimer = null/*no toast showing*/;
-const toast = (message) => {
+// shows `message`; with `act` ({ label, action, key, t }) a button taking that action,
+// shown longer so there is time to tap it
+const toast = (message, act) => {
   const element = $('#toast');
-  element.innerHTML = ICON.spark + '<span>' + escapeHtml(message) + '</span>'; element.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => element.classList.remove('show'), 2000);
+  element.innerHTML = ICON.spark + '<span>' + escapeHtml(message) + '</span>' +
+    (act ? '<button class="toast-act" data-action="' + act.action + '"' + (act.key ? ' data-key="' + escapeHtml(act.key) + '"' : '') + (act.t ? ' data-t="' + act.t + '"' : '') + '>' + escapeHtml(act.label) + '</button>' : '');
+  element.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => element.classList.remove('show'), act ? 6000 : 2000);
 };
 
 // == Bridge ======================================================================
@@ -2395,18 +3198,32 @@ const parseLibrary = (text) => {
   return null/*not a library*/;
 };
 // the library made safe to render: albums without an id or tracks dropped, every
-// shown field a string, an unknown genre played as Lo-Fi
+// shown field a string, an unknown genre played as Lo-Fi; a take's unknown status
+// shown as failed and its file id, length and start kept only when well formed
 const normalize = (data) => {
   data.albums = data.albums
     .filter((album) => album && album.id && Array.isArray(album.tracks))
-    .map((album) => Object.assign({}, album, {
-      id: String(album.id).replace(/:/g, '-'),
-      genre: GENRES[album.genre] ? album.genre : 'lofi',
-      seed: (album.seed != null) ? String(album.seed) : String(album.id),
-      title: String(album.title || 'Untitled'),
-      artist: String(album.artist || 'Unknown Artist'),
-      tracks: album.tracks.map(String),
-    }));
+    .map((album) => {
+      const shown = Object.assign({}, album, {
+        id: String(album.id).replace(/:/g, '-'),
+        genre: GENRES[album.genre] ? album.genre : 'lofi',
+        seed: (album.seed != null) ? String(album.seed) : String(album.id),
+        title: String(album.title || 'Untitled'),
+        artist: String(album.artist || 'Unknown Artist'),
+        tracks: album.tracks.map(String),
+      });
+      if(!isTake(album)) return shown;
+      return Object.assign(shown, {
+        prompt: String(album.prompt || ''),
+        ingredients: Array.isArray(album.ingredients) ? album.ingredients.filter((label) => typeof label === 'string') : [],
+        status: (Object.values(TakeStatus).indexOf(album.status) > -1) ? album.status : TakeStatus.Failed,
+        assetId: (typeof album.assetId === 'string') && album.assetId ? album.assetId : undefined/*not yet accepted*/,
+        seconds: (typeof album.seconds === 'number') && (album.seconds > 0) ? album.seconds : undefined/*not yet measured*/,
+        startedAt: (typeof album.startedAt === 'number') ? album.startedAt : 0,
+        failure: (Object.values(Failure).indexOf(album.failure) > -1) ? album.failure : Failure.Unknown,
+        cover: (album.cover && (typeof album.cover === 'object') && (Object.values(TakeStatus).indexOf(album.cover.status) > -1)) ? album.cover : undefined/*no cover pressed*/,
+      });
+    });
   data.loved = Array.isArray(data.loved) ? data.loved.filter((key) => typeof key === 'string') : [];
   return data;
 };
@@ -2481,13 +3298,186 @@ const showLibrary = (content) => {
     return;
   } /* else -- a library */
 
-  const first = !library;
+  const first = !library, previous = library;
   library = normalize(data);
   if(first) { boot(); return; }
   followComposition();
   if(!current()) { Engine.pause(); state.queue = []; state.qi = 0; }
   renderAll(); onTrackChange();
+  announceTakes(previous); schedulePoll(TAKE_POLL_MS);
   if(pendingRoute && albumById(pendingRoute.id)) { const route = pendingRoute; pendingRoute = null; openRoute(route); }
+};
+
+// -- Studio ----------------------------------------------------------------------
+// a press asks the Platform's generation server for a queued song: its Asset id
+// comes back at once and the song is generated after. Every device showing the
+// library asks after each pressing take's Asset until it is stored or failed, and
+// records the outcome on the take, so every device shows it
+const TAKE_POLL_MS = 4000;
+// an Asset's storage status, as describe_file reports it
+const AssetStatus = Object.freeze({ Stored: 'stored', Failed: 'failed' });
+// the takes whose press this device is still sending
+const sending = new Set();
+let pollTimer = null/*no check waiting*/, checking = false;
+
+// calls a Platform MCP tool and returns its structured result; a refusal throws its text
+const callTool = async (server, tool, args) => {
+  const mcp = window.charmiq && window.charmiq.mcp; if(!mcp) throw new Error('The studio is reachable only inside CharmIQ.');
+  const result = await mcp.callTool(server, tool, args);
+  const text = (result.content || []).filter((part) => part.type === 'text').map((part) => part.text).join('\n');
+  if(result.isError) throw new Error(text || ('The Platform refused ' + tool + '.'));
+  if(result.structuredContent == null) throw new Error('The Platform answered ' + tool + ' without its result.');
+  return result.structuredContent;
+};
+// changes take `id` by `fields`; with `stillPressing`, only while it is still pressing
+const changeTake = (id, fields, stillPressing) => updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => ((album.id === id) && (!stillPressing || (album.status === TakeStatus.Pressing))) ? { ...album, ...fields } : album) }));
+
+// presses `prompt` with `ingredients` (their labels) as a new take, in place of take
+// `replaces` when it is a retry; false when the take could not be added to the
+// library (nothing was sent)
+const pressTake = async (prompt, ingredients, replaces) => {
+  const take = newTake(prompt, ingredients);
+  sending.add(take.id);
+  try {
+    if(!await updateLibrary((data) => ({ ...data, albums: [take, ...data.albums.filter((album) => album.id !== replaces)] }))) return false;
+    toast('Pressing “' + take.title + '”');
+    let fields;
+    try {
+      const result = await callTool('generation', 'create_music', { mode: 'queued', google: { model: MUSIC_MODEL, prompt: modelPrompt(prompt, ingredients) } });
+      const assetId = Array.isArray(result.assetIds) && result.assetIds[0];
+      fields = assetId ? { assetId, cover: await pressCover(prompt, ingredients) } : { status: TakeStatus.Failed, failure: Failure.Unknown, detail: 'create_music answered without an assetId' };
+    } catch(error) { const text = messageOf(error); fields = { status: TakeStatus.Failed, failure: failureOf(text), detail: failureDetail(text) }; }
+    await changeTake(take.id, fields, true);
+  } finally { sending.delete(take.id); }
+  schedulePoll(TAKE_POLL_MS);
+  return true;
+};
+
+// asks for a take's cover; its failure never fails the take (the painted sleeve stays)
+const pressCover = async (prompt, ingredients) => {
+  try {
+    const result = await callTool('generation', 'create_image', { mode: 'queued', prompt: coverPrompt(prompt, ingredients), openai: { model: COVER_MODEL, size: COVER_SIZE, quality: COVER_QUALITY } });
+    const assetId = Array.isArray(result.assetIds) && result.assetIds[0];
+    return assetId ? { status: TakeStatus.Pressing, assetId, startedAt: Date.now() } : { status: TakeStatus.Failed, detail: 'create_image answered without an assetId' };
+  } catch(error) { return { status: TakeStatus.Failed, detail: failureDetail(messageOf(error)) }; }
+};
+// asks for a take's new title and artist; resolves them, or null when cancelled.
+// The title is required; an empty artist keeps the take's own
+const renameAlert = (take) => new Promise((resolve) => {
+  const wrap = $('#renameWrap'), title = $('#renameTitle'), artist = $('#renameArtist'), save = $('#renameSave');
+  title.value = take.title; artist.value = take.artist;
+  const validate = () => { save.disabled = !title.value.trim(); };
+  const close = (result) => {
+    wrap.classList.remove('open'); title.blur(); artist.blur();
+    wrap.removeEventListener('click', onClick, true); wrap.removeEventListener('input', validate); wrap.removeEventListener('keydown', onKey);
+    resolve(result);
+  };
+  const commit = () => { if(title.value.trim()) close({ title: title.value.trim(), artist: artist.value.trim() || take.artist }); };
+  const onClick = (event) => {
+    const button = event.target.closest('[data-rename]'); if(!button) return;
+    event.stopPropagation();
+    if(button.dataset.rename === '1') commit(); else close(null/*cancelled*/);
+  };
+  const onKey = (event) => {
+    if(event.key === 'Escape') { event.stopPropagation(); close(null/*cancelled*/); }
+    else if(event.key === 'Enter') { event.preventDefault(); if(event.target === title) artist.focus(); else commit(); }
+  };
+  wrap.addEventListener('click', onClick, true); wrap.addEventListener('input', validate); wrap.addEventListener('keydown', onKey);
+  validate(); wrap.classList.add('open');
+  // NOTE: focused inside the tap that opened it, so iOS raises the keyboard
+  title.focus(); title.select();
+});
+// renames a take: its title (the album's and its song's) and its artist
+const renameTake = async (id) => {
+  const take = albumById(id); if(!isTake(take)) return;
+  const names = await renameAlert(take); if(!names) return;
+  if((names.title === take.title) && (names.artist === take.artist)) return/*unchanged*/;
+  if(await changeTake(id, { title: names.title, artist: names.artist, tracks: [names.title] })) toast('Renamed “' + names.title + '”');
+};
+// paints a new cover for a pressed take whose cover failed or that has none
+const paintCover = async (id) => {
+  const take = albumById(id); if(!isTake(take) || !needsCover(take)) return;
+  const cover = await pressCover(take.prompt, take.ingredients);
+  if(!await updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => (album.id === id) ? { ...album, cover } : album) }))) return;
+  toast((cover.status === TakeStatus.Pressing) ? 'Painting a cover for “' + take.title + '”' : 'The cover could not be started');
+  schedulePoll(TAKE_POLL_MS);
+};
+// changes take `id`'s cover by `fields` while it is still pressing
+const changeCover = (id, fields) => updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => ((album.id === id) && album.cover && (album.cover.status === TakeStatus.Pressing)) ? { ...album, cover: { ...album.cover, ...fields } } : album) }));
+
+// each take's audio, read once per launch: an object URL by Asset id
+const takeUrls = {};
+const takeUrl = (assetId) => takeUrls[assetId] || (takeUrls[assetId] = readTake(assetId).catch((error) => { delete takeUrls[assetId]; throw error; }));
+const readTake = async (assetId) => {
+  const read = await callTool('vfs', 'read_file', { uri: fileUri(assetId) });
+  if(typeof read.content !== 'string') throw new Error('The take’s file did not read as audio.');
+  const binary = atob(read.content), bytes = new Uint8Array(binary.length);
+  for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: read.contentType || 'audio/mpeg' }));
+};
+// a take's length in seconds, read from its file; undefined where it cannot be read
+// or the browser measures it only once it plays (its first play records it then)
+const measureTake = (assetId) => takeUrl(assetId).then((url) => new Promise((resolve) => {
+  const probe = document.createElement('audio');
+  let settled = false;
+  const done = (seconds) => { if(settled) return; settled = true; probe.removeAttribute('src'); resolve(seconds); };
+  probe.preload = 'metadata';
+  probe.addEventListener('loadedmetadata', () => done((isFinite(probe.duration) && (probe.duration > 0)) ? Math.round(probe.duration * 10) / 10 : undefined/*no length*/));
+  probe.addEventListener('error', () => done(undefined/*unreadable here*/));
+  setTimeout(() => done(undefined/*not measured before a play*/), 8000);
+  probe.src = url;
+}), () => undefined/*unreadable: its first play reads it again*/);
+
+// whether a pressed take can have a cover painted: none was, or it failed
+const needsCover = (album) => isTake(album) && (album.status === TakeStatus.Ready) && (!album.cover || (album.cover.status === TakeStatus.Failed));
+const isCoverPressing = (album) => !!album.cover && (album.cover.status === TakeStatus.Pressing) && !!album.cover.assetId;
+// the takes whose song or cover is still pressing
+const awaitedTakes = () => library ? library.albums.filter((album) => isTake(album) && ((album.status === TakeStatus.Pressing) || isCoverPressing(album))) : [];
+// the storage status of the Asset `assetId`, or null when it could not be asked
+const assetOf = async (assetId) => {
+  try { return (await callTool('vfs', 'describe_file', { uri: fileUri(assetId) })).asset || null; } catch(error) { return null/*asked again next round*/; }
+};
+const schedulePoll = (delay) => {
+  if(pollTimer || checking || (awaitedTakes().length < 1)) return;
+  pollTimer = setTimeout(() => { pollTimer = null; checkTakes(); }, delay);
+};
+// asks after each pressing take once, recording the outcome of each one settled
+const checkTakes = async () => {
+  if(checking || document.hidden) return/*the next visible moment asks*/;
+  checking = true;
+  try {
+    for(const take of awaitedTakes()) {
+      const age = Date.now() - take.startedAt;
+      if(isCoverPressing(take)) {
+        const cover = await assetOf(take.cover.assetId), coverAge = Date.now() - (take.cover.startedAt || take.startedAt);
+        if(cover && (cover.storeStatus === AssetStatus.Stored)) await changeCover(take.id, { status: TakeStatus.Ready });
+        else if(cover && (cover.storeStatus === AssetStatus.Failed)) await changeCover(take.id, { status: TakeStatus.Failed, detail: failureDetail(cover.errorMessage || 'failed without a reason') });
+        else if(coverAge > PRESS_UNSETTLED_MS) await changeCover(take.id, { status: TakeStatus.Failed, detail: 'still storing after ' + Math.round(coverAge / 1000) + 's' });
+      } /* else -- no cover still pressing */
+      if(take.status !== TakeStatus.Pressing) continue/*the song has settled*/;
+      if(!take.assetId) {
+        if(!sending.has(take.id) && (age > PRESS_UNANSWERED_MS)) await changeTake(take.id, { status: TakeStatus.Failed, failure: Failure.Interrupted, detail: 'no assetId after ' + Math.round(age / 1000) + 's' }, true);
+        continue;
+      } /* else -- accepted: its Asset says how it stands */
+      const asset = await assetOf(take.assetId);
+      if(asset && (asset.storeStatus === AssetStatus.Stored)) {
+        const seconds = await measureTake(take.assetId);
+        await changeTake(take.id, seconds ? { status: TakeStatus.Ready, seconds } : { status: TakeStatus.Ready }, true);
+      } else if(asset && (asset.storeStatus === AssetStatus.Failed)) await changeTake(take.id, { status: TakeStatus.Failed, failure: Failure.Refused, detail: failureDetail(asset.errorMessage || 'failed without a reason') }, true);
+      else if(age > PRESS_UNSETTLED_MS) await changeTake(take.id, { status: TakeStatus.Failed, failure: Failure.Unfinished, detail: 'still storing after ' + Math.round(age / 1000) + 's' }, true);
+    }
+  } finally { checking = false; schedulePoll(TAKE_POLL_MS); }
+};
+document.addEventListener('visibilitychange', () => { if(document.hidden) return; clearTimeout(pollTimer); pollTimer = null; checkTakes(); });
+// tells of each take that settled since `previous` was shown, pressed here or elsewhere
+const announceTakes = (previous) => {
+  if(!previous) return;
+  const was = {}; previous.albums.forEach((album) => { if(isTake(album)) was[album.id] = album.status; });
+  library.albums.forEach((take) => {
+    if(!isTake(take) || (was[take.id] !== TakeStatus.Pressing) || (take.status === TakeStatus.Pressing)) return;
+    if(take.status === TakeStatus.Ready) toast('“' + take.title + '” is pressed', { label: 'Play', action: 'play-take', key: take.id + ':0' });
+    else toast('“' + take.title + '” didn’t press', { label: 'See Why', action: 'tab', t: Tab.Studio });
+  });
 };
 
 // -- App-State -------------------------------------------------------------------
@@ -2527,73 +3517,90 @@ const keepShelfScroll = (element, render) => {
   render();
   $$('.hscroll', element).forEach((shelf, i) => { if(offsets[i]) shelf.scrollLeft = offsets[i]; });
 };
+// the tag marking a take: the Studio pressed it, nothing composed it here
+const STUDIO_TAG = '<span class="studio-tag">STUDIO</span>';
 const rowHTML = (key, context, style) => {
   const track = trackOf(key); if(!track) return '';
   const art = artFor(track.album), spec = specOf(track), playingTrack = current(), isCurrent = !!(playingTrack && (playingTrack.key === key));
   const lead = (style === RowStyle.Number)
     ? '<div class="trk-num">' + (isCurrent ? EQUALIZER : (track.idx + 1)) + '</div>'
     : '<div class="trk-thumb"><img alt="" src="' + art.url + '">' + (isCurrent ? '<div class="thumb-eq">' + EQUALIZER + '</div>' : '') + '</div>';
-  return '<div class="trk' + (isCurrent ? ' current' : '') + '" data-action="play" data-key="' + key + '" data-ctx="' + escapeHtml(context) + '" data-mode="' + style + '">' + lead +
+  // NOTE: a row in a list of songs opens its album (played from there); a row on its
+  //       album's own page plays
+  const action = (style === RowStyle.Thumbnail) ? 'open-album' : 'play';
+  return '<div class="trk' + (isCurrent ? ' current' : '') + '" data-action="' + action + '" data-id="' + track.album.id + '" data-key="' + key + '" data-ctx="' + escapeHtml(context) + '" data-mode="' + style + '">' + lead +
     '<div class="trk-body"><div class="trk-main"><div class="trk-title">' + escapeHtml(track.title) + '</div>' +
-    ((style === RowStyle.Thumbnail) ? '<div class="trk-sub">' + escapeHtml(track.album.artist) + ' · ' + GENRES[track.album.genre].label + '</div>' : '') + '</div>' +
+    ((style === RowStyle.Thumbnail) ? '<div class="trk-sub">' + (isTake(track.album) ? STUDIO_TAG + escapeHtml(track.album.prompt) : escapeHtml(track.album.artist) + ' · ' + albumLabel(track.album)) + '</div>' : '') + '</div>' +
     (isLoved(key) ? '<span class="trk-heart">' + ICON.heart + '</span>' : '') +
-    '<span class="trk-dur">' + formatTime(spec.duration) + '</span>' +
+    '<span class="trk-dur">' + durationText(spec) + '</span>' +
     '<button class="trk-more" data-action="track-menu" data-key="' + key + '" aria-label="More">' + ICON.dots + '</button></div></div>';
 };
-const tileHTML = (album) => '<button class="atile" data-action="open-album" data-id="' + album.id + '"><img alt="" src="' + artFor(album).url + '"><div class="alb-t">' + escapeHtml(album.title) + '</div><div class="alb-a">' + escapeHtml(album.artist) + '</div></button>';
+const tileHTML = (album) => '<button class="atile" data-action="open-album" data-id="' + album.id + '"><img alt="" src="' + artFor(album).url + '"><div class="alb-t">' + escapeHtml(album.title) + '</div><div class="alb-a">' + (isTake(album) ? STUDIO_TAG : '') + escapeHtml(album.artist) + '</div></button>';
 const renderHome = () => {
   const body = $('#homeBody');
   keepShelfScroll(body, () => {
-    const albums = library.albums;
+    const albums = playableAlbums(), pressed = albums.filter(isTake);
     let html = '<div class="sec-h">Top Picks for You</div><div class="hscroll">' + albums.slice(0, 6).map((album, i) => {
       const art = artFor(album);
-      return '<button class="pick" data-action="open-album" data-id="' + album.id + '"><img alt="" src="' + art.url + '"><div class="pick-cap" style="background:' + hslColor(art.palette[0], 24) + '"><div class="pick-kicker">' + ((i === 0) ? 'Made for Big G' : GENRES[album.genre].label + ' Mix') + '</div><div class="pick-title">' + escapeHtml(album.title) + '</div><div class="pick-sub">' + escapeHtml(album.artist) + '</div></div></button>';
+      return '<button class="pick" data-action="open-album" data-id="' + album.id + '"><img alt="" src="' + art.url + '"><div class="pick-cap" style="background:' + hslColor(art.palette[0], 24) + '"><div class="pick-kicker">' + ((i === 0) ? 'Made for Big G' : isTake(album) ? 'Fresh from the Studio' : albumLabel(album) + ' Mix') + '</div><div class="pick-title">' + escapeHtml(album.title) + '</div><div class="pick-sub">' + escapeHtml(album.artist) + '</div></div></button>';
     }).join('') + '</div>';
-    html += '<div class="sec-h">Make Something New</div><button class="compose" data-action="compose"><div class="compose-glyph">' + ICON.spark + '</div><div class="compose-k">Infinite Record Label</div><div class="compose-t">Compose an Album</div><div class="compose-s">Tap to mint a record that has never existed. Every note is written on this device, live. No files, no servers, no repeats.</div></button>';
-    let recent = state.recent.map(albumById).filter(Boolean);
+    html += '<div class="sec-h">Make Something New</div><button class="compose" data-action="compose"><div class="compose-glyph">' + ICON.spark + '</div><div class="compose-k">Infinite Record Label</div><div class="compose-t">Compose an Album</div><div class="compose-s">Tap to mint a record that has never existed. Every note is written on this device, live. No files, no servers, no repeats.</div></button>' +
+      '<button class="compose go-studio" data-action="tab" data-t="' + Tab.Studio + '"><div class="compose-glyph">' + ICON.studio + '</div><div class="compose-k">The Studio</div><div class="compose-t">Press a Song</div><div class="compose-s">Describe any song you can imagine. Lyria 3 Pro writes it, plays it and sings it, and it joins your library.</div></button>';
+    if(pressed.length > 0) html += '<div class="sec-h">From the Studio<button data-action="open-route" data-type="' + RouteType.Takes + '">See All</button></div><div class="hscroll">' + pressed.map(tileHTML).join('') + '</div>';
+    let recent = state.recent.map(albumById).filter(isPlayable);
     if(recent.length < 1) recent = albums.slice().reverse();
     html += '<div class="sec-h">Recently Played</div><div class="hscroll">' + recent.map(tileHTML).join('') + '</div>';
     const loved = library.loved.filter(trackOf);
     contextKeys[RouteType.Loved] = loved;
     if(loved.length > 0) html += '<div class="sec-h">Loved Songs<button data-action="open-route" data-type="loved">See All</button></div><div>' + loved.slice(0, 4).map((key) => rowHTML(key, RouteType.Loved, RowStyle.Thumbnail)).join('') + '</div>';
-    html += '<div class="foot-note"><b>There are no audio files in this app.</b> Every song is a seed (a short string) unfolded into music in real time by a tiny composer living in this page. Change one letter of a seed in the document and you get a completely different record. Open Now Playing and tap the score button to watch it think.</div>';
+    html += '<div class="foot-note"><b>The albums have no audio files.</b> Each song is a seed (a short string) unfolded into music in real time by a tiny composer living in this page. Change one letter of a seed in the document and you get a completely different record. Open Now Playing and tap the score button to watch it think. <b>Studio takes are the exception:</b> songs Lyria 3 Pro pressed from your words, each an audio file in your Drive.</div>';
     body.innerHTML = html;
   });
 };
 const renderLibrary = () => {
-  const lovedCount = library.loved.filter(trackOf).length, total = library.albums.reduce((sum, album) => sum + album.tracks.length, 0);
+  const albums = playableAlbums(), lovedCount = library.loved.filter(trackOf).length, total = albums.reduce((sum, album) => sum + album.tracks.length, 0);
   $('#libBody').innerHTML = '<div class="rows">' +
     '<button class="lrow" data-action="open-route" data-type="loved">' + ICON.heart + '<span>Loved Songs</span><span class="lrow-n">' + lovedCount + '</span>' + ICON.chev + '</button>' +
     '<button class="lrow" data-action="open-route" data-type="songs">' + ICON.note + '<span>Songs</span><span class="lrow-n">' + total + '</span>' + ICON.chev + '</button>' +
+    '<button class="lrow" data-action="open-route" data-type="' + RouteType.Takes + '">' + ICON.studio + '<span>Studio Takes</span><span class="lrow-n">' + takeKeys().length + '</span>' + ICON.chev + '</button>' +
     '<button class="lrow" data-action="compose">' + ICON.spark + '<span>Compose New Album</span>' + ICON.chev + '</button></div>' +
-    '<div class="sec-h">Recently Added</div><div class="agrid">' + library.albums.map(tileHTML).join('') + '</div>';
+    '<div class="sec-h">Recently Added</div><div class="agrid">' + albums.map(tileHTML).join('') + '</div>';
 };
 const renderSearch = () => {
   const body = $('#searchBody'), needle = query.trim().toLowerCase();
   if(!needle) {
-    body.innerHTML = '<div class="sec-h">Browse Categories</div><div class="gtiles">' + Object.keys(GENRES).map((key) => {
-      const genre = GENRES[key], album = library.albums.find((candidate) => candidate.genre === key);
-      return '<button class="gtile" data-action="genre" data-g="' + key + '" style="background:linear-gradient(135deg,' + genre.grad[0] + ',' + genre.grad[1] + ')"><span>' + genre.label + '</span>' + (album ? '<img alt="" src="' + artFor(album).url + '">' : '') + '</button>';
-    }).join('') + '</div>';
+    const take = playableAlbums().find(isTake);
+    const tile = (key, genre, album) => '<button class="gtile" data-action="genre" data-g="' + key + '" style="background:linear-gradient(135deg,' + genre.grad[0] + ',' + genre.grad[1] + ')"><span>' + genre.label + '</span>' + (album ? '<img alt="" src="' + artFor(album).url + '">' : '') + '</button>';
+    body.innerHTML = '<div class="sec-h">Browse Categories</div><div class="gtiles">' +
+      (take ? tile(TAKE_KIND, STUDIO_GENRE, take) : '') +
+      Object.keys(GENRES).map((key) => tile(key, GENRES[key], library.albums.find((candidate) => !isTake(candidate) && (candidate.genre === key)))).join('') + '</div>';
     return;
   } /* else -- a query to answer */
   const matches = (text) => text.toLowerCase().indexOf(needle) > -1;
-  const albums = library.albums.filter((album) => matches(album.title + ' ' + album.artist + ' ' + GENRES[album.genre].label));
+  // a take also matches on its description
+  const words = (album) => album.artist + ' ' + albumLabel(album) + (isTake(album) ? ' ' + album.prompt + ' ' + album.ingredients.join(' ') : '');
+  const albums = playableAlbums().filter((album) => matches(album.title + ' ' + words(album)));
   const songs = [];
-  library.albums.forEach((album) => keysOf(album).forEach((key, i) => { if(matches(album.tracks[i] + ' ' + album.artist + ' ' + GENRES[album.genre].label)) songs.push(key); }));
+  library.albums.forEach((album) => keysOf(album).forEach((key, i) => { if(matches(album.tracks[i] + ' ' + words(album))) songs.push(key); }));
   contextKeys.search = songs;
   let html = '';
   if(albums.length > 0) html += '<div class="sec-h">Albums</div><div class="hscroll">' + albums.map(tileHTML).join('') + '</div>';
   if(songs.length > 0) html += '<div class="sec-h">Songs</div><div>' + songs.map((key) => rowHTML(key, 'search', RowStyle.Thumbnail)).join('') + '</div>';
-  if(!html) html = '<div class="empty">No Results<div class="empty-sub">But you could compose it. Try Compose New Album in Library.</div></div>';
+  if(!html) html = '<div class="empty">No Results<div class="empty-sub">But you could make it. Compose a new album in Library, or describe it in the Studio and press it.</div></div>';
   body.innerHTML = html;
+};
+// what a detail page is called on the back button that returns to it
+const routeLabel = (route) => {
+  if(route.type === RouteType.Album) { const album = albumById(route.id); return album ? album.title : 'Back'; }
+  return (route.type === RouteType.Loved) ? 'Loved Songs' : (route.type === RouteType.Takes) ? 'Studio Takes' : 'Songs';
 };
 const renderDetail = () => {
   const route = state.route, body = $('#detailBody'), scroll = $('#detailScroll');
   if(!route) return;
-  $('#backLabel').textContent = TAB_LABEL[state.routeTab] || 'Back';
+  $('#backLabel').textContent = (routeHistory.length > 0) ? routeLabel(routeHistory[routeHistory.length - 1]) : (TAB_LABEL[state.routeTab] || 'Back');
   if(route.type === RouteType.Album) {
-    const album = albumById(route.id); if(!album) { closeDetail(); return; }
+    const album = albumById(route.id); if(!isPlayable(album)) { goBack(); return; }
+    if(isTake(album)) { renderTakeDetail(album); return; }
     const art = artFor(album), keys = keysOf(album), context = 'album:' + album.id; contextKeys[context] = keys;
     const total = keys.reduce((sum, key) => sum + specOf(trackOf(key)).duration, 0);
     $('#detailNavTitle').textContent = album.title; $('#detailMore').classList.remove('hidden'); $('#detailMore').dataset.id = album.id;
@@ -2604,23 +3611,118 @@ const renderDetail = () => {
       '<div class="afoot">' + keys.length + ' songs, ' + Math.round(total / 60) + ' minutes<br>Seed “' + escapeHtml(album.seed) + '”. Composed live on this device. No audio files were harmed.</div>';
     scroll.dataset.th = 300;
   } else {
-    const loved = (route.type === RouteType.Loved);
-    const keys = loved ? library.loved.filter(trackOf) : library.albums.flatMap(keysOf);
+    const loved = (route.type === RouteType.Loved), pressed = (route.type === RouteType.Takes);
+    const keys = loved ? library.loved.filter(trackOf) : pressed ? takeKeys() : library.albums.flatMap(keysOf);
     contextKeys[route.type] = keys;
-    const title = loved ? 'Loved Songs' : 'Songs';
+    const title = loved ? 'Loved Songs' : pressed ? 'Studio Takes' : 'Songs';
     $('#detailNavTitle').textContent = title; $('#detailMore').classList.add('hidden');
     body.innerHTML = '<div class="lt-row"><h1 class="large-title">' + title + '</h1></div>' +
       ((keys.length > 0)
         ? '<div style="padding:0 16px 14px"><div class="pills" style="margin-top:8px"><button class="pill" data-action="play-all" data-ctx="' + route.type + '">' + ICON.play + 'Play</button><button class="pill" data-action="shuffle-all" data-ctx="' + route.type + '">' + ICON.shuffle + 'Shuffle</button></div></div>' +
           '<div>' + keys.map((key) => rowHTML(key, route.type, RowStyle.Thumbnail)).join('') + '</div>'
-        : '<div class="empty">No Loved Songs Yet<div class="empty-sub">Tap the heart in Now Playing to love a song.</div></div>');
+        : pressed
+          ? '<div class="empty">No Studio Takes Yet<div class="empty-sub">Describe a song in the Studio and press it.</div></div>'
+          : '<div class="empty">No Loved Songs Yet<div class="empty-sub">Tap the heart in Now Playing to love a song.</div></div>');
     scroll.dataset.th = 34;
   }
   updateNavSolid();
 };
+// a pressed take's page: its record, its one song, and the description it was pressed from
+const renderTakeDetail = (take) => {
+  const art = artFor(take), keys = keysOf(take), context = 'album:' + take.id; contextKeys[context] = keys;
+  $('#detailNavTitle').textContent = take.title; $('#detailMore').classList.remove('hidden'); $('#detailMore').dataset.id = take.id;
+  $('#detailBody').innerHTML = '<div class="ahead"><img alt="" src="' + art.url + '"><div class="ah-info"><div class="ah-title">' + escapeHtml(take.title) + '</div><div class="ah-artist">' + escapeHtml(take.artist) + '</div><div class="ah-meta">' + STUDIO_LABEL + ' Take · ' + take.year + ' · ' + MODEL_LABEL + '</div>' +
+    '<div class="pills"><button class="pill" data-action="play-all" data-ctx="' + context + '">' + ICON.play + 'Play</button><button class="pill" data-action="press-again" data-id="' + take.id + '">' + ICON.remix + 'Press Again</button></div></div></div>' +
+    '<div>' + keys.map((key) => rowHTML(key, context, RowStyle.Number)).join('') + '</div>' +
+    '<div class="afoot">“' + escapeHtml(take.prompt) + '”' + (ingredientsHTML(take) || '<br>') + 'Pressed by ' + MODEL_LABEL + ' from this description. The song is an audio file in your Drive.</div>';
+  $('#detailScroll').dataset.th = 300;
+  updateNavSolid();
+};
+
+// -- Studio ----------------------------------------------------------------------
+// a pressing take's progress: toward 90% over the time a press usually takes, then
+// creeping on until it settles (the Platform reports no progress of its own)
+const pressProgress = (take) => {
+  const elapsed = Date.now() - waitStart(take);
+  return (elapsed < PRESS_EXPECTED_MS) ? .9 * elapsed / PRESS_EXPECTED_MS : .9 + .08 * (1 - Math.exp(-(elapsed - PRESS_EXPECTED_MS) / 60000));
+};
+const RING_LENGTH = 2 * Math.PI * 27;
+// which of a take's parts are still being made: its song, and its cover until it
+// shows (asked for, pressing, or pressed and still being read)
+const takeParts = (take) => {
+  const song = (take.status === TakeStatus.Pressing), cover = take.cover;
+  const coverWaiting = song ? (!cover || (cover.status === TakeStatus.Pressing)) : isCoverPressing(take);
+  const coverReading = !!cover && (cover.status === TakeStatus.Ready) && !!cover.assetId && (coverArt[cover.assetId] === null);
+  return { song, cover: coverWaiting || coverReading };
+};
+const isTakeAwaited = (take) => { const parts = takeParts(take); return parts.song || parts.cover; };
+// when the wait a card shows began: the press, or a cover's own start once only the
+// cover is left (a cover painted later starts long after its song)
+const waitStart = (take) => takeParts(take).song ? take.startedAt : ((take.cover && take.cover.startedAt) || take.startedAt);
+// what a take's card says while any part is still being made, and for how long
+const pressStatus = (take) => {
+  const parts = takeParts(take), elapsed = (Date.now() - waitStart(take)) / 1000;
+  const doing = (parts.song && parts.cover) ? ((elapsed < 90) ? 'Pressing' : 'Still pressing') : parts.song ? 'Pressing the song' : 'Painting the cover';
+  return doing + ' · ' + formatTime(elapsed);
+};
+// the record a take's card spins while any part is being made, inside its progress
+// ring: a picture disc of its cover once the cover shows
+const spinningDiscHTML = (take) => {
+  const cover = generatedCover(take), art = artFor(take);
+  return '<div class="take-disc"><span class="vinyl' + (cover ? ' picture' : '') + '" style="--label-color:' + hslColor(art.palette[2]) + (cover ? ';--picture:url(' + cover.url + ')' : '') + '"></span>' +
+    '<svg class="take-ring" viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="27"/><circle class="ring-fill" cx="29" cy="29" r="27" stroke-dasharray="' + RING_LENGTH + '" stroke-dashoffset="' + (RING_LENGTH * (1 - pressProgress(take))) + '"/></svg></div>';
+};
+// the ingredients a take was pressed with, as chips
+const ingredientsHTML = (take) => (take.ingredients.length > 0) ? '<div class="ings">' + take.ingredients.map((label) => '<span class="ing">' + escapeHtml(label) + '</span>').join('') + '</div>' : '';
+const takeCardHTML = (take) => {
+  const label = hslColor(artFor(take).palette[2]), main = '<div class="take-t">' + escapeHtml(take.title) + '</div><div class="take-p">' + escapeHtml(take.prompt) + '</div>' + ingredientsHTML(take);
+  if(take.status === TakeStatus.Pressing) {
+    return '<div class="take pressing" data-id="' + take.id + '">' + spinningDiscHTML(take) +
+      '<div class="take-main">' + main + '<div class="take-s"><span class="take-time">' + pressStatus(take) + '</span></div></div></div>';
+  } /* else -- settled */
+  if(take.status === TakeStatus.Failed) {
+    return '<div class="take failed"><div class="take-disc"><span class="vinyl" style="--label-color:' + label + '"></span></div><div class="take-main">' + main +
+      '<div class="take-err">' + ICON.alert + '<span>' + FAILURE_LINE[take.failure] + '</span></div>' +
+      '<div class="take-acts">' + ((FINAL_FAILURES.indexOf(take.failure) > -1) ? '' : '<button data-action="retry-take" data-id="' + take.id + '">Try Again</button>') + '<button data-action="edit-take" data-id="' + take.id + '">Edit</button><button class="destructive" data-action="remove-take" data-id="' + take.id + '">Remove</button></div></div></div>';
+  } /* else -- pressed */
+  // pressed: it opens its page, and its round button plays it, though its cover may
+  // still be on its way
+  const key = take.id + ':0', playingTrack = current(), isCurrent = !!(playingTrack && (playingTrack.key === key)), spec = specOf(trackOf(key)), awaited = isTakeAwaited(take);
+  return '<div class="take ready' + (awaited ? ' pressing' : '') + '" data-action="open-album" data-id="' + take.id + '">' +
+    (awaited ? spinningDiscHTML(take) : '<div class="take-disc"><img alt="" src="' + artFor(take).url + '"></div>') +
+    '<div class="take-main">' + main + '<div class="take-s">' + (awaited ? '<span class="take-time">' + pressStatus(take) + '</span>' : STUDIO_TAG + escapeHtml(take.artist) + (spec.duration > 0 ? ' · ' + durationText(spec) : '')) + '</div></div>' +
+    '<button class="take-play" data-action="play-take" data-key="' + key + '" aria-label="Play">' + (isCurrent ? EQUALIZER : ICON.play) + '</button></div>';
+};
+const renderStudio = () => {
+  const all = takes();
+  $('#studioBody').innerHTML = '<div class="sec-h">Your Takes</div>' + ((all.length > 0)
+    ? '<div class="takes">' + all.map(takeCardHTML).join('') + '</div>'
+    : '<div class="studio-empty">Nothing pressed yet. Describe a song above, or take an idea, add a few ingredients and press it. It lands here, and in your library, in about half a minute.</div>');
+  updateStudioTab();
+};
+// the Studio tab's mark while any take has a part still being made: its record
+// spins and counts them
+const updateStudioTab = () => {
+  const count = takes().filter(isTakeAwaited).length, tab = $('#tabStudio');
+  tab.classList.toggle('pressing', count > 0);
+  let badge = $('.tab-badge', tab);
+  if(count < 1) { if(badge) badge.remove(); return; }
+  if(!badge) { badge = document.createElement('span'); badge.className = 'tab-badge'; tab.appendChild(badge); }
+  badge.textContent = count;
+};
+// moves each pressing take's ring and clock on
+const tickTakes = () => {
+  if(!library) return;
+  takes().filter(isTakeAwaited).forEach((take) => {
+    const card = $('.take.pressing[data-id="' + take.id + '"]'); if(!card) return;
+    $('.ring-fill', card).setAttribute('stroke-dashoffset', RING_LENGTH * (1 - pressProgress(take)));
+    $('.take-time', card).textContent = pressStatus(take);
+  });
+};
+
 const renderAll = () => {
   if(!library) return;
-  renderHome(); renderLibrary(); renderSearch();
+  renderHome(); renderLibrary(); renderStudio(); renderSearch();
   if(state.route) renderDetail();
   renderMini(); renderNowPlayingInfo();
 };
@@ -2651,10 +3753,12 @@ const renderNowPlayingInfo = () => {
   if(!track) { if(nowPlayingOpen) closeNowPlaying(); return; }
   const art = artFor(track.album), spec = specOf(track);
   if($('#npArt').getAttribute('src') !== art.url) $('#npArt').src = art.url;
-  $('#npT').textContent = track.title; $('#npA').textContent = track.album.artist + ' — ' + track.album.title;
+  // a take is its own album: its line names the Studio rather than repeating its title
+  $('#npT').textContent = track.title; $('#npA').textContent = track.album.artist + ' — ' + (isTake(track.album) ? STUDIO_LABEL + ' Take' : track.album.title);
   const loved = isLoved(track.key), loveButton = $('#npLove'); loveButton.innerHTML = loved ? ICON.heart : ICON.heartO; loveButton.classList.toggle('on', loved);
   currentPalette = art.palette;
-  $('#scoreCap').textContent = 'Live Score · ' + spec.bpm + ' BPM · ' + NOTE_NAMES[spec.root % 12] + ' ' + spec.genre.mode;
+  const take = isTakeSpec(spec); nowPlaying.classList.toggle('studio', take);
+  $('#scoreCap').textContent = take ? STUDIO_LABEL + ' Take · ' + MODEL_LABEL : 'Live Score · ' + spec.bpm + ' BPM · ' + NOTE_NAMES[spec.root % 12] + ' ' + spec.genre.mode;
   if(state.mode === PlayerMode.Queue) renderQueue();
 };
 const updatePlayUI = () => {
@@ -2665,7 +3769,7 @@ const updatePlayUI = () => {
   $('#npPlay').innerHTML = playing ? ICON.pause : ICON.play;
   try { if(navigator.mediaSession) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch(error) { /*no Media Session: the lock screen shows nothing*/ }
 };
-const onTrackChange = () => { renderMini(); renderNowPlayingInfo(); updateMarks(); setMediaMetadata(); updatePlayUI(); };
+const onTrackChange = () => { renderMini(); renderNowPlayingInfo(); updateMarks(); if(library) renderStudio(); setMediaMetadata(); updatePlayUI(); };
 
 // == Playback ====================================================================
 // loads the current track at `position`, playing it when `autoplay`
@@ -2691,7 +3795,7 @@ const togglePlay = () => {
   const track = current(); if(!track) return;
   if(Engine.isPlaying()) { Engine.pause(); saveState(); }
   else {
-    const spec = specOf(track); let position = Engine.position(); if(position >= (spec.duration - .2)) position = 0;
+    const spec = specOf(track); let position = Engine.position(); if((spec.duration > 0) && (position >= (spec.duration - .2))) position = 0;
     Engine.play(position);
   }
   updatePlayUI();
@@ -2712,6 +3816,14 @@ const previousTrack = () => {
   const wasPlaying = Engine.isPlaying(); state.qi--; startCurrent(0, wasPlaying);
 };
 Engine.onended = () => nextTrack(true);
+Engine.source = (spec) => takeUrl(spec.assetId);
+Engine.onerror = (error) => { toast('Could not play: ' + messageOf(error)); updatePlayUI(); };
+Engine.onstopped = () => { updatePlayUI(); saveState(); };
+// records a take's length the first time a play measures it, so every row shows it
+Engine.onduration = (spec) => {
+  const take = library && library.albums.find((album) => isTake(album) && (album.assetId === spec.assetId));
+  if(take && !(take.seconds > 0)) changeTake(take.id, { seconds: Math.round(spec.duration * 10) / 10 });
+};
 const playNext = (key) => {
   if(!current()) { state.queue = [key]; state.qi = 0; startCurrent(0, true); return; }
   state.queue.splice(state.qi + 1, 0, key); if(state.orig) state.orig.push(key);
@@ -2757,15 +3869,21 @@ const remixAlbum = async (id) => {
   const saved = await updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => (album.id === id) ? { ...album, seed } : album) }));
   if(saved) toast('Remixed: same titles, all-new music');
 };
-const deleteAlbum = async (id) => {
+// removes an album from the library after the User confirms; a take's file stays in
+// their Drive. `confirmed` skips the question (a failed take holds nothing to lose)
+const deleteAlbum = async (id, confirmed) => {
   const album = albumById(id); if(!album) return;
-  const confirmed = await confirmAlert('Delete “' + album.title + '”?', 'It will be gone forever. Its seed will never be heard again.', 'Delete');
+  if(!confirmed) {
+    confirmed = isTake(album)
+      ? await confirmAlert('Remove “' + album.title + '”?', 'It leaves your library. The song itself stays in your Drive.', 'Remove')
+      : await confirmAlert('Delete “' + album.title + '”?', 'It will be gone forever. Its seed will never be heard again.', 'Delete');
+  } /* else -- confirmed by the caller */
   if(!confirmed) return;
   const prefix = id + ':', inAlbum = (key) => key.indexOf(prefix) === 0, currentKey = state.queue[state.qi];
   state.recent = state.recent.filter((albumId) => albumId !== id);
   state.queue = state.queue.filter((key) => !inAlbum(key));
   if(state.orig) state.orig = state.orig.filter((key) => !inAlbum(key));
-  closeDetail();
+  if(state.route && (state.route.type === RouteType.Album) && (state.route.id === id)) goBack();
   if(currentKey && inAlbum(currentKey)) {
     Engine.pause(); state.qi = 0;
     if(state.queue.length > 0) startCurrent(0, false);
@@ -2773,6 +3891,68 @@ const deleteAlbum = async (id) => {
   } else state.qi = Math.max(0, state.queue.indexOf(currentKey));
   saveState(); renderAll();
   await updateLibrary((data) => ({ ...data, albums: data.albums.filter((candidate) => candidate.id !== id), loved: data.loved.filter((key) => !inAlbum(key)) }));
+};
+
+// == Studio Booth ================================================================
+// the description field types out one idea after another while it is empty; the
+// ingredients picked ride along with whatever is pressed
+const promptField = $('#prompt');
+const picked = new Set();
+let ideaIndex = Math.floor(Math.random() * IDEAS.length), ideaShown = 0/*characters typed*/, ideaTimer = null/*not typing*/, pressingDescription = false;
+const typeIdea = () => {
+  const idea = IDEAS[ideaIndex];
+  let delay = 34;
+  if(ideaShown < idea.length) ideaShown++;
+  else { ideaIndex = (ideaIndex + 1) % IDEAS.length; ideaShown = 0; delay = 2800/*read the whole idea*/; }
+  // NOTE: the shown idea stops while another tab is in front: it resumes where it was
+  if(state.tab === Tab.Studio) promptField.placeholder = (ideaShown > 0) ? IDEAS[ideaIndex].slice(0, ideaShown) + ((ideaShown < IDEAS[ideaIndex].length) ? '▍' : '') : '';
+  ideaTimer = setTimeout(typeIdea, delay);
+};
+// the idea being shown, whole
+const shownIdea = () => (ideaShown > 0) ? IDEAS[ideaIndex] : IDEAS[(ideaIndex + IDEAS.length - 1) % IDEAS.length];
+const useIdea = () => { promptField.value = shownIdea(); updatePressLabel(); promptField.focus(); };
+const nextIdea = () => { ideaIndex = (ideaIndex + 1) % IDEAS.length; ideaShown = IDEAS[ideaIndex].length; promptField.placeholder = IDEAS[ideaIndex]; clearTimeout(ideaTimer); ideaTimer = setTimeout(typeIdea, 2800); };
+// puts a take's words and ingredients back in the booth to change and press again
+const editDescription = (take) => {
+  switchTab(Tab.Studio); promptField.value = take.prompt;
+  picked.clear(); take.ingredients.forEach((label) => { const index = INGREDIENTS.findIndex((ingredient) => ingredient.label === label); if(index > -1) picked.add(index); });
+  renderChips(); $('#tab-studio .scroll').scrollTo({ top: 0, behavior: 'smooth' }); promptField.focus();
+};
+
+// says on the press what it will press: the description written, or else the idea
+// shown, with the ingredients picked
+const updatePressLabel = () => {
+  const count = picked.size;
+  $('#pressSub').textContent = (promptField.value.trim() ? 'Your description' : 'The idea above') + ((count > 0) ? ' + ' + count + ' ingredient' + ((count > 1) ? 's' : '') : '');
+};
+const renderChips = () => {
+  $('#chips').innerHTML = INGREDIENTS.map((ingredient, i) => '<button class="chip' + (picked.has(i) ? ' on' : '') + '" data-action="chip" data-i="' + i + '">' + escapeHtml(ingredient.label) + '</button>').join('');
+  updatePressLabel();
+};
+// picks or drops ingredient `index`, dropping the others of its group
+const toggleIngredient = (index) => {
+  const ingredient = INGREDIENTS[index]; if(!ingredient) return;
+  if(picked.has(index)) picked.delete(index);
+  else {
+    if(ingredient.group) INGREDIENTS.forEach((other, i) => { if(other.group === ingredient.group) picked.delete(i); });
+    picked.add(index);
+  }
+  renderChips();
+};
+// presses what the field says (the idea shown when it says nothing) with the
+// ingredients picked, then clears the booth for the next one
+const pressDescription = async () => {
+  if(pressingDescription) return;
+  const written = promptField.value.trim(), prompt = written || shownIdea();
+  const ingredients = Array.from(picked).sort((a, b) => a - b).map((i) => INGREDIENTS[i].label);
+  pressingDescription = true; $('#pressBtn').disabled = true; promptField.blur();
+  const kept = new Set(picked);
+  try {
+    promptField.value = ''; picked.clear(); renderChips();
+    if(await pressTake(prompt, ingredients)) return;
+    // not added: the booth holds the description again to retry
+    promptField.value = written; kept.forEach((i) => picked.add(i)); renderChips();
+  } finally { pressingDescription = false; $('#pressBtn').disabled = false; }
 };
 
 // == Navigation ==================================================================
@@ -2793,22 +3973,37 @@ const switchTab = (tab) => {
   if(app.classList.contains('detail-open')) {
     // NOTE: the detail page closes without its slide: reading offsetHeight commits
     //       the transition-less state before the transition is restored
-    detail.style.transition = 'none'; app.classList.remove('detail-open'); state.route = null/*no detail page open*/; void detail.offsetHeight; detail.style.transition = '';
+    detail.style.transition = 'none'; app.classList.remove('detail-open'); state.route = null/*no detail page open*/; routeHistory = []; void detail.offsetHeight; detail.style.transition = '';
   } /* else -- no detail page to close */
   $$('.tabpane').forEach((pane) => pane.classList.toggle('on', pane.id === ('tab-' + tab)));
   $$('.tab').forEach((button) => button.classList.toggle('on', button.dataset.t === tab));
   placeIndicator(); updateNavSolid(); saveState();
 };
+// the detail pages beneath the one open, the nearest last: a page opened from a
+// detail page (an album from a list of songs) returns to it. Not saved: a relaunch
+// returns to the tab
+let routeHistory = [];
 const openRoute = (route) => {
-  state.route = route; state.routeTab = state.tab;
+  const fromDetail = app.classList.contains('detail-open') && !!state.route;
+  routeHistory = fromDetail ? routeHistory.concat([state.route]) : [];
+  if(!fromDetail) state.routeTab = state.tab;
+  state.route = route;
   renderDetail();
   $('#detailScroll').scrollTop = 0;
   app.classList.add('detail-open');
   updateNavSolid(); saveState();
 };
+// returns to the detail page beneath the open one, or to the tab
+const goBack = () => {
+  if(routeHistory.length < 1) { closeDetail(); return; }
+  state.route = routeHistory.pop();
+  renderDetail(); $('#detailScroll').scrollTop = 0;
+  updateNavSolid(); saveState();
+};
 // opens an album's page once the album is shown (a just-composed one arrives with its write)
 const openRouteWhenShown = (route) => { if(albumById(route.id)) openRoute(route); else pendingRoute = route; };
-const closeDetail = () => { app.classList.remove('detail-open'); state.route = null/*no detail page open*/; saveState(); };
+// closes every detail page, returning to the tab
+const closeDetail = () => { app.classList.remove('detail-open'); state.route = null/*no detail page open*/; routeHistory = []; saveState(); };
 
 // == Now Playing =================================================================
 // sizes the cover to the largest square the stage holds
@@ -2839,7 +4034,7 @@ const renderQueue = () => {
     ((upcoming.length > 0)
       ? upcoming.map((key, i) => {
           const track = trackOf(key); if(!track) return '';
-          return '<button class="q-row" data-action="jump" data-i="' + (state.qi + 1 + i) + '"><img alt="" src="' + artFor(track.album).url + '"><div class="q-txt"><div class="q-t">' + escapeHtml(track.title) + '</div><div class="q-a">' + escapeHtml(track.album.artist) + '</div></div><span class="q-d">' + formatTime(specOf(track).duration) + '</span></button>';
+          return '<button class="q-row" data-action="jump" data-i="' + (state.qi + 1 + i) + '"><img alt="" src="' + artFor(track.album).url + '"><div class="q-txt"><div class="q-t">' + escapeHtml(track.title) + '</div><div class="q-a">' + escapeHtml(track.album.artist) + '</div></div><span class="q-d">' + durationText(specOf(track)) + '</span></button>';
         }).join('')
       : '<div class="q-empty">Nothing up next.<br>' + ((state.repeat === Repeat.All) ? 'The queue will start over.' : 'Tap repeat to loop forever, or compose another album.') + '</div>');
 };
@@ -2921,6 +4116,27 @@ const drawScore = (spec, position) => {
   }
 };
 
+// -- Spectrum --------------------------------------------------------------------
+// a take has no score to show: its spectrum instead, mirrored about the middle in the
+// cover's colors, each band holding its peak a moment
+const spectrumPeaks = [];
+const drawSpectrum = () => {
+  const canvas = $('#score'), dpr = Math.min(2, window.devicePixelRatio || 1), W = canvas.clientWidth, H = canvas.clientHeight; if(!W || !H) return;
+  if((canvas.width !== Math.round(W * dpr)) || (canvas.height !== Math.round(H * dpr))) { canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); }
+  const paint = canvas.getContext('2d'); paint.setTransform(dpr, 0, 0, dpr, 0, 0); paint.clearRect(0, 0, W, H);
+  const spectrum = Engine.spectrum(), palette = currentPalette || [[260, 40, 30], [320, 60, 40], [200, 60, 40]];
+  const bars = 40, top = 34, mid = top + (H - top) / 2, gap = 3, barW = (W - 24 - gap * (bars - 1)) / bars, reach = (H - top) / 2 - 8;
+  for(let i=0; i<bars; i++) {
+    // bands spaced logarithmically: the low end, where the music lives, gets the most bars
+    const band = spectrum ? spectrum[Math.min(spectrum.length - 1, Math.floor(Math.pow(i / bars, 1.9) * spectrum.length * .7) + 1)] / 255 : 0;
+    spectrumPeaks[i] = Math.max(band, (spectrumPeaks[i] || 0) - .012);
+    const x = 12 + i * (barW + gap), h = Math.max(2, band * reach), hsl = palette[i % palette.length];
+    paint.fillStyle = hslColor(hsl, clamp(hsl[2] + 18, 45, 72), .9);
+    roundedRect(paint, x, mid - h, barW, h * 2, barW / 2); paint.fill();
+    paint.fillStyle = 'rgba(255,255,255,.75)'; paint.fillRect(x, mid - spectrumPeaks[i] * reach - 4, barW, 2); paint.fillRect(x, mid + spectrumPeaks[i] * reach + 2, barW, 2);
+  }
+};
+
 // == Sliders =====================================================================
 let scrubbing = false, scrubPosition = 0;
 // a horizontal slider: `onMove` with the pointer's ratio along it while held, `onEnd` on release
@@ -2955,15 +4171,15 @@ const frame = (time) => {
   const playing = Engine.isPlaying();
   if(playing !== wasPlaying) { wasPlaying = playing; updatePlayUI(); }
   const track = current(); if(!track) return;
-  const spec = specOf(track), position = scrubbing ? scrubPosition : Engine.position(), percent = clamp(position / spec.duration, 0, 1) * 100;
+  const spec = specOf(track), position = scrubbing ? scrubPosition : Engine.position(), percent = (spec.duration > 0) ? clamp(position / spec.duration, 0, 1) * 100 : 0/*not yet measured*/;
   $('#miniFill').style.width = percent + '%';
   if(nowPlayingOpen) {
     $('#npFill').style.width = percent + '%';
-    $('#tNow').textContent = formatTime(position); $('#tLeft').textContent = '-' + formatTime(spec.duration - position);
+    $('#tNow').textContent = formatTime(position); $('#tLeft').textContent = (spec.duration > 0) ? '-' + formatTime(spec.duration - position) : '--:--';
     const energy = Engine.energy(); smoothedEnergy += (energy - smoothedEnergy) * ((energy > smoothedEnergy) ? .5 : .12);
     drawBackground(time, smoothedEnergy);
     $('#npArt').style.transform = 'scale(' + (1 + smoothedEnergy * .03).toFixed(4) + ')';
-    if(state.mode === PlayerMode.Score) drawScore(spec, position);
+    if(state.mode === PlayerMode.Score) { if(isTakeSpec(spec)) drawSpectrum(); else drawScore(spec, position); }
   } /* else -- only the mini player's bar shows */
   if(playing && ((time - lastSave) > 5000)) { lastSave = time; saveState(); }
 };
@@ -2988,6 +4204,7 @@ try {
 const trackMenu = (button, key, fromNowPlaying) => {
   const track = trackOf(key); if(!track) return;
   const items = [{ label: isLoved(key) ? 'Unlove' : 'Love', icon: isLoved(key) ? ICON.heart : ICON.heartO, action: 'm-love', key }];
+  if(isTake(track.album)) items.unshift({ label: 'Rename', icon: ICON.pencil, action: 'rename-take', id: track.album.id });
   if(!fromNowPlaying) items.push({ label: 'Play Next', icon: ICON.playNext, action: 'm-next', key });
   const onItsAlbum = state.route && (state.route.type === RouteType.Album) && (state.route.id === track.album.id) && app.classList.contains('detail-open');
   if(fromNowPlaying || !onItsAlbum) items.push({ label: 'Go to Album', icon: ICON.album, action: 'm-album', key });
@@ -3003,13 +4220,13 @@ document.addEventListener('click', (event) => {
     case 'tab': switchTab(element.dataset.t); break;
     case 'open-album': openRoute({ type: RouteType.Album, id }); break;
     case 'open-route': openRoute({ type: element.dataset.type }); break;
-    case 'back': closeDetail(); break;
+    case 'back': goBack(); break;
     case 'play': playContext(element.dataset.ctx, key, false); break;
     case 'track-menu': event.stopPropagation(); trackMenu(element, key, false); break;
     case 'play-all': playContext(element.dataset.ctx, null/*from the first track*/, false); break;
     case 'shuffle-all': playContext(element.dataset.ctx, null/*from the first track*/, true); break;
     case 'compose': composeAlbum(); break;
-    case 'genre': query = GENRES[element.dataset.g].label; $('#search').value = query; $('#searchWrap').classList.add('active'); renderSearch(); break;
+    case 'genre': query = (element.dataset.g === TAKE_KIND) ? STUDIO_LABEL : GENRES[element.dataset.g].label; $('#search').value = query; $('#searchWrap').classList.add('active'); renderSearch(); break;
     case 'search-cancel': query = ''; $('#search').value = ''; $('#search').blur(); $('#searchWrap').classList.remove('active'); renderSearch(); break;
     case 'open-np': openNowPlaying(); break;
     case 'toggle-play': togglePlay(); break;
@@ -3022,24 +4239,45 @@ document.addEventListener('click', (event) => {
     case 'toggle-shuffle': toggleShuffle(); break;
     case 'cycle-repeat': cycleRepeat(); break;
     case 'jump': state.qi = +element.dataset.i; startCurrent(0, true); break;
-    case 'album-menu': openMenu(element, [{ label: 'Remix Album', icon: ICON.remix, action: 'm-remix', id: element.dataset.id }, { label: 'Delete from Library', icon: ICON.trash, action: 'm-delete', id: element.dataset.id, destructive: true }]); break;
+    case 'album-menu': openMenu(element, isTake(albumById(id))
+      ? [{ label: 'Rename', icon: ICON.pencil, action: 'rename-take', id }, { label: 'Press Again', icon: ICON.remix, action: 'press-again', id }].concat(needsCover(albumById(id)) ? [{ label: 'Paint Cover', icon: ICON.album, action: 'paint-cover', id }] : []).concat([{ label: 'Remove from Library', icon: ICON.trash, action: 'm-delete', id, destructive: true }])
+      : [{ label: 'Remix Album', icon: ICON.remix, action: 'm-remix', id }, { label: 'Delete from Library', icon: ICON.trash, action: 'm-delete', id, destructive: true }]); break;
     case 'm-love': toggleLove(key); break;
     case 'm-next': playNext(key); break;
     case 'm-album': { const track = trackOf(key); if(track) { if(nowPlayingOpen) closeNowPlaying(); openRoute({ type: RouteType.Album, id: track.album.id }); } break; }
     case 'm-remix': remixAlbum(id); break;
     case 'm-delete': deleteAlbum(id); break;
+    case 'press': pressDescription(); break;
+    case 'use-idea': useIdea(); break;
+    case 'next-idea': nextIdea(); break;
+    case 'chip': toggleIngredient(+element.dataset.i); break;
+    case 'play-take': contextKeys[RouteType.Takes] = takeKeys(); playContext(RouteType.Takes, key, false); break;
+    case 'press-again': { const take = albumById(id); if(isTake(take)) pressTake(take.prompt, take.ingredients); break; }
+    case 'retry-take': { const take = albumById(id); if(isTake(take)) pressTake(take.prompt, take.ingredients, take.id); break; }
+    case 'edit-take': { const take = albumById(id); if(isTake(take)) editDescription(take); break; }
+    case 'remove-take': deleteAlbum(id, true/*a failed take holds nothing to lose*/); break;
+    case 'paint-cover': paintCover(id); break;
+    case 'rename-take': renameTake(id); break;
   }
 }, true);
-document.addEventListener('input', (event) => { if(event.target.id === 'search') { query = event.target.value; renderSearch(); } });
+document.addEventListener('input', (event) => {
+  if(event.target.id === 'search') { query = event.target.value; renderSearch(); }
+  else if(event.target.id === 'prompt') updatePressLabel();
+});
 document.addEventListener('focusin', (event) => { if(event.target.id === 'search') $('#searchWrap').classList.add('active'); });
 document.addEventListener('focusout', (event) => { if((event.target.id === 'search') && !query) $('#searchWrap').classList.remove('active'); });
 document.addEventListener('keydown', (event) => {
+  if(event.target.id === 'prompt') {
+    if((event.key === 'Enter') && !event.shiftKey) { event.preventDefault(); pressDescription(); }
+    else if(event.key === 'Escape') event.target.blur();
+    return;
+  } /* else -- not the description */
   if(event.target.tagName === 'INPUT') { if(event.key === 'Escape') event.target.blur(); return; }
   if(event.key === ' ') { event.preventDefault(); togglePlay(); }
   else if(event.key === 'Escape') {
     if($('#menuWrap').classList.contains('open')) closeMenu();
     else if(nowPlayingOpen) closeNowPlaying();
-    else if(app.classList.contains('detail-open')) closeDetail();
+    else if(app.classList.contains('detail-open')) goBack();
   }
   else if((event.key === 'ArrowRight') && nowPlayingOpen) nextTrack(false);
   else if((event.key === 'ArrowLeft') && nowPlayingOpen) previousTrack();
@@ -3089,7 +4327,7 @@ const endDrags = () => {
     const swipe = edgeSwipe; edgeSwipe = null/*no swipe*/; detail.style.transition = ''; detail.style.transform = '';
     if(swipe.active) {
       suppressClick = true; setTimeout(() => { suppressClick = false; }, 350);
-      if((swipe.dx > (window.innerWidth * .33)) || ((swipe.dx / Math.max(1, performance.now() - swipe.t)) > .6)) closeDetail();
+      if((swipe.dx > (window.innerWidth * .33)) || ((swipe.dx / Math.max(1, performance.now() - swipe.t)) > .6)) goBack();
     } /* else -- a tap, not a swipe */
   } /* else -- no edge swipe */
 };
@@ -3097,12 +4335,13 @@ window.addEventListener('pointerup', endDrags);
 window.addEventListener('pointercancel', endDrags);
 window.addEventListener('resize', () => { placeIndicator(); if(nowPlayingOpen) layoutNowPlaying(); });
 document.addEventListener('gesturestart', (event) => event.preventDefault());
-document.addEventListener('contextmenu', (event) => { if(!event.target.closest('input')) event.preventDefault(); });
+document.addEventListener('contextmenu', (event) => { if(!event.target.closest('input, textarea')) event.preventDefault(); });
 
 // == Boot ========================================================================
 // fills the static buttons with their icons
 const paintStatic = () => {
-  $('#tabHome').innerHTML = ICON.home + 'Home'; $('#tabLibrary').innerHTML = ICON.library + 'Library'; $('#tabSearch').innerHTML = ICON.search + 'Search';
+  $('#tabHome').innerHTML = ICON.home + 'Home'; $('#tabLibrary').innerHTML = ICON.library + 'Library'; $('#tabStudio').innerHTML = ICON.studio + 'Studio'; $('#tabSearch').innerHTML = ICON.search + 'Search';
+  $('#boothGlyph').innerHTML = ICON.studio; $('#pressGo').innerHTML = ICON.spark; renderChips();
   $('#miniNext').innerHTML = ICON.next; $('#npPrev').innerHTML = ICON.prev; $('#npNext').innerHTML = ICON.next;
   $('#npMore').innerHTML = ICON.dots; $('#spkLo').innerHTML = ICON.spkLo; $('#spkHi').innerHTML = ICON.spkHi;
   $('#modeScore').innerHTML = ICON.score; $('#modeQueue').innerHTML = ICON.queue;
@@ -3121,13 +4360,16 @@ const boot = () => {
   state.tab = null/*so switchTab selects the saved tab*/;
   switchTab(tab);
   renderAll();
-  if(route && ((route.type !== RouteType.Album) || albumById(route.id))) {
+  if(route && ((route.type !== RouteType.Album) || isPlayable(albumById(route.id)))) {
     state.routeTab = routeTab; detail.style.transition = 'none'; state.route = route; renderDetail();
     app.classList.add('detail-open'); void detail.offsetHeight; detail.style.transition = '';
   } /* else -- no saved page, or its album is gone */
   setModeClasses(); onTrackChange();
   requestAnimationFrame(() => { placeIndicator(); updateNavSolid(); });
   requestAnimationFrame(frame);
+  typeIdea(); setInterval(tickTakes, 500);
+  // takes left pressing when the app last closed are asked after at once
+  schedulePoll(0);
 };
 const init = async () => {
   paintStatic();

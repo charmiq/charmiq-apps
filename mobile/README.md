@@ -4,7 +4,7 @@
 
 | Application | What it does |
 |----|----|
-| [Synth Jukebox](charmiq://./synth-jukebox/README.md) | A music library whose every album is composed and played live on your phone: no audio files, no streaming |
+| [Synth Jukebox](charmiq://./synth-jukebox/README.md) | A music library whose albums are composed and played live on your phone, plus songs Lyria 3 Pro presses from your description |
 | [Tick List](charmiq://./tick-list/README.md) | Lists you tick off, shared live with everyone you share it with |
 
 Each Application's folder holds its README and one document per phone (`iOS`; Android to follow). That document is the Application and nothing else: it fills the screen, so these instructions live here.
@@ -32,4 +32,4 @@ Share your copy as an **Editor** with each person who should have it; each adds 
   - Silent mode mutes Web Audio but not an `<audio>` element. Set `navigator.audioSession.type = 'playback'` to play anyway.
   - Use MP3, AAC or M4A; older iOS does not play Ogg.
 
-  Synth Jukebox does all three.
+  Synth Jukebox does all three. Its Studio takes are files read through the Platform and played from one `<audio>` element. iOS lets that element play outside a tap only after it has played inside one, so the tap that starts a take plays silence on it at once and the song when its bytes arrive.
