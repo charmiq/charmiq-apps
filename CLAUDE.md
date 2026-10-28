@@ -24,6 +24,8 @@ Apps embedded by the CharmIQ platform via an app iframe. No `package.json` or `t
 ## Mobile Applications
 
 - **`mobile/<application>/` holds a `README.md` and one document per phone platform (`iOS.md`).** The phone document is the Application alone (theme `charmiq:none`, a stylesheet zeroing `:root`/`body` spacing, `<iframe-app height="100svh" width="100%">`): it fills the screen, so nothing else in it can be seen. Setup and explanation belong in the READMEs (`mobile/README.md` for the shared home-screen steps).
+- **A state a gesture starts is in place before the write that shows it.** A write to the app-content repaints from its own emission, so local state set after the awaited write (a take's naming flaps) arrives a frame late and the surface flashes the state before it. Check a transition from its first painted frame (a `MutationObserver` on the surface from the gesture on), never only its settled states.
+- **Device-only behavior is researched before it is fixed.** A defect that only the phone shows (the lock screen, the audio session, a backgrounded page) is first matched against reports of the same symptom; a fix the harness cannot reproduce is handed over as a hypothesis, naming the device result that would refute it.
 - **Mobile Applications are inline** (`<app-source>` in the document), never manifest- or folder-based: inline source arrives with the document and opens with the page, while a manifest Application is fetched and built after it, a wait on every launch. Inline source cannot mount `shared/`; what it needs from there is written into the Application.
 
 ## Tests

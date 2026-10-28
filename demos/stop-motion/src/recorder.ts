@@ -36,6 +36,8 @@ export type HandKey = Readonly<{ time: number; hand: Hand; item: Readonly<{ part
 /** a hand-off: the figure (`by`) whose hand lets go of a thing, or takes it up, at
  *  `time`, and the scene's line saying so */
 export type Handing = Readonly<{ by: string; hand: Hand; time: number; line?: number; }>;
+/** how a planted thing turns (SEE: RecordedActor planted) */
+export type Planting = Readonly<{ end: 'tip'; to: Readonly<{ aboveLevel: number; at: number; }>; letGo?: Readonly<{ time: number; push?: number; line?: number; }>; }>;
 /** a figure's face over a span, over whatever it wears then: a reaction */
 export type Reaction = Readonly<{ from: number; to: number; face: string; line?: number; }>;
 /** a figure turning its head toward a target over a span (an actor, or a point), as
@@ -130,6 +132,13 @@ export type RecordedActor = Readonly<{
    *  first shows empty, its own keys moving it on from there and a key hiding it, held
    *  where each of its paths leaves it (SEE: film.ts HandOff) */
   released?: Handing;
+  /** a thing its hand plants (released so): from its release it turns about its `end`
+   *  (the far end from the hand: its tip), that end standing where it stood, its free
+   *  end rising from its angle above level then to `to.aboveLevel` at `to.at`, eased;
+   *  the figure planting it hangs from it at its grip until it lets go (`letGo`), and
+   *  then the thing falls about its end onto what lies under it (SEE: film.ts
+   *  plantsOf) */
+  planted?: Planting;
   /** the hand that takes it up: from the frame that hand first holds it, it is held
    *  there as that hand's item and hidden as an actor of its own */
   pickedUp?: Handing;
@@ -351,7 +360,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, skies: [] as Array<{ given: unknown; line?: number; }> };
   // `moves` are the times its paths, wobbles, walks and idling start, each with its call
   // and line: a released thing's begin after its release, a picked-up thing's before it
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; released?: Handing; pickedUp?: Handing; keys: Key[]; moves: Array<{ time: number; what: string; line?: number; }>; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; seat?: number; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; released?: Handing; planted?: { end: 'tip'; to: { aboveLevel: number; at: number; }; letGo?: { time: number; push?: number; line?: number; }; }; pickedUp?: Handing; keys: Key[]; moves: Array<{ time: number; what: string; line?: number; }>; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; seat?: number; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   /** each actor's handle, the actor it keys: an audience takes actors by their handles */
   const handles = new Map<unknown, Entry>();
@@ -640,6 +649,41 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
         actors[actors.length - 1].released = handing;
         releases.push({ thing: actors[actors.length - 1], holder: entry, handing, key });
         return released;
+      },
+      /** plants what `hand` holds at `time` (a pole in its box, a rope's end tied): from
+       *  the frame the hand first shows empty it is an actor of its own named `thing`,
+       *  standing where the hand held it, turning about its `end` (the tip, its far end
+       *  from the hand) from its angle there to `to.aboveLevel` (degrees, its free end
+       *  above level from its planted end) at `to.at`, eased; the figure hangs from it,
+       *  turned with it, until it lets go (SEE: letGo); answers the thing */
+      plant: (time: unknown, hand: unknown, thing: unknown, options: unknown = {}) => {
+        const what = `${String(name)}.plant(${String(time)})`;
+        const given = optionsOf(options, what);
+        const end = given.end ?? 'tip';
+        if(end !== 'tip') fail(`${what}'s end is 'tip': the end of what the hand holds farthest from it, where it stands planted`);
+        const to = optionsOf(given.to, `${what}.to`);
+        if(!isFiniteNumber(to.aboveLevel) || ((to.aboveLevel as number) < 0) || ((to.aboveLevel as number) > 180)) fail(`${what}.to.aboveLevel is degrees, 0 to 180: its free end's angle above level from its planted end as it ends turning (90 upright)`);
+        const turned = toTime(to.at, `${what}.to.at`);
+        if(turned <= toTime(time, what)) fail(`${what}.to.at is after it plants: the time it ends turning`);
+        const planted = handle.release(time, hand, thing);
+        actors[actors.length - 1].planted = { end: 'tip', to: { aboveLevel: to.aboveLevel as number, at: turned } };
+        return planted;
+      },
+      /** lets go of a thing it planted at `time`: from then it flies on from how it was
+       *  moving to where its next key places it (under gravity when none does), its hands
+       *  pushing off (`push`: plates higher at its flight's middle) as they shove the
+       *  thing back, and the thing falls about its planted end onto what lies under it */
+      letGo: (time: unknown, thing: unknown, options: unknown = {}) => {
+        const at = toTime(time, `${String(name)}.letGo`);
+        const what = `${String(name)}.letGo(${at})`;
+        const { push, ...rest } = optionsOf(options, what);
+        if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (push)`);
+        if((push !== undefined) && (!isFiniteNumber(push) || ((push as number) < 0))) fail(`${what}.push is plates, 0 or more: how much higher the hands pushing off lift it`);
+        const planted = actors.find(each => (each.name === nameOf(thing)) && each.planted && (each.released?.by === name));
+        if(!planted) fail(`${what}: ${String(name)} plants no ${String(nameOf(thing))}: plant a thing it holds first (${String(name)}.plant(time, hand, '${String(nameOf(thing))}', { end, to }))`);
+        if(at <= planted!.released!.time) fail(`${what}: it lets go after it plants ${planted!.name}, at ${planted!.released!.time} s`);
+        planted!.planted!.letGo = { time: at, ...((push !== undefined) ? { push: push as number } : {}), line: callerLine() };
+        return handle;
       },
       /** takes up `thing` (an actor cast as a hand item, or one a hand released) in `hand`
        *  at `time`: from the frame the hand first holds it, it is that hand's item and no
@@ -1869,8 +1913,8 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   return {
     title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
-    actors: actors.map(({ name, source, ride, released, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, seat, drawn, spans, line }) => ({
-      name, source, ...(ride ? { ride } : {}), ...(released ? { released } : {}), ...(pickedUp ? { pickedUp } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
+    actors: actors.map(({ name, source, ride, released, planted, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, seat, drawn, spans, line }) => ({
+      name, source, ...(ride ? { ride } : {}), ...(released ? { released } : {}), ...(planted ? { planted } : {}), ...(pickedUp ? { pickedUp } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
       ...((reactions.length > 0) ? { reactions } : {}), ...((looks.length > 0) ? { looks: looks.map(look => ({ ...look, to: look.to ?? settings.length! })) } : {}), ...(ground ? { ground } : {}),
       ...(still ? { still } : {}), ...((seat !== undefined) ? { seat } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((footsteps.length > 0) ? { footsteps } : {}), ...((line !== undefined) ? { line } : {}),
     })),

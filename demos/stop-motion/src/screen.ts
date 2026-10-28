@@ -40,6 +40,24 @@ export const onScreen = (camera: StageCamera, aspect: number, point: Point): OnS
   return { x: 0.5 + (across / (2 * depth * tan * aspect)), y: 0.5 - (up / (2 * depth * tan)) + (camera.shift ?? 0), depth };
 };
 
+/** where the frame's corners look onto the ground at `height` (plates), top left first
+ *  and round (top right, bottom right, bottom left): studs east and north; none for a
+ *  corner looking at or above that ground's horizon. A walk starting past these lines
+ *  starts out of frame */
+export const groundOnScreen = (camera: StageCamera, aspect: number, height: number): ReadonlyArray<Readonly<{ x: number; z: number; }> | undefined> => {
+  const { eye, forward, right, up } = viewOf(camera);
+  const tan = Math.tan((camera.fov * (Math.PI / 180)) / 2), level = height * STUDS_PER_PLATE;
+  return ([[0, 0], [1, 0], [1, 1], [0, 1]] as const).map(([x, y]) => {
+    // the corner's ray, a stud ahead along the view (SEE: onScreen, its inverse)
+    const [across, above] = [(x - 0.5) * 2 * tan * aspect, (0.5 + (camera.shift ?? 0) - y) * 2 * tan];
+    const ray = [0, 1, 2].map(axis => forward[axis] + (right[axis] * across) + (up[axis] * above));
+    if(ray[1] > -1e-9) return undefined/*level or rising: it never meets the ground*/;
+    const t = (level - eye[1]) / ray[1];
+    if(t <= 0) return undefined/*the ground above it*/;
+    return { x: eye[0] + (ray[0] * t), z: -(eye[2] + (ray[2] * t)) };
+  });
+};
+
 /** a point as a camera sees it (studs): how far ahead along its view, to its right,
  *  above its view, and away */
 export const inView = (camera: StageCamera, point: Point): Readonly<{ ahead: number; across: number; up: number; distance: number; }> => {

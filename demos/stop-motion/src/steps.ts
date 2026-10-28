@@ -94,7 +94,7 @@ const PAST_STUD = 0.1;
 const PAST_QUARTER = 5;
 /** how near a height lies to a surface (plates) to stand on it, and how far a figure
  *  tilts (degrees) before it no longer stands on its feet (lying, a push-up) */
-const ON_SURFACE = 1e-3;
+export const ON_SURFACE = 1e-3;
 const UPRIGHT = 30;
 /** off studs, the turn a path's leg must ask before a figure turns to it (degrees):
  *  less, its step takes it */
@@ -662,8 +662,9 @@ const timed = (moves: ReadonlyArray<Omit<Move, 'start' | 'end'> & { weight: numb
  *  hips are placed from there (SEE: Clicked) */
 export type Posed = Readonly<{ set: Readonly<Record<string, number>>; add: Readonly<Record<string, number>>; soles?: true; }>;
 /** how a walk carries a figure: its arms' swing when it names one (its shape's
- *  otherwise) and its lean (degrees), how far it wanders from step to step (0 none; 1
- *  its shape's own wander) and its shape (WALK when it names none) */
+ *  otherwise; 0 swings no arm in any of its moves, an arm its scene keys holding that
+ *  key) and its lean (degrees), how far it wanders from step to step (0 none; 1 its
+ *  shape's own wander) and its shape (WALK when it names none) */
 export type Gait = Readonly<{ arms?: number; lean: number; variance?: number; shape?: GaitShape; }>;
 
 /** an actor standing in a stance, clicked in or not: its place, heading and level
@@ -678,7 +679,7 @@ export const stood = (stance: Stance): Posed => ({ set: { x: stance.x, z: stance
 export const posedAt = (move: Move, u: number, figure: boolean, gait: Gait, drawn = false): Posed => {
   const at = Math.max(0, Math.min(1, u));
   if(move.kind === 'turn') return turning(move, at, figure, gait.shape ?? WALK, drawn);
-  if(move.kind === 'hop') return (figure && strides(move)) ? leaping(move, at, gait) : hopping(move, at, figure, gait.shape ?? WALK);
+  if(move.kind === 'hop') return (figure && strides(move)) ? leaping(move, at, gait) : hopping(move, at, figure, gait.shape ?? WALK, gait.arms === 0/*a walk swinging no arm*/);
   if(move.kind === 'shift') return shifting(move, at, figure, gait.shape ?? WALK);
   return stepping(move, at, gait, drawn);
 };
@@ -743,7 +744,7 @@ const stepping = (move: Move, u: number, gait: Gait, drawn: boolean): Posed => {
   const backward = (((move.to.x - move.from.x) * forwardOf(move.from.yaw)[0]) + ((move.to.z - move.from.z) * forwardOf(move.from.yaw)[1])) < 0;
   const degrees = (angle: number) => (backward ? -1 : 1) * degreesOf(angle);
   const [lead, trail] = (move.foot === 'left') ? ['leftLeg', 'rightLeg'] : ['rightLeg', 'leftLeg'];
-  const arm = (gait.arms ?? shape.arms) * Math.sin(Math.PI * u) * ((move.foot === 'left') ? 1 : -1)/*the arm opposite the leading leg forward*/, drift = wander('arms', shape.wander.arms);
+  const arm = (gait.arms ?? shape.arms) * Math.sin(Math.PI * u) * ((move.foot === 'left') ? 1 : -1)/*the arm opposite the leading leg forward*/, drift = (gait.arms === 0) ? 0/*swinging no arm*/ : wander('arms', shape.wander.arms);
   const w = along / Math.max(length, TIE);
   return {
     set: { x: move.from.x + ((move.to.x - move.from.x) * w), z: move.from.z + ((move.to.z - move.from.z) * w), yaw: move.from.yaw, height: move.from.level + ((hip - LEG) * PLATES_PER_STUD), [`pose.${lead}`]: degrees(leading), [`pose.${trail}`]: degrees(trailing) },
@@ -878,8 +879,9 @@ const turning = (move: Move, u: number, figure: boolean, shape: GaitShape, drawn
 /** a hop: a crouch (rocking back on the heels where it stands, leaning over its legs,
  *  the arms swinging back), a flight in its shape's arc above the higher level from the
  *  crouch's pose to the landing's (the legs tucked and the arms raised on the way), and a
- *  landing (heels first where it lands, rocking back on them, rising to stand) */
-const hopping = (move: Move, u: number, figure: boolean, shape: GaitShape): Posed => {
+ *  landing (heels first where it lands, rocking back on them, rising to stand); its arms
+ *  still in a walk swinging none (`armless`) */
+const hopping = (move: Move, u: number, figure: boolean, shape: GaitShape, armless = false): Posed => {
   const [a, b] = [move.from.level, move.to.level];
   const [dx, dz] = [move.to.x - move.from.x, move.to.z - move.from.z], length = Math.hypot(dx, dz);
   const [fx, fz] = (length > TIE) ? [dx / length, dz / length] : [0, 0];
@@ -897,7 +899,7 @@ const hopping = (move: Move, u: number, figure: boolean, shape: GaitShape): Pose
   };
   const posed = (pose: ReturnType<typeof at>, yaw: number): Posed => ({
     set: { x: pose.x, z: pose.z, yaw, height: pose.height, ...(figure ? { 'pose.leftLeg': pose.legs, 'pose.rightLeg': pose.legs } : {}) },
-    add: figure ? { 'pose.rightArm': pose.arms, 'pose.leftArm': pose.arms, 'pose.lean': pose.lean } : {},
+    add: figure ? { 'pose.rightArm': armless ? 0 : pose.arms, 'pose.leftArm': armless ? 0 : pose.arms, 'pose.lean': pose.lean } : {},
   });
   if(u < crouch) {
     const v = u / crouch, legs = keysAt(shape.crouchLegs, v);
@@ -1066,6 +1068,10 @@ export class Clicked {
     return { walk, move, u: this.drawnAt(move, time, walk.shape ?? WALK) };
   }
 
+  /** carried off its studs (hanging from what it planted, flying on from it): it clicks
+   *  in afresh where it lands, as an unseen one does where it shows again */
+  public lift(): void { this.stance = this.moving = this.walked = this.keyedOff = this.stillFrom = this.moved = undefined; }
+
   /** what the actor's own values become at `time`, keyed (`channels`: its keys,
    *  spans, ground and boil), on the surfaces of the set standing then */
   public at(channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
@@ -1229,8 +1235,9 @@ export class Clicked {
   }
 }
 
-/** a gait adding nothing (a hop or a turn between walks) */
-const NO_GAIT = { arms: 0, lean: 0 };
+/** a gait adding nothing of a walk's (a hop or a turn between walks): a hop swings
+ *  its own arms, no walk naming them still */
+const NO_GAIT = { lean: 0 };
 /** a crowd walker's step between walks: its arms swinging as the built-in walk's */
 const CROWD_GAIT = { arms: WALK.arms, lean: 0 };
 

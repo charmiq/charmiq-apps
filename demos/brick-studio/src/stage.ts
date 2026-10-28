@@ -629,10 +629,15 @@ const heldActorOf = (accessory: Accessory, item: Readonly<Record<string, unknown
 const gripOf = (accessory: Accessory, grip: unknown): Grip | undefined => (grip === undefined) ? accessory.grips?.[0] : accessory.grips?.find(each => each.name === grip);
 /** where a hand item's far end stands in its own file (LDU): the end of the bar it is
  *  held by farthest from the hand's grip, on the bar's axis, the way the rest of it
- *  points from the hand (a spear's point, a sword's blade, a lance's tip) */
+ *  points from the hand (a spear's point, a sword's blade, a lance's tip); and its near
+ *  end, the bar's other end (a lance's butt behind the hand) */
 const farEndOf = (accessory: Accessory, grip: Grip): readonly [number, number, number] => {
   const [low, high] = HELD_GEOMETRY[accessory.key][grip.axis]/*by contract: every hand item packed*/;
   return onBar(grip, (Math.abs(low - grip.at) > Math.abs(high - grip.at)) ? low : high);
+};
+const nearEndOf = (accessory: Accessory, grip: Grip): readonly [number, number, number] => {
+  const [low, high] = HELD_GEOMETRY[accessory.key][grip.axis]/*by contract: every hand item packed*/;
+  return onBar(grip, (Math.abs(low - grip.at) > Math.abs(high - grip.at)) ? high : low);
 };
 /** the point `at` along a grip's bar, in its item's own file (LDU) */
 const onBar = (grip: Grip, at: number): readonly [number, number, number] => (grip.axis === 'y') ? [0, at, 0] : [0, 0, at];
@@ -695,9 +700,10 @@ export const shotLines = (cast: Cast, shots: ReadonlyArray<Shot>): PartLine[] =>
  *  position and turn a shot gives an actor cast as it to stand exactly there, drawing
  *  the hand's own line of it, so a film stands a thing a hand lets go of where the hand
  *  held it and measures how far a hand reaches to take one up; and where the hand's grip
- *  on the item stands (`grip`, its bar's point at the grip's centre) and its far end
- *  (`tip`, SEE: farEndOf), so a film reads which way it points from the hand */
-export const heldShotsOf = (cast: Cast, input: unknown): ReadonlyArray<Readonly<{ position: Point; turn: Turn; grip: Point; tip: Point; }>> => {
+ *  on the item stands (`grip`, its bar's point at the grip's centre), its far end
+ *  (`tip`) and its near end (`butt`, SEE: farEndOf), so a film reads which way it
+ *  points from the hand and where its ends stand */
+export const heldShotsOf = (cast: Cast, input: unknown): ReadonlyArray<Readonly<{ position: Point; turn: Turn; grip: Point; tip: Point; butt: Point; }>> => {
   if(input === undefined) return [];
   if(!Array.isArray(input) || (input.length > MAX_ACTORS)) throw new Error(`held lists at most ${MAX_ACTORS} hands: each { shot, hand, item }`);
   return input.map((ask, index) => {
@@ -718,7 +724,7 @@ export const heldShotsOf = (cast: Cast, input: unknown): ReadonlyArray<Readonly<
       return { x: x / LDU_PER_STUD, z: z / LDU_PER_STUD, height: -y / LDU_PER_PLATE };
     };
     const grip = gripOf(accessory, gear.grip)!/*by contract: heldActorOf*/;
-    return { position: placed(thing.anchor), turn: turnOfRotation(held.matrix), grip: placed(onBar(grip, grip.at)), tip: placed(farEndOf(accessory, grip)) };
+    return { position: placed(thing.anchor), turn: turnOfRotation(held.matrix), grip: placed(onBar(grip, grip.at)), tip: placed(farEndOf(accessory, grip)), butt: placed(nearEndOf(accessory, grip)) };
   });
 };
 

@@ -137,13 +137,19 @@ export const overlapsOf = (film: Film, sizes: Readonly<Record<string, Size>>): R
 /** the frames a thing and the figure whose hand lets go of it or takes it up stand
  *  more than OVERLAP_DEEP in each other (`depthAt`) at that hand-off: from the frame it
  *  leaves the hand until it stands clear of the figure, and back from the frame before
- *  the hand takes it to the first it stands clear (SEE: film.ts HandOff) */
+ *  the hand takes it to the first it stands clear (SEE: film.ts HandOff); a thing the
+ *  hand plants, every frame the figure hangs from it and then from its letting go until
+ *  it stands clear */
 const handedFrames = (film: Film, one: string, other: string, depthAt: (at: number) => number): ReadonlySet<number> => {
   const frames = new Set<number>();
   for(const handOff of film.handOffs ?? []) {
     if(!((handOff.thing === one) && (handOff.by === other)) && !((handOff.thing === other) && (handOff.by === one))) continue;
     const step = (handOff.change === 'released') ? 1 : -1;
-    for(let at=((step > 0) ? handOff.frame : (handOff.frame - 1)); (at >= 0) && (at < film.frames.length) && (depthAt(at) > OVERLAP_DEEP); at+=step) frames.add(at);
+    const planted = (step > 0) ? film.scene.actors.find(actor => actor.name === handOff.thing)?.planted : undefined;
+    const letGo = !planted ? handOff.frame : planted.letGo ? film.frames.findIndex(frame => frame.time >= (planted.letGo!.time - 1e-6)) : -1/*hangs to the end*/;
+    const hung = (letGo < 0) ? film.frames.length : letGo;
+    for(let at=handOff.frame; at<hung; at++) frames.add(at);
+    for(let at=((step > 0) ? hung : (handOff.frame - 1)); (at >= 0) && (at < film.frames.length) && (depthAt(at) > OVERLAP_DEEP); at+=step) frames.add(at);
   }
   return frames;
 };

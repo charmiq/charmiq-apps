@@ -5,7 +5,7 @@ import { isPlatformFile } from '../../brick-shared/drive';
 import { listed } from '../../brick-shared/words';
 
 import type { Avoided } from './clearance';
-import { cameraShots, channelAt, filmLengthOf, filmTimeOf, flightsAt, frameAtTime, holdingOf, pointingsAt, reachOf, sceneTimeOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type Pointing, type Shot, type WalkLeaps, REACH } from './film';
+import { cameraShots, channelAt, filmLengthOf, filmTimeOf, flightsAt, frameAtTime, holdingOf, plantedAt, pointingsAt, reachOf, sceneTimeOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type HeldEnds, type Pointing, type Shot, type WalkLeaps, HANDS, REACH } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { MAX_AREA_CELLS, type CellArea } from './ground';
 import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from './measure';
@@ -13,7 +13,7 @@ import { motionOf, type DriverSpan, MOTION_CHANNELS, POSE_CHANNELS } from './mot
 import type { Player } from './player';
 import type { FigurePart, Point, Recorded, RecordedActor, RecordedAudience, SceneError, SoundCue } from './recorder';
 import { cameraGroups, cameraProblems, clearancesOf, deadAirOf, footingProblems, jumpsOf, popsOf, problemAtTime, reviewCuts, screenAt, strainedPoses, waitingOf, type CameraProblem, type CutSide, type DeadAir, type FootingKind, type HeldBack, type Jump, type PartFinding, type PopChange, type PopDuring, type StrainedPose, BED_SHARE } from './review';
-import type { ScreenBox } from './screen';
+import { groundOnScreen, type ScreenBox } from './screen';
 import { soundSpans, type Heard } from './sound';
 import type { Surface } from './steps';
 import type { Board, StageState } from './studios';
@@ -185,11 +185,13 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       if(end < start) throw new Error('to is after from.');
       return motionReport(film, recorded, start, end, (samples as number | undefined) ?? 12);
     },
-    where: async ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
+    where: async ({ time, frame, actor }: { time?: unknown; frame?: unknown; actor?: unknown; }) => {
       const film = filmOf(host);
+      const names = film.scene.actors.map(each => each.name);
+      if((actor !== undefined) && !names.includes(actor as string)) throw new Error(`No actor '${String(actor)}' in the film (${names.join(', ')}).`);
       const current = (time === undefined) && (frame === undefined);
       const index = current ? Math.min(film.frames.length - 1, host.player.current.index) : frameAt(film, time, frame);
-      const { frame: shown, time: shownAt, ...answer } = await whereAnswer(stagedOf(host) && host/*staged: where held things point*/, film, index);
+      const { frame: shown, time: shownAt, ...answer } = await whereAnswer(stagedOf(host) && host/*staged: where held things point*/, film, index, actor as string | undefined);
       return { frame: shown, time: shownAt, ...(current ? { current: true } : {}), ...answer };
     },
     measure: ({ actors, from, to }: { actors?: unknown; from?: unknown; to?: unknown; }) => {
@@ -275,13 +277,16 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       const shown = await host.storyboard(boards, view as string | undefined);
       return { shown, frames: boards.map(board => ({ frame: board.frame, time: thousandths(film.frames[board.frame].time), caption: board.caption })) };
     },
-    screenOf: ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
+    screenOf: ({ time, frame, height }: { time?: unknown; frame?: unknown; height?: unknown; }) => {
       const { film, sizes, parts } = reviewed(host);
+      if((height !== undefined) && ((typeof height !== 'number') || !Number.isFinite(height))) throw new Error('height is plates: the ground the view meets.');
       const index = frameAt(film, time, frame), at = film.frames[index];
       const problem = problemAtTime(cameraProblems(film, sizes, parts), at.time);
+      const level = (height as number | undefined) ?? 0;
       return {
         frame: index, time: thousandths(at.time),
         actors: Object.fromEntries(Object.entries(screenAt(film, sizes, index)).map(([name, box]) => [name, screenReport(box)])),
+        ground: { height: level, corners: groundOnScreen(at.camera, film.scene.width / film.scene.height, level).map(corner => corner ? { x: hundredths(corner.x) + 0, z: hundredths(corner.z) + 0 } : null/*never meets it*/) },
         ...(problem ? { camera: problemReport(problem) } : {}),
       };
     },
@@ -483,15 +488,16 @@ const MOMENT_LEAD = 0.5;
 const VERB_SPREAD = 2;
 
 /** describeFilm's moments, in the film's order: each thing a hand lets go of and where
- *  it lands (its last path's end), each leap's takeoff and landing, each walk's end (a run
- *  of walks one after another its last) and path's end, and each audience's cheer and
- *  wave as its first member starts it; none for an audience's member alone, nor past the
- *  film's end */
+ *  it lands (its last path's end), each it plants and lets go of, each leap's takeoff
+ *  and landing, each walk's end (a run of walks one after another its last) and path's
+ *  end, and each audience's cheer and wave as its first member starts it; none for an
+ *  audience's member alone, nor past the film's end */
 export const momentsOf = (film: Film): ReadonlyArray<FilmMoment> => {
   const { scene } = film;
   const shots = cameraShots(scene.camera, scene.length);
   const audienceOf = new Map((scene.audiences ?? []).flatMap(each => each.members.map(member => [member.actor, each.name] as const)));
   const releases = (film.handOffs ?? []).filter(each => each.change === 'released'), released = new Set(releases.map(each => each.thing));
+  const planting = new Set(scene.actors.filter(actor => actor.planted).map(actor => actor.name));
   const ofActors = scene.actors.filter(actor => !audienceOf.has(actor.name)).flatMap(actor => {
     const paths = actor.spans.filter(span => span.label === 'path').map(span => ({ end: span.to / scene.fps, line: span.line })).sort((a, b) => a.end - b.end);
     if(released.has(actor.name)) return paths.slice(-1).map(({ end, line }) => ({ time: end, actor: actor.name, what: 'lands', line }));
@@ -510,7 +516,8 @@ export const momentsOf = (film: Film): ReadonlyArray<FilmMoment> => {
   const started = [...verbs.values()].flatMap(each => [...each].sort((a, b) => a.time - b.time).filter((verb, index, sorted) => (index < 1) || ((verb.time - sorted[index - 1].time) > VERB_SPREAD)))
     .map(({ time, audience, label, line }) => ({ time, actor: audience, what: (label === 'cheer') ? 'cheers' : 'waves', line }));
   return [
-    ...releases.map(({ time, by, thing, line }) => ({ time, actor: by, what: `releases ${thing}`, line })),
+    ...releases.map(({ time, by, thing, line }) => ({ time, actor: by, what: planting.has(thing) ? `plants ${thing}` : `releases ${thing}`, line })),
+    ...scene.actors.flatMap(thing => (thing.planted?.letGo && thing.released) ? [{ time: thing.planted.letGo.time, actor: thing.released.by, what: `lets go of ${thing.name}`, line: thing.planted.letGo.line }] : []),
     ...(film.leaps ?? []).flatMap(walk => walk.times.flatMap((time, at) => [{ time, actor: walk.actor, what: 'takes off', line: walk.line }, { time: walk.lands[at], actor: walk.actor, what: 'lands', line: walk.line }])),
     ...ofActors, ...started,
   ].filter(({ time }) => (time >= 0) && (time < (scene.length - 1e-6))).sort((a, b) => a.time - b.time).map(({ time, actor, what, line }) => {
@@ -886,21 +893,22 @@ export const motionReport = (film: Film, actor: RecordedActor, from: number, to:
 };
 
 // -- Where -----------------------------------------------------------------------
-/** where's answer at a frame: every actor shown, where it stands and how it is turned,
- *  what each figure's hands hold (`holding`) and, the film staged (`read`), which way
- *  each points (SEE: film.ts Pointing) and which way each thing a hand let go of points
- *  as it flies or lies (`points`); the camera, and the set standing */
-export const whereAnswer = async (read: Pick<FilmHost, 'held'> | undefined, film: Film, index: number) => {
-  const at = film.frames[index];
+/** where's answer at a frame: every actor shown (or `actor` alone), where it stands
+ *  and how it is turned, what each figure's hands hold (`holding`) and, the film staged
+ *  (`read`), which way each points (SEE: film.ts Pointing) and which way each thing a
+ *  hand let go of points as it flies or lies (`points`); the camera, and the set
+ *  standing */
+export const whereAnswer = async (read: Pick<FilmHost, 'held'> | undefined, film: Film, index: number, actor?: string) => {
+  const at = (actor === undefined) ? film.frames[index] : { ...film.frames[index], actors: film.frames[index].actors.filter(shot => shot.name === actor) }/*that actor alone, none while hidden*/;
   const pointings = read ? await pointingsAt(film.scene, at, read.held) : undefined/*not staged: what the hands hold alone*/;
   const flights = read ? await flightsAt(film, at, read.held) : undefined/*not staged: where things stand alone*/;
   const holdingReport = (actor: Shot) => {
-    const holding = holdingOf(film.scene, actor).map(([hand, item]) => { const points = pointings?.get(actor.name)?.[hand]; return [hand, { ...item, ...(points ? { points: pointingReport(points) } : {}) }] as const; });
+    const holding = holdingOf(film.scene, actor).map(([hand, item]) => { const ends = pointings?.get(actor.name)?.[hand]; return [hand, { ...item, ...(ends ? endsReport(ends) : {}) }] as const; });
     return (holding.length > 0) ? { holding: Object.fromEntries(holding) } : {};
   };
   return {
     frame: at.index, time: thousandths(at.time), ...((at.set !== undefined) ? { set: at.set } : {}),
-    actors: at.actors.map(actor => { const flight = flights?.get(actor.name); return { name: actor.name, position: rounded(actor.position), turn: { yaw: hundredths(actor.turn.yaw), pitch: hundredths(actor.turn.pitch), roll: hundredths(actor.turn.roll) }, ...holdingReport(actor), ...(flight ? { points: pointingReport(flight) } : {}) }; }),
+    actors: at.actors.map(actor => { const flight = flights?.get(actor.name); return { name: actor.name, position: rounded(actor.position), turn: { yaw: hundredths(actor.turn.yaw), pitch: hundredths(actor.turn.pitch), roll: hundredths(actor.turn.roll) }, ...holdingReport(actor), ...(flight ? { points: pointingReport(flight) } : {}), ...plantedReport(film, index, actor.name) }; }),
     camera: { position: rounded(at.camera.position), target: rounded(at.camera.target), fov: hundredths(at.camera.fov) },
   };
 };
@@ -914,27 +922,35 @@ export const whereAnswer = async (read: Pick<FilmHost, 'held'> | undefined, film
  *  sweep past MAX_SWEEP or over joints that move no hand */
 export const reachAnswer = async (read: Pick<FilmHost, 'held'>, film: Film, grips: Readonly<Record<string, Point>>, { actor, thing, time, frame, times, poses }: ReachArgs) => {
   const names = film.scene.actors.map(each => each.name);
-  for(const name of [actor, thing]) if(!names.includes(name as string)) throw new Error(`No actor '${String(name)}' in the film (${names.join(', ')}).`);
-  const { part, color, grip, ...rest } = film.scene.actors.find(each => each.name === thing)!.source;
-  if((typeof part !== 'string') || (typeof color !== 'string') || ((grip !== undefined) && (typeof grip !== 'string')) || (Object.keys(rest).length > 0)) throw new Error(`${String(thing)} is no hand item: reach reads where a hand would hold an actor cast as one ({ part, color }) or one a hand released.`);
+  const hand = HANDS.find(each => each === thing)/*what that hand holds*/;
+  for(const name of hand ? [actor] : [actor, thing]) if(!names.includes(name as string)) throw new Error(`No actor '${String(name)}' in the film (${names.join(', ')}).`);
+  const { part, color, grip, ...rest } = hand ? { part: '', color: '' } : film.scene.actors.find(each => each.name === thing)!.source;
+  if(!hand && ((typeof part !== 'string') || (typeof color !== 'string') || ((grip !== undefined) && (typeof grip !== 'string')) || (Object.keys(rest).length > 0))) throw new Error(`${String(thing)} is no hand item: reach reads where a hand would hold an actor cast as one ({ part, color }) or one a hand released.`);
   if([time, frame, times].filter(value => value !== undefined).length > 1) throw new Error('Give the time, the frame or times, not more than one.');
   if((times !== undefined) && (poses !== undefined)) throw new Error('poses are read at one moment: give a time or a frame with them.');
   if((times !== undefined) && (!Array.isArray(times) || (times.length < 1) || (times.length > MAX_SWEEP) || !times.every(each => (typeof each === 'number') && (each >= 0) && (each <= film.scene.length)))) throw new Error(`times are 1 to ${MAX_SWEEP} moments, each seconds from 0 to ${film.scene.length}.`);
   if((poses !== undefined) && (!Array.isArray(poses) || (poses.length < 1) || (poses.length > MAX_SWEEP))) throw new Error(`poses are 1 to ${MAX_SWEEP} poses, each the joints to read at other values.`);
   const considered = ((poses as ReadonlyArray<unknown> | undefined) ?? []).map(consideredPoseOf);
-  const item = { part, color, ...((grip !== undefined) ? { grip: grip as string } : {}) };
-  const held = { name: thing as string, item, grip: grips[thing as string] ?? { x: 0, z: 0, height: 0 }/*none told: its position*/ };
+  const named = { name: thing as string, item: { part: part as string, color: color as string, ...((grip !== undefined) ? { grip: grip as string } : {}) }, grip: grips[thing as string] ?? { x: 0, z: 0, height: 0 }/*none told: its position*/ };
+  /** what reach reads at a frame: the thing named, or what the hand asked holds then */
+  const heldAt = (index: number) => {
+    if(!hand) return named;
+    const at = film.frames[index], item = holdingOf(film.scene, at.actors.find(each => each.name === actor)!/*by contract: shown*/).find(([each]) => each === hand)?.[1];
+    if(!item) throw new Error(`${String(actor)}'s ${hand} holds nothing at ${thousandths(at.time)} s: reach reads what a hand holds, or a hand item actor.`);
+    return { item, grip: { x: 0, z: 0, height: 0 } };
+  };
   /** the reach at a frame, posed as it is or as a pose under consideration names */
   const reachAt = (index: number, pose?: Readonly<Record<string, number>>) => {
     const at = film.frames[index];
     if(!at.actors.some(each => each.name === actor)) throw new Error(`${String(actor)} is hidden at ${thousandths(at.time)} s: reach reads a figure in the picture.`);
-    return reachOf(at, actor as string, held, read.held, pose);
+    return reachOf(at, actor as string, heldAt(index), read.held, pose);
   };
-  /** a moment's reach, model-facing: its frame, whether the thing is shown, its grip and
-   *  which way it points of itself while it is, and each hand */
+  /** a moment's reach, model-facing: its frame, what the hand asked holds, whether the
+   *  thing is shown, its grip and which way it points of itself while it is, and each
+   *  hand */
   const momentReport = async (index: number) => {
     const reach = await reachAt(index);
-    return { frame: index, time: thousandths(film.frames[index].time), shown: reach.thing !== undefined, ...(reach.thing ? { grip: rounded(reach.thing) } : {}), ...(reach.points ? { points: pointingReport(reach.points) } : {}), rightHand: handReport(reach.rightHand), leftHand: handReport(reach.leftHand) };
+    return { frame: index, time: thousandths(film.frames[index].time), ...(hand ? { holding: heldAt(index).item } : {}), shown: reach.thing !== undefined, ...(reach.thing ? { grip: rounded(reach.thing) } : {}), ...(reach.points ? { points: pointingReport(reach.points) } : {}), ...(hand ? {} : plantedReport(film, index, thing as string)), rightHand: handReport(reach.rightHand), leftHand: handReport(reach.leftHand) };
   };
   if(times !== undefined) return { actor: actor as string, thing: thing as string, reach: REACH, moments: await Promise.all((times as ReadonlyArray<number>).map(each => momentReport(frameAtTime(film, each)))) };
   const index = frameAt(film, time, frame);
@@ -953,8 +969,8 @@ const consideredPoseOf = (pose: unknown): Readonly<Record<string, number>> => {
 };
 
 /** one hand's reach, model-facing (SEE: film.ts HandReach) */
-const handReport = ({ grip: handGrip, holds, points, gap }: HandReach) => ({
-  grip: rounded(handGrip), holds: { position: rounded(holds.position), turn: { yaw: hundredths(holds.turn.yaw), pitch: hundredths(holds.turn.pitch), roll: hundredths(holds.turn.roll) } }, points: pointingReport(points),
+const handReport = ({ grip: handGrip, holds, gap, ...ends }: HandReach) => ({
+  grip: rounded(handGrip), holds: { position: rounded(holds.position), turn: { yaw: hundredths(holds.turn.yaw), pitch: hundredths(holds.turn.pitch), roll: hundredths(holds.turn.roll) } }, ...endsReport(ends),
   ...(gap ? { studs: hundredths(gap.studs), toHand: rounded(gap.toHand), keyAt: { x: hundredths(gap.keyAt.x), z: hundredths(gap.keyAt.z), ...((gap.keyAt.height !== undefined) ? { height: hundredths(gap.keyAt.height) } : {}) } } : {}),
 });
 
@@ -1132,6 +1148,15 @@ const stageReport = (stage: StageState) => ({
 
 /** which way a held thing points, model-facing */
 const pointingReport = ({ heading, aboveLevel }: Pointing) => ({ heading: hundredths(heading) % 360/*359.995 is 0*/, aboveLevel: hundredths(aboveLevel) });
+/** a held thing's ends, model-facing (SEE: film.ts HeldEnds) */
+const endsReport = ({ points, tip, butt, length }: HeldEnds) => ({ points: pointingReport(points), tip: rounded(tip), ...(butt ? { butt: rounded(butt) } : {}), ...((length !== undefined) ? { length: hundredths(length) } : {}) });
+/** a planted thing at a frame, model-facing (SEE: film.ts plantedAt): where its planted
+ *  end and its free end stand and how far the free end leans from upright; none for any
+ *  other */
+const plantedReport = (film: Film, index: number, name: string) => {
+  const planted = plantedAt(film, index, name);
+  return planted ? { planted: { end: rounded(planted.end), free: rounded(planted.free), lean: hundredths(planted.lean) + 0/*never -0*/ } } : {};
+};
 /** a camera problem, model-facing */
 const problemReport = ({ from, to, kind, by }: CameraProblem) => ({ from: thousandths(from), to: thousandths(to), kind, by });
 /** a box on the screen, model-facing: only that it is behind the camera when it is */
