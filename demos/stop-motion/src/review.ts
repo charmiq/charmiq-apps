@@ -1,5 +1,7 @@
 import { channelAt, frameEnd, keyInForce, shotAt, shotFrames, tiltOf, type CameraShot, type Feet, type Film, type FilmFrame, type ShotFrames } from './film';
+import { pastRange, withinFrom, type PastRange, type RangedJoint } from './joint-range';
 import { inBox, isSized, pointGap, rideChain, rideRoot, segmentEnters, tallOf, type Box, type Size } from './measure';
+import { driverAt, type Driver } from './motion-read';
 import type { Key, Point, Recorded, RecordedActor, RecordedCamera, Span } from './recorder';
 import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
 
@@ -7,7 +9,8 @@ import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
 // each frame's camera sees (every actor's box on the screen), where the camera goes
 // wrong (inside a part or an actor, or one between it and its target; the actor at a
 // point it aims at, its own subject, before that point apart), where an actor pops into
-// or out of the picture within a shot, and every cut read as an editor reads it. A
+// or out of the picture within a shot, where the scene poses a figure past a person's
+// range (SEE: joint-range.ts), and every cut read as an editor reads it. A
 // frame's subject is the actor its camera aims at, else the actor filling most of the
 // screen. A cut is the camera's cut between two shots a
 // frame shows (a shot no frame shows is passed over): each side's frame (the last of
@@ -126,6 +129,23 @@ export type FootingKind = 'into' | 'above' | 'floating' | 'tipped' | 'through';
  *  line), or its keys (the lines of the height keys it eases between, or the one it
  *  holds) */
 export type FootingBy = 'walk' | 'path' | 'keys';
+
+// -- Poses -----------------------------------------------------------------------
+/** a span (seconds) the scene poses a figure past a person's range at one joint while it
+ *  is shown (SEE: sceneDrives): how far past at most (`most`, degrees), when it first
+ *  goes that far (`time`) and its angle then (`value`, as its pose keys it) with the
+ *  nearest a person reaches (`nearest`, in that angle's turn); what drives the joint
+ *  then (`by`), with the scene's lines that do and those adding over them
+ *  (SEE: motion-read.ts Driver), a walk's swing among them (`swung`); and where a key
+ *  is what to change, that key (SEE: Rekey) */
+export type StrainedPose = Readonly<{ actor: string; joint: RangedJoint; from: number; to: number; most: number; time: number; value: number; nearest: number; by: Driver['by']; lines: ReadonlyArray<number>; added?: ReadonlyArray<number>; swung?: true; rekey?: Rekey; }>;
+/** a key that poses a figure past a person's range, and the value to key in its place:
+ *  a key itself past the range, keyed the nearest a person reaches; or the later of two
+ *  keys within it whose ease between crosses out of it, keyed by whole turns so the ease
+ *  runs the short way within it (an arm keyed -300 then 30 swings back up over the head
+ *  and down behind the back; keyed -330, the same arm, it swings down ahead). Its time
+ *  (seconds), its value, the value in its place (`to`) and its line */
+export type Rekey = Readonly<{ time: number; value: number; to: number; line?: number; }>;
 
 // -- Pops ------------------------------------------------------------------------
 /** how an actor pops: shown where the frame before hid it, or hidden where the frame
@@ -422,6 +442,65 @@ export const pathAt = (film: Film, name: string, time: number, channels: Readonl
 
 /** the scene's lines of what names one */
 const linesOf = (lined: ReadonlyArray<Readonly<{ line?: number; }>>): ReadonlyArray<number> => lined.flatMap(each => (each.line !== undefined) ? [each.line] : []);
+
+// == Poses =======================================================================
+/** every span the scene poses a figure past a person's range, joint by joint (SEE:
+ *  film.ts FilmFrame `strained`, sceneDrives): its frames within FOOTING_GAP of each
+ *  other one span, at its most; in the film's order */
+export const strainedPoses = (film: Film): ReadonlyArray<StrainedPose> => {
+  const spans: Array<{ actor: RecordedActor; joint: RangedJoint; from: number; to: number; worst: PastRange; time: number; value: number; }> = [];
+  film.frames.forEach((frame, index) => {
+    for(const [name, joints] of Object.entries(frame.strained ?? {})) {
+      const actor = film.scene.actors.find(each => each.name === name)!;
+      for(const [joint, past] of Object.entries(joints) as Array<[RangedJoint, PastRange]>) {
+        if(!sceneDrives(film, actor, `pose.${joint}`, frame.time)) continue/*a gait's own, or its idling*/;
+        const value = frame.actors.find(shot => shot.name === name)!.pose![joint]!;
+        const open = spans.find(span => (span.actor === actor) && (span.joint === joint) && ((frame.time - span.to) <= FOOTING_GAP));
+        if(!open) { spans.push({ actor, joint, from: frame.time, to: frameEnd(film, index), worst: past, time: frame.time, value }); continue; }
+        open.to = frameEnd(film, index);
+        if(past.past > open.worst.past) Object.assign(open, { worst: past, time: frame.time, value });
+      }
+    }
+  });
+  return spans.map(({ actor, joint, from, to, worst, time, value }) => {
+    const { by, lines, added } = driverAt(film, actor, `pose.${joint}`, time), rekey = rekeyOf(actor, joint, time);
+    const swung = actor.walks?.some(walk => (time >= walk.start) && (time <= walk.end));
+    return { actor: actor.name, joint, from, to, most: worst.past, time, value, nearest: worst.nearest, by, lines, ...(added ? { added } : {}), ...(swung ? { swung: true as const } : {}), ...(rekey ? { rekey } : {}) };
+  });
+};
+
+/** whether the scene drives a figure's joint at a time: its keys, or a span it writes
+ *  (a path, a wobble, an idle, a walk's or a crowd's swing) setting or adding to it;
+ *  never what a walk lays over any key or path (a figure's legs), or the figure's own
+ *  idling, which no line writes */
+const sceneDrives = (film: Film, actor: RecordedActor, channel: string, time: number): boolean => {
+  const { by } = driverAt(film, actor, channel, time);
+  if(by === 'keys') return true;
+  if(by === 'walk') return false/*a walk lays it over any key or path*/;
+  return writesAt(film, actor, channel, time)/*a path, or a span adding to it*/;
+};
+/** whether a span the scene writes (a path, a wobble, an idle, a walk, a crowd) sets or
+ *  adds to an actor's channel at a time */
+const writesAt = (film: Film, actor: RecordedActor, channel: string, time: number): boolean => {
+  const at = time * film.scene.fps;
+  return actor.spans.some(span => (span.line !== undefined) && (at >= span.from) && (at <= span.to) && span.channels.includes(channel));
+};
+
+/** the key to change where a joint's keys pose it past a person's range at a time (SEE:
+ *  Rekey): of the keys easing then (the two either side, or the one it holds), the one
+ *  past the range nearest that time, else the later of two whose ease crosses out of
+ *  it; none where its keys stand within it and something over them carries it past */
+const rekeyOf = (actor: RecordedActor, joint: RangedJoint, time: number): Rekey | undefined => {
+  const keys = actor.keys.filter(key => Object.hasOwn(key.values, `pose.${joint}`));
+  const next = keys.findIndex(key => key.time > time);
+  const easing = (next < 0) ? keys.slice(-1) : keys.slice(Math.max(0, next - 1), next + 1);
+  const valueOf = (key: Key) => key.values[`pose.${joint}`];
+  const past = easing.flatMap(key => { const beyond = pastRange(joint, valueOf(key)); return beyond ? [{ key, to: beyond.nearest }] : []; }).sort((a, b) => Math.abs(a.key.time - time) - Math.abs(b.key.time - time))[0];
+  const [from, later] = easing;
+  const turned = past ? undefined : (later !== undefined) ? withinFrom(joint, valueOf(from), valueOf(later)) : undefined;
+  const [key, to] = past ? [past.key, past.to] : (turned !== undefined) ? [later, turned] : [undefined, undefined];
+  return key && { time: key.time, value: valueOf(key), to: to!, ...((key.line !== undefined) ? { line: key.line } : {}) };
+};
 
 // == Screen ======================================================================
 /** every actor in a frame on the screen, by name: those the stage sized */

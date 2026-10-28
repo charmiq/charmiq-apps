@@ -5,14 +5,14 @@ import { isPlatformFile } from '../../brick-shared/drive';
 import { listed } from '../../brick-shared/words';
 
 import type { Avoided } from './clearance';
-import { cameraShots, filmLengthOf, frameAtTime, holdingOf, pointingsAt, reachOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type Pointing, type Shot, type WalkLeaps, REACH } from './film';
+import { cameraShots, filmLengthOf, flightsAt, frameAtTime, holdingOf, pointingsAt, reachOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type Pointing, type Shot, type WalkLeaps, REACH } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { MAX_AREA_CELLS, type CellArea } from './ground';
 import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from './measure';
 import { motionOf, type DriverSpan, MOTION_CHANNELS, POSE_CHANNELS } from './motion-read';
 import type { Player } from './player';
 import type { Point, RecordedActor, SceneError } from './recorder';
-import { cameraGroups, cameraProblems, clearancesOf, footingProblems, popsOf, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type FootingKind, type HeldBack, type PartFinding, type PopChange } from './review';
+import { cameraGroups, cameraProblems, clearancesOf, footingProblems, popsOf, problemAtTime, reviewCuts, screenAt, strainedPoses, type CameraProblem, type CutSide, type FootingKind, type HeldBack, type PartFinding, type PopChange, type StrainedPose } from './review';
 import type { ScreenBox } from './screen';
 import { soundSpans, type Heard } from './sound';
 import type { Surface } from './steps';
@@ -37,9 +37,10 @@ import type { Board, StageState } from './studios';
 /** what describeFilm judges wrong, in the order its summary lists them: two actors in
  *  each other, the camera inside something or its target hidden, an actor appearing or
  *  vanishing in its picture within a shot (SEE: review.ts popsOf), each way a figure's
- *  footing goes wrong (SEE: review.ts FootingKind), and a keyed flight short of a part
- *  it crosses */
-const PROBLEM_KINDS = ['overlap', 'inside', 'hidden', 'pop', 'into', 'above', 'floating', 'tipped', 'through', 'short'] as const;
+ *  footing goes wrong (SEE: review.ts FootingKind), a figure the scene poses past a
+ *  person's range (SEE: review.ts strainedPoses), and a keyed flight short of a part it
+ *  crosses */
+const PROBLEM_KINDS = ['overlap', 'inside', 'hidden', 'pop', 'into', 'above', 'floating', 'tipped', 'through', 'strained', 'short'] as const;
 /** the camera's kinds, in their detail's order: its problems, then its own subject
  *  standing before the point it aims at (`own`: never a problem, so counted apart and
  *  detailed on request; SEE: review.ts CameraProblem) */
@@ -49,7 +50,7 @@ const FOOTING_KINDS: ReadonlyArray<ProblemKind & FootingKind> = ['into', 'above'
 /** what describeFilm details on request: each problem kind and the camera's own
  *  subject, every keyed flight's clearance, each walk's leaps, and the actors that come
  *  close */
-const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, 'pop', ...FOOTING_KINDS, 'short', 'clearance', 'leaps', 'close'];
+const ASKED_KINDS: ReadonlyArray<string> = ['overlap', ...CAMERA_KINDS, 'pop', ...FOOTING_KINDS, 'strained', 'short', 'clearance', 'leaps', 'close'];
 /** what an actor popping into or out of the picture needs: to be out of view as it is
  *  shown or hidden, moving in or out of the picture on its own feet */
 const POP_FIXES: Readonly<Record<PopChange, string>> = { appears: 'stage it out of view and walk it in', vanishes: 'walk it out of view before hiding it' };
@@ -57,6 +58,14 @@ const POP_FIXES: Readonly<Record<PopChange, string>> = { appears: 'stage it out 
  *  its leaps or from its last to its end is given its fix (a hurdles race runs three
  *  strides between its hurdles, and from the start and to the finish more) */
 const FEW_STEPS = 3;
+
+// -- Reading an Actor ------------------------------------------------------------
+/** the most moments, and the most poses under consideration, reach reads in one ask */
+const MAX_SWEEP = 24;
+/** the joints a pose under consideration names: those that move a hand (each arm
+ *  swinging, each hand turning on its arm, the trunk leaning over the legs and the whole
+ *  figure twisting on its feet) */
+const CONSIDERED_JOINTS: ReadonlyArray<string> = ['rightArm', 'leftArm', 'rightWrist', 'leftWrist', 'lean', 'twist'];
 
 // -- Sounds ----------------------------------------------------------------------
 /** the least pause (seconds) listen parts a sound's spans at when asked none: a
@@ -91,8 +100,9 @@ type AskArgs = Readonly<{ actors?: unknown; from?: unknown; to?: unknown; kinds?
 export type Measured = Readonly<{ film: Film; sizes?: Readonly<Record<string, Size>>; staged?: Readonly<{ film: Film; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; }>; }>;
 
 // -- Reading an Actor ------------------------------------------------------------
-/** reach's arguments as a Charm sends them: the figure, the hand item and the moment */
-type ReachArgs = Readonly<{ actor?: unknown; thing?: unknown; time?: unknown; frame?: unknown; }>;
+/** reach's arguments as a Charm sends them: the figure, the hand item, and the moment
+ *  (`time` or `frame`) with the poses under consideration then, or the moments (`times`) */
+type ReachArgs = Readonly<{ actor?: unknown; thing?: unknown; time?: unknown; frame?: unknown; times?: unknown; poses?: unknown; }>;
 
 // -- Film Host -------------------------------------------------------------------
 /** what the surface reads from the film's wiring */
@@ -332,9 +342,9 @@ export const summaryReport = (measured: Measured) => {
   const camera = cameraOf(measured);
   const problems = problemsOf(measured, camera), lines = cameraLines(measured, camera);
   const kinds = PROBLEM_KINDS.filter(kind => (kind === 'overlap') ? (measured.sizes !== undefined) : (measured.staged !== undefined));
-  const linesOf = (kind: ProblemKind) => (CAMERA_KINDS.includes(kind) ? lines : problems).filter(problem => problem.kind === kind);
+  const linesOf = (kind: ProblemKind) => (kind === 'strained') ? strainedLines(problems.filter(problem => problem.kind === kind)) : (CAMERA_KINDS.includes(kind) ? lines : problems).filter(problem => problem.kind === kind).map(({ entry }) => entry);
   const own = problems.filter(problem => problem.kind === 'own').length;
-  return (kinds.length < 1) ? {} : { counts: Object.fromEntries(kinds.map(kind => [kind, problems.filter(problem => problem.kind === kind).length])), ...((own > 0) ? { own } : {}), problems: PROBLEM_KINDS.flatMap(linesOf).map(({ entry }) => entry) };
+  return (kinds.length < 1) ? {} : { counts: Object.fromEntries(kinds.map(kind => [kind, problems.filter(problem => problem.kind === kind).length])), ...((own > 0) ? { own } : {}), problems: PROBLEM_KINDS.flatMap(linesOf) };
 };
 
 /** describeFilm's detail of the problems, the camera's own subject, clearances, leaps
@@ -354,6 +364,7 @@ export const detailReport = (measured: Measured, ask: FilmAsk) => {
     ...((staged && wants(...CAMERA_KINDS)) ? { camera: ofKinds(CAMERA_KINDS).map(problem => problem.detail) } : {}),
     ...((staged && wants('pop')) ? { pops: ofKinds(['pop']).map(problem => problem.detail) } : {}),
     ...((staged && wants(...FOOTING_KINDS)) ? { footing: ofKinds(FOOTING_KINDS).map(problem => problem.detail) } : {}),
+    ...((staged && wants('strained')) ? { poses: ofKinds(['strained']).map(problem => problem.detail) } : {}),
     ...((staged && wants('clearance', 'short')) ? { clearances: clearancesReport(staged.film).filter(each => naming([each.actor]) && over(each.from, each.to) && (wants('clearance') || !each.cleared)) } : {}),
     ...((staged && wants('leaps')) ? { leaps: leapsReport(staged.film).filter(each => naming([each.actor]) && over(each.leaps[0], each.leaps[each.leaps.length - 1])) } : {}),
     ...((sizes && ask.kinds?.includes('close')) ? { close: { withinStuds: CLOSE_GAP, pairs: closeReport(film, sizes).filter(pair => naming(pair.actors) && over(pair.time, pair.time)) } } : {}),
@@ -363,8 +374,8 @@ export const detailReport = (measured: Measured, ask: FilmAsk) => {
 // -- Problems --------------------------------------------------------------------
 /** a problem describeFilm judges (or the camera's own subject before its target): its
  *  kind, the actors it names, its span (seconds) and how much is wrong (studs, or
- *  degrees tipped; a camera problem's span alone, and a pop's moment), its line in the
- *  summary and its full entry in the detail */
+ *  degrees tipped or past a person's range; a camera problem's span alone, and a pop's
+ *  moment), its line in the summary and its full entry in the detail */
 type Problem = Readonly<{ kind: MeasuredKind; actors: ReadonlyArray<string>; from: number; to: number; amount: number; entry: Readonly<Record<string, unknown>>; detail: Readonly<Record<string, unknown>>; }>;
 
 /** every problem of a measured film, kind by kind (SEE: PROBLEM_KINDS), then the camera's
@@ -382,11 +393,15 @@ const problemsOf = (measured: Measured, spans: ReadonlyArray<CameraProblem> = ca
     kind: detail.kind, actors: [detail.actor], from: detail.from, to: detail.to, amount: detail.most, detail,
     entry: { kind: detail.kind, actor: detail.actor, from: detail.from, to: detail.to, most: detail.most, unit: (detail.kind === 'tipped') ? 'degrees' : 'studs', ...((detail.part !== undefined) ? { part: detail.part } : {}), lines: detail.lines, ...(detail.heldBack ? { heldBack: detail.heldBack } : {}) },
   })) : [];
+  const strained = staged ? posesReport(staged.film).map(detail => {
+    const { actor, joint, from, to, most, lines, added, fix } = detail;
+    return { kind: 'strained' as const, actors: [actor], from, to, amount: most, detail, entry: { kind: 'strained', actor, joint, from, to, most, unit: 'degrees', lines: [...new Set([...lines, ...(added ?? [])])], fix } };
+  }) : [];
   const short = staged ? clearancesReport(staged.film).filter(each => !each.cleared).map(detail => {
     const most = hundredths(-detail.margin)/*how far short*/;
     return { kind: 'short' as const, actors: [detail.actor], from: detail.from, to: detail.to, amount: most, detail, entry: { kind: 'short', actor: detail.actor, from: detail.from, to: detail.to, most, unit: 'studs', time: detail.time, point: detail.point, part: detail.part, lines: detail.lines } };
   }) : [];
-  const all: ReadonlyArray<Problem> = [...overlaps, ...camera, ...pops, ...footing, ...short];
+  const all: ReadonlyArray<Problem> = [...overlaps, ...camera, ...pops, ...footing, ...strained, ...short];
   const length = ({ from, to }: Problem) => thousandths(to - from)/*its ends' rounding aside*/;
   return [...PROBLEM_KINDS, 'own' as const].flatMap(kind => all.filter(problem => problem.kind === kind).sort((a, b) => (b.amount - a.amount) || (length(b) - length(a)) || (a.from - b.from)));
 };
@@ -492,6 +507,46 @@ const studsOf = (studs: number) => `${hundredths(studs)} ${(hundredths(studs) ==
 export const clearancesReport = (film: Film) =>
   [...clearancesOf(film)].sort((a, b) => a.margin - b.margin).map(({ actor, from, to, part, margin, time, point, cleared, lines }) => ({ actor, from: thousandths(from), to: thousandths(to), part, margin: hundredths(margin), time: thousandths(time), point, cleared, lines }));
 
+// -- Poses -----------------------------------------------------------------------
+/** describeFilm's poses past a person's range (SEE: review.ts strainedPoses): each span
+ *  the scene poses a figure's joint past it, how far past at most, when and at what
+ *  angle with the nearest a person reaches, the lines driving it and adding over it, and
+ *  the fix (SEE: strainedFix) */
+export const posesReport = (film: Film) =>
+  strainedPoses(film).map(pose => {
+    const { actor, joint, from, to, most, time, value, nearest, lines, added } = pose;
+    return { actor, joint, from: thousandths(from), to: thousandths(to), most: hundredths(most), time: thousandths(time), value: hundredths(value), nearest: hundredths(nearest), lines, ...(added ? { added } : {}), fix: strainedFix(pose) };
+  });
+
+/** what would pose a figure within a person's range, offered and never required (a
+ *  film may mean a pose past it, a cartoon spin): the key to change and its value in
+ *  place (SEE: review.ts Rekey), else the nearest a person reaches at the moment it goes
+ *  furthest past, with what carries it past: its path, its walk's swing (the swing its
+ *  `arms` names), or what moves it over keys standing within the range (a step its
+ *  keyed place takes, a wobble), or what the scene adds to it */
+const strainedFix = ({ joint, time, nearest, most, by, added, swung, rekey }: StrainedPose): string => {
+  if(rekey) return `within a person's range: key ${joint} ${hundredths(rekey.to)} at ${thousandths(rekey.time)} s in place of ${hundredths(rekey.value)}`;
+  const moving = swung ? 'its walk\'s swing (its arms)' : 'what moves it';
+  const carrying = (by === 'path') ? (added ? `its path and ${moving} over the path carry it` : 'its path carries it') : (by === 'keys') ? `its keys stand within it, and ${moving} over them carries it` : swung ? `${moving} carries it` : 'what the scene adds to it carries it';
+  return `within a person's range: ${joint} at most ${hundredths(nearest)} at ${thousandths(time)} s; ${carrying} ${hundredths(most)}° past`;
+};
+
+/** the summary's lines of the poses past a person's range, one for each actor, joint
+ *  and the lines driving and adding to it (a crowd's walkers each their own): a lone
+ *  span its own line; several their span from the first to the last, how many (`moments`)
+ *  and when the worst goes furthest, its fix the worst's. `problems` the worst first */
+const strainedLines = (problems: ReadonlyArray<Problem>): ReadonlyArray<Readonly<Record<string, unknown>>> => {
+  const groups = new Map<string, Problem[]>();
+  for(const problem of problems) {
+    const { actor, joint, lines } = problem.entry as Readonly<{ actor: string; joint: string; lines: ReadonlyArray<number>; }>;
+    const key = `${actor}|${joint}|${lines.join()}`;
+    groups.set(key, [...(groups.get(key) ?? []), problem]);
+  }
+  return [...groups.values()].map(([worst, ...rest]) => (rest.length < 1) ? worst.entry : {
+    ...worst.entry, from: Math.min(worst.from, ...rest.map(each => each.from)), to: Math.max(worst.to, ...rest.map(each => each.to)), moments: rest.length + 1, time: (worst.detail as Readonly<{ time: number; }>).time,
+  });
+};
+
 // -- Sounds ----------------------------------------------------------------------
 /** listen's answer: a sound heard (SEE: sound.ts soundSpans) at the least pause
  *  asked, its spans to the hundredth (its window's 0.02 s), each with the pause after
@@ -532,44 +587,75 @@ export const motionReport = (film: Film, actor: RecordedActor, from: number, to:
 // -- Where -----------------------------------------------------------------------
 /** where's answer at a frame: every actor shown, where it stands and how it is turned,
  *  what each figure's hands hold (`holding`) and, the film staged (`read`), which way
- *  each points (SEE: film.ts Pointing); the camera, and the set standing */
+ *  each points (SEE: film.ts Pointing) and which way each thing a hand let go of points
+ *  as it flies or lies (`points`); the camera, and the set standing */
 export const whereAnswer = async (read: Pick<FilmHost, 'held'> | undefined, film: Film, index: number) => {
   const at = film.frames[index];
   const pointings = read ? await pointingsAt(film.scene, at, read.held) : undefined/*not staged: what the hands hold alone*/;
+  const flights = read ? await flightsAt(film, at, read.held) : undefined/*not staged: where things stand alone*/;
   const holdingReport = (actor: Shot) => {
     const holding = holdingOf(film.scene, actor).map(([hand, item]) => { const points = pointings?.get(actor.name)?.[hand]; return [hand, { ...item, ...(points ? { points: pointingReport(points) } : {}) }] as const; });
     return (holding.length > 0) ? { holding: Object.fromEntries(holding) } : {};
   };
   return {
     frame: at.index, time: thousandths(at.time), ...((at.set !== undefined) ? { set: at.set } : {}),
-    actors: at.actors.map(actor => ({ name: actor.name, position: rounded(actor.position), turn: { yaw: hundredths(actor.turn.yaw), pitch: hundredths(actor.turn.pitch), roll: hundredths(actor.turn.roll) }, ...holdingReport(actor) })),
+    actors: at.actors.map(actor => { const flight = flights?.get(actor.name); return { name: actor.name, position: rounded(actor.position), turn: { yaw: hundredths(actor.turn.yaw), pitch: hundredths(actor.turn.pitch), roll: hundredths(actor.turn.roll) }, ...holdingReport(actor), ...(flight ? { points: pointingReport(flight) } : {}) }; }),
     camera: { position: rounded(at.camera.position), target: rounded(at.camera.target), fov: hundredths(at.camera.fov) },
   };
 };
 
 // -- Reach -----------------------------------------------------------------------
 /** reach's answer: where a figure's hands would hold a hand item (`thing`, cast as one
- *  or one a hand released; its grip from `grips`) at a moment, as the stage holds it
- *  (`read`; SEE: film.ts Reach), rounded; refuses an actor not in the film, a thing no
- *  hand holds and a figure hidden then */
-export const reachAnswer = async (read: Pick<FilmHost, 'held'>, film: Film, grips: Readonly<Record<string, Point>>, { actor, thing, time, frame }: ReachArgs) => {
+ *  or one a hand released; its grip from `grips`), as the stage holds it (`read`; SEE:
+ *  film.ts Reach), rounded: at a moment, and posed otherwise there as each of the poses
+ *  under consideration names (`poses`); or at each of several moments (`times`).
+ *  Refuses an actor not in the film, a thing no hand holds, a figure hidden then, and a
+ *  sweep past MAX_SWEEP or over joints that move no hand */
+export const reachAnswer = async (read: Pick<FilmHost, 'held'>, film: Film, grips: Readonly<Record<string, Point>>, { actor, thing, time, frame, times, poses }: ReachArgs) => {
   const names = film.scene.actors.map(each => each.name);
   for(const name of [actor, thing]) if(!names.includes(name as string)) throw new Error(`No actor '${String(name)}' in the film (${names.join(', ')}).`);
   const { part, color, grip, ...rest } = film.scene.actors.find(each => each.name === thing)!.source;
   if((typeof part !== 'string') || (typeof color !== 'string') || ((grip !== undefined) && (typeof grip !== 'string')) || (Object.keys(rest).length > 0)) throw new Error(`${String(thing)} is no hand item: reach reads where a hand would hold an actor cast as one ({ part, color }) or one a hand released.`);
-  const index = frameAt(film, time, frame), at = film.frames[index];
-  if(!at.actors.some(each => each.name === actor)) throw new Error(`${String(actor)} is hidden at ${thousandths(at.time)} s: reach reads a figure in the picture.`);
+  if([time, frame, times].filter(value => value !== undefined).length > 1) throw new Error('Give the time, the frame or times, not more than one.');
+  if((times !== undefined) && (poses !== undefined)) throw new Error('poses are read at one moment: give a time or a frame with them.');
+  if((times !== undefined) && (!Array.isArray(times) || (times.length < 1) || (times.length > MAX_SWEEP) || !times.every(each => (typeof each === 'number') && (each >= 0) && (each <= film.scene.length)))) throw new Error(`times are 1 to ${MAX_SWEEP} moments, each seconds from 0 to ${film.scene.length}.`);
+  if((poses !== undefined) && (!Array.isArray(poses) || (poses.length < 1) || (poses.length > MAX_SWEEP))) throw new Error(`poses are 1 to ${MAX_SWEEP} poses, each the joints to read at other values.`);
+  const considered = ((poses as ReadonlyArray<unknown> | undefined) ?? []).map(consideredPoseOf);
   const item = { part, color, ...((grip !== undefined) ? { grip: grip as string } : {}) };
-  const reach = await reachOf(at, actor as string, { name: thing as string, item, grip: grips[thing as string] ?? { x: 0, z: 0, height: 0 }/*none told: its position*/ }, read.held);
-  const handReport = ({ grip: handGrip, holds, points, gap }: HandReach) => ({
-    grip: rounded(handGrip), holds: { position: rounded(holds.position), turn: { yaw: hundredths(holds.turn.yaw), pitch: hundredths(holds.turn.pitch), roll: hundredths(holds.turn.roll) } }, points: pointingReport(points),
-    ...(gap ? { studs: hundredths(gap.studs), toHand: rounded(gap.toHand), keyAt: { x: hundredths(gap.keyAt.x), z: hundredths(gap.keyAt.z), ...((gap.keyAt.height !== undefined) ? { height: hundredths(gap.keyAt.height) } : {}) } } : {}),
-  });
-  return {
-    frame: index, time: thousandths(at.time), actor: actor as string, thing: thing as string, shown: reach.thing !== undefined, ...(reach.thing ? { grip: rounded(reach.thing) } : {}), reach: REACH,
-    rightHand: handReport(reach.rightHand), leftHand: handReport(reach.leftHand),
+  const held = { name: thing as string, item, grip: grips[thing as string] ?? { x: 0, z: 0, height: 0 }/*none told: its position*/ };
+  /** the reach at a frame, posed as it is or as a pose under consideration names */
+  const reachAt = (index: number, pose?: Readonly<Record<string, number>>) => {
+    const at = film.frames[index];
+    if(!at.actors.some(each => each.name === actor)) throw new Error(`${String(actor)} is hidden at ${thousandths(at.time)} s: reach reads a figure in the picture.`);
+    return reachOf(at, actor as string, held, read.held, pose);
   };
+  /** a moment's reach, model-facing: its frame, whether the thing is shown, its grip and
+   *  which way it points of itself while it is, and each hand */
+  const momentReport = async (index: number) => {
+    const reach = await reachAt(index);
+    return { frame: index, time: thousandths(film.frames[index].time), shown: reach.thing !== undefined, ...(reach.thing ? { grip: rounded(reach.thing) } : {}), ...(reach.points ? { points: pointingReport(reach.points) } : {}), rightHand: handReport(reach.rightHand), leftHand: handReport(reach.leftHand) };
+  };
+  if(times !== undefined) return { actor: actor as string, thing: thing as string, reach: REACH, moments: await Promise.all((times as ReadonlyArray<number>).map(each => momentReport(frameAtTime(film, each)))) };
+  const index = frameAt(film, time, frame);
+  const moment = await momentReport(index);
+  const posed = await Promise.all(considered.map(async pose => { const reach = await reachAt(index, pose); return { pose, rightHand: handReport(reach.rightHand), leftHand: handReport(reach.leftHand) }; }));
+  const { frame: shownFrame, time: shownTime, ...hands } = moment;
+  return { frame: shownFrame, time: shownTime, actor: actor as string, thing: thing as string, ...hands, reach: REACH, ...((posed.length > 0) ? { poses: posed } : {}) };
 };
+
+/** a pose under consideration as a Charm sends it: the joints that move a hand at their
+ *  values (degrees), or why it is not one */
+const consideredPoseOf = (pose: unknown): Readonly<Record<string, number>> => {
+  const joints = ((pose !== null) && (typeof pose === 'object') && !Array.isArray(pose)) ? Object.entries(pose) : [];
+  if((joints.length < 1) || !joints.every(([joint, value]) => CONSIDERED_JOINTS.includes(joint) && (typeof value === 'number') && Number.isFinite(value))) throw new Error(`A pose under consideration names ${listed(CONSIDERED_JOINTS, 'or')}, each a number of degrees: the joints that move a hand.`);
+  return Object.fromEntries(joints) as Record<string, number>;
+};
+
+/** one hand's reach, model-facing (SEE: film.ts HandReach) */
+const handReport = ({ grip: handGrip, holds, points, gap }: HandReach) => ({
+  grip: rounded(handGrip), holds: { position: rounded(holds.position), turn: { yaw: hundredths(holds.turn.yaw), pitch: hundredths(holds.turn.pitch), roll: hundredths(holds.turn.roll) } }, points: pointingReport(points),
+  ...(gap ? { studs: hundredths(gap.studs), toHand: rounded(gap.toHand), keyAt: { x: hundredths(gap.keyAt.x), z: hundredths(gap.keyAt.z), ...((gap.keyAt.height !== undefined) ? { height: hundredths(gap.keyAt.height) } : {}) } } : {}),
+});
 
 // -- Set Map ---------------------------------------------------------------------
 /** surfaces' answer over a set: the map of the area asked, or, asked none, the set's
@@ -744,7 +830,7 @@ const stageReport = (stage: StageState) => ({
 });
 
 /** which way a held thing points, model-facing */
-const pointingReport = ({ heading, aboveLevel }: Pointing) => ({ heading: hundredths(heading), aboveLevel: hundredths(aboveLevel) });
+const pointingReport = ({ heading, aboveLevel }: Pointing) => ({ heading: hundredths(heading) % 360/*359.995 is 0*/, aboveLevel: hundredths(aboveLevel) });
 /** a camera problem, model-facing */
 const problemReport = ({ from, to, kind, by }: CameraProblem) => ({ from: thousandths(from), to: thousandths(to), kind, by });
 /** a box on the screen, model-facing: only that it is behind the camera when it is */

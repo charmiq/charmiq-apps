@@ -1,5 +1,6 @@
 import { hipsFromSoles, hipsOver, type PoseBottoms } from '../../brick-shared/rise';
 
+import { PERSON_RANGE } from './joint-range';
 import type { Foot, Walk } from './recorder';
 
 // an actor that clicks onto studs (a figure, a creature) moving as one does: on studs
@@ -132,8 +133,9 @@ export type GaitShape = Readonly<{
    *  (degrees) */
   upGlide: ReadonlyArray<number>; upLead: ReadonlyArray<number>; upTrail: ReadonlyArray<number>; upHeelOn: number; upToeOff: number; upLean: ReadonlyArray<number>;
   downGlide: ReadonlyArray<number>; downLead: ReadonlyArray<number>; downTrail: ReadonlyArray<number>; downHeelOn: number; downToeOff: number; downLean: ReadonlyArray<number>;
-  /** a figure's arms where nothing keys them and how far a step swings them either way
-   *  (degrees); the shoulders never turn against them, a toy figure having no waist */
+  /** a figure's arms where nothing keys them and how far a step swings them forward
+   *  (degrees), back ARM_BACK as far; the shoulders never turn against them, a toy
+   *  figure having no waist */
   hang: number; arms: number;
   /** the head: its swing through a step, keyed at the step's frames (degrees toward the
    *  leading foot's side, straight at the stances); and leading into a turn, how far it
@@ -191,14 +193,23 @@ export const WALK: GaitShape = {
   // the jump, shaped by eye: rocking back on the heels and rolling forward
   // onto the toes to spring, a flat arc with the legs trailing and swinging through,
   // landing toes first leaning back, rocking onto the heels and folding forward, the arms
-  // swinging back; 6 frames crouching, 5 in the air, 5 landing
-  crouchLegs: [0, 11.11, 17.41, 20, 3.6, -8.97, -15], crouchLean: [0, 11.46, 19.65, 24, 19.09, 13.87, 10], crouchArms: [0, -33.33, -52.22, -60, -29.55, 3.99, 30],
-  landLegs: [-33.56, -9.52, 5.51, 7.35, 3.17, 0], landLean: [-15.47, 9.32, 7.61, 5.25, 4.53, 0], landArms: [30, -8.27, -35.1, -50.04, -50.99, 0],
+  // swinging back no further than a person's 60 behind from where they hang (29); 6
+  // frames crouching, 5 in the air, 5 landing
+  crouchLegs: [0, 11.11, 17.41, 20, 3.6, -8.97, -15], crouchLean: [0, 11.46, 19.65, 24, 19.09, 13.87, 10], crouchArms: [0, -16.11, -25.24, -29, -14.28, 3.99, 30],
+  landLegs: [-33.56, -9.52, 5.51, 7.35, 3.17, 0], landLean: [-15.47, 9.32, 7.61, 5.25, 4.53, 0], landArms: [30, -4.7, -19.96, -28.46, -29, 0],
   hopArc: [0, 0.46, 0.74, 0.76, 0.53, 0], hopLegs: [0, -9.91, -8.04, 0.2, 5.99, 0], hopArms: [0, 42.22, 65.57, 65.57, 42.22, 0], hopLift: 2, hopClimb: 0.1,
   timing: { step: 4, up: 6, down: 6, turn: 6, shift: 4, crouch: 6, air: 5, land: 5 },
 };
 /** where a figure's arms hang when nothing keys them (degrees) */
 export const HANG = WALK.hang;
+/** how far a step swings an arm back, as a share of how far it swings it forward: the
+ *  built-in walk's arm, hung 31 back and wandering 6, ends its back swing at a person's
+ *  60 behind the body (SEE: joint-range.ts PERSON_RANGE), its forward swing whole; a
+ *  walk naming a wider swing swings back past it, as the scene chose */
+export const ARM_BACK = ((WALK.hang - PERSON_RANGE.rightArm.least) - WALK.wander.arms) / WALK.arms;
+/** an arm's swing (degrees, forward +) as a step swings it: back ARM_BACK as far as
+ *  forward */
+const swungArm = (swing: number): number => (swing < 0) ? (swing * ARM_BACK) : swing;
 /** a hop's crouch and landing, each a share of the hop, from its gait's timing */
 export const hopShares = (shape: GaitShape): Readonly<{ crouch: number; land: number; }> => {
   const { crouch, air, land } = shape.timing, all = Math.max(TIE, crouch + air + land);
@@ -732,11 +743,11 @@ const stepping = (move: Move, u: number, gait: Gait, drawn: boolean): Posed => {
   const backward = (((move.to.x - move.from.x) * forwardOf(move.from.yaw)[0]) + ((move.to.z - move.from.z) * forwardOf(move.from.yaw)[1])) < 0;
   const degrees = (angle: number) => (backward ? -1 : 1) * degreesOf(angle);
   const [lead, trail] = (move.foot === 'left') ? ['leftLeg', 'rightLeg'] : ['rightLeg', 'leftLeg'];
-  const arm = ((gait.arms ?? shape.arms) * Math.sin(Math.PI * u) * ((move.foot === 'left') ? 1 : -1)/*the arm opposite the leading leg forward*/) + wander('arms', shape.wander.arms);
+  const arm = (gait.arms ?? shape.arms) * Math.sin(Math.PI * u) * ((move.foot === 'left') ? 1 : -1)/*the arm opposite the leading leg forward*/, drift = wander('arms', shape.wander.arms);
   const w = along / Math.max(length, TIE);
   return {
     set: { x: move.from.x + ((move.to.x - move.from.x) * w), z: move.from.z + ((move.to.z - move.from.z) * w), yaw: move.from.yaw, height: move.from.level + ((hip - LEG) * PLATES_PER_STUD), [`pose.${lead}`]: degrees(leading), [`pose.${trail}`]: degrees(trailing) },
-    add: { 'pose.rightArm': arm, 'pose.leftArm': -arm, 'pose.lean': (gait.lean * Math.sin(Math.PI * u)) + (climbing ? keysAt((rise > 0) ? shape.upLean : shape.downLean, u) : 0), 'pose.head': keysAt(shape.headSwing, u) * ((move.foot === 'right') ? 1 : -1)/*a head turns clockwise seen from above: toward the right*/ },
+    add: { 'pose.rightArm': swungArm(arm) + drift, 'pose.leftArm': swungArm(-arm) - drift, 'pose.lean': (gait.lean * Math.sin(Math.PI * u)) + (climbing ? keysAt((rise > 0) ? shape.upLean : shape.downLean, u) : 0), 'pose.head': keysAt(shape.headSwing, u) * ((move.foot === 'right') ? 1 : -1)/*a head turns clockwise seen from above: toward the right*/ },
   };
 };
 
@@ -945,7 +956,7 @@ const leaping = (move: Move, u: number, gait: Gait): Posed => {
   const w = along / length;
   return {
     set: { x: move.from.x + (dx * w), z: move.from.z + (dz * w), yaw: move.from.yaw, height: move.from.level + ((hip - LEG + riseOf(leading, trailing)) * PLATES_PER_STUD), [`pose.${lead}`]: leading, [`pose.${trail}`]: trailing },
-    add: { 'pose.rightArm': arm, 'pose.leftArm': -arm, 'pose.lean': gait.lean * reach },
+    add: { 'pose.rightArm': swungArm(arm), 'pose.leftArm': swungArm(-arm), 'pose.lean': gait.lean * reach },
   };
 };
 
