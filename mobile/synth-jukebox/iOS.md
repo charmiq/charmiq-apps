@@ -2689,6 +2689,8 @@ const Engine = (() => {
     onerror: null,
     // () when playback stopped without being asked to (SEE: stopExternally)
     onstopped: null,
+    // () when a take began playing without being asked to (SEE: the element's `play`)
+    onresumed: null,
   };
 
   // -- iOS Audio Session ---------------------------------------------------------
@@ -2948,6 +2950,9 @@ const Engine = (() => {
       // is a stop. The app's own pauses clear `playing` first; a source switch plays
       // again before this runs, and the song's end is `ended`
       media.addEventListener('pause', () => { if(playing && (spec === mediaSpec) && media.paused && !media.ended) stopExternally(); });
+      // a play the app did not make: the lock screen's, which iOS gives the element
+      // itself. The app's own plays set `playing` first
+      media.addEventListener('play', () => { if(!playing && (spec === mediaSpec)) { playing = true; if(api.onresumed) api.onresumed(); } });
       media.addEventListener('loadedmetadata', () => {
         if(!mediaSpec || !isFinite(media.duration) || (media.duration <= 0)) return;
         mediaSpec.duration = media.duration;
@@ -3059,10 +3064,13 @@ const Engine = (() => {
   api.load = (nextSpec, position) => { if(playing) { playing = false; clearInterval(timer); killSession(); } stopMedia(); spec = nextSpec; pausedPosition = position || 0; };
   // the composition loaded, or null when none is
   api.spec = () => spec;
-  // plays from `position` (absent: where it paused); false where Web Audio is unavailable
+  // plays from `position` (absent: where it paused); false for a composition where Web
+  // Audio is unavailable
   api.play = (position) => {
-    if(!spec || !ensure()) return false;
-    wake();
+    if(!spec) return false;
+    // NOTE: a take plays from its element alone, never starting the synth's graph or
+    //       its keep-alive: a second element starting beside it (the lock screen's
+    //       play, the screen locked) hands iOS a silent one in its place
     if(isTakeSpec(spec)) {
       killSession(); clearInterval(timer);
       try { if(keepAlive) keepAlive.pause(); } catch(error) { /*the keep-alive is already stopped*/ }
@@ -3070,6 +3078,8 @@ const Engine = (() => {
       playMedia(clamp((position == null) ? pausedPosition : position, 0, end));
       return true;
     } /* else -- a composition */
+    if(!ensure()) return false;
+    wake();
     stopMedia();
     killSession(); newSession();
     const now = ctx.currentTime;
@@ -4226,7 +4236,7 @@ const updatePlayUI = () => {
   try { if(navigator.mediaSession) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch(error) { /*no Media Session: the lock screen shows nothing*/ }
   setMediaPosition();
 };
-const onTrackChange = () => { renderMini(); renderNowPlayingInfo(); updateMarks(); if(library) renderStudio(); setMediaMetadata(); updatePlayUI(); };
+const onTrackChange = () => { renderMini(); renderNowPlayingInfo(); updateMarks(); if(library) renderStudio(); setMediaMetadata(); setMediaActions(); updatePlayUI(); };
 
 // == Playback ====================================================================
 // loads the current track at `position`, playing it when `autoplay`
@@ -4276,6 +4286,7 @@ Engine.onended = () => nextTrack(true);
 Engine.source = (spec) => takeUrl(spec.assetId);
 Engine.onerror = (error) => { toast('Could not play: ' + messageOf(error)); updatePlayUI(); };
 Engine.onstopped = () => { updatePlayUI(); saveState(); };
+Engine.onresumed = () => { updatePlayUI(); saveState(); };
 // records a take's length the first time a play measures it, so every row shows it
 Engine.onduration = (spec) => {
   setMediaPosition();
@@ -4813,10 +4824,20 @@ const setMediaMetadata = () => {
   const session = navigator.mediaSession, track = current(); if(!session || !track || (typeof MediaMetadata === 'undefined')) return;
   try { session.metadata = new MediaMetadata({ title: track.title, artist: track.album.artist, album: track.album.title, artwork: [{ src: artFor(track.album).url, sizes: '480x480', type: 'image/jpeg' }] }); } catch(error) { /*metadata refused: the card shows the page title*/ }
 };
+// the lock screen's play and pause: a composition's through the app, which alone can
+// play it; a take's left to iOS, which plays and pauses its element itself even
+// while the page is suspended (the app's handlers there would run only once the
+// app is in front again, and a play they start makes no sound)
+const setMediaActions = () => {
+  const session = navigator.mediaSession, track = current(); if(!session) return;
+  const take = !!track && isTake(track.album);
+  try {
+    session.setActionHandler('play', take ? null : () => { if(!Engine.isPlaying()) togglePlay(); });
+    session.setActionHandler('pause', take ? null : () => { if(Engine.isPlaying()) togglePlay(); });
+  } catch(error) { /*an action the browser does not support*/ }
+};
 try {
   if(navigator.mediaSession) {
-    navigator.mediaSession.setActionHandler('play', () => { if(!Engine.isPlaying()) togglePlay(); });
-    navigator.mediaSession.setActionHandler('pause', () => { if(Engine.isPlaying()) togglePlay(); });
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
     navigator.mediaSession.setActionHandler('previoustrack', previousTrack);
     navigator.mediaSession.setActionHandler('seekto', (details) => { if(!current() || !(details.seekTime >= 0)) return; Engine.seek(details.seekTime); state.pos = details.seekTime; saveState(); setMediaPosition(); });
