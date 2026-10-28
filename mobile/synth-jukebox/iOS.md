@@ -1500,12 +1500,16 @@ img {
 .alert-btns .destructive {
   color: #FF3B30;
 }
+/* the resting toast is hidden, not only moved: an offset from its own height leaves
+   a short (empty) toast's edge and shadow showing under the status bar. Hiding waits
+   for the slide-out to finish */
 .toast {
   position: fixed;
   z-index: 80;
   left: 50%;
   top: calc(var(--safe-t) + 12px);
   transform: translate(-50%,-140%);
+  visibility: hidden;
   padding: 11px 18px;
   border-radius: 22px;
   font-size: 15px;
@@ -1515,7 +1519,7 @@ img {
   max-width: 92vw;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: transform .5s var(--spring);
+  transition: transform .5s var(--spring), visibility 0s .5s;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1527,6 +1531,8 @@ img {
 }
 .toast.show {
   transform: translate(-50%,0);
+  visibility: visible;
+  transition: transform .5s var(--spring), visibility 0s;
 }
 </style>
 </head>
