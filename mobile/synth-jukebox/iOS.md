@@ -1276,6 +1276,11 @@ img {
 .vol .slider {
   flex: 1;
 }
+/* a take on iOS is as loud as the device's buttons set it: the slider would reach
+   nothing, so it gives way in place */
+#np.device-volume .vol {
+  visibility: hidden;
+}
 .np-bottom {
   display: flex;
   justify-content: space-around;
@@ -1931,11 +1936,6 @@ img {
   line-height: 18px;
   color: var(--label2);
   margin-top: 1px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: break-word;
   letter-spacing: -.15px;
 }
 .take-s {
@@ -1964,10 +1964,8 @@ img {
   color: #FF3B30;
   min-width: 0;
 }
-.take-err span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.take-err .marquee {
+  flex: 1;
 }
 .ings {
   display: flex;
@@ -2029,6 +2027,70 @@ img {
 }
 .take-play .eq i {
   background: #fff;
+}
+/* a line held to one row: one longer than its row shows its start a moment, scrolls
+   to its end, holds and scrolls back, fading at whichever edge hides text */
+@property --fade-l {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 14px;
+}
+.marquee {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+.marquee-in {
+  display: inline-block;
+  vertical-align: top;
+}
+.ings .marquee-in {
+  display: inline-flex;
+  gap: 4px;
+}
+.marquee.scrolls {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent);
+  animation: marqueeFade var(--marquee-duration) linear infinite;
+}
+.marquee.scrolls .marquee-in {
+  animation: marqueeMove var(--marquee-duration) ease-in-out infinite;
+}
+@keyframes marqueeMove {
+  0%, 20% {
+    transform: none;
+  }
+  50%, 70% {
+    transform: translateX(var(--marquee-shift));
+  }
+  100% {
+    transform: none;
+  }
+}
+@keyframes marqueeFade {
+  0%, 20% {
+    --fade-l: 0px;
+    --fade-r: 14px;
+  }
+  24%, 46%, 74%, 96% {
+    --fade-l: 14px;
+    --fade-r: 14px;
+  }
+  50%, 70% {
+    --fade-l: 14px;
+    --fade-r: 0px;
+  }
+  100% {
+    --fade-l: 0px;
+    --fade-r: 14px;
+  }
 }
 .studio-tag {
   display: inline-block;
@@ -2517,7 +2579,7 @@ const Engine = (() => {
   };
   // NOTE: returning to the app never resumes playback by itself: iOS stopped it
   //       (SEE: stopExternally) and only a tap starts it again
-  document.addEventListener('visibilitychange', () => { if(!document.hidden && playing && ctx && (ctx.state !== 'running')) stopExternally(); });
+  document.addEventListener('visibilitychange', () => { if(!document.hidden && playing && !isTakeSpec(spec) && ctx && (ctx.state !== 'running')) stopExternally(); });
 
   // -- Graph ---------------------------------------------------------------------
   // a decaying stereo noise burst: the reverb's impulse response
@@ -2535,10 +2597,10 @@ const Engine = (() => {
     if(ctx) return true;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext; if(!AudioContextClass) return false;
     ctx = new AudioContextClass();
-    // NOTE: a context leaving `running` stops playback only while the page is hidden
-    //       (the screen locked, the app left); one stopped while in front is caught
-    //       when it is next shown
-    ctx.addEventListener('statechange', () => { if(document.hidden && (ctx.state !== 'running')) stopExternally(); });
+    // NOTE: a context leaving `running` stops a composition only while the page is
+    //       hidden (the screen locked, the app left); one stopped while in front is
+    //       caught when it is next shown. A take never plays through the context
+    ctx.addEventListener('statechange', () => { if(document.hidden && !isTakeSpec(spec) && (ctx.state !== 'running')) stopExternally(); });
     compressor = ctx.createDynamicsCompressor(); compressor.threshold.value = -16; compressor.knee.value = 12; compressor.ratio.value = 4; compressor.attack.value = .004; compressor.release.value = .2;
     tone = ctx.createBiquadFilter(); tone.type = 'lowpass'; tone.frequency.value = 18000; tone.Q.value = .4;
     analyser = ctx.createAnalyser(); analyser.fftSize = 1024; analyser.smoothingTimeConstant = .75;
@@ -2722,28 +2784,104 @@ const Engine = (() => {
   };
 
   // -- Takes ---------------------------------------------------------------------
-  // a take plays from one <audio> element routed into the analyser, past the tone
-  // filter and the compressor (a take arrives mixed and mastered). `mediaSpec` is
+  // a take plays from one <audio> element straight to the speaker, never through the
+  // graph: iOS keeps an element playing with the screen locked and the app left, and
+  // silences one routed into Web Audio when it suspends the context. `mediaSpec` is
   // the take the element holds; `mediaToken` retires a play its pause or another
   // load overtook
-  let media = null/*created on the first take*/, mediaRouted = false, mediaSpec = null/*holds none*/, mediaToken = 0;
+  let media = null/*created on the first take*/, mediaSpec = null/*holds none*/, mediaToken = 0, mediaAnalysis = null/*not yet measured*/;
+  // whether a page sets an element's volume: iOS leaves it to the device's buttons
+  const mediaVolumeWorks = (() => { try { const probe = document.createElement('audio'); probe.volume = .5; return Math.abs(probe.volume - .5) < .01; } catch(error) { return false; } })();
   const mediaElement = () => {
     if(!media) {
       media = document.createElement('audio');
       media.preload = 'auto'; media.setAttribute('playsinline', ''); media.setAttribute('x-webkit-airplay', 'deny');
       media.addEventListener('ended', () => { if(playing && (spec === mediaSpec)) finish(); });
+      // a pause the app did not make (a call, another app's audio, headphones pulled)
+      // is a stop. The app's own pauses clear `playing` first; a source switch plays
+      // again before this runs, and the song's end is `ended`
+      media.addEventListener('pause', () => { if(playing && (spec === mediaSpec) && media.paused && !media.ended) stopExternally(); });
       media.addEventListener('loadedmetadata', () => {
         if(!mediaSpec || !isFinite(media.duration) || (media.duration <= 0)) return;
         mediaSpec.duration = media.duration;
         if(api.onduration) api.onduration(mediaSpec);
       });
     } /* else -- created by an earlier take */
-    if(!mediaRouted && ctx) {
-      mediaRouted = true;
-      try { const source = ctx.createMediaElementSource(media); source.connect(analyser); } catch(error) { /*plays straight out: no pulse, no volume on iOS*/ }
-    } /* else -- routed already, or no graph yet */
+    if(mediaVolumeWorks) media.volume = volume * volume;
     return media;
   };
+
+  // -- Take Analysis -------------------------------------------------------------
+  // what the visuals read for a take, measured from its audio once when it is read:
+  // for every frame, the spectrum and the waveform an analyser would report there
+  const ANALYSIS_RATE = 22050/*Hz: the audio is measured at this rate, in mono*/;
+  const ANALYSIS_FPS = 24;
+  const ANALYSIS_SIZE = 512/*samples per spectrum: 43 Hz per band*/;
+  const ANALYSIS_WAVE = 128/*waveform samples kept per frame*/;
+  const ANALYSES_KEPT = 2/*the takes whose analyses stay in memory*/;
+  const analyses = new Map()/*url → Promise of the analysis, or of null*/;
+  // a Blackman window and the transform's tables, as the analyser uses
+  const fftTables = (() => {
+    const n = ANALYSIS_SIZE, bits = Math.log2(n), reverse = new Uint16Array(n), taper = new Float32Array(n), cos = new Float32Array(n / 2), sin = new Float32Array(n / 2);
+    for(let i=0; i<n; i++) {
+      let reversed = 0; for(let b=0; b<bits; b++) reversed |= ((i >> b) & 1) << (bits - 1 - b);
+      reverse[i] = reversed; taper[i] = .42 - .5 * Math.cos(2 * Math.PI * i / n) + .08 * Math.cos(4 * Math.PI * i / n);
+    }
+    for(let i=0; i<(n / 2); i++) { cos[i] = Math.cos(-2 * Math.PI * i / n); sin[i] = Math.sin(-2 * Math.PI * i / n); }
+    return { reverse, taper, cos, sin };
+  })();
+  // an in-place radix-2 transform of bit-reversed input
+  const fft = (re, im) => {
+    const n = re.length, { cos, sin } = fftTables;
+    for(let size=2; size<=n; size<<=1) {
+      const half = size >> 1, stride = n / size;
+      for(let i=0; i<n; i+=size) for(let j=0; j<half; j++) {
+        const a = i + j, b = a + half, k = j * stride, tr = re[b] * cos[k] - im[b] * sin[k], ti = re[b] * sin[k] + im[b] * cos[k];
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  };
+  const analyse = (url) => {
+    if(analyses.has(url)) return analyses.get(url);
+    const measured = (async () => {
+      const OfflineContext = window.OfflineAudioContext || window.webkitOfflineAudioContext; if(!OfflineContext) return null/*no decoder*/;
+      const audio = await (await fetch(url)).arrayBuffer();
+      const buffer = await new OfflineContext(1, 1, ANALYSIS_RATE).decodeAudioData(audio);
+      const length = buffer.length, mono = new Float32Array(length);
+      for(let c=0; c<buffer.numberOfChannels; c++) { const data = buffer.getChannelData(c); for(let i=0; i<length; i++) mono[i] += data[i] / buffer.numberOfChannels; }
+      const n = ANALYSIS_SIZE, bins = n / 2, hop = buffer.sampleRate / ANALYSIS_FPS, frames = Math.max(1, Math.floor(length / hop));
+      const spectra = new Uint8Array(frames * bins), waves = new Uint8Array(frames * ANALYSIS_WAVE);
+      const re = new Float32Array(n), im = new Float32Array(n), smoothed = new Float32Array(bins), { reverse, taper } = fftTables;
+      for(let f=0; f<frames; f++) {
+        if((f % 240) === 239) await new Promise((resolve) => setTimeout(resolve, 0))/*the page stays answering*/;
+        const start = Math.floor(f * hop + hop / 2 - n / 2);
+        for(let i=0; i<n; i++) { re[reverse[i]] = (mono[start + i] || 0) * taper[i]; im[i] = 0; }
+        fft(re, im);
+        // the analyser's reading: magnitude smoothed over time, in decibels from -100 to -30
+        for(let k=0; k<bins; k++) {
+          smoothed[k] = .5 * smoothed[k] + .5 * Math.hypot(re[k], im[k]) / n;
+          spectra[f * bins + k] = clamp((20 * Math.log10(smoothed[k] || 1e-9) + 100) / 70 * 255, 0, 255);
+        }
+        for(let w=0; w<ANALYSIS_WAVE; w++) waves[f * ANALYSIS_WAVE + w] = clamp(128 + (mono[start + Math.floor(w * n / ANALYSIS_WAVE)] || 0) * 128, 0, 255);
+      }
+      return { frames, bins, spectra, waves };
+    })().catch((error) => { console.warn('take not measured', messageOf(error)); return null/*no visuals for this take: it still plays*/; });
+    analyses.set(url, measured);
+    while(analyses.size > ANALYSES_KEPT) analyses.delete(analyses.keys().next().value);
+    return measured;
+  };
+  // the playing take's spectrum or waveform at its position (the spectrum eased
+  // between frames), or null before it is measured
+  const takeSpectrum = new Uint8Array(ANALYSIS_SIZE / 2), takeWave = new Uint8Array(ANALYSIS_WAVE);
+  const takeFrame = (spectrum) => {
+    const analysis = mediaAnalysis; if(!analysis || !media || (spec !== mediaSpec)) return null;
+    const at = clamp(media.currentTime * ANALYSIS_FPS, 0, analysis.frames - 1), frame = Math.floor(at), next = Math.min(analysis.frames - 1, frame + 1), mix = at - frame;
+    if(!spectrum) { takeWave.set(analysis.waves.subarray(frame * ANALYSIS_WAVE, (frame + 1) * ANALYSIS_WAVE)); return takeWave; }
+    const bins = analysis.bins, from = frame * bins, to = next * bins;
+    for(let k=0; k<bins; k++) takeSpectrum[k] = analysis.spectra[from + k] + (analysis.spectra[to + k] - analysis.spectra[from + k]) * mix;
+    return takeSpectrum;
+  };
+
   const stopMedia = () => { mediaToken++; if(media && !media.paused) media.pause(); };
   // plays the loaded take from `from` once its audio is at hand
   const playMedia = (from) => {
@@ -2762,7 +2900,11 @@ const Engine = (() => {
     mediaSpec = null/*the silence*/; element.src = silence();
     const unlocked = element.play(); if(unlocked && unlocked.catch) unlocked.catch(() => {/*the take's own play reports*/});
     api.source(take).then(
-      (url) => { if((token !== mediaToken) || (spec !== take)) return; mediaSpec = take; element.src = url; begin(); },
+      (url) => {
+        if((token !== mediaToken) || (spec !== take)) return;
+        mediaSpec = take; mediaAnalysis = null; element.src = url; begin();
+        analyse(url).then((analysis) => { if(mediaSpec === take) mediaAnalysis = analysis; });
+      },
       (error) => { if(token !== mediaToken) return; playing = false; if(api.onerror) api.onerror(error); });
   };
 
@@ -2776,6 +2918,7 @@ const Engine = (() => {
     wake();
     if(isTakeSpec(spec)) {
       killSession(); clearInterval(timer);
+      try { if(keepAlive) keepAlive.pause(); } catch(error) { /*the keep-alive is already stopped*/ }
       const end = (spec.duration > 0) ? Math.max(0, spec.duration - .05) : Infinity/*not yet measured*/;
       playMedia(clamp((position == null) ? pausedPosition : position, 0, end));
       return true;
@@ -2812,23 +2955,27 @@ const Engine = (() => {
   };
   api.seek = (position) => { if(playing) api.play(position); else pausedPosition = position; };
   api.isPlaying = () => playing;
-  api.setVolume = (level) => { volume = level; if(master) master.gain.setTargetAtTime(level * level, ctx.currentTime, .03); };
+  api.setVolume = (level) => { volume = level; if(master) master.gain.setTargetAtTime(level * level, ctx.currentTime, .03); if(media && mediaVolumeWorks) media.volume = level * level; };
+  // whether the volume reaches a take (iOS leaves it to the device's buttons)
+  api.takeVolume = () => mediaVolumeWorks;
   // the low-frequency energy now, 0 to 1: what the Now Playing background pulses with
   api.energy = () => {
-    if(!ctx || !playing) return 0;
-    analyser.getByteFrequencyData(frequencies);
-    let sum = 0; for(let i=1; i<=5; i++) sum += frequencies[i];
+    if(!playing) return 0;
+    const bands = isTakeSpec(spec) ? takeFrame(true) : (ctx ? (analyser.getByteFrequencyData(frequencies), frequencies) : null); if(!bands) return 0;
+    let sum = 0; for(let i=1; i<=5; i++) sum += bands[i];
     const energy = sum / 5 / 255;
     return Math.max(0, (energy - .35) / .65);
   };
   // the spectrum now (0-255 per band, lowest first), or null before the first play
   api.spectrum = () => {
+    if(spec && isTakeSpec(spec)) return takeFrame(true);
     if(!ctx) return null/*no graph yet*/;
     analyser.getByteFrequencyData(frequencies);
     return frequencies;
   };
   // the waveform now (0-255 per sample, 128 the rest line), or null before the first play
   api.waveform = () => {
+    if(spec && isTakeSpec(spec)) return takeFrame(false);
     if(!ctx) return null/*no graph yet*/;
     analyser.getByteTimeDomainData(samples);
     return samples;
@@ -3417,8 +3564,9 @@ const changeTake = (id, fields, stillPressing) => updateLibrary((data) => ({ ...
 const pressTake = async (prompt, ingredients, replaces) => {
   const take = newTake(prompt, ingredients);
   sending.add(take.id);
+  naming.set(take.id, { startedAt: Date.now(), name: null/*not yet named*/ })/*its card's first paint already flips*/;
   try {
-    if(!await updateLibrary((data) => ({ ...data, albums: [take, ...data.albums.filter((album) => album.id !== replaces)] }))) return false;
+    if(!await updateLibrary((data) => ({ ...data, albums: [take, ...data.albums.filter((album) => album.id !== replaces)] }))) { naming.delete(take.id); return false; }
     toast('Pressing your song');
     nameTake(take.id, prompt, ingredients)/*beside the song; its names stand until a name arrives*/;
     let fields;
@@ -3449,8 +3597,8 @@ const parseName = (text) => {
   if(!title || (title.length > NAME_MAX_LENGTH) || (artist.length > NAME_MAX_LENGTH)) return null/*not a name the cards can show*/;
   return { title, artist };
 };
+// names take `id`, already marked as being named
 const nameTake = async (id, prompt, ingredients) => {
-  naming.set(id, { startedAt: Date.now(), name: null/*not yet named*/ });
   let name = null/*the minted names stand*/;
   try {
     const result = await callTool('generation', 'create_text', { prompt: modelPrompt(prompt, ingredients), instructions: NAMING_INSTRUCTIONS });
@@ -3783,17 +3931,20 @@ const spinningDiscHTML = (take) => {
     '<svg class="take-ring" viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="27"/><circle class="ring-fill" cx="29" cy="29" r="27" stroke-dasharray="' + RING_LENGTH + '" stroke-dashoffset="' + (RING_LENGTH * (1 - pressProgress(take))) + '"/></svg></div>';
 };
 // the ingredients a take was pressed with, as chips
-const ingredientsHTML = (take) => (take.ingredients.length > 0) ? '<div class="ings">' + take.ingredients.map((label) => '<span class="ing">' + escapeHtml(label) + '</span>').join('') + '</div>' : '';
+const ingredientsHTML = (take) => (take.ingredients.length > 0) ? '<div class="ings">' + ingredientChipsHTML(take) + '</div>' : '';
+const ingredientChipsHTML = (take) => take.ingredients.map((label) => '<span class="ing">' + escapeHtml(label) + '</span>').join('');
+// one row of a card, held to one line (SEE: fitMarquees)
+const marqueeHTML = (className, html) => '<div class="' + className + ' marquee"><span class="marquee-in">' + html + '</span></div>';
 const takeCardHTML = (take) => {
-  const title = naming.has(take.id) ? '<div class="take-t flaps" data-flap="' + take.id + '">' + flapsHTML(take.id) + '</div>' : '<div class="take-t">' + escapeHtml(take.title) + '</div>';
-  const label = hslColor(artFor(take).palette[2]), main = title + '<div class="take-p">' + escapeHtml(take.prompt) + '</div>' + ingredientsHTML(take);
+  const title = naming.has(take.id) ? '<div class="take-t flaps" data-flap="' + take.id + '">' + flapsHTML(take.id) + '</div>' : marqueeHTML('take-t', escapeHtml(take.title));
+  const label = hslColor(artFor(take).palette[2]), main = title + marqueeHTML('take-p', escapeHtml(take.prompt)) + ((take.ingredients.length > 0) ? marqueeHTML('ings', ingredientChipsHTML(take)) : '');
   if(take.status === TakeStatus.Pressing) {
     return '<div class="take pressing" data-id="' + take.id + '">' + spinningDiscHTML(take) +
-      '<div class="take-main">' + main + '<div class="take-s"><span class="take-time">' + pressStatus(take) + '</span></div></div><span class="take-play-slot"></span></div>';
+      '<div class="take-main">' + main + marqueeHTML('take-s', '<span class="take-time">' + pressStatus(take) + '</span>') + '</div><span class="take-play-slot"></span></div>';
   } /* else -- settled */
   if(take.status === TakeStatus.Failed) {
     return '<div class="take failed"><div class="take-disc"><span class="vinyl" style="--label-color:' + label + '"></span></div><div class="take-main">' + main +
-      '<div class="take-err">' + ICON.alert + '<span>' + FAILURE_LINE[take.failure] + '</span></div>' +
+      '<div class="take-err">' + ICON.alert + marqueeHTML('take-err-t', FAILURE_LINE[take.failure]) + '</div>' +
       '<div class="take-acts">' + ((FINAL_FAILURES.indexOf(take.failure) > -1) ? '' : '<button data-action="retry-take" data-id="' + take.id + '">Try Again</button>') + '<button data-action="edit-take" data-id="' + take.id + '">Edit</button><button class="destructive" data-action="remove-take" data-id="' + take.id + '">Remove</button></div></div></div>';
   } /* else -- pressed */
   // pressed: it opens its page, and its round button plays it, though its cover may
@@ -3801,7 +3952,7 @@ const takeCardHTML = (take) => {
   const key = take.id + ':0', playingTrack = current(), isCurrent = !!(playingTrack && (playingTrack.key === key)), spec = specOf(trackOf(key)), awaited = isTakeAwaited(take);
   return '<div class="take ready' + (awaited ? ' pressing' : '') + '" data-action="open-album" data-id="' + take.id + '">' +
     (awaited ? spinningDiscHTML(take) : '<div class="take-disc"><img alt="" src="' + artFor(take).url + '"></div>') +
-    '<div class="take-main">' + main + '<div class="take-s">' + (awaited ? '<span class="take-time">' + pressStatus(take) + '</span>' : STUDIO_TAG + escapeHtml(take.artist) + (spec.duration > 0 ? ' · ' + durationText(spec) : '')) + '</div></div>' +
+    '<div class="take-main">' + main + marqueeHTML('take-s', awaited ? '<span class="take-time">' + pressStatus(take) + '</span>' : STUDIO_TAG + escapeHtml(take.artist) + (spec.duration > 0 ? ' · ' + durationText(spec) : '')) + '</div>' +
     '<button class="take-play" data-action="play-take" data-key="' + key + '" aria-label="Play">' + (isCurrent ? EQUALIZER : ICON.play) + '</button></div>';
 };
 // -- Split Flaps -----------------------------------------------------------------
@@ -3839,7 +3990,23 @@ const renderStudio = () => {
   $('#studioBody').innerHTML = '<div class="sec-h">Your Takes</div>' + ((all.length > 0)
     ? '<div class="takes">' + all.map(takeCardHTML).join('') + '</div>'
     : '<div class="studio-empty">Nothing pressed yet. Describe a song above, or take an idea, add a few ingredients and press it. It lands here, and in your library, in about half a minute.</div>');
+  fitMarquees($('#studioBody'));
   updateStudioTab();
+};
+// -- Marquee ---------------------------------------------------------------------
+// each one-line row under `root` that its text overflows scrolls by exactly the
+// overflow, at a reading pace, holding at least a second at each end
+const MARQUEE_SPEED = 32/*px per second*/;
+const MARQUEE_MIN_S = 6/*the shortest cycle: its holds are a fifth of it each*/;
+const fitMarquees = (root) => {
+  root.querySelectorAll('.marquee').forEach((line) => {
+    const inner = line.firstElementChild; if(!inner || !line.clientWidth) return/*not laid out: refit when shown*/;
+    const overflow = inner.offsetWidth - line.clientWidth;
+    line.classList.toggle('scrolls', overflow > 1);
+    if(overflow <= 1) return;
+    line.style.setProperty('--marquee-shift', -overflow + 'px');
+    line.style.setProperty('--marquee-duration', Math.max(MARQUEE_MIN_S, overflow / MARQUEE_SPEED / .3).toFixed(2) + 's'/*two travels: 60% of the cycle*/);
+  });
 };
 // the Studio tab's mark while any take has a part still being made: its record
 // spins and counts them
@@ -3899,6 +4066,7 @@ const renderNowPlayingInfo = () => {
   const loved = isLoved(track.key), loveButton = $('#npLove'); loveButton.innerHTML = loved ? ICON.heart : ICON.heartO; loveButton.classList.toggle('on', loved);
   currentPalette = art.palette;
   const take = isTakeSpec(spec); nowPlaying.classList.toggle('studio', take);
+  nowPlaying.classList.toggle('device-volume', take && !Engine.takeVolume())/*the device's buttons set it*/;
   $('#scoreCap').textContent = take ? STUDIO_LABEL + ' Take · ' + MODEL_LABEL : 'Live Score · ' + spec.bpm + ' BPM · ' + NOTE_NAMES[spec.root % 12] + ' ' + spec.genre.mode;
   if(state.mode === PlayerMode.Queue) renderQueue();
 };
@@ -3909,6 +4077,7 @@ const updatePlayUI = () => {
   $('#miniPlay').innerHTML = playing ? ICON.pause : ICON.play;
   $('#npPlay').innerHTML = playing ? ICON.pause : ICON.play;
   try { if(navigator.mediaSession) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch(error) { /*no Media Session: the lock screen shows nothing*/ }
+  setMediaPosition();
 };
 const onTrackChange = () => { renderMini(); renderNowPlayingInfo(); updateMarks(); if(library) renderStudio(); setMediaMetadata(); updatePlayUI(); };
 
@@ -3962,6 +4131,7 @@ Engine.onerror = (error) => { toast('Could not play: ' + messageOf(error)); upda
 Engine.onstopped = () => { updatePlayUI(); saveState(); };
 // records a take's length the first time a play measures it, so every row shows it
 Engine.onduration = (spec) => {
+  setMediaPosition();
   const take = library && library.albums.find((album) => isTake(album) && (album.assetId === spec.assetId));
   if(take && !(take.seconds > 0)) changeTake(take.id, { seconds: Math.round(spec.duration * 10) / 10 });
 };
@@ -4041,10 +4211,9 @@ const promptField = $('#prompt');
 const picked = new Set();
 let ideaIndex = Math.floor(Math.random() * IDEAS.length), ideaShown = 0/*characters typed*/, ideaTimer = null/*not typing*/, pressingDescription = false;
 const typeIdea = () => {
-  const idea = IDEAS[ideaIndex];
   let delay = 34;
-  if(ideaShown < idea.length) ideaShown++;
-  else { ideaIndex = (ideaIndex + 1) % IDEAS.length; ideaShown = 0; delay = 2800/*read the whole idea*/; }
+  if(ideaShown < IDEAS[ideaIndex].length) { ideaShown++; if(ideaShown === IDEAS[ideaIndex].length) delay = 2800/*the whole idea stands to be read*/; }
+  else { ideaIndex = (ideaIndex + 1) % IDEAS.length; ideaShown = 1/*the next idea begins typing at once*/; }
   // NOTE: the shown idea stops while another tab is in front: it resumes where it was
   if(state.tab === Tab.Studio) promptField.placeholder = (ideaShown > 0) ? IDEAS[ideaIndex].slice(0, ideaShown) + ((ideaShown < IDEAS[ideaIndex].length) ? '▍' : '') : '';
   ideaTimer = setTimeout(typeIdea, delay);
@@ -4447,7 +4616,7 @@ const bindSlider = (element, onMove, onEnd) => {
 };
 bindSlider($('#npScrub'),
   (x) => { const track = current(); if(!track) return; scrubbing = true; scrubPosition = x * specOf(track).duration; },
-  (x) => { const track = current(); scrubbing = false; if(!track) return; const position = x * specOf(track).duration; Engine.seek(position); state.pos = position; saveState(); });
+  (x) => { const track = current(); scrubbing = false; if(!track) return; const position = x * specOf(track).duration; Engine.seek(position); state.pos = position; saveState(); setMediaPosition(); });
 const setVolumeUI = () => { $('#volFill').style.width = (state.vol * 100) + '%'; };
 bindSlider($('#npVol'), (x) => { state.vol = x; Engine.setVolume(x); setVolumeUI(); }, () => saveState());
 
@@ -4475,6 +4644,12 @@ const frame = (time) => {
 
 // == Media Session ===============================================================
 // the lock screen's and Control Center's now-playing card
+// the lock screen's progress bar: where the track is and how long it runs
+const setMediaPosition = () => {
+  const session = navigator.mediaSession, track = current(); if(!session || !session.setPositionState || !track) return;
+  const duration = specOf(track).duration; if(!(duration > 0)) return/*not yet measured*/;
+  try { session.setPositionState({ duration, position: clamp(Engine.position(), 0, duration), playbackRate: 1 }); } catch(error) { /*a position the browser refused*/ }
+};
 const setMediaMetadata = () => {
   const session = navigator.mediaSession, track = current(); if(!session || !track || (typeof MediaMetadata === 'undefined')) return;
   try { session.metadata = new MediaMetadata({ title: track.title, artist: track.album.artist, album: track.album.title, artwork: [{ src: artFor(track.album).url, sizes: '480x480', type: 'image/jpeg' }] }); } catch(error) { /*metadata refused: the card shows the page title*/ }
@@ -4485,6 +4660,7 @@ try {
     navigator.mediaSession.setActionHandler('pause', () => { if(Engine.isPlaying()) togglePlay(); });
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
     navigator.mediaSession.setActionHandler('previoustrack', previousTrack);
+    navigator.mediaSession.setActionHandler('seekto', (details) => { if(!current() || !(details.seekTime >= 0)) return; Engine.seek(details.seekTime); state.pos = details.seekTime; saveState(); setMediaPosition(); });
   } /* else -- no lock screen controls */
 } catch(error) { /*an action the browser does not support*/ }
 
@@ -4657,6 +4833,7 @@ const boot = () => {
   requestAnimationFrame(() => { placeIndicator(); updateNavSolid(); });
   requestAnimationFrame(frame);
   typeIdea(); setInterval(tickTakes, 500); setInterval(turnFlaps, 70);
+  new ResizeObserver(() => fitMarquees($('#studioBody'))).observe($('#studioBody'))/*shown, or turned: the rows measure again*/;
   // takes left pressing when the app last closed are asked after at once
   schedulePoll(0);
 };
