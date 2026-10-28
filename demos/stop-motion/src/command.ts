@@ -5,7 +5,7 @@ import { isPlatformFile } from '../../brick-shared/drive';
 import { listed } from '../../brick-shared/words';
 
 import type { Avoided } from './clearance';
-import { cameraShots, filmLengthOf, frameAtTime, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type WalkLeaps } from './film';
+import { cameraShots, filmLengthOf, frameAtTime, reachOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type WalkLeaps, REACH } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { MAX_AREA_CELLS, type CellArea } from './ground';
 import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from './measure';
@@ -24,12 +24,13 @@ import type { Board, StageState } from './studios';
 // a line each, the detail of those it asks after), show any moment of it on the
 // studios so a screenshot sees it, show a storyboard of its moments on the main
 // studio's sheet for one screenshot to read, map what stands where on its set (a part
-// named at each top, the whole set at once), tell where its actors and camera stand,
-// which actors stand in each other and how close actors come, read it as it looks
-// (each actor on the screen, where the camera goes wrong, each cut as an editor reads
-// it; SEE: review.ts), hear a sound it can play as its length and the spans it sounds
-// over (SEE: sound.ts soundSpans), and keep the film in the Drive: its set and its
-// scene saved as one film, opened back, or cleared for a new one
+// named at each top, the whole set at once), tell where its actors and camera stand
+// and where a figure's hands would hold a thing, which actors stand in each other and
+// how close actors come, read it as it looks (each actor on the screen, where the
+// camera goes wrong, each cut as an editor reads it; SEE: review.ts), hear a sound it
+// can play as its length and the spans it sounds over (SEE: sound.ts soundSpans), and
+// keep the film in the Drive: its set and its scene saved as one film, opened back, or
+// cleared for a new one
 // ********************************************************************************
 // == Constants ===================================================================
 // -- Describing the Film ---------------------------------------------------------
@@ -89,6 +90,10 @@ type AskArgs = Readonly<{ actors?: unknown; from?: unknown; to?: unknown; kinds?
  *  the film as staged (the film shown, staged) with the parts each frame's camera met */
 export type Measured = Readonly<{ film: Film; sizes?: Readonly<Record<string, Size>>; staged?: Readonly<{ film: Film; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; }>; }>;
 
+// -- Reading an Actor ------------------------------------------------------------
+/** reach's arguments as a Charm sends them: the figure, the hand item and the moment */
+type ReachArgs = Readonly<{ actor?: unknown; thing?: unknown; time?: unknown; frame?: unknown; }>;
+
 // -- Film Host -------------------------------------------------------------------
 /** what the surface reads from the film's wiring */
 export type FilmHost = Readonly<{
@@ -108,6 +113,8 @@ export type FilmHost = Readonly<{
   surfaces: (set: string | undefined, area: CellArea) => Promise<ReadonlyArray<ReadonlyArray<ReadonlyArray<Surface>>>>;
   /** the area a set's parts stand over, the film staged; none for a set without parts */
   extent: (set: string | undefined) => Promise<CellArea | undefined>;
+  /** where hands hold things, the film staged (SEE: studios.ts held) */
+  held: HandProbe;
   /** shows frames on the main studio's storyboard sheet, answering how many */
   storyboard: (frames: ReadonlyArray<Board>, view?: string) => Promise<number>;
   /** the film's files */
@@ -175,6 +182,10 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       const found = closest(film, sizes, a, b, from as number | undefined, to as number | undefined);
       if(!found) throw new Error(`${a} and ${b} are never shown together${((from !== undefined) || (to !== undefined)) ? ' then' : ''}.`);
       return { actors: [a, b], frame: found.frame, time: thousandths(found.time), gap: hundredths(found.gap), touching: found.gap === 0, positions: positionsAt(film, found.frame, [a, b]) };
+    },
+    reach: async (asked: ReachArgs) => {
+      const { film } = reviewed(host), stage = host.stage();
+      return await reachAnswer(host, film, (stage.kind === 'staged') ? stage.grips : {}, asked);
     },
     listen: async ({ sound, minPause }: { sound?: unknown; minPause?: unknown; }) => {
       if(!isPlatformFile(sound)) {
@@ -512,6 +523,30 @@ export const motionReport = (film: Film, actor: RecordedActor, from: number, to:
     actor: read.actor,
     samples: read.samples.map(({ time, frame, shown, ...at }) => ({ time: thousandths(time), frame, shown, ...Object.fromEntries(Object.entries(at).map(([key, value]) => [key, hundredths(value)])) })),
     drivers: Object.fromEntries(MOTION_CHANNELS.map(channel => [channel, read.drivers[channel].map(({ from: spanFrom, to: spanTo, by, lines, heldBack }) => ({ from: thousandths(spanFrom), to: thousandths(spanTo), by, lines, ...((heldBack !== undefined) ? { heldBack: thousandths(heldBack) } : {}) }))])),
+  };
+};
+
+// -- Reach -----------------------------------------------------------------------
+/** reach's answer: where a figure's hands would hold a hand item (`thing`, cast as one
+ *  or one a hand released; its grip from `grips`) at a moment, as the stage holds it
+ *  (`read`; SEE: film.ts Reach), rounded; refuses an actor not in the film, a thing no
+ *  hand holds and a figure hidden then */
+export const reachAnswer = async (read: Pick<FilmHost, 'held'>, film: Film, grips: Readonly<Record<string, Point>>, { actor, thing, time, frame }: ReachArgs) => {
+  const names = film.scene.actors.map(each => each.name);
+  for(const name of [actor, thing]) if(!names.includes(name as string)) throw new Error(`No actor '${String(name)}' in the film (${names.join(', ')}).`);
+  const { part, color, grip, ...rest } = film.scene.actors.find(each => each.name === thing)!.source;
+  if((typeof part !== 'string') || (typeof color !== 'string') || ((grip !== undefined) && (typeof grip !== 'string')) || (Object.keys(rest).length > 0)) throw new Error(`${String(thing)} is no hand item: reach reads where a hand would hold an actor cast as one ({ part, color }) or one a hand released.`);
+  const index = frameAt(film, time, frame), at = film.frames[index];
+  if(!at.actors.some(each => each.name === actor)) throw new Error(`${String(actor)} is hidden at ${thousandths(at.time)} s: reach reads a figure in the picture.`);
+  const item = { part, color, ...((grip !== undefined) ? { grip: grip as string } : {}) };
+  const reach = await reachOf(at, actor as string, { name: thing as string, item, grip: grips[thing as string] ?? { x: 0, z: 0, height: 0 }/*none told: its position*/ }, read.held);
+  const handReport = ({ grip: handGrip, holds, gap }: HandReach) => ({
+    grip: rounded(handGrip), holds: { position: rounded(holds.position), turn: { yaw: hundredths(holds.turn.yaw), pitch: hundredths(holds.turn.pitch), roll: hundredths(holds.turn.roll) } },
+    ...(gap ? { studs: hundredths(gap.studs), toHand: rounded(gap.toHand), keyAt: { x: hundredths(gap.keyAt.x), z: hundredths(gap.keyAt.z), ...((gap.keyAt.height !== undefined) ? { height: hundredths(gap.keyAt.height) } : {}) } } : {}),
+  });
+  return {
+    frame: index, time: thousandths(at.time), actor: actor as string, thing: thing as string, shown: reach.thing !== undefined, ...(reach.thing ? { grip: rounded(reach.thing) } : {}), reach: REACH,
+    rightHand: handReport(reach.rightHand), leftHand: handReport(reach.leftHand),
   };
 };
 

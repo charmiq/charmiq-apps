@@ -324,14 +324,13 @@ const bodyOf = (shot: Shot, bottoms: PoseBottoms | undefined): ReadonlyArray<Poi
 };
 
 /** a body point (unturned, SEE: BODY) as a pose moves it, as Brick Studio's rig turns
- *  the pieces about it: its torso twisted on its hips about the vertical through its
- *  middle (clockwise seen from above), then torso and hips leaning forward together
- *  about its legs' axle, the hips' point (HIPS; its top toward its front, -z) */
+ *  the pieces about it: torso and hips leaning forward together about its legs' axle,
+ *  the hips' point (HIPS; its top toward its front, -z); a twist is no joint, the film
+ *  taking it into the shot's yaw (SEE: film.ts untwisted) */
 const bodyPointAt = (at: Point, pose: Shot['pose']): Point => {
-  const [twist, lean] = [pose?.twist ?? 0, pose?.lean ?? 0].map(degrees => degrees * (Math.PI / 180));
-  const x = (at.x * Math.cos(twist)) + (at.z * Math.sin(twist)), z = (at.z * Math.cos(twist)) - (at.x * Math.sin(twist));
+  const lean = (pose?.lean ?? 0) * (Math.PI / 180);
   const up = (at.height - HIPS) * STUDS_PER_PLATE/*studs over the axle*/;
-  return { x, z: (z * Math.cos(lean)) - (up * Math.sin(lean)), height: HIPS + (((z * Math.sin(lean)) + (up * Math.cos(lean))) / STUDS_PER_PLATE) };
+  return { x: at.x, z: (at.z * Math.cos(lean)) - (up * Math.sin(lean)), height: HIPS + (((at.z * Math.sin(lean)) + (up * Math.cos(lean))) / STUDS_PER_PLATE) };
 };
 
 /** the floor of a keyed flight (plates): the higher of the surfaces under the figure as

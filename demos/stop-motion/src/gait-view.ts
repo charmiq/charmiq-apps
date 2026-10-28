@@ -66,7 +66,7 @@ const KEYED: ReadonlyArray<readonly [keyof GaitTiming, ReadonlyArray<Curve>]> = 
 /** a kind of move's drawings, as a slider */
 const drawings = (kind: keyof GaitTiming, label: string, lo: number, hi: number): Slider => ({ label, unit: '', lo, hi, step: 1, get: shape => shape.timing[kind], set: (shape, value) => { shape.timing = { ...shape.timing, [kind]: value }; } });
 const SLIDERS: Readonly<Record<GaitTab, ReadonlyArray<Slider>>> = {
-  [GaitTab.Walk]: [drawings('step', 'drawings a step', 2, 12), { label: 'shoulders turn', unit: '', lo: 0, hi: 0.5, step: 0.01, get: shape => shape.twistPerArm, set: (shape, value) => { shape.twistPerArm = value; } }],
+  [GaitTab.Walk]: [drawings('step', 'drawings a step', 2, 12)],
   [GaitTab.Up]: [drawings('up', 'drawings a stride up', 2, 16)],
   [GaitTab.Down]: [drawings('down', 'drawings a stride down', 2, 16)],
   [GaitTab.Turn]: [

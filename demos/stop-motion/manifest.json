@@ -145,6 +145,35 @@
         }
       },
       {
+        "name": "reach",
+        "description": "Where a figure's hands are and where they would hold a hand item at a moment (time seconds or frame), as the studio holds it, to place a thing for a pick-up (a.pickUp) without trial: each hand's grip (a figure's hand stands about a stud out from its side; bent over, lean 80 with the arm at 40, it reaches the ground ahead of its foot), where the thing would stand held there, and while the thing is shown, how far and which way the hand's grip stands from the thing's grip and where to key the thing to lie within reach (1 stud) of it. The film must be staged",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "actor": { "type": "string", "description": "The figure" },
+            "thing": { "type": "string", "description": "An actor cast as a hand item ({ part, color }) or one a hand released" },
+            "time":  { "type": "number" },
+            "frame": { "type": "integer" }
+          },
+          "required": ["actor", "thing"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "frame":     { "type": "integer" },
+            "time":      { "type": "number" },
+            "actor":     { "type": "string" },
+            "thing":     { "type": "string" },
+            "shown":     { "type": "boolean", "description": "Whether the thing is shown then, as an actor of its own" },
+            "grip":      { "type": "object", "description": "While the thing is shown: its grip's centre as it stands (x east and z north in studs, height in plates)", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] },
+            "reach":     { "type": "number", "description": "How far a hand reaches to take a thing up: studs from its grip to the thing's" },
+            "rightHand": { "type": "object", "properties": { "grip": { "type": "object", "description": "Where this hand holds a thing: its grip's centre (x east and z north in studs, height in plates)", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "holds": { "type": "object", "description": "Where the thing stands held by this hand: the position and turn to key it at to stand exactly in the hand", "properties": { "position": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "turn": { "type": "object", "properties": { "yaw": { "type": "number" }, "pitch": { "type": "number" }, "roll": { "type": "number" } }, "required": ["yaw", "pitch", "roll"] } }, "required": ["position", "turn"] }, "studs": { "type": "number", "description": "While the thing is shown: how far its grip stands from this hand's; a hand takes it up within reach" }, "toHand": { "type": "object", "description": "While the thing is shown: the move from its grip to this hand's (x studs east, z studs north, height plates up)", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "keyAt": { "type": "object", "description": "While the thing is shown: where to key it, its turn as it stands, for this hand's grip to meet its grip: x and z alone (its height kept) while the hand stands within reach above or below it", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z"] } }, "required": ["grip", "holds"] },
+            "leftHand":  { "type": "object", "properties": { "grip": { "type": "object", "description": "Where this hand holds a thing: its grip's centre (x east and z north in studs, height in plates)", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "holds": { "type": "object", "description": "Where the thing stands held by this hand: the position and turn to key it at to stand exactly in the hand", "properties": { "position": { "type": "object", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "turn": { "type": "object", "properties": { "yaw": { "type": "number" }, "pitch": { "type": "number" }, "roll": { "type": "number" } }, "required": ["yaw", "pitch", "roll"] } }, "required": ["position", "turn"] }, "studs": { "type": "number", "description": "While the thing is shown: how far its grip stands from this hand's; a hand takes it up within reach" }, "toHand": { "type": "object", "description": "While the thing is shown: the move from its grip to this hand's (x studs east, z studs north, height plates up)", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z", "height"] }, "keyAt": { "type": "object", "description": "While the thing is shown: where to key it, its turn as it stands, for this hand's grip to meet its grip: x and z alone (its height kept) while the hand stands within reach above or below it", "properties": { "x": { "type": "number" }, "z": { "type": "number" }, "height": { "type": "number" } }, "required": ["x", "z"] } }, "required": ["grip", "holds"] }
+          },
+          "required": ["frame", "time", "actor", "thing", "shown", "reach", "rightHand", "leftHand"]
+        }
+      },
+      {
         "name": "listen",
         "description": "Hear a sound you cannot hear: any a scene can play (a Platform file's charmiq://file/<assetId> URI, or a shipped sound's name). Answers its length and the spans it sounds over, first to last, parted by its pauses: each span from and to in seconds, and the pause after it. A pause is at least minPause seconds (0.3 when left out) more than 40 dB quieter than the sound's loudest, its loudness heard in 20 ms windows, so a whisper still sounds. To sync a film to narration, listen to it, map its sentences onto the spans in order (a line's commas and breaths may part it into more than one; the pauses its text marks fall at span ends), and key cuts, actions and effects to the spans' times. At most 60 spans: a sound with more is parted only at its 59 longest pauses, and capped says how many it held. Refuses a sound no scene can play, or one that cannot be read or decoded, saying why",
         "inputSchema": {

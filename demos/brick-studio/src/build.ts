@@ -780,7 +780,7 @@ export const toGear = (slot: Slot, input: unknown): Gear | string => {
   const { part: key, color, grip } = (input ?? {}) as Record<string, unknown>;
   const on = (slot === 'hat') ? 'head' : 'hand';
   const accessory = ACCESSORIES.find(each => (each.key === key) && (each.on === on));
-  if(!accessory) return `${slot}.part must be one of ${ACCESSORIES.filter(each => each.on === on).map(each => each.key).join(', ')}`;
+  if(!accessory) return `unknown ${slot}.part '${String(key)}' (a ${(on === 'head') ? 'head wears' : 'hand holds'} ${ACCESSORIES.filter(each => each.on === on).map(each => each.key).join(', ')})`;
   if((typeof color !== 'string') || !getColor(color)) return `unknown ${slot}.color '${String(color)}' (listParts names the colors)`;
   const grips = accessory.grips ?? [];
   const held = (grip === undefined) ? undefined : grips.findIndex(each => each.name === grip);

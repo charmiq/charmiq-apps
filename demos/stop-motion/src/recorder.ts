@@ -117,8 +117,9 @@ export type RecordedActor = Readonly<{
    *  ridden actor's frame) */
   ride?: Readonly<{ parent: string; offset: Point; }>;
   /** the hand that let go of it, a thing released (its source that hand's item then):
-   *  hidden before, then standing where that hand held it on the frame the hand first
-   *  shows empty, its own keys moving it on from there (SEE: film.ts HandOff) */
+   *  hidden before, then shown standing where that hand held it on the frame the hand
+   *  first shows empty, its own keys moving it on from there and a key hiding it, held
+   *  where each of its paths leaves it (SEE: film.ts HandOff) */
   released?: Handing;
   /** the hand that takes it up: from the frame that hand first holds it, it is held
    *  there as that hand's item and hidden as an actor of its own */
@@ -892,7 +893,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
   /** how a walker walks: its stride (studs a step), its legs' and arms' swing
    *  (degrees, each arm its own), its bounce (plates), its lean (degrees forward) and
    *  its starting foot (radians into its step) */
-  type Gait = Readonly<{ stride: number; swing: number; rightArm: number; leftArm: number; twist: number; bounce: number; lean: number; phase: number; }>;
+  type Gait = Readonly<{ stride: number; swing: number; rightArm: number; leftArm: number; bounce: number; lean: number; phase: number; }>;
   const gaitOf = (given: Record<string, unknown>, what: string, seed: unknown, base: Partial<Record<'stride' | 'swing' | 'bounce' | 'lean' | 'arms', number>> = {}): Gait => {
     const next = random(seed);
     const read = (key: 'stride' | 'swing' | 'bounce' | 'lean' | 'arms', fallback: number, low: number, high: number) => {
@@ -902,18 +903,18 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     };
     const stride = read('stride', 1.4, 0.2, 6) * (0.9 + (0.2 * next())), swing = read('swing', 30, 0, 90) * (0.85 + (0.3 * next()));
     const arms = read('arms', swing * 0.8, 0, 120);
-    return { stride, swing, rightArm: arms, leftArm: arms, twist: swing / 5, bounce: read('bounce', 0.35, 0, 4), lean: read('lean', 3, -30, 30), phase: next() * 2 * Math.PI };
+    return { stride, swing, rightArm: arms, leftArm: arms, bounce: read('bounce', 0.35, 0, 4), lean: read('lean', 3, -30, 30), phase: next() * 2 * Math.PI };
   };
   /** a gait's values (added to the walker's own) `along` studs into a walk, at
    *  `amount` of its full swing: each leg swinging forward in turn, the arms against
-   *  them, the shoulders turning against the hips, a bounce as the legs pass and a
-   *  lean */
+   *  them, a bounce as the legs pass and a lean; the shoulders never turning against
+   *  the hips, a toy figure having no waist */
   const gaitAt = (gait: Gait, along: number, amount: number): Record<string, number> => {
     const swing = Math.sin(gait.phase + ((Math.PI * along) / gait.stride));
     return {
       'pose.leftLeg': amount * gait.swing * swing, 'pose.rightLeg': -amount * gait.swing * swing,
       'pose.rightArm': amount * gait.rightArm * swing, 'pose.leftArm': -amount * gait.leftArm * swing,
-      'pose.twist': -amount * gait.twist * swing, 'pose.lean': amount * gait.lean, height: amount * gait.bounce * (1 - Math.abs(swing)),
+      'pose.lean': amount * gait.lean, height: amount * gait.bounce * (1 - Math.abs(swing)),
     };
   };
   /** the yaw past a heading that faces an actor along it: a catalog part, dressed or a
@@ -971,7 +972,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
       const amount = settle * scale;
       return {
         'pose.rightArm': amount * (1.5 + (2 * energy)) * breath, 'pose.leftArm': amount * (1.5 + (2 * energy)) * breath, 'pose.lean': amount * 0.8 * breath,
-        yaw: amount * (3 + (6 * energy)) * noise((t * 0.12) + offsets[0]), 'pose.twist': amount * (2 + (4 * energy)) * noise((t * 0.18) + offsets[1]),
+        yaw: amount * (3 + (6 * energy)) * noise((t * 0.12) + offsets[0])/*turning from its feet: a toy figure has no waist*/,
         x: amount * 0.06 * (0.5 + energy) * noise((t * 0.1) + offsets[2]), z: amount * 0.06 * (0.5 + energy) * noise((t * 0.1) + offsets[3]),
         roll: amount * 0.8 * (0.5 + energy) * noise((t * 0.1) + offsets[2])/*the weight shifting, which alone moves a figure clicked onto studs*/,
         'pose.head': amount * headAt(t),
@@ -1046,11 +1047,17 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     const what = `gait('${String(name)}')`;
     if(!builtIn) fail(`${what}: this recorder knows no gaits`);
     if(gaits.has(name as string)) fail(`${what} is named twice`);
-    const given = optionsOf(keys, what);
+    const given = unturned(optionsOf(keys, what));
     for(const [key, value] of Object.entries(given)) gaitKey(what, key, value, (builtIn as Record<string, unknown>)[key]);
     gaits.set(name as string, { keys: given, line: callerLine() });
     return name;
   };
+  /** a gait's keys without the shoulders' turn a scene's gait may name (its
+   *  `twistPerArm`, its wander's `twist`), taken and dropped: a toy figure has no waist
+   *  to turn its shoulders on */
+  const unturned = (given: Readonly<Record<string, unknown>>): Record<string, unknown> => Object.fromEntries(Object.entries(given)
+    .filter(([key]) => key !== 'twistPerArm')
+    .map(([key, value]) => ((key === 'wander') && (typeof value === 'object') && (value !== null)) ? [key, Object.fromEntries(Object.entries(value).filter(([part]) => part !== 'twist'))] : [key, value]));
   /** refuses a gait's key not in the built-in's form: a number, a curve of finite
    *  numbers (a glide rising from 0 to 1), or a group of the built-in's own numbers
    *  (its timing's drawings more than 0) */
@@ -1293,7 +1300,7 @@ export const recordCode = (code: string, shipped: ReadonlyArray<string> = [], bu
     if(thing.ride) fail(`${thing.name} rides ${thing.ride.parent}, but ${call} stands it where the hand lets go of it: a released thing rides nothing`, thing.line);
     if(thing.ground) fail(`${thing.name} follows the ground, but ${call} stands it where the hand lets go of it: key its height instead`, thing.line);
     const early = movesOf(thing).find(move => move.time <= time);
-    if(early) fail(`${early.what} comes before ${call}: a released thing moves from where its hand lets go of it, its keys and paths after its release`, early.line);
+    if(early) fail(`${early.what} comes before ${call}: a released thing is hidden until its release, then shown where its hand lets go of it and moved on by its own keys and paths: key it after ${time} s (it needs no key to be shown; { visible: false } after the release hides it)`, early.line);
   };
   /** a thing picked up taken as its own item into an empty hand: the thing a hand item
    *  (cast as one, or released by a hand before), picked up once, each key and move of

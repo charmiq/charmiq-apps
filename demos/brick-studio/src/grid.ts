@@ -1,7 +1,7 @@
 import { gearKey, getStageFace, ACCESSORIES, ALL_FACES, CATALOG, COLORS, FIGURE_COLORS, type Accessory, type CatalogPart, type Face, type Grip } from './catalog';
 import { maxOf, minOf } from './numbers';
 import { COLOR_VALUES, FACE_GEOMETRY, HINGE_GEOMETRY, PART_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { hingePieces, hingeTurn, pieceLines, posedPieces, upperTurn, wheelPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type FigureColorCodes, type Pose, type Worn } from './pose';
+import { hingePieces, hingeTurn, leanTurn, pieceLines, posedPieces, wheelPieces, LIMBS, SLOT_LIMB, SLOTS_IN_ORDER, type FigureColorCodes, type Pose, type Worn } from './pose';
 
 // the build grid. x runs east, z north, level up; one cell is one stud and one
 // level is one plate height (a brick is three). A placement names the minimum
@@ -349,8 +349,8 @@ export const partLines = (shape: PartShape, placement: Placement, colorCode: num
     shape.part.hinge ? hingePieces(shape.part, placement.angle ?? 0) :
     (shape.part.wheels && (rolled !== 0)) ? wheelPieces(shape.part, rolledAngle(shape.part, rolled)) :
     piecesOf(shape.part);
-  const upper = shape.part.limbs ? upperTurn(shape.part, placement.pose) : undefined;
-  const body = upper ? { ...own, ...compose(own, upper) }/*its torso twisted and leaning with what it carries*/ : own;
+  const lean = shape.part.limbs ? leanTurn(shape.part, placement.pose) : undefined;
+  const body = lean ? { ...own, ...compose(own, lean) }/*its torso leaning with what it carries*/ : own;
   return [body, ...pieces.map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
 };
 

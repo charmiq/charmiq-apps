@@ -30,12 +30,12 @@ export type CatalogPart = Readonly<{
    *  the first its pivot) about that piece's origin, on its own x axis (a swing) or y
    *  axis (a turn) (SEE: grid.ts posedPieces) */
   limbs?: Readonly<Record<Limb, Readonly<{ pieces: ReadonlyArray<number>; axis: 'x' | 'y'; }>>>;
-  /** what turns over a posable part's legs on a stage's frame (SEE: pose.ts
-   *  FRAME_LIMBS): its own line and `upper` (indices into `pieces`: a figure's head,
-   *  arms and hands) twisting on its hips about the vertical through its origin; those
-   *  and `hips` (its hips piece, one rigid block with the torso) leaning forward about
-   *  its legs' axle, the legs' pivot (SEE: limbs), the legs keeping their place */
-  waist?: Readonly<{ upper: ReadonlyArray<number>; hips: ReadonlyArray<number>; }>;
+  /** the pieces (indices into `pieces`) that lean with a posable part's own line over
+   *  its legs on a stage's frame (SEE: pose.ts FRAME_LIMBS): a figure's head, arms,
+   *  hands and hips, one rigid block with its torso, forward about its legs' axle, the
+   *  legs' pivot (SEE: limbs), the legs keeping their place. Nothing turns between its
+   *  torso and its hips: a toy figure has no waist */
+  leaning?: ReadonlyArray<number>;
   /** the pieces (indices into `pieces`) a posable part's legs color paints: a figure's
    *  hips and legs */
   legs?: ReadonlyArray<number>;
@@ -342,9 +342,9 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   // (with its hand) swings about its shoulder, each leg about its hip pin, and the
   // head turns on its neck, each pivot at its piece's origin as the library models
   // it; its hips and legs take the legs color, its head and hands its skin (SEE:
-  // FIGURE_COLORS). On a stage's frame its torso also
-  // twists on its hips, torso and hips lean together over its legs (about their axle,
-  // 44 LDU below the neck) and each hand turns on its forearm
+  // FIGURE_COLORS). On a stage's frame its torso and hips also
+  // lean together over its legs (about their axle, 44 LDU below the neck) and each hand
+  // turns on its forearm; nothing turns between its torso and its hips
   { key: 'figure', ldraw: '973', kind: 'figure', pieces: [
     '1 14 0 -24 0 1 0 0 0 1 0 0 0 1 3626bp01.dat',
     '1 16 -15.552 9 0 0.985 -0.17 0 0.17 0.985 0 0 0 1 3818.dat',
@@ -360,7 +360,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
     leftArm: { pieces: [2, 4], axis: 'x' },
     rightLeg: { pieces: [6], axis: 'x' },
     leftLeg: { pieces: [7], axis: 'x' },
-  }, legs: [5, 6, 7], skin: [0, 3, 4], waist: { upper: [0, 1, 2, 3, 4], hips: [5] }, facePiece: 0, slots: { hat: { piece: 0 }, rightHand: { piece: 3, grip: HAND_GRIP }, leftHand: { piece: 4, grip: HAND_GRIP } } },
+  }, legs: [5, 6, 7], skin: [0, 3, 4], leaning: [0, 1, 2, 3, 4, 5], facePiece: 0, slots: { hat: { piece: 0 }, rightHand: { piece: 3, grip: HAND_GRIP }, leftHand: { piece: 4, grip: HAND_GRIP } } },
   // the stand and its black wheel, as the library's complete steering wheel (3829c01)
   { key: 'steering-wheel',  ldraw: '3829a', kind: 'vehicle', pieces: [
     '1 0 0 -26.32 -0.24 0 0 1 -0.8 0.6 0 -0.6 -0.8 0 3828.dat',

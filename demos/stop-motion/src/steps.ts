@@ -128,19 +128,19 @@ export type GaitShape = Readonly<{
    *  (a heel landing after the toe lifts is a flight) */
   glide: ReadonlyArray<number>; lead: ReadonlyArray<number>; trail: ReadonlyArray<number>; heelOn: number; toeOff: number;
   /** a stride up onto another level and one down (STAIR studs, STEP_CLIMB plates at
-   *  most), each keyed as a step is, and the waist bent forward through it (degrees) */
+   *  most), each keyed as a step is, and the lean forward over the legs through it
+   *  (degrees) */
   upGlide: ReadonlyArray<number>; upLead: ReadonlyArray<number>; upTrail: ReadonlyArray<number>; upHeelOn: number; upToeOff: number; upLean: ReadonlyArray<number>;
   downGlide: ReadonlyArray<number>; downLead: ReadonlyArray<number>; downTrail: ReadonlyArray<number>; downHeelOn: number; downToeOff: number; downLean: ReadonlyArray<number>;
-  /** a figure's arms where nothing keys them, how far a step swings them either way,
-   *  and how far the shoulders turn against that swing (degrees; a share) */
-  hang: number; arms: number; twistPerArm: number;
+  /** a figure's arms where nothing keys them and how far a step swings them either way
+   *  (degrees); the shoulders never turn against them, a toy figure having no waist */
+  hang: number; arms: number;
   /** the head: its swing through a step, keyed at the step's frames (degrees toward the
    *  leading foot's side, straight at the stances); and leading into a turn, how far it
    *  turns ahead of the body (degrees) and how long before the turn it starts (seconds) */
   headSwing: ReadonlyArray<number>; headTurn: number; headLead: number;
-  /** the most a full variance shifts a step: the glide (studs), the arms and the
-   *  shoulders (degrees) */
-  wander: Readonly<{ glide: number; arms: number; twist: number; }>;
+  /** the most a full variance shifts a step: the glide (studs) and the arms (degrees) */
+  wander: Readonly<{ glide: number; arms: number; }>;
   /** a quarter turn, keyed at its frames (even shares of it): how far round the
    *  heading has come (a share), the free leg's swing (degrees, forward +) and how far
    *  the body leans out over the grounded foot (degrees: rolled onto that foot's outer
@@ -152,9 +152,10 @@ export type GaitShape = Readonly<{
   shiftRoll: ReadonlyArray<number>;
   /** a hop's crouch before it springs and its landing after, each keyed at its frames:
    *  the legs tipped (degrees: + forward, rocking back on the heels, the hips going back;
-   *  - back, rolled forward onto the toes, the hips going forward), the waist bent
-   *  forward, the arms swung (degrees, forward +); the crouch starts from standing and
-   *  springs from its last pose, rolled forward onto the toes; the landing ends standing */
+   *  - back, rolled forward onto the toes, the hips going forward), the lean forward
+   *  over the legs, the arms swung (degrees, forward +); the crouch starts from
+   *  standing and springs from its last pose, rolled forward onto the toes; the
+   *  landing ends standing */
   crouchLegs: ReadonlyArray<number>; crouchLean: ReadonlyArray<number>; crouchArms: ReadonlyArray<number>;
   landLegs: ReadonlyArray<number>; landLean: ReadonlyArray<number>; landArms: ReadonlyArray<number>;
   /** a hop's flight, keyed at its frames: its arc (a share of its rise), the legs
@@ -173,7 +174,7 @@ export type GaitTiming = Readonly<{ step: number; up: number; down: number; turn
 /** the built-in walk, timed as a rendered brick film's walk measures (the bathroom
  *  remake's west walk, nine cycles: Brick Film Remakes): the body never holding,
  *  quickest just after the leading foot lands; the arms hanging back and swinging
- *  against the legs; the shoulders hardly turning; its wander from step to step its own */
+ *  against the legs; its wander from step to step its own */
 export const WALK: GaitShape = {
   glide: [0, 0.22, 0.57, 0.84, 1], lead: [0, 44.64, 0, 0, 0], trail: [0, 0, 0, 0, 0], heelOn: 0.5, toeOff: 0.75,
   // the strides: going up shaped by eye, leaning well forward, the leading
@@ -182,9 +183,9 @@ export const WALK: GaitShape = {
   // edge while the body tips forward over it, dropping a frame onto the leading heel
   upGlide: [0, 0.08, 0.28, 0.38, 0.63, 0.93, 1], upLead: [0, 40.8, 46.34, 11.45, 1.56, 0, 0], upTrail: [0, 0, 5.89, 19.01, 20.47, 0.53, 0], upHeelOn: 0.5, upToeOff: 0.5, upLean: [0, 17.75, 19.81, 15.13, 10.37, 3.25, 0],
   downGlide: [0, 0.25, 0.5, 0.72, 0.9, 0.97, 1], downLead: [0, 10, 60, 30, 20, 0, 0], downTrail: [0, 0, 0, 0, 0, 0, 0], downHeelOn: 5 / 6, downToeOff: 4 / 6, downLean: [0, 2, 4, 4, 2, 1, 0],
-  hang: -31, arms: 38, twistPerArm: 1 / 30,
+  hang: -31, arms: 38,
   headSwing: [0, 2, 3, 2, 0], headTurn: 70, headLead: 0.533,
-  wander: { glide: 0.04, arms: 6, twist: 2 },
+  wander: { glide: 0.04, arms: 6 },
   turnEase: [0, 0.11, 0.36, 0.58, 0.75, 0.9, 1], turnLeg: [0, 38.93, 47.39, 41.36, 26.5, 13.58, 0], turnRoll: [0, 2, 4, 5, 4, 2, 0],
   shiftRoll: [0, 5, 6, 5, 0],
   // the jump, shaped by eye: rocking back on the heels and rolling forward
@@ -645,7 +646,7 @@ const timed = (moves: ReadonlyArray<Omit<Move, 'start' | 'end'> & { weight: numb
 // == Posing ======================================================================
 
 /** what a stance and a move set at a time: place, heading, height (plates) and the
- *  legs; what they add: arms, shoulders, lean. A move rolling a figure about a foot's
+ *  legs; what they add: arms, lean. A move rolling a figure about a foot's
  *  edge (a turn's lean, a shift of weight) sets where its soles stand (`soles`), and its
  *  hips are placed from there (SEE: Clicked) */
 export type Posed = Readonly<{ set: Readonly<Record<string, number>>; add: Readonly<Record<string, number>>; soles?: true; }>;
@@ -697,10 +698,10 @@ const drawingsOf = (move: Move, shape: GaitShape): number => {
  *  put it, its foot clearing the studs as it travels; the hips as low as the feet let
  *  them, the body hopping just as far as a leg's swing needs, a planted foot rising
  *  straight up from its stud (the other way for a step backward); the arms swinging
- *  against the legs, the shoulders against the arms; wandering by the gait's
- *  `variance`. A step onto another level keys its own stride, the leading foot planted
- *  on the level it lands on and each travelling foot clearing the edge between the
- *  levels, the waist bending through it. No foot touching the plate ever moves along it */
+ *  against the legs; wandering by the gait's `variance`. A step onto another level
+ *  keys its own stride, the leading foot planted on the level it lands on and each
+ *  travelling foot clearing the edge between the levels, leaning over its legs through
+ *  it. No foot touching the plate ever moves along it */
 const stepping = (move: Move, u: number, gait: Gait, drawn: boolean): Posed => {
   const shape = gait.shape ?? WALK, stride = strideOf(shape, move);
   const length = Math.hypot(move.to.x - move.from.x, move.to.z - move.from.z);
@@ -735,7 +736,7 @@ const stepping = (move: Move, u: number, gait: Gait, drawn: boolean): Posed => {
   const w = along / Math.max(length, TIE);
   return {
     set: { x: move.from.x + ((move.to.x - move.from.x) * w), z: move.from.z + ((move.to.z - move.from.z) * w), yaw: move.from.yaw, height: move.from.level + ((hip - LEG) * PLATES_PER_STUD), [`pose.${lead}`]: degrees(leading), [`pose.${trail}`]: degrees(trailing) },
-    add: { 'pose.rightArm': arm, 'pose.leftArm': -arm, 'pose.twist': (-arm * shape.twistPerArm) + wander('twist', shape.wander.twist), 'pose.lean': (gait.lean * Math.sin(Math.PI * u)) + (climbing ? keysAt((rise > 0) ? shape.upLean : shape.downLean, u) : 0), 'pose.head': keysAt(shape.headSwing, u) * ((move.foot === 'right') ? 1 : -1)/*a head turns clockwise seen from above: toward the right*/ },
+    add: { 'pose.rightArm': arm, 'pose.leftArm': -arm, 'pose.lean': (gait.lean * Math.sin(Math.PI * u)) + (climbing ? keysAt((rise > 0) ? shape.upLean : shape.downLean, u) : 0), 'pose.head': keysAt(shape.headSwing, u) * ((move.foot === 'right') ? 1 : -1)/*a head turns clockwise seen from above: toward the right*/ },
   };
 };
 
@@ -863,8 +864,8 @@ const turning = (move: Move, u: number, figure: boolean, shape: GaitShape, drawn
   };
 };
 
-/** a hop: a crouch (rocking back on the heels where it stands, the waist bending, the
- *  arms swinging back), a flight in its shape's arc above the higher level from the
+/** a hop: a crouch (rocking back on the heels where it stands, leaning over its legs,
+ *  the arms swinging back), a flight in its shape's arc above the higher level from the
  *  crouch's pose to the landing's (the legs tucked and the arms raised on the way), and a
  *  landing (heels first where it lands, rocking back on them, rising to stand) */
 const hopping = (move: Move, u: number, figure: boolean, shape: GaitShape): Posed => {
@@ -944,7 +945,7 @@ const leaping = (move: Move, u: number, gait: Gait): Posed => {
   const w = along / length;
   return {
     set: { x: move.from.x + (dx * w), z: move.from.z + (dz * w), yaw: move.from.yaw, height: move.from.level + ((hip - LEG + riseOf(leading, trailing)) * PLATES_PER_STUD), [`pose.${lead}`]: leading, [`pose.${trail}`]: trailing },
-    add: { 'pose.rightArm': arm, 'pose.leftArm': -arm, 'pose.twist': -arm * shape.twistPerArm, 'pose.lean': gait.lean * reach },
+    add: { 'pose.rightArm': arm, 'pose.leftArm': -arm, 'pose.lean': gait.lean * reach },
   };
 };
 

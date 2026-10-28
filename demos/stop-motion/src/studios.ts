@@ -3,7 +3,7 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { PoseBottoms } from '../../brick-shared/rise';
 import { bodiesThrough, clearanceOf, groundedOn, type Avoided, type Probe } from './clearance';
-import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandProbe, type Held, type Paint, type Rest, type StageFacts } from './film';
+import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandAsk, type HandProbe, type Held, type Paint, type Rest, type StageFacts } from './film';
 import { groundsOf, surfacesIn, surfacesOf, surfacesProbed, type CellArea, type ExtentProbe, type GroundProbe, type SurfaceProbe } from './ground';
 import type { Size } from './measure';
 import type { Point, Recorded } from './recorder';
@@ -78,13 +78,14 @@ type Probed = Readonly<{ kind: 'studio'; found: Found; } | { kind: 'other'; }> |
 
 /** where the film stands on the studios: none found, more than one holding a build,
  *  staging, staged (with the actors cast that have wheels, those refused, each actor's
- *  box, the parts each frame's camera meets and the spans it is drawn in to avoid
+ *  box, where a hand holds each hand item actor (its grip, from its position in its own
+ *  frame), the parts each frame's camera meets and the spans it is drawn in to avoid
  *  them), the person gone back to a studio's build, or a studio failed */
 export type StageState = Readonly<
   | { kind: 'none'; }
   | { kind: 'ambiguous'; builds: number; }
   | { kind: 'staging'; loaded?: number; frames?: number; }/*the reel's frames loaded on every screen, once it loads*/
-  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes: Readonly<Record<string, Size>>; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }
+  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes: Readonly<Record<string, Size>>; grips: Readonly<Record<string, Point>>; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }
   | { kind: 'left'; }
   | { kind: 'failed'; message: string; }
 >;
@@ -94,8 +95,8 @@ export type Board = Readonly<{ frame: number; caption: string; }>;
 
 /** a film staged: its scene and film, the screens it is on (the main first), each
  *  screen's reel, the main build's changes counted as it staged (SEE: buildEdits) and
- *  the probes of its surfaces and its sets' extents it staged with */
-type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; edits: number; surfaceProbe: SurfaceProbe; extentProbe: ExtentProbe; }>;
+ *  the probes of its surfaces, its sets' extents and its hands it staged with */
+type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; edits: number; surfaceProbe: SurfaceProbe; extentProbe: ExtentProbe; handProbe: HandProbe; }>;
 
 // == Class =======================================================================
 export class Studios {
@@ -270,7 +271,7 @@ export class Studios {
       // where each hand holds its thing at its hand-off: a thing let go of stands there,
       // and a thing taken up lies within the hand's reach
       const handing = scene.actors.some(actor => actor.released || actor.pickedUp);
-      const hands = handing ? { hands: await handsOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), handProbe), grips: new Map(Object.entries(answer.grips ?? {})) } : {}/*no hand lets go or takes up*/;
+      const hands = handing ? { hands: await handsOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}) }), new Map((answer.refused ?? []).map(each => [each.name, each.reason])), handProbe), grips: new Map(Object.entries(answer.grips ?? {})) } : {}/*no hand lets go or takes up*/;
       const { film: cleared, parts, avoided } = await clearanceOf(filmFor({ ...facts, ...(surfaces ? { surfaces } : {}), ...hands }), probe);
       const held = surfaces ? await bodiesThrough(cleared, new Set([...facts.figures].filter(name => facts.clicks.has(name))), facts.bottoms, surfaces, probe, groundProbe) : cleared/*no figure on studs*/;
       const film = grounded ? await groundedOn(held, answer.sizes ?? {}, probe) : held;
@@ -282,8 +283,8 @@ export class Studios {
         await Promise.all(screens.map((screen, index) => screen.loadReel({ reel: reels[index], from, frames: page })));
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
-      this.staged = { scene, film, screens, reels: reels as number[], edits, surfaceProbe, extentProbe };
-      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {}, parts, avoided });
+      this.staged = { scene, film, screens, reels: reels as number[], edits, surfaceProbe, extentProbe, handProbe };
+      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {}, grips: answer.grips ?? {}, parts, avoided });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
     }
@@ -351,6 +352,14 @@ export class Studios {
     const staged = this.ready();
     if(!staged) throw new Error(notStaged(this.state.value));
     return await staged.extentProbe(set);
+  }
+
+  /** where hands hold things, asked of the main screen as staging asks (SEE: Brick
+   *  Studio's probeStage held); refuses while the film is not staged */
+  public async held(asks: ReadonlyArray<HandAsk>): Promise<ReadonlyArray<Held>> {
+    const staged = this.ready();
+    if(!staged) throw new Error(notStaged(this.state.value));
+    return await staged.handProbe(asks);
   }
 
   /** resolves once the main screen reports a frame drawn; refuses after SHOWN_MILLIS,

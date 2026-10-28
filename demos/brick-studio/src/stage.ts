@@ -1,5 +1,5 @@
 import { hipsOver, poseRise, type PoseBottoms, HIPS } from '../../brick-shared/rise';
-import { turnOf as turnOfRotation } from '../../brick-shared/turn';
+import { turnOf as turnOfRotation, twistedYaw } from '../../brick-shared/turn';
 
 import { toGear, toPosing } from './build';
 import { getStageFace, ACCESSORIES, ALL_FACES, type Accessory, type CatalogPart } from './catalog';
@@ -7,7 +7,7 @@ import { occupiedCells } from './check';
 import { cellsFootprint, compose, copyTransform, footprint, footprintSize, getColor, getPart, getShape, gridPosition, ldrawPosition, matrixRotation, partLines, rotationMatrix, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Copy, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseSets, placedPartCount, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
 import { HELD_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS } from './pose';
+import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS, TWIST } from './pose';
 
 // a stage: a scene the studio shows in place of its build while another Application
 // (a film) drives it. Its sets are a build's, each shown as it is: LDraw text's, or
@@ -640,7 +640,8 @@ const shotOf = (cast: Cast, item: unknown, at: string): Shot => {
   const hands = handsOf({ rightHand, leftHand }, at);
   if((rolled !== undefined) && !actor.rolls) throw new Error(`${at}: ${name} has no wheels to roll`);
   if((rolled !== undefined) && !isFiniteNumber(rolled)) throw new Error(`${at}.rolled must be a finite number of studs`);
-  return { name, position: where, turn: turned, ...((pose !== undefined) ? { pose: toFreePose(pose, `${at}.pose`) } : {}), ...((face !== undefined) ? { face: face as string } : {}), ...(hands ? { hands } : {}), rolled: (rolled as number | undefined) ?? 0 };
+  const { [TWIST]: twist, ...posed } = (pose !== undefined) ? toFreePose(pose, `${at}.pose`) : {}/*no pose*/;
+  return { name, position: where, turn: { ...turned, yaw: twistedYaw(turned.yaw, twist) }/*a twist turns the whole figure*/, ...((pose !== undefined) ? { pose: posed } : {}), ...((face !== undefined) ? { face: face as string } : {}), ...(hands ? { hands } : {}), rolled: (rolled as number | undefined) ?? 0 };
 };
 
 /** every line a frame shows of its actors, in the scene's frame (LDU) */
@@ -978,15 +979,15 @@ const toTurn = (input: unknown, field: string): Turn => {
   return { yaw: yaw as number, pitch: pitch as number, roll: roll as number };
 };
 
-/** a pose an input gives: any finite angle per limb */
-const toFreePose = (input: unknown, field: string): Pose => {
-  const limbs: ReadonlyArray<string> = [...LIMBS, ...FRAME_LIMBS];
+/** a pose an input gives: any finite angle per limb, and its twist (SEE: pose.ts TWIST) */
+const toFreePose = (input: unknown, field: string): Pose & Readonly<{ [TWIST]?: number; }> => {
+  const limbs: ReadonlyArray<string> = [...LIMBS, TWIST, ...FRAME_LIMBS];
   if((typeof input !== 'object') || (input === null) || Array.isArray(input)) throw new Error(`${field} names limbs and their angles (${limbs.join(', ')})`);
-  const pose: Partial<Record<Limb | FrameLimb, number>> = {};
+  const pose: Partial<Record<Limb | FrameLimb | typeof TWIST, number>> = {};
   for(const [limb, angle] of Object.entries(input)) {
     if(!limbs.includes(limb)) throw new Error(`${field} names no limb '${limb}' (${limbs.join(', ')})`);
     if(!isFiniteNumber(angle)) throw new Error(`${field}.${limb} must be a finite number of degrees`);
-    pose[limb as Limb | FrameLimb] = angle;
+    pose[limb as Limb | FrameLimb | typeof TWIST] = angle;
   }
   return pose;
 };

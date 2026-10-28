@@ -1,8 +1,8 @@
 // how a stage turns an actor: rolled, then pitched, then yawed (yaw clockwise seen from
 // above, pitch raising its south side, roll its west side), as row-major rotation rows
-// in LDraw's frame (y down); and the turn a rotation is, so what one Application turns
+// in LDraw's frame (y down); the turn a rotation is, so what one Application turns
 // another reads back the same (a rider turned with what it rides, a thing standing
-// where a hand held it)
+// where a hand held it); and a figure's twist, which turns it as its yaw does
 // ********************************************************************************
 // == Types =======================================================================
 /** an actor's turn, in degrees */
@@ -28,6 +28,12 @@ export const turnOf = (m: ReadonlyArray<number>): Turn => {
   const degrees = (value: number) => { const d = value * (180 / Math.PI); return Object.is(d, -0) ? 0 : d; };
   return { yaw: degrees(yaw), pitch: degrees(pitch), roll: degrees(roll) };
 };
+
+/** the yaw of a figure turned by a pose's `twist` (degrees clockwise seen from above),
+ *  added to its own: a toy figure's torso and hips are one block with no waist that
+ *  turns, so a twist turns the whole figure from its feet, about the vertical through
+ *  its hips, as its yaw does */
+export const twistedYaw = (yaw: number, twist: number | undefined): number => yaw + (twist ?? 0);
 
 // == Internal ====================================================================
 const radians = (degrees: number) => degrees * (Math.PI / 180);

@@ -1,5 +1,6 @@
 import { hipsOver, poseRise, type PoseBottoms, HIPS } from '../../brick-shared/rise';
-import { rotation, turnOf, type Turn } from '../../brick-shared/turn';
+import { rotation, turnOf, twistedYaw, type Turn } from '../../brick-shared/turn';
+import { listed } from '../../brick-shared/words';
 
 import type { Aim, Area, CameraKey, CameraPlace, Ease, Drawn, FaceKey, FadeKey, Hand, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
 import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, median, poseOf, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG } from './steps';
@@ -202,10 +203,12 @@ type Followed = (actor: string) => Point;
  *  walking and standing as one does (SEE: steps.ts; its walks' glide left out), each
  *  head turned to what it looks at (SEE: looking), each actor not kept still shifted
  *  a frame at a time by the scene's boil (SEE: boiled), each thing a hand lets go of
- *  shown from its hand-off's frame, standing where its hand let go of it (`hands`) and
- *  moving on by its own keys from there, and each thing a hand takes up hidden from its
+ *  shown from its hand-off's frame, standing where its hand let go of it (`hands`),
+ *  moving on by its own keys from there and held where each of its paths leaves it,
+ *  until a key hides it, and each thing a hand takes up hidden from its
  *  hand-off's frame (SEE: HandOff). Throws, naming the scene's line, when an actor rides
- *  in a circle, leaves the stage's reach or lies past a hand's reach as it takes it up */
+ *  in a circle, leaves the stage's reach or lies past a hand's reach as it takes it up,
+ *  or a thing a hand lets go of is never shown */
 export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
   const { wheeled = new Set<string>(), figures = new Set<string>(), bottoms, clicks = new Set<string>(), rests = new Map<string, Rest>(), hands, grips = new Map<string, Point>(), grounds = new Map<string, ReadonlyArray<number>>(), surfaces = () => BASEPLATE } = facts;
   // where a figure's arms hang: as the gait its walks take, else the scene's own walk
@@ -262,7 +265,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       // a walker drawn on its drawing's frame, held to the next (on twos, the frames the
       // film draws its keys on)
       const stepping = clicked.get(actor.name), held = (drawn === index) ? undefined/*its drawing's frame: drawn afresh*/ : walkerDrawn.get(actor.name);
-      const local = stepping ? (held?.local ?? { channels: stepping.at(grounded.channels, time, surfaces(setAt(scene.sets, time))) }) : grounded;
+      const local = untwisted(stepping ? (held?.local ?? { channels: stepping.at(grounded.channels, time, surfaces(setAt(scene.sets, time))) }) : grounded);
       const under = held ? held.under : stepping?.moveAt(time), standingOn = surfaces(setAt(scene.sets, time));
       if(stepping) walkerDrawn.set(actor.name, { local, under });
       if(under) steps[actor.name] = { move: gaitMoveOf(under.move), u: under.u, ...((under.walk.gait !== undefined) ? { gait: under.walk.gait } : {}) };
@@ -361,7 +364,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
     const transition = transitionAt(scene, time * scene.fps/*where it stands among the scene's own frames*/, time, placements[index], following(scene.camera, index), headed[index], frame.set, frames);
     frames.push({ ...frame, camera: seen(scene.camera), views, ...(transition ? { transition } : {}) });
   }
-  if(hands) withinReach(scene, handOffs, hands.pickedUp, grips, placements);
+  if(hands) { shownOnce(scene, handOffs, times, placements); withinReach(scene, handOffs, hands.pickedUp, grips, placements); }
   const footsteps = footstepsOf(scene, clicked), leaps = walkLeapsOf(scene, clicked);
   const stepped = { ...((footsteps.length > 0) ? { footsteps } : {}), ...((leaps.length > 0) ? { leaps } : {}), ...((handOffs.length > 0) ? { handOffs } : {}) };
   if(!scene.views.some(view => view.plan)) return { scene, frames, ...stepped };
@@ -406,6 +409,18 @@ const walkLeapsOf = (scene: Recorded, clicked: ReadonlyMap<string, Clicked>): Re
 /** how far a hand reaches to take a thing up (studs): from its grip's centre to where
  *  the thing is held, as the thing last stood in the picture */
 export const REACH = 1;
+/** how a hand's grip stands from a hand item's grip as the thing stands: how far
+ *  (`studs`), the move from the thing's grip to the hand's (`toHand`: studs east and
+ *  north, plates up), and where the thing keyed lies within REACH of the hand
+ *  (`keyAt`): moved across alone, its height kept, while the hand stands within REACH
+ *  above or below it */
+export type Gap = Readonly<{ studs: number; toHand: Point; keyAt: Readonly<{ x: number; z: number; height?: number; }>; }>;
+/** where a figure's hands would hold a hand item at a frame: each hand's grip and where
+ *  the thing stands held there (`holds`), and while the thing is shown, its grip
+ *  (`thing`) and how each hand's grip stands from it (SEE: Gap) */
+export type Reach = Readonly<{ thing?: Point; rightHand: HandReach; leftHand: HandReach; }>;
+/** one hand's reach (SEE: Reach) */
+export type HandReach = Readonly<{ grip: Point; holds: Held; gap?: Gap; }>;
 /** a hand a probe asks after: a figure's shot as a frame takes it, its hand, and the
  *  hand item it is asked to hold */
 export type HandAsk = Readonly<{ shot: Shot; hand: Hand; item: NonNullable<HandKey['item']>; }>;
@@ -424,52 +439,109 @@ const handOffsOf = (scene: Recorded, times: ReadonlyArray<number>, drawnFrame: (
     return (frame < 0) ? [] : [{ thing: actor.name, by: handing.by, hand: handing.hand, change, frame, time: times[frame], ...((handing.line !== undefined) ? { line: handing.line } : {}) }];
   }));
 
-/** a released thing's keys with its release's among them: where its hand let go of it
- *  (`held`), at the time its figure's drawing stands for on the hand-off's frame, each
- *  angle turned by whole turns to within half a turn of its own next key (so that key
- *  turns it the short way); its own keys alone while the stage has told none */
+/** a released thing's keys with its release's among them: shown where its hand let go
+ *  of it (`held`), at the time its figure's drawing stands for on the hand-off's frame,
+ *  each angle turned by whole turns to within half a turn of its own next key (so that
+ *  key turns it the short way), and held where each of its paths leaves it; its own
+ *  keys alone while the stage has told none */
 const releaseKeyed = (actor: RecordedActor, held: Held | undefined, handOff: HandOff | undefined, scene: Recorded, times: ReadonlyArray<number>, drawnFrame: (own: Drawn | undefined, index: number) => number): ReadonlyArray<Key> => {
   if(!held || !handOff) return actor.keys;
   const holder = scene.actors.find(each => each.name === handOff.by)!/*by contract: recorded*/;
   const near = (channel: 'yaw' | 'pitch' | 'roll') => { const next = actor.keys.find(key => channel in key.values)?.values[channel]; return (next === undefined) ? held.turn[channel] : next + wrapped(held.turn[channel] - next); };
-  const release: Key = { time: times[drawnFrame(holder.drawn, handOff.frame)], values: { ...held.position, yaw: near('yaw'), pitch: near('pitch'), roll: near('roll') }, ease: 'linear', ...((handOff.line !== undefined) ? { line: handOff.line } : {}) };
-  return [...actor.keys, release].sort((a, b) => a.time - b.time);
+  const release: Key = { time: times[drawnFrame(holder.drawn, handOff.frame)], values: { ...held.position, yaw: near('yaw'), pitch: near('pitch'), roll: near('roll'), visible: 1 }, ease: 'linear', ...((handOff.line !== undefined) ? { line: handOff.line } : {}) };
+  // each path's last values held from its end, the keys after it moving it on from there
+  const left = actor.spans.filter(span => span.mode === 'set').map((span): Key => ({ time: span.to / scene.fps, values: span.samples[span.samples.length - 1], ease: 'hold', ...((span.line !== undefined) ? { line: span.line } : {}) }));
+  return [...actor.keys, release, ...left].sort((a, b) => a.time - b.time);
 };
 
 /** where each hand-off's hand in a film holds its thing on its frame (SEE: Hands), as
  *  the stage holds it (`probe`): each hand's figure shown there. Throws, naming the
- *  scene's line, a hand-off whose figure is hidden then */
-export const handsOf = async (film: Film, probe: HandProbe): Promise<Hands> => {
+ *  scene's line, a hand-off whose figure or thing the studio did not cast (`refused`:
+ *  why, by name) or whose figure is hidden then */
+export const handsOf = async (film: Film, refused: ReadonlyMap<string, string>, probe: HandProbe): Promise<Hands> => {
   const handOffs = film.handOffs ?? [];
   const asks = handOffs.map(handOff => {
+    for(const name of [handOff.by, handOff.thing]) { const reason = refused.get(name); if(reason !== undefined) fail(`${callOf(film.scene, handOff)}: the studio did not cast ${name}: ${reason}`, handOff.line); }
     const holder = film.frames[handOff.frame].actors.find(actor => actor.name === handOff.by) ?? fail(`${callOf(film.scene, handOff)}: ${handOff.by} is hidden then: a hand lets go of a thing or takes it up in the picture`, handOff.line);
-    const { part, color, grip } = film.scene.actors.find(actor => actor.name === handOff.thing)!.source as Readonly<{ part: string; color: string; grip?: string; }>/*by contract: a hand item (SEE: recorder.ts)*/;
-    return { shot: { name: holder.name, position: holder.position, turn: holder.turn, ...(holder.pose ? { pose: holder.pose } : {}) }, hand: handOff.hand, item: { part, color, ...((grip !== undefined) ? { grip } : {}) } };
+    return { shot: handShot(holder), hand: handOff.hand, item: handItemOf(film.scene.actors.find(actor => actor.name === handOff.thing)!/*by contract: recorded*/) };
   });
   const held = (asks.length > 0) ? await probe(asks) : [];
   const of = (change: HandOff['change']) => new Map(handOffs.flatMap((handOff, index) => (handOff.change === change) ? [[handOff.thing, held[index]] as const] : []));
   return { released: of('released'), pickedUp: of('pickedUp') };
 };
 
+/** where a figure's hands would hold a hand item (`thing`: its name, its item and its
+ *  grip, from its position in its own frame) on a frame the figure is shown in, as the
+ *  stage holds it (`probe`; SEE: Reach) */
+export const reachOf = async (frame: FilmFrame, figure: string, thing: Readonly<{ name: string; item: NonNullable<HandKey['item']>; grip: Point; }>, probe: HandProbe): Promise<Reach> => {
+  const holder = frame.actors.find(actor => actor.name === figure)!/*by contract: shown*/;
+  const [right, left] = await probe(HANDS.map(hand => ({ shot: handShot(holder), hand, item: thing.item })));
+  const standing = frame.actors.find(actor => actor.name === thing.name);
+  const handReach = (holds: Held): HandReach => ({ grip: pointIn(holds.position, rotation(holds.turn), thing.grip), holds, ...(standing ? { gap: gapOf(holds, thing.grip, standing.position, rotation(standing.turn)) } : {}) });
+  return { ...(standing ? { thing: pointIn(standing.position, rotation(standing.turn), thing.grip) } : {}), rightHand: handReach(right), leftHand: handReach(left) };
+};
+
+/** refuses a released thing never shown: let go of after the film's last frame, or
+ *  hidden by its keys or paths from its release frame on */
+const shownOnce = (scene: Recorded, handOffs: ReadonlyArray<HandOff>, times: ReadonlyArray<number>, placements: ReadonlyArray<ReadonlyMap<string, Placed>>) => {
+  for(const { name, released } of scene.actors) {
+    if(!released || placements.some(placed => placed.get(name)?.visible)) continue;
+    const handOff = handOffs.find(each => (each.thing === name) && (each.change === 'released'));
+    const call = callOf(scene, { thing: name, change: 'released' });
+    if(!handOff) fail(`${call}: ${name} is never shown: the film's last frame, at ${thousandths(times[times.length - 1])} s, comes before its hand lets go of it`, released.line);
+    fail(`${call}: ${name} is never shown: its keys or paths hide it from its release frame, at ${thousandths(handOff!.time)} s, on (a released thing is shown from its release until a key hides it)`, released.line);
+  }
+};
+
 /** refuses a pick-up its hand cannot make: its thing hidden on the frame before, or its
  *  grip (`grips`: where a hand holds it, from its position in its own frame) as it last
- *  stood in the picture past REACH from where the hand would hold it (`held`) */
+ *  stood in the picture past REACH from where the hand would hold it (`held`), saying
+ *  which way and how far the hand's grip stands and where the thing lies in reach */
 const withinReach = (scene: Recorded, handOffs: ReadonlyArray<HandOff>, held: ReadonlyMap<string, Held>, grips: ReadonlyMap<string, Point>, placements: ReadonlyArray<ReadonlyMap<string, Placed>>) => {
   for(const handOff of handOffs) {
     const holding = held.get(handOff.thing);
     if((handOff.change !== 'pickedUp') || !holding) continue;
     const lying = placements[handOff.frame - 1]?.get(handOff.thing);
     if(!lying?.visible) fail(`${callOf(scene, handOff)}: ${handOff.thing} is hidden before then: a hand takes up a thing in the picture`, handOff.line);
-    const grip = grips.get(handOff.thing) ?? { x: 0, z: 0, height: 0 }/*none told: its position*/;
-    const [hand, thing] = [pointIn(holding.position, rotation(holding.turn), grip), pointIn(lying!.position, lying!.matrix, grip)];
-    const studs = Math.hypot(hand.x - thing.x, hand.z - thing.z, (hand.height - thing.height) * STUDS_PER_PLATE);
-    if(studs > REACH) fail(`${callOf(scene, handOff)}: its ${(handOff.hand === 'rightHand') ? 'right' : 'left'} hand reaches ${studs.toFixed(2)} studs from where it would hold ${handOff.thing}, as ${handOff.thing} last stood in the picture: a hand takes up a thing within ${REACH} stud of it`, handOff.line);
+    const { studs, toHand, keyAt } = gapOf(holding, grips.get(handOff.thing) ?? { x: 0, z: 0, height: 0 }/*none told: its position*/, lying!.position, lying!.matrix);
+    const keyed = `{ x: ${hundredths(keyAt.x)}, z: ${hundredths(keyAt.z)}${(keyAt.height !== undefined) ? `, height: ${hundredths(keyAt.height)}` : ''} }`;
+    if(studs > REACH) fail(`${callOf(scene, handOff)}: its ${(handOff.hand === 'rightHand') ? 'right' : 'left'} hand reaches ${studs.toFixed(2)} studs from where it would hold ${handOff.thing}, as ${handOff.thing} last stood in the picture: a hand takes up a thing within ${REACH} stud of it; its grip stands ${towards(toHand)} from ${handOff.thing}'s, so ${handOff.thing} keyed at ${keyed} lies within its reach (reach tells where a figure's hands are at a moment)`, handOff.line);
   }
 };
 
+// -- Hands and Grips -------------------------------------------------------------
+/** the hands a probe is asked after for a figure's reach, right then left */
+const HANDS: ReadonlyArray<Hand> = ['rightHand', 'leftHand'];
+
+/** a figure's shot as a frame shows it, as a hand probe takes it: its place, its turn
+ *  and its pose */
+const handShot = ({ name, position, turn, pose }: Shot): Shot => ({ name, position, turn, ...(pose ? { pose } : {}) });
+/** the hand item an actor is cast as (its source), as a hand holds it */
+const handItemOf = (actor: RecordedActor): NonNullable<HandKey['item']> => {
+  const { part, color, grip } = actor.source as Readonly<{ part: string; color: string; grip?: string; }>/*by contract: a hand item (SEE: recorder.ts)*/;
+  return { part, color, ...((grip !== undefined) ? { grip } : {}) };
+};
+
+/** how a hand's grip (where it holds a thing, `held`) stands from a hand item's grip
+ *  (`grip`, from its position in its own frame) as the thing stands at `position`
+ *  turned by `matrix` (SEE: Gap) */
+const gapOf = (held: Held, grip: Point, position: Point, matrix: ReadonlyArray<number>): Gap => {
+  const [hand, thing] = [pointIn(held.position, rotation(held.turn), grip), pointIn(position, matrix, grip)];
+  const toHand = { x: hand.x - thing.x, z: hand.z - thing.z, height: hand.height - thing.height };
+  const across = Math.abs(toHand.height * STUDS_PER_PLATE) < REACH;
+  return { studs: Math.hypot(toHand.x, toHand.z, toHand.height * STUDS_PER_PLATE), toHand, keyAt: { x: position.x + toHand.x, z: position.z + toHand.z, ...(across ? {} : { height: position.height + toHand.height }) } };
+};
+
+/** a move in words, model-facing: studs east or west, studs north or south and plates up
+ *  or down, each it makes to the hundredth */
+const towards = ({ x, z, height }: Point): string => listed([[x, 'studs', 'east', 'west'], [z, 'studs', 'north', 'south'], [height, 'plates', 'up', 'down']].flatMap(([value, unit, more, less]) => {
+  const amount = Math.abs(value as number).toFixed(2);
+  return (amount === '0.00') ? [] : [`${amount} ${unit} ${((value as number) > 0) ? more : less}`];
+}));
+
 /** a hand-off's call as the scene writes it, with its line */
-const callOf = (scene: Recorded, { thing, by, hand, change, line }: HandOff): string => {
-  const { time } = scene.actors.find(actor => actor.name === thing)![change]!/*by contract: its hand-off*/;
+const callOf = (scene: Recorded, { thing, change }: Pick<HandOff, 'thing' | 'change'>): string => {
+  const { by, hand, time, line } = scene.actors.find(actor => actor.name === thing)![change]!/*by contract: its hand-off*/;
   return `${by}.${(change === 'released') ? 'release' : 'pickUp'}(${time}, '${hand}', '${thing}')${(line !== undefined) ? ` (line ${line})` : ''}`;
 };
 /** refuses a hand-off, naming the scene's line */
@@ -571,6 +643,7 @@ const pushPoint = (points: Array<{ x: number; z: number; }>, point: Point) => {
   if(!last || (last.x !== x) || (last.z !== z)) points.push({ x, z });
 };
 const hundredths = (value: number): number => (Math.round(value * 100) / 100) || 0/*never -0*/;
+const thousandths = (value: number): number => (Math.round(value * 1000) / 1000) || 0/*never -0*/;
 
 // == Reel ========================================================================
 /** a film's frame as a studio's reel takes it: what it leaves out, the studio takes
@@ -637,6 +710,13 @@ const boiled = (local: Local, actor: RecordedActor, index: number, boil: number 
  *  onto studs, never quite level on them (degrees) */
 const BOIL: ReadonlyArray<readonly [string, number]> = [['x', 0.06], ['z', 0.06], ['yaw', 1.2], ['pose.head', 3], ['pose.rightArm', 3], ['pose.leftArm', 3]];
 const TILT: ReadonlyArray<readonly [string, number]> = [['pitch', 0.8], ['roll', 0.8]];
+
+/** an actor's values with a figure's twist taken into its yaw (SEE: brick-shared/turn.ts
+ *  twistedYaw): the whole figure turned over where its walk or its keys stand its feet */
+const untwisted = ({ channels }: Local): Local => {
+  const { 'pose.twist': twist, ...rest } = channels;
+  return (twist === undefined) ? { channels } : { channels: { ...rest, yaw: twistedYaw(rest.yaw ?? 0, twist) } };
+};
 
 /** an actor as its own values place it */
 const placedOf = ({ channels }: Local): Placed => {
@@ -943,7 +1023,7 @@ const ENGAGE_RATE = 4;
 /** an actor's head turned toward what it looks at in a frame: of its looks then whose
  *  target stands within its reach, the one begun latest (a reaction's over a lasting
  *  look, which takes back over once the reaction ends), as far as its `max` either way
- *  of where its torso faces (its heading, and its twist); the turn eased from the last frame's at LOOK_RATE, its own head's keyed
+ *  of where its torso faces (its heading, its twist's turn with it); the turn eased from the last frame's at LOOK_RATE, its own head's keyed
  *  turn giving way to it as it engages, and back as it lets go (SEE: Look) */
 const looking = (actor: RecordedActor, time: number, step: number, placed: Map<string, Placed>, headings: ReadonlyMap<string, number>, looked: Map<string, Readonly<{ angle: number; engaged: number; }>>) => {
   const standing = placed.get(actor.name)!;
@@ -954,7 +1034,7 @@ const looking = (actor: RecordedActor, time: number, step: number, placed: Map<s
     return at && (Math.hypot(at.x - standing.position.x, at.z - standing.position.z) <= look.within);
   });
   const at = active && target(active)!;
-  const facing = headings.get(actor.name)! + FRONT + (standing.pose?.twist ?? 0)/*its front, a catalog part's 180 past its yaw; the head turns over its twisted torso*/;
+  const facing = headings.get(actor.name)! + FRONT/*its front, a catalog part's 180 past its yaw*/;
   const wanted = (active && at) ? Math.max(-active.max, Math.min(active.max, wrapped((Math.atan2(at.x - standing.position.x, at.z - standing.position.z) * (180 / Math.PI)) - facing))) : 0;
   const before = looked.get(actor.name) ?? { angle: 0, engaged: 0 };
   const angle = before.angle + Math.max(-LOOK_RATE * step, Math.min(LOOK_RATE * step, wanted - before.angle));
