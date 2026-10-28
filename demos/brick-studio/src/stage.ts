@@ -2,7 +2,7 @@ import { hipsOver, poseRise, type PoseBottoms, HIPS } from '../../brick-shared/r
 import { turnOf as turnOfRotation, twistedYaw } from '../../brick-shared/turn';
 
 import { toGear, toPosing } from './build';
-import { getStageFace, ACCESSORIES, ALL_FACES, type Accessory, type CatalogPart } from './catalog';
+import { getStageFace, ACCESSORIES, ALL_FACES, type Accessory, type CatalogPart, type Grip } from './catalog';
 import { occupiedCells } from './check';
 import { cellsFootprint, compose, copyTransform, footprint, footprintSize, getColor, getPart, getShape, gridPosition, ldrawPosition, matrixRotation, partLines, rotationMatrix, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Copy, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseSets, placedPartCount, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
@@ -577,11 +577,11 @@ const heldActorOf = (accessory: Accessory, item: Readonly<Record<string, unknown
   const { color, grip } = item;
   if(Object.keys(item).some(field => !['name', 'part', 'color', 'grip'].includes(field))) return `${accessory.key} is a hand item: it takes a color and a grip alone`;
   if((typeof color !== 'string') || !getColor(color)) return `unknown color '${String(color)}' (listParts names the colors)`;
-  const held = (grip === undefined) ? accessory.grips?.[0] : accessory.grips?.find(each => each.name === grip);
+  const held = gripOf(accessory, grip);
   if(!held) return `grip of a ${accessory.key} must be one of ${(accessory.grips ?? []).map(each => each.name).join(', ')}`;
   const { x, y, z } = HELD_GEOMETRY[accessory.key]/*by contract: every hand item packed*/;
   const anchor = [(x[0] + x[1]) / 2, y[1]/*LDraw's y runs down: its bottom*/, (z[0] + z[1]) / 2] as const;
-  const point = (held.axis === 'y') ? [0, held.at, 0] : [0, 0, held.at];
+  const point = onBar(held, held.at);
   const colorCode = getColor(color)!.code;
   return {
     anchor,
@@ -597,6 +597,19 @@ const heldActorOf = (accessory: Accessory, item: Readonly<Record<string, unknown
     lines: () => [{ ldraw: accessory.ldraw, colorCode, position: [0, 0, 0], matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1] }],
   };
 };
+
+/** the grip a hand holds a hand item by: the one named, its first when none is; none
+ *  for a name it lacks */
+const gripOf = (accessory: Accessory, grip: unknown): Grip | undefined => (grip === undefined) ? accessory.grips?.[0] : accessory.grips?.find(each => each.name === grip);
+/** where a hand item's far end stands in its own file (LDU): the end of the bar it is
+ *  held by farthest from the hand's grip, on the bar's axis, the way the rest of it
+ *  points from the hand (a spear's point, a sword's blade, a lance's tip) */
+const farEndOf = (accessory: Accessory, grip: Grip): readonly [number, number, number] => {
+  const [low, high] = HELD_GEOMETRY[accessory.key][grip.axis]/*by contract: every hand item packed*/;
+  return onBar(grip, (Math.abs(low - grip.at) > Math.abs(high - grip.at)) ? low : high);
+};
+/** the point `at` along a grip's bar, in its item's own file (LDU) */
+const onBar = (grip: Grip, at: number): readonly [number, number, number] => (grip.axis === 'y') ? [0, at, 0] : [0, 0, at];
 
 /** the refusal of a part that carries components */
 const carriesComponents = (catalogPart: CatalogPart): string => `${catalogPart.key} carries components, which an actor never does: cast the component that holds it`;
@@ -655,8 +668,10 @@ export const shotLines = (cast: Cast, shots: ReadonlyArray<Shot>): PartLine[] =>
  *  figure's shot as a frame takes it, its hand and a hand item) holds that item: the
  *  position and turn a shot gives an actor cast as it to stand exactly there, drawing
  *  the hand's own line of it, so a film stands a thing a hand lets go of where the hand
- *  held it and measures how far a hand reaches to take one up */
-export const heldShotsOf = (cast: Cast, input: unknown): ReadonlyArray<Readonly<{ position: Point; turn: Turn; }>> => {
+ *  held it and measures how far a hand reaches to take one up; and where the hand's grip
+ *  on the item stands (`grip`, its bar's point at the grip's centre) and its far end
+ *  (`tip`, SEE: farEndOf), so a film reads which way it points from the hand */
+export const heldShotsOf = (cast: Cast, input: unknown): ReadonlyArray<Readonly<{ position: Point; turn: Turn; grip: Point; tip: Point; }>> => {
   if(input === undefined) return [];
   if(!Array.isArray(input) || (input.length > MAX_ACTORS)) throw new Error(`held lists at most ${MAX_ACTORS} hands: each { shot, hand, item }`);
   return input.map((ask, index) => {
@@ -666,13 +681,18 @@ export const heldShotsOf = (cast: Cast, input: unknown): ReadonlyArray<Readonly<
     if(!holder.holds) throw new Error(`${at}: ${figure.name} has no hands to hold things (a figure does)`);
     const gear = toGear(hand, item);
     if(typeof gear === 'string') throw new Error(`${at}: ${gear}`);
-    const thing = heldActorOf(ACCESSORIES.find(each => each.key === gear.part)!/*by contract: toGear*/, gear) as Actor/*by contract: toGear*/;
+    const accessory = ACCESSORIES.find(each => each.key === gear.part)!/*by contract: toGear*/;
+    const thing = heldActorOf(accessory, gear) as Actor/*by contract: toGear*/;
     // NOTE: what a figure wears is written after its pieces in slot order, its hands
     //       after its hat, so with its other hand emptied its last line is the item
     const line = holder.lines(figure.pose, 0, figure.face, { rightHand: null, leftHand: null, [hand]: gear }).at(-1)!;
     const held = compose(actorTransform(holder, figure), line);
-    const [x, y, z] = [0, 1, 2].map(row => (held.matrix[row * 3] * thing.anchor[0]) + (held.matrix[(row * 3) + 1] * thing.anchor[1]) + (held.matrix[(row * 3) + 2] * thing.anchor[2]) + held.position[row]);
-    return { position: { x: x / LDU_PER_STUD, z: z / LDU_PER_STUD, height: -y / LDU_PER_PLATE }, turn: turnOfRotation(held.matrix) };
+    const placed = (point: ReadonlyArray<number>): Point => {
+      const [x, y, z] = [0, 1, 2].map(row => (held.matrix[row * 3] * point[0]) + (held.matrix[(row * 3) + 1] * point[1]) + (held.matrix[(row * 3) + 2] * point[2]) + held.position[row]);
+      return { x: x / LDU_PER_STUD, z: z / LDU_PER_STUD, height: -y / LDU_PER_PLATE };
+    };
+    const grip = gripOf(accessory, gear.grip)!/*by contract: heldActorOf*/;
+    return { position: placed(thing.anchor), turn: turnOfRotation(held.matrix), grip: placed(onBar(grip, grip.at)), tip: placed(farEndOf(accessory, grip)) };
   });
 };
 

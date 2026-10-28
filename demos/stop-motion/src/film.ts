@@ -131,6 +131,10 @@ export type HandOff = Readonly<{ thing: string; by: string; hand: Hand; change: 
 /** where a hand holds a thing: the position and turn a frame gives an actor cast as it
  *  to stand exactly there (SEE: Brick Studio's probeStage held) */
 export type Held = Readonly<{ position: Point; turn: Turn; }>;
+/** where a hand holds a thing as the stage answers it, and where the hand's grip on it
+ *  (`grip`) and its far end (`tip`: the end of the bar it is held by farthest from the
+ *  hand) stand there */
+export type HeldItem = Held & Readonly<{ grip: Point; tip: Point; }>;
 /** where each hand-off's hand holds its thing on its frame, by the thing's name: as it
  *  lets go of it, and as it takes it up */
 export type Hands = Readonly<{ released: ReadonlyMap<string, Held>; pickedUp: ReadonlyMap<string, Held>; }>;
@@ -321,7 +325,7 @@ export const filmOf = (scene: Recorded, facts: StageFacts = {}): Film => {
       const standing = placed.get(name)!;
       if(!standing.visible) return [];
       const face = reactionAt(reactions, drawnTime) ?? faceAt(faces, drawnTime);
-      const holding = (['rightHand', 'leftHand'] as const).flatMap(hand => { const key = heldAt(hands?.filter(each => each.hand === hand), drawnTime); return key ? [[hand, key.item] as const] : []; });
+      const holding = HANDS.flatMap(hand => { const key = heldAt(hands?.filter(each => each.hand === hand), drawnTime); return key ? [[hand, key.item] as const] : []; });
       return [{ name, position: standing.position, turn: turnOf(standing.matrix), ...(standing.pose ? { pose: standing.pose } : {}), ...(face ? { face } : {}), ...Object.fromEntries(holding), ...(wheeled.has(name) ? { rolled: rolled.get(name)! } : {}) }];
     });
     const fade = channelAt(scene.fade, 'fade', time) ?? 0;
@@ -415,18 +419,23 @@ export const REACH = 1;
  *  (`keyAt`): moved across alone, its height kept, while the hand stands within REACH
  *  above or below it */
 export type Gap = Readonly<{ studs: number; toHand: Point; keyAt: Readonly<{ x: number; z: number; height?: number; }>; }>;
-/** where a figure's hands would hold a hand item at a frame: each hand's grip and where
- *  the thing stands held there (`holds`), and while the thing is shown, its grip
- *  (`thing`) and how each hand's grip stands from it (SEE: Gap) */
+/** which way a held thing points from the hand, its grip toward its far end: the
+ *  heading as a yaw faces (degrees: 0 south, 90 west, 180 north, 270 east) and its angle
+ *  above level (degrees, below 0 pointing down) */
+export type Pointing = Readonly<{ heading: number; aboveLevel: number; }>;
+/** where a figure's hands would hold a hand item at a frame: each hand's grip, where
+ *  the thing stands held there (`holds`) and which way it points from that hand
+ *  (`points`), and while the thing is shown, its grip (`thing`) and how each hand's grip
+ *  stands from it (SEE: Gap) */
 export type Reach = Readonly<{ thing?: Point; rightHand: HandReach; leftHand: HandReach; }>;
 /** one hand's reach (SEE: Reach) */
-export type HandReach = Readonly<{ grip: Point; holds: Held; gap?: Gap; }>;
+export type HandReach = Readonly<{ grip: Point; holds: Held; points: Pointing; gap?: Gap; }>;
 /** a hand a probe asks after: a figure's shot as a frame takes it, its hand, and the
  *  hand item it is asked to hold */
 export type HandAsk = Readonly<{ shot: Shot; hand: Hand; item: NonNullable<HandKey['item']>; }>;
 /** asks the stage where hands hold things, answered in the asks' order (SEE: Brick
  *  Studio's probeStage held) */
-export type HandProbe = (asks: ReadonlyArray<HandAsk>) => Promise<ReadonlyArray<Held>>;
+export type HandProbe = (asks: ReadonlyArray<HandAsk>) => Promise<ReadonlyArray<HeldItem>>;
 
 /** each hand-off of a scene on its frame (SEE: HandOff): the first frame whose figure's
  *  drawing has reached its time; none past the film's end */
@@ -477,8 +486,19 @@ export const reachOf = async (frame: FilmFrame, figure: string, thing: Readonly<
   const holder = frame.actors.find(actor => actor.name === figure)!/*by contract: shown*/;
   const [right, left] = await probe(HANDS.map(hand => ({ shot: handShot(holder), hand, item: thing.item })));
   const standing = frame.actors.find(actor => actor.name === thing.name);
-  const handReach = (holds: Held): HandReach => ({ grip: pointIn(holds.position, rotation(holds.turn), thing.grip), holds, ...(standing ? { gap: gapOf(holds, thing.grip, standing.position, rotation(standing.turn)) } : {}) });
+  const handReach = ({ grip, tip, ...holds }: HeldItem): HandReach => ({ grip, holds, points: pointingOf(grip, tip), ...(standing ? { gap: gapOf(holds, thing.grip, standing.position, rotation(standing.turn)) } : {}) });
   return { ...(standing ? { thing: pointIn(standing.position, rotation(standing.turn), thing.grip) } : {}), rightHand: handReach(right), leftHand: handReach(left) };
+};
+
+/** what a shown figure's hands hold (SEE: holdingOf) on a frame of a scene's film, and
+ *  which way each thing points, as the stage holds it (`probe`; SEE: Pointing), by the
+ *  figure's name and the hand */
+export const pointingsAt = async (scene: Recorded, frame: FilmFrame, probe: HandProbe): Promise<ReadonlyMap<string, Readonly<Partial<Record<Hand, Pointing>>>>> => {
+  const asks = frame.actors.flatMap(shot => holdingOf(scene, shot).map(([hand, item]) => ({ shot: handShot(shot), hand, item })));
+  const held = (asks.length > 0) ? await probe(asks) : []/*no hand holds anything*/;
+  const pointings = new Map<string, Partial<Record<Hand, Pointing>>>();
+  asks.forEach(({ shot, hand }, index) => pointings.set(shot.name, { ...pointings.get(shot.name), [hand]: pointingOf(held[index].grip, held[index].tip) }));
+  return pointings;
 };
 
 /** refuses a released thing never shown: let go of after the film's last frame, or
@@ -510,17 +530,31 @@ const withinReach = (scene: Recorded, handOffs: ReadonlyArray<HandOff>, held: Re
 };
 
 // -- Hands and Grips -------------------------------------------------------------
-/** the hands a probe is asked after for a figure's reach, right then left */
-const HANDS: ReadonlyArray<Hand> = ['rightHand', 'leftHand'];
+/** a figure's hands, right then left: as a probe is asked after them for its reach */
+export const HANDS: ReadonlyArray<Hand> = ['rightHand', 'leftHand'];
 
 /** a figure's shot as a frame shows it, as a hand probe takes it: its place, its turn
  *  and its pose */
 const handShot = ({ name, position, turn, pose }: Shot): Shot => ({ name, position, turn, ...(pose ? { pose } : {}) });
-/** the hand item an actor is cast as (its source), as a hand holds it */
-const handItemOf = (actor: RecordedActor): NonNullable<HandKey['item']> => {
-  const { part, color, grip } = actor.source as Readonly<{ part: string; color: string; grip?: string; }>/*by contract: a hand item (SEE: recorder.ts)*/;
-  return { part, color, ...((grip !== undefined) ? { grip } : {}) };
+/** what a shown figure's hands hold, right then left: each hand's item as its latest
+ *  key took it (none once a key empties it), else as the scene declared the figure
+ *  holding it (`actor`'s `rightHand` and `leftHand`) */
+export const holdingOf = (scene: Recorded, shot: Shot): ReadonlyArray<readonly [Hand, NonNullable<HandKey['item']>]> => {
+  const source = scene.actors.find(actor => actor.name === shot.name)?.source ?? {};
+  return HANDS.flatMap(hand => {
+    const item = (shot[hand] !== undefined) ? shot[hand] : itemOf(source[hand]);
+    return item ? [[hand, item] as const] : []/*an empty hand*/;
+  });
 };
+/** a hand item as a source names it (a figure's declared `rightHand`, an actor cast as
+ *  one), or none */
+const itemOf = (named: unknown): NonNullable<HandKey['item']> | undefined => {
+  if(!named || (typeof named !== 'object')) return undefined/*nothing named*/;
+  const { part, color, grip } = named as Readonly<Record<string, unknown>>;
+  return ((typeof part === 'string') && (typeof color === 'string')) ? { part, color, ...((typeof grip === 'string') ? { grip } : {}) } : undefined;
+};
+/** the hand item an actor is cast as (its source), as a hand holds it */
+const handItemOf = (actor: RecordedActor): NonNullable<HandKey['item']> => itemOf(actor.source)!/*by contract: a hand item (SEE: recorder.ts)*/;
 
 /** how a hand's grip (where it holds a thing, `held`) stands from a hand item's grip
  *  (`grip`, from its position in its own frame) as the thing stands at `position`
@@ -530,6 +564,14 @@ const gapOf = (held: Held, grip: Point, position: Point, matrix: ReadonlyArray<n
   const toHand = { x: hand.x - thing.x, z: hand.z - thing.z, height: hand.height - thing.height };
   const across = Math.abs(toHand.height * STUDS_PER_PLATE) < REACH;
   return { studs: Math.hypot(toHand.x, toHand.z, toHand.height * STUDS_PER_PLATE), toHand, keyAt: { x: position.x + toHand.x, z: position.z + toHand.z, ...(across ? {} : { height: position.height + toHand.height }) } };
+};
+
+/** which way a held thing points (SEE: Pointing): from the hand's grip on it (`grip`)
+ *  toward its far end (`tip`), a plate counted as 0.4 of a stud */
+const pointingOf = (grip: Point, tip: Point): Pointing => {
+  const [east, north, up] = [tip.x - grip.x, tip.z - grip.z, (tip.height - grip.height) * STUDS_PER_PLATE];
+  const heading = (Math.atan2(-east, -north) * 180) / Math.PI;
+  return { heading: (heading + 360) % 360, aboveLevel: (Math.atan2(up, Math.hypot(east, north)) * 180) / Math.PI };
 };
 
 /** a move in words, model-facing: studs east or west, studs north or south and plates up

@@ -3,7 +3,7 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { PoseBottoms } from '../../brick-shared/rise';
 import { bodiesThrough, clearanceOf, groundedOn, type Avoided, type Probe } from './clearance';
-import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandAsk, type HandProbe, type Held, type Paint, type Rest, type StageFacts } from './film';
+import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandAsk, type HandProbe, type HeldItem, type Paint, type Rest, type StageFacts } from './film';
 import { groundsOf, surfacesIn, surfacesOf, surfacesProbed, type CellArea, type ExtentProbe, type GroundProbe, type SurfaceProbe } from './ground';
 import type { Size } from './measure';
 import type { Point, Recorded } from './recorder';
@@ -57,7 +57,7 @@ type ScreenState = Readonly<{ kind: 'none' | 'staged' | 'left'; reel?: number; f
 /** a studio's stage commands, as a sibling calls them (one named-arguments object) */
 export interface StudioCommands {
   describeStage(args: object): Promise<Readonly<{ stage: number; staged: boolean; left: boolean; build: boolean; sets: ReadonlyArray<string>; }>>;
-  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; tops?: ReadonlyArray<ReadonlyArray<string | null>>; extent?: CellArea; held?: ReadonlyArray<Held>; }>>;
+  probeStage(args: object): Promise<Readonly<{ points: ReadonlyArray<string | null>; segments: ReadonlyArray<string | null>; grounds?: ReadonlyArray<ReadonlyArray<number>>; studded?: ReadonlyArray<ReadonlyArray<boolean>>; tops?: ReadonlyArray<ReadonlyArray<string | null>>; extent?: CellArea; held?: ReadonlyArray<HeldItem>; }>>;
   stage$(): Observable<ScreenState>;
   stage(args: object): Promise<Readonly<{ actors: ReadonlyArray<string>; wheeled?: ReadonlyArray<string>; figures?: ReadonlyArray<string>; bottoms?: PoseBottoms; clicks?: ReadonlyArray<string>; refused?: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes?: Readonly<Record<string, Size>>; grips?: Readonly<Record<string, Point>>; placed?: Readonly<Record<string, Rest>>; reel?: number; }>>;
   loadReel(args: object): Promise<Readonly<{ loaded: number; }>>;
@@ -356,7 +356,7 @@ export class Studios {
 
   /** where hands hold things, asked of the main screen as staging asks (SEE: Brick
    *  Studio's probeStage held); refuses while the film is not staged */
-  public async held(asks: ReadonlyArray<HandAsk>): Promise<ReadonlyArray<Held>> {
+  public async held(asks: ReadonlyArray<HandAsk>): Promise<ReadonlyArray<HeldItem>> {
     const staged = this.ready();
     if(!staged) throw new Error(notStaged(this.state.value));
     return await staged.handProbe(asks);

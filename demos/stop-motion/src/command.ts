@@ -5,11 +5,11 @@ import { isPlatformFile } from '../../brick-shared/drive';
 import { listed } from '../../brick-shared/words';
 
 import type { Avoided } from './clearance';
-import { cameraShots, filmLengthOf, frameAtTime, reachOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type WalkLeaps, REACH } from './film';
+import { cameraShots, filmLengthOf, frameAtTime, holdingOf, pointingsAt, reachOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type Pointing, type Shot, type WalkLeaps, REACH } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { MAX_AREA_CELLS, type CellArea } from './ground';
 import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from './measure';
-import { motionOf, MOTION_CHANNELS } from './motion-read';
+import { motionOf, type DriverSpan, MOTION_CHANNELS, POSE_CHANNELS } from './motion-read';
 import type { Player } from './player';
 import type { Point, RecordedActor, SceneError } from './recorder';
 import { cameraGroups, cameraProblems, clearancesOf, footingProblems, popsOf, problemAtTime, reviewCuts, screenAt, type CameraProblem, type CutSide, type FootingKind, type HeldBack, type PartFinding, type PopChange } from './review';
@@ -159,15 +159,12 @@ export const exportFilmCommands = (charmiq: CharmIQAPI, host: FilmHost): void =>
       if(end < start) throw new Error('to is after from.');
       return motionReport(film, recorded, start, end, (samples as number | undefined) ?? 12);
     },
-    where: ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
+    where: async ({ time, frame }: { time?: unknown; frame?: unknown; }) => {
       const film = filmOf(host);
       const current = (time === undefined) && (frame === undefined);
-      const at = film.frames[current ? Math.min(film.frames.length - 1, host.player.current.index) : frameAt(film, time, frame)];
-      return {
-        frame: at.index, time: thousandths(at.time), ...(current ? { current: true } : {}), ...((at.set !== undefined) ? { set: at.set } : {}),
-        actors: at.actors.map(actor => ({ name: actor.name, position: rounded(actor.position), turn: { yaw: hundredths(actor.turn.yaw), pitch: hundredths(actor.turn.pitch), roll: hundredths(actor.turn.roll) } })),
-        camera: { position: rounded(at.camera.position), target: rounded(at.camera.target), fov: hundredths(at.camera.fov) },
-      };
+      const index = current ? Math.min(film.frames.length - 1, host.player.current.index) : frameAt(film, time, frame);
+      const { frame: shown, time: shownAt, ...answer } = await whereAnswer(stagedOf(host) && host/*staged: where held things point*/, film, index);
+      return { frame: shown, time: shownAt, ...(current ? { current: true } : {}), ...answer };
     },
     measure: ({ actors, from, to }: { actors?: unknown; from?: unknown; to?: unknown; }) => {
       const film = filmOf(host);
@@ -519,10 +516,34 @@ const lengthsOf = async (host: FilmHost, film: Film): Promise<ReadonlyMap<string
 /** motionOf's answer: an actor's motion read (SEE: motion-read.ts), rounded */
 export const motionReport = (film: Film, actor: RecordedActor, from: number, to: number, samples: number) => {
   const read = motionOf(film, actor, from, to, samples);
+  const roundedAll = (values: Readonly<Record<string, number>>) => Object.fromEntries(Object.entries(values).map(([key, value]) => [key, hundredths(value)]));
+  const spansReport = (spans: ReadonlyArray<DriverSpan>) => spans.map(({ from: spanFrom, to: spanTo, by, lines, heldBack, added }) => ({ from: thousandths(spanFrom), to: thousandths(spanTo), by, lines, ...((heldBack !== undefined) ? { heldBack: thousandths(heldBack) } : {}), ...(added ? { added } : {}) }));
+  const { pose: poseDrivers } = read.drivers;
   return {
     actor: read.actor,
-    samples: read.samples.map(({ time, frame, shown, ...at }) => ({ time: thousandths(time), frame, shown, ...Object.fromEntries(Object.entries(at).map(([key, value]) => [key, hundredths(value)])) })),
-    drivers: Object.fromEntries(MOTION_CHANNELS.map(channel => [channel, read.drivers[channel].map(({ from: spanFrom, to: spanTo, by, lines, heldBack }) => ({ from: thousandths(spanFrom), to: thousandths(spanTo), by, lines, ...((heldBack !== undefined) ? { heldBack: thousandths(heldBack) } : {}) }))])),
+    samples: read.samples.map(({ time, frame, shown, pose, ...at }) => ({ time: thousandths(time), frame, shown, ...roundedAll(at), ...(pose ? { pose: roundedAll(pose) } : {}) })),
+    drivers: {
+      ...Object.fromEntries(MOTION_CHANNELS.map(channel => [channel, spansReport(read.drivers[channel])])),
+      ...(poseDrivers ? { pose: Object.fromEntries(POSE_CHANNELS.map(limb => [limb, spansReport(poseDrivers[limb])])) } : {}),
+    },
+  };
+};
+
+// -- Where -----------------------------------------------------------------------
+/** where's answer at a frame: every actor shown, where it stands and how it is turned,
+ *  what each figure's hands hold (`holding`) and, the film staged (`read`), which way
+ *  each points (SEE: film.ts Pointing); the camera, and the set standing */
+export const whereAnswer = async (read: Pick<FilmHost, 'held'> | undefined, film: Film, index: number) => {
+  const at = film.frames[index];
+  const pointings = read ? await pointingsAt(film.scene, at, read.held) : undefined/*not staged: what the hands hold alone*/;
+  const holdingReport = (actor: Shot) => {
+    const holding = holdingOf(film.scene, actor).map(([hand, item]) => { const points = pointings?.get(actor.name)?.[hand]; return [hand, { ...item, ...(points ? { points: pointingReport(points) } : {}) }] as const; });
+    return (holding.length > 0) ? { holding: Object.fromEntries(holding) } : {};
+  };
+  return {
+    frame: at.index, time: thousandths(at.time), ...((at.set !== undefined) ? { set: at.set } : {}),
+    actors: at.actors.map(actor => ({ name: actor.name, position: rounded(actor.position), turn: { yaw: hundredths(actor.turn.yaw), pitch: hundredths(actor.turn.pitch), roll: hundredths(actor.turn.roll) }, ...holdingReport(actor) })),
+    camera: { position: rounded(at.camera.position), target: rounded(at.camera.target), fov: hundredths(at.camera.fov) },
   };
 };
 
@@ -540,8 +561,8 @@ export const reachAnswer = async (read: Pick<FilmHost, 'held'>, film: Film, grip
   if(!at.actors.some(each => each.name === actor)) throw new Error(`${String(actor)} is hidden at ${thousandths(at.time)} s: reach reads a figure in the picture.`);
   const item = { part, color, ...((grip !== undefined) ? { grip: grip as string } : {}) };
   const reach = await reachOf(at, actor as string, { name: thing as string, item, grip: grips[thing as string] ?? { x: 0, z: 0, height: 0 }/*none told: its position*/ }, read.held);
-  const handReport = ({ grip: handGrip, holds, gap }: HandReach) => ({
-    grip: rounded(handGrip), holds: { position: rounded(holds.position), turn: { yaw: hundredths(holds.turn.yaw), pitch: hundredths(holds.turn.pitch), roll: hundredths(holds.turn.roll) } },
+  const handReport = ({ grip: handGrip, holds, points, gap }: HandReach) => ({
+    grip: rounded(handGrip), holds: { position: rounded(holds.position), turn: { yaw: hundredths(holds.turn.yaw), pitch: hundredths(holds.turn.pitch), roll: hundredths(holds.turn.roll) } }, points: pointingReport(points),
     ...(gap ? { studs: hundredths(gap.studs), toHand: rounded(gap.toHand), keyAt: { x: hundredths(gap.keyAt.x), z: hundredths(gap.keyAt.z), ...((gap.keyAt.height !== undefined) ? { height: hundredths(gap.keyAt.height) } : {}) } } : {}),
   });
   return {
@@ -722,6 +743,8 @@ const stageReport = (stage: StageState) => ({
   ...((stage.kind === 'ambiguous') ? { stageError: `${stage.builds} studios hold a build: the set must be in one, the others empty.` } : {}),
 });
 
+/** which way a held thing points, model-facing */
+const pointingReport = ({ heading, aboveLevel }: Pointing) => ({ heading: hundredths(heading), aboveLevel: hundredths(aboveLevel) });
 /** a camera problem, model-facing */
 const problemReport = ({ from, to, kind, by }: CameraProblem) => ({ from: thousandths(from), to: thousandths(to), kind, by });
 /** a box on the screen, model-facing: only that it is behind the camera when it is */
