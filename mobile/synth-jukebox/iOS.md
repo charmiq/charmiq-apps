@@ -4372,6 +4372,9 @@ const boot = () => {
   schedulePoll(0);
 };
 const init = async () => {
+  // the status bar continues the navigation bar: the page's own background in each
+  // mode (a Platform without `page` paints its own)
+  window.charmiq.page?.setTopColor({ light: '#ffffff', dark: '#000000' });
   paintStatic();
   try { applyState(await window.charmiq.appState.get()); } catch(error) { console.warn('appState.get failed', error); }
   window.charmiq.appContent.content$("[name='" + LIBRARY_NAME + "']").subscribe({
