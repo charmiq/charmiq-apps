@@ -684,6 +684,11 @@ img {
   border-radius: 10px;
   box-shadow: 0 18px 40px rgba(0,0,0,.28);
   object-fit: cover;
+  cursor: pointer;
+  transition: transform .25s var(--spring);
+}
+.ahead img:active {
+  transform: scale(.97);
 }
 .ah-info {
   display: flex;
@@ -4092,6 +4097,8 @@ const routeLabel = (route) => {
   if(route.type === RouteType.Album) { const album = albumById(route.id); return album ? album.title : 'Back'; }
   return (route.type === RouteType.Loved) ? 'Loved Songs' : (route.type === RouteType.Takes) ? 'Studio Takes' : 'Songs';
 };
+// an album page's cover: tapped, it opens the player on the album (SEE: openAlbumPlayer)
+const albumCoverHTML = (album, art) => '<img alt="" src="' + art.url + '" data-action="album-player" data-id="' + album.id + '">';
 const renderDetail = () => {
   const route = state.route, body = $('#detailBody'), scroll = $('#detailScroll');
   if(!route) return;
@@ -4103,7 +4110,7 @@ const renderDetail = () => {
     const total = keys.reduce((sum, key) => sum + specOf(trackOf(key)).duration, 0);
     $('#detailNavTitle').textContent = album.title; $('#detailMore').classList.remove('hidden'); $('#detailMore').dataset.id = album.id;
     const bpms = keys.map((key) => specOf(trackOf(key)).bpm);
-    body.innerHTML = '<div class="ahead"><img alt="" src="' + art.url + '"><div class="ah-info"><div class="ah-title">' + escapeHtml(album.title) + '</div><div class="ah-artist">' + escapeHtml(album.artist) + '</div><div class="ah-meta">' + GENRES[album.genre].label + ' · ' + (album.year || 2026) + ' · ' + Math.min(...bpms) + '–' + Math.max(...bpms) + ' BPM</div>' +
+    body.innerHTML = '<div class="ahead">' + albumCoverHTML(album, art) + '<div class="ah-info"><div class="ah-title">' + escapeHtml(album.title) + '</div><div class="ah-artist">' + escapeHtml(album.artist) + '</div><div class="ah-meta">' + GENRES[album.genre].label + ' · ' + (album.year || 2026) + ' · ' + Math.min(...bpms) + '–' + Math.max(...bpms) + ' BPM</div>' +
       '<div class="pills"><button class="pill" data-action="play-all" data-ctx="' + context + '">' + ICON.play + 'Play</button><button class="pill" data-action="shuffle-all" data-ctx="' + context + '">' + ICON.shuffle + 'Shuffle</button></div></div></div>' +
       '<div>' + keys.map((key) => rowHTML(key, context, RowStyle.Number)).join('') + '</div>' +
       '<div class="afoot">' + keys.length + ' songs, ' + Math.round(total / 60) + ' minutes<br>Seed “' + escapeHtml(album.seed) + '”. Composed live on this device. No audio files were harmed.</div>';
@@ -4129,7 +4136,7 @@ const renderDetail = () => {
 const renderTakeDetail = (take) => {
   const art = artFor(take), keys = keysOf(take), context = 'album:' + take.id; contextKeys[context] = keys;
   $('#detailNavTitle').textContent = take.title; $('#detailMore').classList.remove('hidden'); $('#detailMore').dataset.id = take.id;
-  $('#detailBody').innerHTML = '<div class="ahead"><img alt="" src="' + art.url + '"><div class="ah-info"><div class="ah-title">' + escapeHtml(take.title) + '</div><div class="ah-artist">' + escapeHtml(take.artist) + '</div><div class="ah-meta">' + STUDIO_LABEL + ' Take · ' + take.year + ' · ' + MODEL_LABEL + '</div>' +
+  $('#detailBody').innerHTML = '<div class="ahead">' + albumCoverHTML(take, art) + '<div class="ah-info"><div class="ah-title">' + escapeHtml(take.title) + '</div><div class="ah-artist">' + escapeHtml(take.artist) + '</div><div class="ah-meta">' + STUDIO_LABEL + ' Take · ' + take.year + ' · ' + MODEL_LABEL + '</div>' +
     '<div class="pills"><button class="pill" data-action="play-all" data-ctx="' + context + '">' + ICON.play + 'Play</button><button class="pill" data-action="press-again" data-id="' + take.id + '">' + ICON.remix + 'Press Again</button></div></div></div>' +
     '<div>' + keys.map((key) => rowHTML(key, context, RowStyle.Number)).join('') + '</div>' +
     '<div class="afoot">“' + escapeHtml(take.prompt) + '”' + (ingredientsHTML(take) || '<br>') + 'Pressed by ' + MODEL_LABEL + ' from this description. The song is an audio file in your Drive.</div>';
@@ -4597,6 +4604,14 @@ const paintTop = () => {
   nowPlaying.style.setProperty('--np-top', color);
   page.setTopColor({ light: color, dark: color });
 };
+// opens the player on album `id`: as it stands when the album is the one playing or
+// paused, otherwise playing it from its first song
+const openAlbumPlayer = (id) => {
+  const album = albumById(id); if(!isPlayable(album)) return;
+  const track = current();
+  if(!track || (track.album.id !== id)) playContext('album:' + id, null/*from the first track*/, false);
+  openNowPlaying();
+};
 const openNowPlaying = () => {
   if(!current()) return;
   nowPlayingOpen = true; renderNowPlayingInfo(); setModeClasses();
@@ -4988,6 +5003,7 @@ document.addEventListener('click', (event) => {
     case 'genre': query = (element.dataset.g === TAKE_KIND) ? STUDIO_LABEL : GENRES[element.dataset.g].label; $('#search').value = query; $('#searchWrap').classList.add('active'); renderSearch(); break;
     case 'search-cancel': query = ''; $('#search').value = ''; $('#search').blur(); $('#searchWrap').classList.remove('active'); renderSearch(); break;
     case 'open-np': openNowPlaying(); break;
+    case 'album-player': openAlbumPlayer(id); break;
     case 'toggle-play': togglePlay(); break;
     case 'next': nextTrack(false); break;
     case 'prev': previousTrack(); break;
