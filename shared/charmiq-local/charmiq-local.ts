@@ -2,7 +2,7 @@ import { listLocalApplicationResources, readLocalApplicationResource, readLocalA
 import { appContentLayer, type AppContentObservableFactory, type AppContentObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentLayer';
 import { Observable } from 'rxjs';
 
-import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ContentChange, OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
+import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ApplicationUser, ContentChange, OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
 
 // the local-dev bridge harness — a stand-in `window.charmiq` so a bridge app can
 // run in a plain browser (opened from a `build-app --harness` build) instead of
@@ -18,6 +18,9 @@ import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnaps
 //                           same listAuth / getValidAuth({connectionKey}) shape
 //                           the app uses against the real bridge
 //   mcp / generation      → throw a clear "not in the local harness" error
+//   user$                 → a local stand-in User; set `charmiq-local:user` in
+//                           localStorage to another (`null` signs out) and reload
+//                           to try per-User state as someone else
 //
 // OAuth locally: the Platform's server-side broker cannot exist in a plain
 // browser, so the harness asks the developer to paste an access token (grab one
@@ -29,6 +32,7 @@ import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnaps
 const APP_STATE_KEY = 'charmiq-local:appState';
 const APP_CONTENT_KEY = 'charmiq-local:appContent';
 const OAUTH_KEY = 'charmiq-local:oauth';
+const USER_KEY = 'charmiq-local:user';
 
 // a stored account: the descriptor the app sees plus the pasted token the harness
 // hands back on demand (the real bridge keeps the token server-side; the harness
@@ -72,6 +76,17 @@ const makeAppState = () => {
     onChange$: () => makeObservable(get, listeners),
   };
 };
+
+// == Signed-In User ==============================================================
+/** the User the harness stands in for when `charmiq-local:user` names none */
+const LOCAL_USER: ApplicationUser = {
+  id: 'local-user', name: 'Local User', email: null, imageUrl: null, userRoles: {},
+  organizations: [{ id: 'local-personal', name: 'Local User', type: 'individual' }],
+  activeOrganizationId: 'local-personal', entitlements: {},
+};
+/** the stand-in User, read when subscribed: a changed `charmiq-local:user` shows
+ *  after a reload. An RxJS stream, as the bridge's is, so operators apply */
+const makeUser$ = () => () => new Observable<ApplicationUser | null>(subscriber => { subscriber.next(readJson<ApplicationUser | null>(USER_KEY, LOCAL_USER)); });
 
 // == App Content =================================================================
 /** the app-content layer's streams as the bridge's are: RxJS, so operators apply and an
@@ -454,6 +469,7 @@ export const installLocalBridge = (): void => {
     appContent: makeAppContent(),
     oauth: makeOAuth(),
     fetch: (url: string, options?: RequestInit) => fetch(url, options),
+    user$: makeUser$(),
     resources: { text: (name: string) => readLocalApplicationResource(document, name), bytes: (name: string) => readLocalApplicationResourceBytes(document, name), list: (prefix: string) => listLocalApplicationResources(document, prefix) },
 
     advertise: registry.advertise,

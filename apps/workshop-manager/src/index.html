@@ -378,8 +378,8 @@ let state = null;
 let lastWrittenJson = null;
 
 // session-only UI state
-let services = { command: null, userProfile: null, authUser: null };
-let authState = null;
+let services = { command: null, userProfile: null };
+let signedInUser = null/*the signed-in User (charmiq.user$): who sees Import Charms, which Company the search covers*/;
 let configCollapsed = false/*boot: collapsed iff app-state already exists*/;
 let editingField = null/*'template' | 'classroom' | 'pattern' | null*/;
 let editingStudentId = null/*row rename popover*/;
@@ -601,7 +601,7 @@ const anyClones = () => state.students.some(s => !s.deleted && Object.keys(s.map
 
 // mirror of the platform's hasRole: Admin implies every role
 const hasUserRole = (role) => {
-  const roles = authState?.userRoles ?? {};
+  const roles = signedInUser?.userRoles ?? {};
   return (roles['admin'/*UserRole.Admin*/] === true) || (roles[role] === true);
 };
 // the server enforces the role on admin.agent.create — this gate is visibility only
@@ -656,8 +656,8 @@ const confirmModal = ({ title, bodyHtml, confirmLabel = 'Confirm', cancelLabel =
 });
 
 // == User typeahead ==============================================================
-// mirrors the platform's user search sections: active-Organization Members, Teams,
-// and an exact-email fall-through when the scoped sections come up empty
+// the active Company's Members, and an exact-email fall-through when that section
+// comes up empty (or the active account is Personal)
 const searchProfiles = async (filter) => {
   if(!services.userProfile) return [];
   const tuples = await firstEmission(services.userProfile.typeaheadSearchProfiles$(filter));
@@ -677,10 +677,9 @@ const searchUserSections = async (query) => {
       if(tuples.length) sections.push({ label, tuples });
     } catch { failures++; }
   };
-  const organizationId = authState?.activeOrg?.id ?? null;
-  const teamIds = authState?.profilePrivate?.favoriteTeamIds ?? null;
-  if(organizationId) await trySection('Organization', { query, organizationId, limit: TYPEAHEAD_LIMIT });
-  if(Array.isArray(teamIds) && (teamIds.length > 0)) await trySection('Teams', { query, teamIds, limit: TYPEAHEAD_LIMIT });
+  // the active account's members, when it is a Company (a Personal account has none)
+  const active = signedInUser?.organizations.find(organization => organization.id === signedInUser.activeOrganizationId);
+  if(active?.type === 'organization') await trySection(active.name || 'Company', { query, organizationId: active.id, limit: TYPEAHEAD_LIMIT });
   // exact-email fall-through: an unscoped search filtered to the exact address
   if(sections.length < 1) await trySection('Exact email match', { query, limit: TYPEAHEAD_LIMIT * 2 }, tuples => tuples.filter(({ obj }) => obj?.email === query));
   return { sections, unavailable: (attempts > 0) && (failures === attempts) };
@@ -1699,17 +1698,24 @@ const boot = async () => {
   catch { services.command = null; }
   try { services.userProfile = await window.charmiq.discover('charmiq.service.user-profile'); }
   catch { services.userProfile = null; }
-  try {
-    services.authUser = await window.charmiq.discover('charmiq.service.auth-user');
+  // the signed-in User (`user.read`): role-gated buttons appear when the roles
+  // arrive; re-render only on a role change. A Platform too old to tell it needs a
+  // reload, never a fallback to another source
+  if(typeof window.charmiq.user$ === 'function') {
     let lastRolesJson = '';
-    services.authUser?.onAuthUser$?.().subscribe?.((value) => {
-      authState = value;
-      // role-gated buttons appear when the roles arrive; re-render only on a
-      // role change (auth state emits more often than roles change)
-      const rolesJson = JSON.stringify(value?.userRoles ?? {});
-      if(rolesJson !== lastRolesJson) { lastRolesJson = rolesJson; render(); }
+    window.charmiq.user$().subscribe({
+      next: (value) => {
+        signedInUser = value;
+        const rolesJson = JSON.stringify(value?.userRoles ?? {});
+        if(rolesJson !== lastRolesJson) { lastRolesJson = rolesJson; render(); }
+      },
+      error: (error) => {
+        signedInUser = null/*nothing User-dependent stands on a stream that failed*/;
+        render();
+        toast(`Could not read who is signed in: ${error?.message ?? error}. Company search and Import Charms are unavailable; reload the page to try again.`, { error: true });
+      },
     });
-  } catch { services.authUser = null; }
+  } else toast('This page is running an older CharmIQ. Reload the page to search your Company and import Charms.', { error: true });
 
   try {
     const raw = await window.charmiq.appState.get();

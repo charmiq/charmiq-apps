@@ -497,6 +497,43 @@ export type ResourcesAPI = Readonly<{
   list: (prefix: string, options?: Readonly<{ next?: string; }>) => Promise<Readonly<{ names: ReadonlyArray<string>; next?: string; }>>;
 }>;
 
+// == Signed-In User ==============================================================
+/** an Organization the User belongs to: `individual` is their Personal account,
+ *  `organization` a Company */
+export type ApplicationOrganization = Readonly<{
+  id: string;
+  name: string;
+  type: 'individual' | 'organization';
+}>;
+
+/** a feature the User may use: present means granted; a `numeric` one carries its
+ *  limit */
+export type ApplicationEntitlement =
+  | Readonly<{ feature: string; type: 'binary'; }>
+  | Readonly<{ feature: string; type: 'numeric'; limit: number; }>;
+
+/** the signed-in User using the Application */
+export type ApplicationUser = Readonly<{
+  /** the User's Platform id: stable, and the same in every Application */
+  id: string;
+  /** the User's name, or `''` when their profile names no one */
+  name: string;
+  email: string | null;
+  /** the URL of their picture */
+  imageUrl: string | null;
+  /** the User's Platform roles: a role present (as `true`) is assigned; usually
+   *  empty. Ignore a role you do not know. Roles inform what an Application shows;
+   *  they grant nothing (the Platform checks every operation itself) */
+  userRoles: Readonly<{ [role: string]: true | undefined; }>;
+  /** each Organization the User belongs to, once: their Personal account and each
+   *  Company. A pending invitation is not a membership */
+  organizations: readonly ApplicationOrganization[];
+  /** the active Organization (an entry of `organizations`), or `null` */
+  activeOrganizationId: string | null;
+  /** the features the User may use now, by feature */
+  entitlements: Readonly<{ [feature: string]: ApplicationEntitlement | undefined; }>;
+}>;
+
 // == Visual Editor ===============================================================
 export interface VisualEditorAPI {
   /** returns true if visual editor mode is currently active */
@@ -663,6 +700,22 @@ export interface CharmIQAPI {
    *  const { names } = await window.charmiq.resources.list('sound/');
    */
   resources: ResourcesAPI;
+
+  /** the signed-in User using the Application, then each change to who they are,
+   *  their Organizations, the active one, their roles or their features. `null`
+   *  when no one is signed in (an anonymous visitor to a published page). It is
+   *  always the person viewing, never the document's author or publisher. Declare
+   *  `user.read` in `requestedScopes`; the User may be asked first, and a refusal
+   *  errors the stream (`code` names it). A per-User entry kept in app-state
+   *  (`state.byUser[user.id]`) is still the document's: everyone who reads the
+   *  document reads it, and `appState.set()` replaces the whole state
+   *  @example
+   *  window.charmiq.user$().subscribe(user => {
+   *    showGreeting(user ? user.name : 'Guest');
+   *    restorePreferences(user && savedState.byUser?.[user.id]);
+   *  });
+   */
+  user$: () => Observable<ApplicationUser | null>;
 
   /** MCP (Model Context Protocol) API for connecting to MCP servers and calling
    *  tools through the platform. The platform holds real MCP SDK Client instances
