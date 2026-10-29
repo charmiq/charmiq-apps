@@ -4,8 +4,8 @@
 
 - **Open it:** [iOS](charmiq://./iOS.md). Home-screen setup: [Mobile](charmiq://../README.md).
 - **On an iPad** it opens the same way and lays out for the screen: the tabs become a sidebar, the Studio's booth stands beside your takes in landscape, and Now Playing puts its stage beside its controls.
-- **Your library** (`library.json`, the Application's app-content): the albums, your Studio takes and your Loved songs. Everyone you share the document with sees the same library.
-- **Where you left off** (the Application's app-state): what is playing, the queue, position, volume and the tab you were on. Launch it again and it picks up there.
+- **Your library** (`library.json`, the Application's app-content): the albums, your Studio takes and your Loved songs, one record per line. Everyone you share the document with sees the same library, and two phones changing different albums or loving different songs at once both keep their change.
+- **What is playing** (the queue, position, volume and the tab you are on) is your phone's own, kept while the app is open. The Application has no settings, so it keeps no app-state.
 - **Sound:** tap play to start; iOS starts audio only from a tap. It plays even with the phone in Silent mode. A Studio take keeps playing with the screen locked or the app left, its controls and progress on the lock screen, at the volume the phone's buttons set; a composed album is played live by the page, so it stops when the phone sleeps.
 
 ## The Studio

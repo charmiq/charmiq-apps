@@ -1218,8 +1218,6 @@ svg {
 const APP_CONTENT_NAME = 'lists.json';
 const APP_CONTENT_SELECTOR = `[name='${APP_CONTENT_NAME}']`;
 const CONTENT_CONFLICT = 'app/content-conflict';
-const OUT_OF_RANGE = 'functions/out-of-range';
-const DATA_VERSION = 1;
 
 const SAVE_DELAY_MILLIS = 250;
 const STATE_SAVE_DELAY_MILLIS = 150;
@@ -1310,36 +1308,64 @@ const mqPad = matchMedia('(min-width: 768px)');
 const isPad = () => mqPad.matches;
 
 // == Lists =======================================================================
-// the stored shape: `{ version, lists: [{ id, name, color, items: [{ id, title, done,
-// flagged, created, completedAt? }] }] }`
+// the app-content holds one record per line (JSON Lines), each whole on its line:
+//   {"kind":"list","id":"rem01","name":"Reminders","color":"#007AFF"}
+//   {"kind":"item","id":"i01","list":"rem01","title":"Milk","done":false,"flagged":false,"created":1793059200000}
+// A change rewrites only the lines of the records it changes, so two people changing
+// different reminders at once change different lines and the document keeps both.
+// (One JSON object would spread a reminder over many lines, and two such changes
+// would merge into text that is no longer JSON.) Lists show in the order of their
+// lines, a list's reminders in the order of theirs. A line holding no list or
+// reminder (malformed, or another writer's record) is kept as written, never shown
+const RecordKind = Object.freeze({ List: 'list', Item: 'item' });
 
 // -- Reading ---------------------------------------------------------------------
-/** the lists `text` holds, or null when it holds none (empty, or not this app's JSON) */
-const parseLists = (text) => {
-  const trimmed = String(text ?? '').trim();
-  if(trimmed.length < 1) return null/*nothing stored yet*/;
-  try {
-    const parsed = JSON.parse(trimmed);
-    if(!parsed || !Array.isArray(parsed.lists)) return null/*not a lists document*/;
-    return { ...parsed, lists: parsed.lists.map((list) => ({ ...list, items: Array.isArray(list.items) ? list.items : [] })) };
-  } catch(error) {
-    console.warn(`The ${APP_CONTENT_NAME} app-content is not JSON`, error);
-    return null/*not JSON*/;
-  }
+/** the list or reminder a line holds, or null when it holds neither */
+const recordOf = (line) => {
+  let record;
+  try { record = JSON.parse(line); } catch(error) { return null/*not JSON*/; }
+  if(!record || (typeof record !== 'object') || (typeof record.id !== 'string')) return null/*not a record*/;
+  if((record.kind === RecordKind.List) && (typeof record.name === 'string')) return record;
+  if((record.kind === RecordKind.Item) && (typeof record.list === 'string') && (typeof record.title === 'string')) return record;
+  return null/*neither a list nor a reminder*/;
 };
 
-const serializeLists = (lists) => JSON.stringify(lists, null, 2).split('\n');
+// a row is one line of the app-content and the record it holds (null: the line is
+// kept as written). A row a change leaves alone keeps its line exactly, so a write
+// rewrites only the lines of the records it changed
+/** the rows of an app-content's lines */
+const rowsOf = (lines) => lines.map((line) => ({ line, record: recordOf(line) }));
+const rowOf = (record) => ({ line: JSON.stringify(record), record });
 
-const seedLists = () => {
-  const now = Date.now();
-  const reminder = (title, flagged = false) => ({ id: uid(), title, done: false, flagged, created: now });
-  return {
-    version: DATA_VERSION,
-    lists: [{
-      id: uid(), name: DEFAULT_LIST_NAME, color: DEFAULT_COLOR,
-      items: [reminder('Tap the circle to complete a reminder'), reminder('Swipe left on a row to delete it'), reminder('Tap New Reminder to add one', true/*flagged*/)],
-    }],
-  };
+/** the record of `id` in the rows: its last line's (SEE: listsOf), or null */
+const recordIn = (rows, id) => rows.reduce((found, row) => ((row.record && (row.record.id === id)) ? row.record : found), null/*none*/);
+
+/** the lists the rows hold, each with its reminders. Two lines of one id (another
+ *  writer appended a record under an id already there) read as the last, where the
+ *  first stands; the next change to that record leaves one line. A reminder whose list
+ *  is gone (removed while another person added to it) is not shown */
+const listsOf = (rows) => {
+  const order = [...new Set(rows.flatMap((row) => (row.record ? [row.record.id] : [])))];
+  const records = order.map((id) => recordIn(rows, id));
+  const lists = records
+    .filter((record) => (record.kind === RecordKind.List))
+    .map((record) => ({ id: record.id, name: record.name, color: record.color || DEFAULT_COLOR, items: [] }));
+  const byId = new Map(lists.map((list) => [list.id, list]));
+  records
+    .filter((record) => (record.kind === RecordKind.Item) && byId.has(record.list))
+    .forEach((record) => byId.get(record.list).items.push({ id: record.id, title: record.title, done: (record.done === true), flagged: (record.flagged === true), created: record.created, completedAt: record.completedAt }));
+  return { lists };
+};
+
+const seedRows = () => {
+  const now = Date.now(), list = uid();
+  const reminder = (title, flagged = false) => rowOf({ kind: RecordKind.Item, id: uid(), list, title, done: false, flagged, created: now });
+  return [
+    rowOf({ kind: RecordKind.List, id: list, name: DEFAULT_LIST_NAME, color: DEFAULT_COLOR }),
+    reminder('Tap the circle to complete a reminder'),
+    reminder('Swipe left on a row to delete it'),
+    reminder('Tap New Reminder to add one', true/*flagged*/),
+  ];
 };
 
 const findItemIn = (lists, id) => {
@@ -1351,63 +1377,66 @@ const findItemIn = (lists, id) => {
 };
 
 // -- Changes ---------------------------------------------------------------------
-// each change gives the next lists without touching the ones it is given, and gives the
-// same result applied twice: a change is applied again over the latest app-content
-// whenever another writer got there first
+// each change gives the next rows without touching the ones it is given, changing
+// only the lines of the records it names, and gives the same result applied twice:
+// a change is applied again over the latest app-content whenever another writer got
+// there first
 // NOTE: every change states its outcome (done, not "toggled") so that applying it again
-//       over lists that already hold it changes nothing
+//       over rows that already hold it changes nothing
 
-// .. Reminders ...................................................................
-const mapItem = (id, update) => (lists) => ({
-  ...lists,
-  lists: lists.lists.map((list) => list.items.some((item) => (item.id === id))
-    ? { ...list, items: list.items.map((item) => ((item.id === id) ? update(item) : item)) }
-    : list),
-});
-
-/** inserts the reminder after `afterId` in its list (at the end when `afterId` is not
- *  there): a drafted reminder enters the lists with its first letter */
-const insertItem = (listId, afterId, item) => (lists) => {
-  if(findItemIn(lists, item.id)) return lists/*already inserted*/;
-  return {
-    ...lists,
-    lists: lists.lists.map((list) => {
-      if(list.id !== listId) return list;
-      const items = [...list.items];
-      const after = items.findIndex((stored) => (stored.id === afterId));
-      if(after > -1) items.splice(after + 1, 0, item);
-      else items.push(item);
-      return { ...list, items };
-    }),
-  };
+/** replaces the record of `id` with `update(record)` on its first line and removes any
+ *  other line of it */
+const replaceRecord = (id, update) => (rows) => {
+  const record = recordIn(rows, id);
+  if(!record) return rows/*removed meanwhile*/;
+  const replaced = rowOf(update(record));
+  let placed = false;
+  return rows.flatMap((row) => {
+    if(!row.record || (row.record.id !== id)) return [row];
+    if(placed) return []/*a second line of it*/;
+    placed = true;
+    return [replaced];
+  });
 };
 
-const setItemTitle = (id, title) => mapItem(id, (item) => ({ ...item, title }));
-const setItemFlagged = (id, flagged) => mapItem(id, (item) => ({ ...item, flagged }));
-const setItemDone = (id, done, completedAt) => mapItem(id, (item) => {
+/** the index of the last row `matches` accepts, or -1 */
+const lastRowIndex = (rows, matches) => rows.reduce((found, row, index) => (matches(row) ? index : found), -1);
+
+// .. Reminders ...................................................................
+/** inserts the reminder's line after `afterId`'s (after its list's last reminder when
+ *  `afterId` is not there): a drafted reminder enters the lists with its first letter */
+const insertItem = (listId, afterId, item) => (rows) => {
+  if(recordIn(rows, item.id)) return rows/*already inserted*/;
+  if(!recordIn(rows, listId)) return rows/*its list removed meanwhile*/;
+  const after = (afterId && recordIn(rows, afterId))
+    ? lastRowIndex(rows, (row) => (row.record?.id === afterId))
+    : lastRowIndex(rows, (row) => ((row.record?.id === listId) || ((row.record?.kind === RecordKind.Item) && (row.record.list === listId))));
+  const inserted = rowOf({ kind: RecordKind.Item, id: item.id, list: listId, title: item.title, done: item.done, flagged: item.flagged, created: item.created });
+  return [...rows.slice(0, after + 1), inserted, ...rows.slice(after + 1)];
+};
+
+const setItemTitle = (id, title) => replaceRecord(id, (item) => ({ ...item, title }));
+const setItemFlagged = (id, flagged) => replaceRecord(id, (item) => ({ ...item, flagged }));
+const setItemDone = (id, done, completedAt) => replaceRecord(id, (item) => {
   const { completedAt: _completedAt, ...rest } = item;
   return done ? { ...rest, done, completedAt } : { ...rest, done };
 });
 
-const removeItems = (ids) => (lists) => ({
-  ...lists,
-  lists: lists.lists.map((list) => list.items.some((item) => ids.has(item.id))
-    ? { ...list, items: list.items.filter((item) => !ids.has(item.id)) }
-    : list),
-});
+const removeItems = (ids) => (rows) => rows.filter((row) => !(row.record && ids.has(row.record.id)));
 
 // .. Lists .......................................................................
-/** adds the list without reminders */
-const addList = (list) => (lists) => {
-  if(lists.lists.some((stored) => (stored.id === list.id))) return lists/*already added*/;
-  return { ...lists, lists: [...lists.lists, { id: list.id, name: list.name, color: list.color, items: [] }] };
+/** adds the list, without reminders, after the last line */
+const addList = (list) => (rows) => {
+  if(recordIn(rows, list.id)) return rows/*already added*/;
+  return [...rows, rowOf({ kind: RecordKind.List, id: list.id, name: list.name, color: list.color })];
 };
-const renameList = (id, name, color) => (lists) => ({ ...lists, lists: lists.lists.map((list) => ((list.id === id) ? { ...list, name, color } : list)) });
-const removeList = (id) => (lists) => ({ ...lists, lists: lists.lists.filter((list) => (list.id !== id)) });
+const renameList = (id, name, color) => replaceRecord(id, (list) => ({ ...list, name, color }));
+/** removes the list's line and the line of every reminder in it */
+const removeList = (id) => (rows) => rows.filter((row) => !(row.record && ((row.record.id === id) || ((row.record.kind === RecordKind.Item) && (row.record.list === id)))));
 
 // == State =======================================================================
-// `data` is what the User sees: the shown app-content's lists with the User's changes
-// not yet in it applied over them, then the reminder being drafted
+// `data` is what the User sees: the lists of the shown app-content's rows with the
+// User's changes not yet in it applied over them, then the reminder being drafted
 let data = null/*nothing received yet*/;
 let ui = { route: null/*no list open*/, showCompleted: false, phoneView: PhoneView.Home };
 let editMode = false;
@@ -1601,16 +1630,19 @@ const safeRender = () => {
 };
 
 // == Content Bridge ==============================================================
-// the app-content is the truth: `shown` is the app-content as `content$` last gave it.
-// A change is applied to what the User sees at once and saved shortly after, applied to
-// the lists of the app-content shown; when another writer got there first, the same
-// changes are applied to the latest app-content and saved again
+// the app-content is the truth: `shown` is the app-content as `content$` last gave it,
+// and every render starts from its rows, never from what this app last wrote. A change
+// is applied to what the User sees at once and saved shortly after, applied to the rows
+// of the app-content shown and written through it (`setLines`: only the lines that
+// differ, refused whole when it has changed since); when another writer got there
+// first, the same changes are applied to the latest app-content and saved again
 const appContent = window.charmiq.appContent;
 const appState = window.charmiq.appState;
 
 let shown = null/*nothing received yet*/;
-// the lists shown before any app-content exists, kept so that every render agrees
-let fallbackLists = null/*not needed yet*/;
+// the rows shown before any app-content exists (what `create` writes), kept so that
+// every render agrees
+let seed = null/*not needed yet*/;
 let creating = false;
 
 // changes sent and not yet seen in an app-content, then changes not yet sent
@@ -1624,19 +1656,19 @@ let saveTimer = null/*no save scheduled*/;
 // the reminder being drafted: shown, but stored only once it has a title
 let draft = null/*no reminder being drafted*/;
 
-const storedLists = (content) => {
-  const parsed = content ? parseLists(content.text) : null/*no app-content yet*/;
-  if(parsed) return parsed;
-  if(!fallbackLists) fallbackLists = seedLists();
-  return fallbackLists;
+/** the app-content's rows; before there is one, the rows it is created with */
+const storedRows = (content) => {
+  if(content) return rowsOf(content.lines);
+  if(!seed) seed = seedRows();
+  return seed;
 };
 
 const recompute = () => {
-  let lists = storedLists(shown);
-  for(const change of written) lists = change(lists);
-  for(const change of pending) lists = change(lists);
-  if(draft) lists = insertItem(draft.listId, draft.afterId, draft.item)(lists);
-  data = lists;
+  let rows = storedRows(shown);
+  for(const change of written) rows = change(rows);
+  for(const change of pending) rows = change(rows);
+  if(draft) rows = insertItem(draft.listId, draft.afterId, draft.item)(rows);
+  data = listsOf(rows);
 };
 
 /** applies a change to what the User sees and saves it shortly after */
@@ -1648,16 +1680,14 @@ const change = (update) => {
 };
 
 // .. Saving ......................................................................
-// writes the lines, or (when they differ too much to compare) the whole text, measured
-// on `target`: either is refused when it has changed since
-const writeLists = async (target, lists) => {
-  const lines = serializeLists(lists);
-  try {
-    await target.setLines(lines);
-  } catch(error) {
-    if(error?.code !== OUT_OF_RANGE) throw error;
-    await target.edit([{ from: 0, to: target.text.length, insert: `${lines.join('\n')}\n` }]);
-  }
+/** writes the rows onto `target`, measured on it: only the lines that differ, refused
+ *  whole when it has changed since. False when no line differs: nothing is written,
+ *  so no app-content follows */
+const writeRows = async (target, rows) => {
+  const lines = rows.map((row) => row.line);
+  if((lines.length === target.lines.length) && lines.every((line, index) => (line === target.lines[index]))) return false/*nothing to write*/;
+  await target.setLines(lines);
+  return true;
 };
 
 const save = async () => {
@@ -1670,8 +1700,8 @@ const save = async () => {
   writeTarget = target;
   let conflicted = false;
   try {
-    await writeLists(target, written.reduce((lists, update) => update(lists), storedLists(target)));
-    awaitingEcho = (shown === target);
+    const wrote = await writeRows(target, written.reduce((rows, update) => update(rows), storedRows(target)));
+    awaitingEcho = wrote && (shown === target);
     if(!awaitingEcho) written = []/*its app-content already arrived*/;
   } catch(error) {
     conflicted = (error?.code === CONTENT_CONFLICT);
@@ -1698,7 +1728,7 @@ const createContent = async () => {
   if(creating) return/*already creating*/;
   creating = true;
   try {
-    await appContent.create(serializeLists(storedLists(null/*no app-content yet*/)).join('\n'), APP_CONTENT_NAME);
+    await appContent.create(storedRows(null/*no app-content yet*/).map((row) => `${row.line}\n`).join(''), APP_CONTENT_NAME);
   } catch(error) {
     console.error(`Could not create the ${APP_CONTENT_NAME} app-content`, error);
     showNotice('Couldn’t Create Your Lists', error?.message ?? '');
@@ -1724,25 +1754,25 @@ const receive = (content) => {
 };
 
 // .. App-State ...................................................................
-// where the User is (the open list, the pane, whether completed reminders show),
-// saved shortly after it changes; `lastUi` is the state as last saved or received
-let lastUi = '';
-let uiTimer = null/*no save scheduled*/;
+// the app-state holds the document's settings, the same for everyone sharing it:
+// whether completed reminders show. Where a person is (the open list, the pane) stays
+// on their own screen and never enters the app-state: it is one value for the whole
+// document, so another person's navigation would move theirs
+let settingsTimer = null/*no save scheduled*/;
 
-const saveUi = () => {
-  clearTimeout(uiTimer);
-  uiTimer = setTimeout(() => {
-    const state = { route: ui.route, showCompleted: ui.showCompleted, phoneView: ui.phoneView };
-    lastUi = JSON.stringify(state);
-    appState.set(state).catch((error) => console.error('Could not save the app-state', error));
+/** saves the settings shortly after they change */
+const saveSettings = () => {
+  clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(() => {
+    appState.set({ showCompleted: ui.showCompleted }).catch((error) => console.error('Could not save the app-state', error));
   }, STATE_SAVE_DELAY_MILLIS);
 };
 
-const applyState = (state) => {
-  if(!state || (typeof state !== 'object')) return;
-  if(state.route !== undefined) ui.route = state.route;
-  if(typeof state.showCompleted === 'boolean') ui.showCompleted = state.showCompleted;
-  if(state.phoneView) ui.phoneView = state.phoneView;
+/** takes the settings an app-state holds: true when one changed */
+const applySettings = (state) => {
+  if(!state || (typeof state !== 'object') || (typeof state.showCompleted !== 'boolean') || (state.showCompleted === ui.showCompleted)) return false;
+  ui.showCompleted = state.showCompleted;
+  return true;
 };
 
 // == Menu ========================================================================
@@ -1816,7 +1846,6 @@ const go = (route) => {
   ui.phoneView = PhoneView.Detail;
   justToggled.clear();
   closeSwipe();
-  saveUi();
   render();
   $('#detailScroll').scrollTop = 0;
   updateNavSolid();
@@ -1824,7 +1853,6 @@ const go = (route) => {
 
 const goBack = () => {
   ui.phoneView = PhoneView.Home;
-  saveUi();
   app.classList.remove('phone-detail');
   renderHome();
 };
@@ -1956,7 +1984,6 @@ const deleteList = async (id) => {
   if(ui.route && (ui.route.type === RouteType.List) && (ui.route.id === id)) {
     ui.route = null/*the open list is gone*/;
     ui.phoneView = PhoneView.Home;
-    saveUi();
   } /* else -- another list was open */
   render();
 };
@@ -2080,7 +2107,7 @@ const handleAction = (event, element) => {
       // a wide screen adds to the open list; otherwise to the first list
       let target = (isPad() && ui.route) ? ui.route : null/*the first list*/;
       if(!target || isCompletedView()) target = data.lists[0] ? { type: RouteType.List, id: data.lists[0].id } : null/*no list yet*/;
-      if(target) { ui.route = target; ui.phoneView = PhoneView.Detail; saveUi(); }
+      if(target) { ui.route = target; ui.phoneView = PhoneView.Detail; }
       addItem();
       break;
     }
@@ -2090,7 +2117,7 @@ const handleAction = (event, element) => {
     case Action.DeleteItem: event.stopPropagation(); deleteItem(id); break;
     case Action.Menu: openMenu(element); break;
     case Action.CloseMenu: break;
-    case Action.ToggleCompleted: ui.showCompleted = !ui.showCompleted; justToggled.clear(); saveUi(); render(); break;
+    case Action.ToggleCompleted: ui.showCompleted = !ui.showCompleted; justToggled.clear(); saveSettings(); render(); break;
     case Action.ClearCompleted: clearCompleted(); break;
     case Action.InfoCurrent: { const route = routeInfo(ui.route); if(route && route.list) openSheet(route.list); break; }
     case Action.DeleteCurrent: { const route = routeInfo(ui.route); if(route && route.list) deleteList(route.list.id); break; }
@@ -2201,22 +2228,18 @@ document.addEventListener('contextmenu', (event) => { if(!event.target.closest('
 mqPad.addEventListener('change', () => { closeSheet(); render(); });
 
 // == Boot ========================================================================
-// the app-state first, so that the first render opens where the User left off; then
-// the lists, as `content$` gives them
+// the settings first, so that the first render shows them; then the lists, as
+// `content$` gives them. The settings are followed as the lists are: another
+// person's change to one shows here too
 const boot = async () => {
   try {
-    const state = await appState.get();
-    applyState(state);
-    lastUi = JSON.stringify(state || {});
+    applySettings(await appState.get());
   } catch(error) {
     console.warn('Could not read the app-state', error);
   }
   appState.onChange$().subscribe((state) => {
-    if(!state) return/*no state yet*/;
-    const serialized = JSON.stringify(state);
-    if(serialized === lastUi) return/*the state already applied*/;
-    lastUi = serialized;
-    applyState(state);
+    if(!applySettings(state)) return/*no setting changed*/;
+    justToggled.clear();
     safeRender();
   });
 
@@ -2235,134 +2258,26 @@ boot();
 </html>
   </app-source>
   <app-content name="lists.json">
-{
-  "version": 1,
-  "lists": [
-    {
-      "id": "rem01",
-      "name": "Reminders",
-      "color": "#007AFF",
-      "items": [
-        {
-          "id": "i01",
-          "title": "Tap the circle to complete a reminder",
-          "done": true,
-          "flagged": false,
-          "created": 1793059200000,
-          "completedAt": 1793066966995
-        },
-        {
-          "id": "i02",
-          "title": "Swipe left on a row to delete it",
-          "done": false,
-          "flagged": false,
-          "created": 1793059200000
-        },
-        {
-          "id": "i03",
-          "title": "Tap New Reminder to add one",
-          "done": false,
-          "flagged": true,
-          "created": 1793059200000
-        },
-        {
-          "id": "i04",
-          "title": "Add this page to the Home Screen",
-          "done": false,
-          "flagged": false,
-          "created": 1793059200000
-        },
-        {
-          "id": "i05",
-          "title": "Open the app for the first time",
-          "done": true,
-          "flagged": false,
-          "created": 1793059200000
-        },
-        {
-          "id": "csafmodm",
-          "title": "Eat food!",
-          "done": false,
-          "flagged": false,
-          "created": 1793116601190
-        }
-      ]
-    },
-    {
-      "id": "gro01",
-      "name": "Groceries",
-      "color": "#FF9500",
-      "items": [
-        {
-          "id": "g01",
-          "title": "Oat milk",
-          "done": true,
-          "flagged": false,
-          "created": 1793059200000,
-          "completedAt": 1793113724758
-        },
-        {
-          "id": "g02",
-          "title": "Eggs",
-          "done": false,
-          "flagged": false,
-          "created": 1793059200000
-        },
-        {
-          "id": "g03",
-          "title": "Coffee beans",
-          "done": false,
-          "flagged": true,
-          "created": 1793059200000
-        },
-        {
-          "id": "g04",
-          "title": "Avocados",
-          "done": false,
-          "flagged": false,
-          "created": 1793059200000
-        }
-      ]
-    },
-    {
-      "id": "wrk01",
-      "name": "Work",
-      "color": "#AF52DE",
-      "items": [
-        {
-          "id": "w01",
-          "title": "Test the iOS Home Screen shortcut",
-          "done": false,
-          "flagged": true,
-          "created": 1793059200000
-        },
-        {
-          "id": "w02",
-          "title": "Verify app-state persistence",
-          "done": false,
-          "flagged": false,
-          "created": 1793059200000
-        },
-        {
-          "id": "w03",
-          "title": "Ship it",
-          "done": false,
-          "flagged": false,
-          "created": 1793059200000
-        }
-      ]
-    }
-  ]
-}
+{"kind":"list","id":"rem01","name":"Reminders","color":"#007AFF"}
+{"kind":"item","id":"i01","list":"rem01","title":"Tap the circle to complete a reminder","done":true,"flagged":false,"created":1793059200000,"completedAt":1793066966995}
+{"kind":"item","id":"i02","list":"rem01","title":"Swipe left on a row to delete it","done":false,"flagged":false,"created":1793059200000}
+{"kind":"item","id":"i03","list":"rem01","title":"Tap New Reminder to add one","done":false,"flagged":true,"created":1793059200000}
+{"kind":"item","id":"i04","list":"rem01","title":"Add this page to the Home Screen","done":false,"flagged":false,"created":1793059200000}
+{"kind":"item","id":"i05","list":"rem01","title":"Open the app for the first time","done":true,"flagged":false,"created":1793059200000}
+{"kind":"item","id":"csafmodm","list":"rem01","title":"Eat food!","done":false,"flagged":false,"created":1793116601190}
+{"kind":"list","id":"gro01","name":"Groceries","color":"#FF9500"}
+{"kind":"item","id":"g01","list":"gro01","title":"Oat milk","done":true,"flagged":false,"created":1793059200000,"completedAt":1793113724758}
+{"kind":"item","id":"g02","list":"gro01","title":"Eggs","done":false,"flagged":false,"created":1793059200000}
+{"kind":"item","id":"g03","list":"gro01","title":"Coffee beans","done":false,"flagged":true,"created":1793059200000}
+{"kind":"item","id":"g04","list":"gro01","title":"Avocados","done":false,"flagged":false,"created":1793059200000}
+{"kind":"list","id":"wrk01","name":"Work","color":"#AF52DE"}
+{"kind":"item","id":"w01","list":"wrk01","title":"Test the iOS Home Screen shortcut","done":false,"flagged":true,"created":1793059200000}
+{"kind":"item","id":"w02","list":"wrk01","title":"Verify app-state persistence","done":false,"flagged":false,"created":1793059200000}
+{"kind":"item","id":"w03","list":"wrk01","title":"Ship it","done":false,"flagged":false,"created":1793059200000}
   </app-content>
   <app-state>
 {
-  "route": {
-    "type": "list",
-    "id": "rem01"
-  },
-  "showCompleted": true,
-  "phoneView": "home"
+  "showCompleted": true
 }
   </app-state>
 </iframe-app>

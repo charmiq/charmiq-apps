@@ -2444,8 +2444,9 @@ img {
 // the Synth Jukebox: a music library of albums composed live on this device from
 // their seed (no audio files), beside the Studio's takes: songs Lyria 3 Pro writes
 // from a description, each an audio file in the User's Drive. The library is the
-// app-content (`library.json`); the player's place (tab, page, queue, position) is
-// the app-state
+// app-content (`library.json`), shared by everyone on the document; the player's
+// place (tab, page, queue, position) is this screen's alone, and the Application has
+// no settings, so it keeps no app-state
 // ********************************************************************************
 (() => {
 'use strict';
@@ -2456,7 +2457,6 @@ const $$ = (selector, root) => Array.from((root || document).querySelectorAll(se
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const escapeHtml = (value) => String((value == null) ? ''/*nothing to show*/ : value).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-const clone = (value) => JSON.parse(JSON.stringify(value));
 const randomId = () => Math.random().toString(36).slice(2, 10);
 const messageOf = (error) => (error && error.message) || String(error);
 // formats seconds as m:ss
@@ -3351,15 +3351,20 @@ const artFor = (album) => {
 // == Library =====================================================================
 // the app-content the library lives in
 const LIBRARY_NAME = 'library.json';
+// the kinds of record the library holds, one per line (SEE: Bridge): a composed
+// album, a Studio take (TAKE_KIND) and a Loved song (its track key)
+const ALBUM_KIND = 'album';
+const LOVED_KIND = 'loved';
 // the library a document without one starts with
-const DEFAULT_LIBRARY = { version: 1, albums: [
-  { id: 'a6', title: 'Theories of Everything', artist: 'The 100,000 Foot View', genre: 'lofi', year: 2026, seed: 'zoom-out', tracks: ['Zoom Out', 'The Map Is Not the Territory', 'Obvious in Hindsight', 'Everybody Else Was Wrong', 'Zoom Back In'] },
-  { id: 'a1', title: 'Midnight Laundromat', artist: 'Soft Static', genre: 'lofi', year: 2026, seed: 'laundromat-7', tracks: ['Spin Cycle', 'Quarters for the Dryer', 'Fluorescent Hum', 'Lint Trap Lullaby', 'Folded Warm'] },
-  { id: 'a2', title: 'Neon Tollbooth', artist: 'Vector Coast', genre: 'synthwave', year: 2026, seed: 'tollbooth-88', tracks: ['Exit 88', 'Chrome Horizon', 'Night Shift Overdrive', 'Palm Tree Static', 'Rearview Romance'] },
-  { id: 'a3', title: 'Weather for Houseplants', artist: 'Moss Engine', genre: 'ambient', year: 2026, seed: 'fern', tracks: ['Photosynthesis', 'Low Pressure System', 'Dew Point', 'Root Network'] },
-  { id: 'a4', title: 'Basement Cathedral', artist: 'The Four-on-the-Floor Society', genre: 'house', year: 2026, seed: 'pews', tracks: ['Kick Drum Sermon', 'Hallelujah Hi-Hat', 'Pews & Subwoofers', 'Last Call Communion'] },
-  { id: 'a5', title: 'Extra Life', artist: '8-Bit Grandma', genre: 'chiptune', year: 2026, seed: '1up', tracks: ['Press Start', 'Coin Heaven', 'World 1-2 (Unofficial)', 'Boss Rush', 'Continue?'] },
-], loved: ['a6:1', 'a1:0', 'a2:2', 'a5:1'] };
+const DEFAULT_LIBRARY = [
+  { kind: ALBUM_KIND, id: 'a6', title: 'Theories of Everything', artist: 'The 100,000 Foot View', genre: 'lofi', year: 2026, seed: 'zoom-out', tracks: ['Zoom Out', 'The Map Is Not the Territory', 'Obvious in Hindsight', 'Everybody Else Was Wrong', 'Zoom Back In'] },
+  { kind: ALBUM_KIND, id: 'a1', title: 'Midnight Laundromat', artist: 'Soft Static', genre: 'lofi', year: 2026, seed: 'laundromat-7', tracks: ['Spin Cycle', 'Quarters for the Dryer', 'Fluorescent Hum', 'Lint Trap Lullaby', 'Folded Warm'] },
+  { kind: ALBUM_KIND, id: 'a2', title: 'Neon Tollbooth', artist: 'Vector Coast', genre: 'synthwave', year: 2026, seed: 'tollbooth-88', tracks: ['Exit 88', 'Chrome Horizon', 'Night Shift Overdrive', 'Palm Tree Static', 'Rearview Romance'] },
+  { kind: ALBUM_KIND, id: 'a3', title: 'Weather for Houseplants', artist: 'Moss Engine', genre: 'ambient', year: 2026, seed: 'fern', tracks: ['Photosynthesis', 'Low Pressure System', 'Dew Point', 'Root Network'] },
+  { kind: ALBUM_KIND, id: 'a4', title: 'Basement Cathedral', artist: 'The Four-on-the-Floor Society', genre: 'house', year: 2026, seed: 'pews', tracks: ['Kick Drum Sermon', 'Hallelujah Hi-Hat', 'Pews & Subwoofers', 'Last Call Communion'] },
+  { kind: ALBUM_KIND, id: 'a5', title: 'Extra Life', artist: '8-Bit Grandma', genre: 'chiptune', year: 2026, seed: '1up', tracks: ['Press Start', 'Coin Heaven', 'World 1-2 (Unofficial)', 'Boss Rush', 'Continue?'] },
+  ...['a6:1', 'a1:0', 'a2:2', 'a5:1'].map((track) => ({ kind: LOVED_KIND, track })),
+];
 // the words a composed album's title, artist and track names draw from
 const WORDS = {
   adj: ['Velvet', 'Paper', 'Quiet', 'Electric', 'Borrowed', 'Lunar', 'Analog', 'Tiny', 'Golden', 'Static', 'Hollow', 'Saturday', 'Infinite', 'Polaroid', 'Glass', 'Distant', 'Rented', 'Midnight', 'Soft', 'Chrome', 'Accidental', 'Sideways'],
@@ -3388,7 +3393,7 @@ const newAlbum = () => {
     (word) => word + ' (Reprise)', (word) => 'Interlude: ' + word,
   ];
   while(tracks.length < count) { const word = pick(random, WORDS.t); if(used[word]) continue; used[word] = true; tracks.push(pick(random, forms)(word)); }
-  return { id: randomId(), title, artist, genre, year: 2026, seed: randomId() + randomId(), tracks, composed: true };
+  return { kind: ALBUM_KIND, id: randomId(), title, artist, genre, year: 2026, seed: randomId() + randomId(), tracks, composed: true };
 };
 
 // .. Studio Takes ................................................................
@@ -3567,17 +3572,18 @@ const RowStyle = Object.freeze({ Number: 'num', Thumbnail: 'thumb' });
 // .. Values ......................................................................
 // the library as shown: what the app-content holds, null until it first arrives
 let library = null;
-// the player's place, saved as the app-state: the tab, the detail page open (`route`)
-// and the tab it opened from, the queue of track keys (`albumId:index`) with the
-// current index (`qi`), the position in seconds (`pos`), the volume (`vol`), the
-// unshuffled queue while shuffled (`orig`), the repeat and stage modes, and the
-// recently played album ids
+// the player's place: the tab, the detail page open (`route`) and the tab it opened
+// from, the queue of track keys (`albumId:index`) with the current index (`qi`), the
+// position in seconds (`pos`), the volume (`vol`), the unshuffled queue while
+// shuffled (`orig`), the repeat and stage modes, and the recently played album ids.
+// It is this screen's alone and never enters the app-state: the app-state is one
+// value for everyone sharing the document, so another person's listening would move it
 const state = {
   tab: Tab.Home, route: null/*no detail page open*/, routeTab: Tab.Home,
   queue: [], qi: 0, pos: 0, vol: .8, shuffle: false, orig: null/*not shuffled*/,
   repeat: Repeat.Off, mode: PlayerMode.Art, recent: [],
 };
-let nowPlayingOpen = false, query = '', stateTimer = null/*no app-state write pending*/, booted = false;
+let nowPlayingOpen = false, query = '', booted = false;
 // a detail page waiting for the album it names to be shown
 let pendingRoute = null/*none waiting*/;
 const specCache = {};
@@ -3659,18 +3665,49 @@ const toast = (message, act) => {
 
 // == Bridge ======================================================================
 // -- Library ---------------------------------------------------------------------
+// the library's app-content holds one record per line (JSON Lines), each whole on its
+// line: an album or a take (`{"kind":"album","id":"a6","title":…,"tracks":[…],…}`) and
+// a Loved song (`{"kind":"loved","track":"a6:1"}`). A change rewrites only the lines
+// of the records it changes, so two phones changing different albums, or loving
+// different songs, at once change different lines and the document keeps both. (One
+// JSON object would spread an album over many lines, and two such changes would merge
+// into text that is no longer JSON.) Albums show in the order of their lines, Loved
+// songs in the order of theirs. A line holding none of these (malformed, or another
+// writer's record) is kept as written, never shown
+
 // the library's app-content as last shown: the AppContent every write is measured on
 let libraryContent = null/*none shown yet*/;
 // retries waiting for the AppContent after the one their write was refused on
 let contentWaiters = [];
 let creatingLibrary = false;
 
-// the library a text holds, or null when it holds none
-const parseLibrary = (text) => {
-  const trimmed = String((text == null) ? '' : text).trim(); if(!trimmed) return null/*empty*/;
-  try { const data = JSON.parse(trimmed); if(data && Array.isArray(data.albums)) return data; } catch(error) { /*not JSON: no library*/ }
-  return null/*not a library*/;
+// .. Reading .....................................................................
+// the record a line holds, or null when it holds none of the library's. An album's id
+// leads its track keys (`albumId:index`), so it holds no colon
+const recordOf = (line) => {
+  let record;
+  try { record = JSON.parse(line); } catch(error) { return null/*not JSON*/; }
+  if(!record || (typeof record !== 'object')) return null/*not a record*/;
+  if(((record.kind === ALBUM_KIND) || (record.kind === TAKE_KIND)) && (typeof record.id === 'string') && record.id && (record.id.indexOf(':') < 0) && Array.isArray(record.tracks)) return record;
+  if((record.kind === LOVED_KIND) && (typeof record.track === 'string')) return record;
+  return null/*not one of the library's*/;
 };
+// a row is one line of the app-content and the record it holds (null: the line is
+// kept as written). A row a change leaves alone keeps its line exactly, so a write
+// rewrites only the lines of the records it changed
+const rowsOf = (lines) => lines.map((line) => ({ line, record: recordOf(line) }));
+const rowOf = (record) => ({ line: JSON.stringify(record), record });
+const isAlbumRow = (row) => !!row.record && (row.record.kind !== LOVED_KIND);
+const isLovedRow = (row) => !!row.record && (row.record.kind === LOVED_KIND);
+// the album `id` in the rows: its last line's (SEE: libraryOf), or null
+const albumIn = (rows, id) => rows.reduce((found, row) => ((isAlbumRow(row) && (row.record.id === id)) ? row.record : found), null/*none*/);
+// the library the rows hold, as stored. Two lines of one album (another writer
+// appended it under an id already there) read as the last, where the first stands;
+// the next change to it leaves one line
+const libraryOf = (rows) => ({
+  albums: [...new Set(rows.filter(isAlbumRow).map((row) => row.record.id))].map((id) => albumIn(rows, id)),
+  loved: [...new Set(rows.filter(isLovedRow).map((row) => row.record.track))],
+});
 // the library made safe to render: albums without an id or tracks dropped, every
 // shown field a string, an unknown genre played as Lo-Fi; a take's unknown status
 // shown as failed and its file id, length and start kept only when well formed
@@ -3679,7 +3716,6 @@ const normalize = (data) => {
     .filter((album) => album && album.id && Array.isArray(album.tracks))
     .map((album) => {
       const shown = Object.assign({}, album, {
-        id: String(album.id).replace(/:/g, '-'),
         genre: GENRES[album.genre] ? album.genre : 'lofi',
         seed: (album.seed != null) ? String(album.seed) : String(album.id),
         title: String(album.title || 'Untitled'),
@@ -3703,33 +3739,65 @@ const normalize = (data) => {
   return data;
 };
 
-// writes `lines` as the whole app-content, measured on `content`
-const writeLines = async (content, lines) => {
-  try {
-    await content.setLines(lines);
-  } catch(error) {
-    if(!error || (error.code !== 'functions/out-of-range')) throw error;
-    // NOTE: setLines refuses lines too different to align with the app-content's;
-    //       one edit of the whole text, still measured on `content`, replaces it
-    await content.edit([{ from: 0, to: content.text.length, insert: lines.map((line) => line + '\n').join('') }]);
-  }
+
+// .. Changes .....................................................................
+// each change gives the next rows without touching the ones it is given, changing
+// only the lines of the records it names. It is applied to the rows of the
+// app-content shown, and again to the app-content as it is then whenever another
+// writer got there first (SEE: changeLibrary)
+
+// replaces album `id` with `update(album)` on its first line and removes any other line
+// of it; an update giving the album back changes nothing
+const changeAlbum = (id, update) => (rows) => {
+  const album = albumIn(rows, id); if(!album) return rows/*removed meanwhile*/;
+  const changed = update(album); if(changed === album) return rows/*unchanged*/;
+  let placed = false;
+  return rows.flatMap((row) => {
+    if(!isAlbumRow(row) || (row.record.id !== id)) return [row];
+    if(placed) return []/*a second line of it*/;
+    placed = true;
+    return [rowOf(changed)];
+  });
+};
+// puts the album's line before the first album's, removing album `replaces`
+const addAlbum = (album, replaces) => (rows) => {
+  if(albumIn(rows, album.id)) return rows/*already added*/;
+  const kept = rows.filter((row) => !(isAlbumRow(row) && (row.record.id === replaces)));
+  const first = kept.findIndex(isAlbumRow), at = (first > -1) ? first : kept.length;
+  return [...kept.slice(0, at), rowOf(album), ...kept.slice(at)];
+};
+// removes album `id`'s lines and the Loved songs among its tracks
+const removeAlbum = (id) => (rows) => rows.filter((row) => !((isAlbumRow(row) && (row.record.id === id)) || (isLovedRow(row) && (row.record.track.indexOf(id + ':') === 0))));
+// loves the track (its line before the first Loved song's), or stops loving it
+const setLoved = (key, loved) => (rows) => {
+  const isKey = (row) => isLovedRow(row) && (row.record.track === key);
+  if(!loved) return rows.filter((row) => !isKey(row));
+  if(rows.some(isKey)) return rows/*already loved*/;
+  const first = rows.findIndex(isLovedRow), at = (first > -1) ? first : rows.length;
+  return [...rows.slice(0, at), rowOf({ kind: LOVED_KIND, track: key }), ...rows.slice(at)];
+};
+
+// .. Writing .....................................................................
+// writes the rows onto `content`, measured on it: only the lines that differ, refused
+// whole when it has changed since; nothing when no line differs
+const writeRows = async (content, rows) => {
+  const lines = rows.map((row) => row.line);
+  if((lines.length === content.lines.length) && lines.every((line, index) => (line === content.lines[index]))) return/*nothing to write*/;
+  await content.setLines(lines);
 };
 // resolves once an AppContent other than `previous` is shown
 const nextContent = (previous) => (libraryContent !== previous) ? Promise.resolve() : new Promise((resolve) => contentWaiters.push(resolve));
 const isConflict = (error) => !!error && (error.code === 'app/content-conflict');
 const MAX_CHANGE_ATTEMPTS = 5;
-// applies `change` ((library) => nextLibrary) to the library the app-content holds and
-// writes the result through that AppContent. A write refused because another writer
-// changed the app-content first applies the change again to what it holds then. An
-// unreadable app-content is changed from the default library
+// applies `change` ((rows) => nextRows) to the rows the app-content holds and writes
+// the result through that AppContent. A write refused because another writer changed
+// the app-content first applies the change again to what it holds then
 const changeLibrary = async (change) => {
   for(let attempt=1; ; attempt++) {
     const content = libraryContent;
     if(!content) throw new Error(LIBRARY_NAME + ' is not in the document');
-    const data = parseLibrary(content.text);
-    const next = change(normalize(data || clone(DEFAULT_LIBRARY)));
     try {
-      await writeLines(content, JSON.stringify(next, null, 2).split('\n'));
+      await writeRows(content, change(rowsOf(content.lines)));
       return;
     } catch(error) {
       if(!isConflict(error) || (attempt >= MAX_CHANGE_ATTEMPTS)) throw error;
@@ -3743,10 +3811,12 @@ const updateLibrary = async (change) => {
   catch(error) { toast('Not saved: ' + messageOf(error)); return false; }
 };
 
+// the library's text: its records, one per line
+const libraryText = (records) => records.map((record) => JSON.stringify(record) + '\n').join('');
 const createLibrary = () => {
   if(creatingLibrary) return;
   creatingLibrary = true;
-  window.charmiq.appContent.create(JSON.stringify(DEFAULT_LIBRARY, null, 2), LIBRARY_NAME)
+  window.charmiq.appContent.create(libraryText(DEFAULT_LIBRARY), LIBRARY_NAME)
     .catch((error) => { creatingLibrary = false; toast('Could not create the library: ' + messageOf(error)); });
 };
 // keeps the playing track's music in step with its album: a remix (here or on another
@@ -3767,14 +3837,8 @@ const showLibrary = (content) => {
     if(!library) createLibrary();
     return/*a library shown stays shown while its app-content is gone*/;
   } /* else -- an app-content to show */
-  const data = parseLibrary(content.text);
-  if(!data) {
-    if(!library) updateLibrary((defaults) => defaults)/*replaces the unreadable text with the default library*/;
-    return;
-  } /* else -- a library */
-
   const first = !library, previous = library;
-  library = normalize(data);
+  library = normalize(libraryOf(rowsOf(content.lines)));
   if(first) { boot(); return; }
   followComposition();
   if(!current()) { Engine.pause(); state.queue = []; state.qi = 0; }
@@ -3805,7 +3869,7 @@ const callTool = async (server, tool, args) => {
   return result.structuredContent;
 };
 // changes take `id` by `fields`; with `stillPressing`, only while it is still pressing
-const changeTake = (id, fields, stillPressing) => updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => ((album.id === id) && (!stillPressing || (album.status === TakeStatus.Pressing))) ? { ...album, ...fields } : album) }));
+const changeTake = (id, fields, stillPressing) => updateLibrary(changeAlbum(id, (album) => (!stillPressing || (album.status === TakeStatus.Pressing)) ? { ...album, ...fields } : album));
 
 // presses `prompt` with `ingredients` (their labels) as a new take, in place of take
 // `replaces` when it is a retry; false when the take could not be added to the
@@ -3815,7 +3879,7 @@ const pressTake = async (prompt, ingredients, replaces) => {
   sending.add(take.id);
   naming.set(take.id, { startedAt: Date.now(), name: null/*not yet named*/ })/*its card's first paint already flips*/;
   try {
-    if(!await updateLibrary((data) => ({ ...data, albums: [take, ...data.albums.filter((album) => album.id !== replaces)] }))) { naming.delete(take.id); return false; }
+    if(!await updateLibrary(addAlbum(take, replaces))) { naming.delete(take.id); return false; }
     toast('Pressing your song');
     nameTake(take.id, prompt, ingredients)/*beside the song; its names stand until a name arrives*/;
     let fields;
@@ -3854,7 +3918,7 @@ const nameTake = async (id, prompt, ingredients) => {
     name = result.success ? parseName(result.text) : null/*no text to use*/;
   } catch(error) { console.warn('take not named', messageOf(error))/*the minted names stand*/; }
   if(!name || !naming.has(id)) { naming.delete(id); renderStudio(); return; }
-  const saved = await updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => ((album.id === id) && !album.renamed) ? { ...album, title: name.title, artist: name.artist || album.artist, tracks: [name.title] } : album) }));
+  const saved = await updateLibrary(changeAlbum(id, (album) => album.renamed ? album/*the User's name wins*/ : { ...album, title: name.title, artist: name.artist || album.artist, tracks: [name.title] }));
   if(!saved || !naming.has(id)) { naming.delete(id); renderStudio(); return; }
   naming.set(id, { ...naming.get(id), name, lockedAt: Date.now() })/*the flaps settle onto it*/;
 };
@@ -3909,12 +3973,12 @@ const paintCover = async (id) => {
   const take = albumById(id); if(!canPaintCover(take)) return;
   const standing = shownCoverId(take), cover = await pressCover(take.prompt, take.ingredients);
   if(standing) cover.previousAssetId = standing;
-  if(!await updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => (album.id === id) ? { ...album, cover } : album) }))) return;
+  if(!await updateLibrary(changeAlbum(id, (album) => ({ ...album, cover })))) return;
   toast((cover.status === TakeStatus.Pressing) ? 'Painting ' + (standing ? 'a new' : 'a') + ' cover for “' + take.title + '”' : 'The cover could not be started');
   schedulePoll(TAKE_POLL_MS);
 };
 // changes take `id`'s cover by `fields` while it is still pressing
-const changeCover = (id, fields) => updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => ((album.id === id) && album.cover && (album.cover.status === TakeStatus.Pressing)) ? { ...album, cover: { ...album.cover, ...fields } } : album) }));
+const changeCover = (id, fields) => updateLibrary(changeAlbum(id, (album) => (album.cover && (album.cover.status === TakeStatus.Pressing)) ? { ...album, cover: { ...album.cover, ...fields } } : album));
 
 // each take's audio, read once per launch: an object URL by Asset id
 const takeUrls = {};
@@ -3989,35 +4053,6 @@ const announceTakes = (previous) => {
     if(take.status === TakeStatus.Ready) toast('“' + take.title + '” is pressed', { label: 'Play', action: 'play-take', key: take.id + ':0' });
     else toast('“' + take.title + '” didn’t press', { label: 'See Why', action: 'tab', t: Tab.Studio });
   });
-};
-
-// -- App-State -------------------------------------------------------------------
-// writes the player's place, at most once per 200ms
-const saveState = () => {
-  clearTimeout(stateTimer);
-  stateTimer = setTimeout(() => {
-    const saved = {
-      tab: state.tab, route: state.route, routeTab: state.routeTab,
-      queue: state.queue, qi: state.qi, pos: Math.round(Engine.position() * 10) / 10, vol: state.vol,
-      shuffle: state.shuffle, orig: state.orig, repeat: state.repeat, mode: state.mode, recent: state.recent,
-    };
-    window.charmiq.appState.set(saved).catch((error) => console.warn('appState.set failed', error));
-  }, 200);
-};
-// takes each valid field of a saved app-state
-const applyState = (saved) => {
-  if(!saved || (typeof saved !== 'object')) return;
-  if(TAB_LABEL[saved.tab]) state.tab = saved.tab;
-  state.route = (saved.route && (typeof saved.route === 'object')) ? saved.route : null/*no detail page open*/;
-  if(TAB_LABEL[saved.routeTab]) state.routeTab = saved.routeTab;
-  if(Array.isArray(saved.queue)) state.queue = saved.queue.filter((key) => typeof key === 'string');
-  if(typeof saved.qi === 'number') state.qi = saved.qi;
-  if(typeof saved.pos === 'number') state.pos = saved.pos;
-  if(typeof saved.vol === 'number') state.vol = clamp(saved.vol, 0, 1);
-  state.shuffle = !!saved.shuffle; state.orig = Array.isArray(saved.orig) ? saved.orig : null/*not shuffled*/;
-  if(Object.values(Repeat).indexOf(saved.repeat) > -1) state.repeat = saved.repeat;
-  if(Object.values(PlayerMode).indexOf(saved.mode) > -1) state.mode = saved.mode;
-  if(Array.isArray(saved.recent)) state.recent = saved.recent;
 };
 
 // == Rendering ===================================================================
@@ -4353,7 +4388,7 @@ const startCurrent = (position, autoplay) => {
   state.pos = position || 0;
   state.recent = [track.album.id].concat(state.recent.filter((id) => id !== track.album.id)).slice(0, 10);
   if(!app.classList.contains('detail-open') && (state.tab === Tab.Home)) renderHome();
-  onTrackChange(); saveState();
+  onTrackChange();
 };
 // queues list `context` from `key` (absent: its first track), shuffled when `shuffle`
 const playContext = (context, key, shuffle) => {
@@ -4366,7 +4401,7 @@ const playContext = (context, key, shuffle) => {
 };
 const togglePlay = () => {
   const track = current(); if(!track) return;
-  if(Engine.isPlaying()) { Engine.pause(); saveState(); }
+  if(Engine.isPlaying()) { Engine.pause(); }
   else {
     const spec = specOf(track); let position = Engine.position(); if((spec.duration > 0) && (position >= (spec.duration - .2))) position = 0;
     Engine.play(position);
@@ -4391,8 +4426,8 @@ const previousTrack = () => {
 Engine.onended = () => nextTrack(true);
 Engine.source = (spec) => takeUrl(spec.assetId);
 Engine.onerror = (error) => { toast('Could not play: ' + messageOf(error)); updatePlayUI(); };
-Engine.onstopped = () => { updatePlayUI(); saveState(); };
-Engine.onresumed = () => { updatePlayUI(); saveState(); };
+Engine.onstopped = () => { updatePlayUI(); };
+Engine.onresumed = () => { updatePlayUI(); };
 // the ring, wherever the current track's mark stands, while it loads
 Engine.onloading = () => {
   updatePlayUI();
@@ -4410,7 +4445,7 @@ Engine.onduration = (spec) => {
 const playNext = (key) => {
   if(!current()) { state.queue = [key]; state.qi = 0; startCurrent(0, true); return; }
   state.queue.splice(state.qi + 1, 0, key); if(state.orig) state.orig.push(key);
-  saveState(); if(state.mode === PlayerMode.Queue) renderQueue(); toast('Playing Next');
+  if(state.mode === PlayerMode.Queue) renderQueue(); toast('Playing Next');
 };
 const toggleShuffle = () => {
   const currentKey = state.queue[state.qi]; if(!currentKey) return;
@@ -4422,26 +4457,23 @@ const toggleShuffle = () => {
     if(state.orig) { state.queue = state.orig; state.qi = Math.max(0, state.queue.indexOf(currentKey)); }
     state.orig = null/*not shuffled*/; state.shuffle = false;
   }
-  renderQueue(); saveState();
+  renderQueue();
 };
 const cycleRepeat = () => {
   state.repeat = (state.repeat === Repeat.Off) ? Repeat.All : (state.repeat === Repeat.All) ? Repeat.One : Repeat.Off;
-  renderQueue(); saveState();
+  renderQueue();
 };
 
 // == Library Changes =============================================================
 // each change shows once the app-content holds it
 const toggleLove = async (key) => {
   const loving = !isLoved(key);
-  const saved = await updateLibrary((data) => {
-    const others = data.loved.filter((loved) => loved !== key);
-    return { ...data, loved: loving ? [key, ...others] : others };
-  });
+  const saved = await updateLibrary(setLoved(key, loving));
   if(saved && loving) toast('Loved');
 };
 const composeAlbum = async () => {
   const album = newAlbum();
-  if(!await updateLibrary((data) => ({ ...data, albums: [album, ...data.albums] }))) return;
+  if(!await updateLibrary(addAlbum(album))) return;
   openRouteWhenShown({ type: RouteType.Album, id: album.id });
   toast('Composed “' + album.title + '”');
 };
@@ -4449,7 +4481,7 @@ const composeAlbum = async () => {
 const remixAlbum = async (id) => {
   if(!albumById(id)) return;
   const seed = randomId() + randomId();
-  const saved = await updateLibrary((data) => ({ ...data, albums: data.albums.map((album) => (album.id === id) ? { ...album, seed } : album) }));
+  const saved = await updateLibrary(changeAlbum(id, (album) => ({ ...album, seed })));
   if(saved) toast('Remixed: same titles, all-new music');
 };
 // removes an album from the library after the User confirms; a take's file stays in
@@ -4472,8 +4504,8 @@ const deleteAlbum = async (id, confirmed) => {
     if(state.queue.length > 0) startCurrent(0, false);
     else { closeNowPlaying(); onTrackChange(); }
   } else state.qi = Math.max(0, state.queue.indexOf(currentKey));
-  saveState(); renderAll();
-  await updateLibrary((data) => ({ ...data, albums: data.albums.filter((candidate) => candidate.id !== id), loved: data.loved.filter((key) => !inAlbum(key)) }));
+  renderAll();
+  await updateLibrary(removeAlbum(id));
 };
 
 // == Studio Booth ================================================================
@@ -4571,7 +4603,7 @@ const switchTab = (tab) => {
   } /* else -- no detail page to close */
   $$('.tabpane').forEach((pane) => pane.classList.toggle('on', pane.id === ('tab-' + tab)));
   $$('.tab').forEach((button) => button.classList.toggle('on', button.dataset.t === tab));
-  placeIndicator(); updateNavSolid(); saveState();
+  placeIndicator(); updateNavSolid();
 };
 // the detail pages beneath the one open, the nearest last: a page opened from a
 // detail page (an album from a list of songs) returns to it. Not saved: a relaunch
@@ -4585,19 +4617,19 @@ const openRoute = (route) => {
   renderDetail();
   $('#detailScroll').scrollTop = 0;
   app.classList.add('detail-open');
-  updateNavSolid(); saveState();
+  updateNavSolid();
 };
 // returns to the detail page beneath the open one, or to the tab
 const goBack = () => {
   if(routeHistory.length < 1) { closeDetail(); return; }
   state.route = routeHistory.pop();
   renderDetail(); $('#detailScroll').scrollTop = 0;
-  updateNavSolid(); saveState();
+  updateNavSolid();
 };
 // opens an album's page once the album is shown (a just-composed one arrives with its write)
 const openRouteWhenShown = (route) => { if(albumById(route.id)) openRoute(route); else pendingRoute = route; };
 // closes every detail page, returning to the tab
-const closeDetail = () => { app.classList.remove('detail-open'); state.route = null/*no detail page open*/; routeHistory = []; saveState(); };
+const closeDetail = () => { app.classList.remove('detail-open'); state.route = null/*no detail page open*/; routeHistory = []; };
 
 // == Now Playing =================================================================
 // sizes the cover to the largest square the stage holds
@@ -4644,7 +4676,7 @@ const setModeClasses = () => {
   if(state.mode === PlayerMode.Queue) renderQueue();
 };
 // shows `mode` on the stage; the mode shown again returns to the cover
-const setMode = (mode) => { state.mode = (state.mode === mode) ? PlayerMode.Art : mode; setModeClasses(); saveState(); };
+const setMode = (mode) => { state.mode = (state.mode === mode) ? PlayerMode.Art : mode; setModeClasses(); };
 const renderQueue = () => {
   const playingTrack = current(), element = $('#npQueue'); if(!playingTrack) return;
   const upcoming = state.queue.slice(state.qi + 1);
@@ -4930,14 +4962,13 @@ const bindSlider = (element, onMove, onEnd) => {
 };
 bindSlider($('#npScrub'),
   (x) => { const track = current(); if(!track) return; scrubbing = true; scrubPosition = x * specOf(track).duration; },
-  (x) => { const track = current(); scrubbing = false; if(!track) return; const position = x * specOf(track).duration; Engine.seek(position); state.pos = position; saveState(); setMediaPosition(); });
+  (x) => { const track = current(); scrubbing = false; if(!track) return; const position = x * specOf(track).duration; Engine.seek(position); state.pos = position; setMediaPosition(); });
 const setVolumeUI = () => { $('#volFill').style.width = (state.vol * 100) + '%'; };
-bindSlider($('#npVol'), (x) => { state.vol = x; Engine.setVolume(x); setVolumeUI(); }, () => saveState());
+bindSlider($('#npVol'), (x) => { state.vol = x; Engine.setVolume(x); setVolumeUI(); });
 
 // == Frame Loop ==================================================================
-let lastSave = 0, smoothedEnergy = 0, wasPlaying = false;
-// each frame: the progress bars, the Now Playing background and score, and a save of
-// the position every five seconds while playing
+let smoothedEnergy = 0, wasPlaying = false;
+// each frame: the progress bars, and the Now Playing background and score
 const frame = (time) => {
   requestAnimationFrame(frame);
   const playing = Engine.isPlaying();
@@ -4953,7 +4984,6 @@ const frame = (time) => {
     $('#npArt').style.transform = 'scale(' + (1 + smoothedEnergy * .03).toFixed(4) + ')';
     if(state.mode === PlayerMode.Score) { if(isTakeSpec(spec)) drawAfterglow(time, playing); else drawScore(spec, position); }
   } /* else -- only the mini player's bar shows */
-  if(playing && ((time - lastSave) > 5000)) { lastSave = time; saveState(); }
 };
 
 // == Media Session ===============================================================
@@ -4984,7 +5014,7 @@ try {
   if(navigator.mediaSession) {
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
     navigator.mediaSession.setActionHandler('previoustrack', previousTrack);
-    navigator.mediaSession.setActionHandler('seekto', (details) => { if(!current() || !(details.seekTime >= 0)) return; Engine.seek(details.seekTime); state.pos = details.seekTime; saveState(); setMediaPosition(); });
+    navigator.mediaSession.setActionHandler('seekto', (details) => { if(!current() || !(details.seekTime >= 0)) return; Engine.seek(details.seekTime); state.pos = details.seekTime; setMediaPosition(); });
   } /* else -- no lock screen controls */
 } catch(error) { /*an action the browser does not support*/ }
 
@@ -5167,12 +5197,11 @@ const boot = () => {
 const init = async () => {
   paintTop();
   paintStatic();
-  try { applyState(await window.charmiq.appState.get()); } catch(error) { console.warn('appState.get failed', error); }
   window.charmiq.appContent.content$("[name='" + LIBRARY_NAME + "']").subscribe({
     next: showLibrary,
     error: (error) => {
       toast('Could not read the library: ' + messageOf(error));
-      if(!library) { library = normalize(clone(DEFAULT_LIBRARY)); boot(); }
+      if(!library) { library = normalize(libraryOf(DEFAULT_LIBRARY.map(rowOf))); boot(); }
     },
   });
 };
@@ -5183,130 +5212,14 @@ init();
 </html>
   </app-source>
   <app-content name="library.json">
-{
-  "version": 1,
-  "albums": [
-    {
-      "id": "a6",
-      "title": "Theories of Everything",
-      "artist": "The 100,000 Foot View",
-      "genre": "lofi",
-      "year": 2026,
-      "seed": "zoom-out",
-      "tracks": [
-        "Zoom Out",
-        "The Map Is Not the Territory",
-        "Obvious in Hindsight",
-        "Everybody Else Was Wrong",
-        "Zoom Back In"
-      ]
-    },
-    {
-      "id": "a1",
-      "title": "Midnight Laundromat",
-      "artist": "Soft Static",
-      "genre": "lofi",
-      "year": 2026,
-      "seed": "laundromat-7",
-      "tracks": [
-        "Spin Cycle",
-        "Quarters for the Dryer",
-        "Fluorescent Hum",
-        "Lint Trap Lullaby",
-        "Folded Warm"
-      ]
-    },
-    {
-      "id": "a2",
-      "title": "Neon Tollbooth",
-      "artist": "Vector Coast",
-      "genre": "synthwave",
-      "year": 2026,
-      "seed": "tollbooth-88",
-      "tracks": [
-        "Exit 88",
-        "Chrome Horizon",
-        "Night Shift Overdrive",
-        "Palm Tree Static",
-        "Rearview Romance"
-      ]
-    },
-    {
-      "id": "a3",
-      "title": "Weather for Houseplants",
-      "artist": "Moss Engine",
-      "genre": "ambient",
-      "year": 2026,
-      "seed": "fern",
-      "tracks": [
-        "Photosynthesis",
-        "Low Pressure System",
-        "Dew Point",
-        "Root Network"
-      ]
-    },
-    {
-      "id": "a4",
-      "title": "Basement Cathedral",
-      "artist": "The Four-on-the-Floor Society",
-      "genre": "house",
-      "year": 2026,
-      "seed": "pews",
-      "tracks": [
-        "Kick Drum Sermon",
-        "Hallelujah Hi-Hat",
-        "Pews & Subwoofers",
-        "Last Call Communion"
-      ]
-    },
-    {
-      "id": "a5",
-      "title": "Extra Life",
-      "artist": "8-Bit Grandma",
-      "genre": "chiptune",
-      "year": 2026,
-      "seed": "1up",
-      "tracks": [
-        "Press Start",
-        "Coin Heaven",
-        "World 1-2 (Unofficial)",
-        "Boss Rush",
-        "Continue?"
-      ]
-    }
-  ],
-  "loved": [
-    "a1:0",
-    "a2:2",
-    "a5:1"
-  ]
-}
+{"kind":"album","id":"a6","title":"Theories of Everything","artist":"The 100,000 Foot View","genre":"lofi","year":2026,"seed":"zoom-out","tracks":["Zoom Out","The Map Is Not the Territory","Obvious in Hindsight","Everybody Else Was Wrong","Zoom Back In"]}
+{"kind":"album","id":"a1","title":"Midnight Laundromat","artist":"Soft Static","genre":"lofi","year":2026,"seed":"laundromat-7","tracks":["Spin Cycle","Quarters for the Dryer","Fluorescent Hum","Lint Trap Lullaby","Folded Warm"]}
+{"kind":"album","id":"a2","title":"Neon Tollbooth","artist":"Vector Coast","genre":"synthwave","year":2026,"seed":"tollbooth-88","tracks":["Exit 88","Chrome Horizon","Night Shift Overdrive","Palm Tree Static","Rearview Romance"]}
+{"kind":"album","id":"a3","title":"Weather for Houseplants","artist":"Moss Engine","genre":"ambient","year":2026,"seed":"fern","tracks":["Photosynthesis","Low Pressure System","Dew Point","Root Network"]}
+{"kind":"album","id":"a4","title":"Basement Cathedral","artist":"The Four-on-the-Floor Society","genre":"house","year":2026,"seed":"pews","tracks":["Kick Drum Sermon","Hallelujah Hi-Hat","Pews & Subwoofers","Last Call Communion"]}
+{"kind":"album","id":"a5","title":"Extra Life","artist":"8-Bit Grandma","genre":"chiptune","year":2026,"seed":"1up","tracks":["Press Start","Coin Heaven","World 1-2 (Unofficial)","Boss Rush","Continue?"]}
+{"kind":"loved","track":"a1:0"}
+{"kind":"loved","track":"a2:2"}
+{"kind":"loved","track":"a5:1"}
   </app-content>
-  <app-state>
-{
-  "tab": "library",
-  "route": null,
-  "routeTab": "library",
-  "queue": [
-    "a6:1",
-    "a1:0",
-    "a2:2",
-    "a5:1"
-  ],
-  "qi": 0,
-  "pos": 5.2,
-  "vol": 0.8,
-  "shuffle": false,
-  "orig": null,
-  "repeat": "off",
-  "mode": "art",
-  "recent": [
-    "a6",
-    "a3",
-    "a4",
-    "a2",
-    "a5"
-  ]
-}
-  </app-state>
 </iframe-app>

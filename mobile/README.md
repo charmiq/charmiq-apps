@@ -26,6 +26,8 @@ Share your copy as an **Editor** with each person who should have it; each adds 
 ## Building Your Own
 
 - **Write it inline.** The Application's source lives in the document (`<iframe-app>` → `<app-source>`), so it opens as soon as the page does. An Application with a manifest or folder is fetched and built after the page loads, a wait on every launch.
+- **Keep the data as records, one per line.** The app-content holds one JSON record per line, each with its id; a change rewrites only the lines of the records it changes, through the app-content it was shown, and is applied again to the newer app-content when another writer got there first. A line it does not read is kept as written. Tick List and Synth Jukebox both work this way (the full guide: [Collaborating](https://team.charmiq.ai/docs/application/developer-app-content-and-app-state#collaborating)).
+- **App-state is for settings.** It is one value for everyone sharing the document, so it holds what everyone shares (Tick List's Show Completed), never where one person is.
 - **The document is only the Application:** theme `charmiq:none`, a stylesheet that zeroes the page's margin and padding (`:root`, `body`), and `<iframe-app height="100svh" width="100%">`. Copy either `iOS` document's header.
 - **Sound on iOS:**
   - iOS plays audio only when it starts from a tap: create or `resume()` the `AudioContext` inside a `click` or `touchend` handler, never on load, on a timer or after an `await`. Leaving for the background, a lock or a call suspends it; resume it on the next tap.
