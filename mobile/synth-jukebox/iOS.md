@@ -4105,6 +4105,12 @@ const routeLabel = (route) => {
   if(route.type === RouteType.Album) { const album = albumById(route.id); return album ? album.title : 'Back'; }
   return (route.type === RouteType.Loved) ? 'Loved Songs' : (route.type === RouteType.Takes) ? 'Studio Takes' : 'Songs';
 };
+// a page's Play: the ring while the track playing from its list loads
+const playPillFace = (context) => {
+  const track = current(), loading = Engine.isLoading() && !!track && ((contextKeys[context] || []).indexOf(track.key) > -1);
+  return loading ? LOADING + 'Loading' : ICON.play + 'Play';
+};
+const playPillHTML = (context) => '<button class="pill" data-action="play-all" data-ctx="' + escapeHtml(context) + '">' + playPillFace(context) + '</button>';
 // an album page's cover: tapped, it opens the player on the album (SEE: openAlbumPlayer)
 const albumCoverHTML = (album, art) => '<img alt="" src="' + art.url + '" data-action="album-player" data-id="' + album.id + '">';
 const renderDetail = () => {
@@ -4119,7 +4125,7 @@ const renderDetail = () => {
     $('#detailNavTitle').textContent = album.title; $('#detailMore').classList.remove('hidden'); $('#detailMore').dataset.id = album.id;
     const bpms = keys.map((key) => specOf(trackOf(key)).bpm);
     body.innerHTML = '<div class="ahead">' + albumCoverHTML(album, art) + '<div class="ah-info"><div class="ah-title">' + escapeHtml(album.title) + '</div><div class="ah-artist">' + escapeHtml(album.artist) + '</div><div class="ah-meta">' + GENRES[album.genre].label + ' · ' + (album.year || 2026) + ' · ' + Math.min(...bpms) + '–' + Math.max(...bpms) + ' BPM</div>' +
-      '<div class="pills"><button class="pill" data-action="play-all" data-ctx="' + context + '">' + ICON.play + 'Play</button><button class="pill" data-action="shuffle-all" data-ctx="' + context + '">' + ICON.shuffle + 'Shuffle</button></div></div></div>' +
+      '<div class="pills">' + playPillHTML(context) + '<button class="pill" data-action="shuffle-all" data-ctx="' + context + '">' + ICON.shuffle + 'Shuffle</button></div></div></div>' +
       '<div>' + keys.map((key) => rowHTML(key, context, RowStyle.Number)).join('') + '</div>' +
       '<div class="afoot">' + keys.length + ' songs, ' + Math.round(total / 60) + ' minutes<br>Seed “' + escapeHtml(album.seed) + '”. Composed live on this device. No audio files were harmed.</div>';
     scroll.dataset.th = 300;
@@ -4131,7 +4137,7 @@ const renderDetail = () => {
     $('#detailNavTitle').textContent = title; $('#detailMore').classList.add('hidden');
     body.innerHTML = '<div class="lt-row"><h1 class="large-title">' + title + '</h1></div>' +
       ((keys.length > 0)
-        ? '<div style="padding:0 16px 14px"><div class="pills" style="margin-top:8px"><button class="pill" data-action="play-all" data-ctx="' + route.type + '">' + ICON.play + 'Play</button><button class="pill" data-action="shuffle-all" data-ctx="' + route.type + '">' + ICON.shuffle + 'Shuffle</button></div></div>' +
+        ? '<div style="padding:0 16px 14px"><div class="pills" style="margin-top:8px">' + playPillHTML(route.type) + '<button class="pill" data-action="shuffle-all" data-ctx="' + route.type + '">' + ICON.shuffle + 'Shuffle</button></div></div>' +
           '<div>' + keys.map((key) => rowHTML(key, route.type, RowStyle.Thumbnail)).join('') + '</div>'
         : pressed
           ? '<div class="empty">No Studio Takes Yet<div class="empty-sub">Describe a song in the Studio and press it.</div></div>'
@@ -4145,7 +4151,7 @@ const renderTakeDetail = (take) => {
   const art = artFor(take), keys = keysOf(take), context = 'album:' + take.id; contextKeys[context] = keys;
   $('#detailNavTitle').textContent = take.title; $('#detailMore').classList.remove('hidden'); $('#detailMore').dataset.id = take.id;
   $('#detailBody').innerHTML = '<div class="ahead">' + albumCoverHTML(take, art) + '<div class="ah-info"><div class="ah-title">' + escapeHtml(take.title) + '</div><div class="ah-artist">' + escapeHtml(take.artist) + '</div><div class="ah-meta">' + STUDIO_LABEL + ' Take · ' + take.year + ' · ' + MODEL_LABEL + '</div>' +
-    '<div class="pills"><button class="pill" data-action="play-all" data-ctx="' + context + '">' + ICON.play + 'Play</button><button class="pill" data-action="press-again" data-id="' + take.id + '">' + ICON.remix + 'Press Again</button></div></div></div>' +
+    '<div class="pills">' + playPillHTML(context) + '<button class="pill" data-action="press-again" data-id="' + take.id + '">' + ICON.remix + 'Press Again</button></div></div></div>' +
     '<div>' + keys.map((key) => rowHTML(key, context, RowStyle.Number)).join('') + '</div>' +
     '<div class="afoot">“' + escapeHtml(take.prompt) + '”' + (ingredientsHTML(take) || '<br>') + 'Pressed by ' + MODEL_LABEL + ' from this description. The song is an audio file in your Drive.</div>';
   $('#detailScroll').dataset.th = 300;
@@ -4393,6 +4399,7 @@ Engine.onloading = () => {
   const track = current(), key = track && track.key;
   $$('.take-play').forEach((button) => { if(button.dataset.key === key) button.innerHTML = currentMark(); });
   $$('.trk.current').forEach((row) => { const html = rowHTML(row.dataset.key, row.dataset.ctx, row.dataset.mode); if(html) row.outerHTML = html; });
+  $$('.pill[data-action="play-all"]').forEach((pill) => { pill.innerHTML = playPillFace(pill.dataset.ctx); });
 };
 // records a take's length the first time a play measures it, so every row shows it
 Engine.onduration = (spec) => {
