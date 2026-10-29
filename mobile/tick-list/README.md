@@ -4,4 +4,5 @@
 
 - **Open it:** [iOS](charmiq://./iOS.md). Home-screen setup: [Mobile](charmiq://../README.md).
 - **Your lists** (`lists.json`, the Application's app-content): every list and every reminder, one record per line. Share the document as an Editor and everyone on it sees each tick as it happens; two people changing different reminders at once both keep their change, and two changing the same reminder at once keep one of the two. A Charm can add a reminder by adding its line.
-- **Its one setting** (the Application's app-state): whether completed reminders show, the same for everyone on the document. The list you have open is your phone's own.
+- **Its one setting** (the Application's app-state): whether completed reminders show, the same for everyone on the document.
+- **Where you left off**: the list you have open is kept in the app-state under your User id, so you come back to it. It asks to read your account (`user.read`) for that; signed out, nothing is kept.

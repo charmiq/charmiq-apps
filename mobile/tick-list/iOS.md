@@ -18,7 +18,7 @@ theme: charmiq:none
   }
 </style>
 
-<iframe-app height="100svh" width="100%">
+<iframe-app height="100svh" width="100%" requested-scopes="%5B%22user.read%22%5D">
   <app-source>
 <!doctype html>
 <html lang="en">
@@ -1208,7 +1208,9 @@ svg {
 
 <script>
 // Tick List: lists of reminders to tick off, kept in the document's `lists.json`
-// app-content so that every phone and browser sharing the document sees the same lists
+// app-content so that every phone and browser sharing the document sees the same lists.
+// Each person's place (the open list) is kept in the app-state under their User id
+// (`charmiq.user$`, `user.read`), so they come back to it
 // ********************************************************************************
 (() => {
 'use strict';
@@ -1750,22 +1752,112 @@ const receive = (content) => {
   if(!writeTarget && awaitingEcho) { awaitingEcho = false; written = []; }
   recompute();
   safeRender();
+  settlePlace();
   if(!writeTarget && !saveTimer && (pending.length > 0)) save();
 };
 
 // .. App-State ...................................................................
-// the app-state holds the document's settings, the same for everyone sharing it:
-// whether completed reminders show. Where a person is (the open list, the pane) stays
-// on their own screen and never enters the app-state: it is one value for the whole
-// document, so another person's navigation would move theirs
-let settingsTimer = null/*no save scheduled*/;
+// the app-state holds the document's settings, the same for everyone sharing it
+// (whether completed reminders show), and each person's place under their User id
+// (`byUser`: the open list and the pane). It is one value for the whole document:
+// each save writes the settings and this person's entry onto the latest state, and
+// two people saving at once can drop one's latest place (they come back to the one
+// before). Nothing is written before the app-state is known. Everyone who reads the
+// document reads every entry
+let writeTimer = null/*no write scheduled*/, settingsPending = false/*a setting changed here, still to be written*/;
+// the signed-in User (null: no one, or not told) and the app-state as last seen
+let me = null, meKnown = false, appStateSeen = null, appStateKnown = false;
+// each person's saved place settles once the lists, they and the app-state are known:
+// restored, unless they already moved, which is then saved instead. A place waiting
+// to be saved names whose it is
+let placeSettled = false, movedEarly = false, placeToSave = null/*nothing waiting*/;
+// a failed save is told once, until a save succeeds
+let saveFailed = false;
 
-/** saves the settings shortly after they change */
-const saveSettings = () => {
-  clearTimeout(settingsTimer);
-  settingsTimer = setTimeout(() => {
-    appState.set({ showCompleted: ui.showCompleted }).catch((error) => console.error('Could not save the app-state', error));
-  }, STATE_SAVE_DELAY_MILLIS);
+/** the person a User is: null for no one */
+const idOf = (user) => (user ? user.id : null);
+/** a failure's reason, as the start of a notice */
+const reasonOf = (error) => ((error && error.message) ? `${error.message} ` : '');
+/** tells the person their place is not kept, and why; their lists still work */
+const noticePlaceUnsaved = (error) => showNotice('Your Place Isn’t Being Saved', `${reasonOf(error)}Your lists still work; reload to try again.`);
+
+/** writes a setting changed here, and the place waiting to be saved, onto the latest
+ *  app-state: once it is known. A setting not changed here stays as last received */
+const writeAppState = () => {
+  writeTimer = null;
+  if(!appStateKnown) return/*written once the app-state is known*/;
+  const latest = (appStateSeen && (typeof appStateSeen === 'object')) ? appStateSeen : {};
+  const byUser = (latest.byUser && (typeof latest.byUser === 'object')) ? latest.byUser : {};
+  const settings = settingsPending ? { showCompleted: ui.showCompleted } : {/*no setting changed here*/};
+  const place = placeToSave ? { [placeToSave.id]: placeToSave.place } : {/*no place waiting*/};
+  settingsPending = false; placeToSave = null;
+  appState.set({ ...latest, ...settings, byUser: { ...byUser, ...place } })
+    .then(() => { saveFailed = false; })
+    .catch((error) => {
+      console.error('Could not save the app-state', error);
+      if('showCompleted' in settings) {
+        if(settingsPending) return/*a newer choice is about to be written*/;
+        showNotice('Show Completed Wasn’t Saved', `${reasonOf(error)}Reload to see the saved setting.`);
+        return;
+      } /* else -- a place alone: the next move saves it */
+      if(saveFailed) return/*already told*/;
+      saveFailed = true;
+      showNotice('Your Place Wasn’t Saved', `${reasonOf(error)}Your lists still work; Tick List tries again when you next move.`);
+    });
+};
+/** writes shortly after a setting or this person's place changes */
+const scheduleWrite = () => {
+  clearTimeout(writeTimer);
+  writeTimer = setTimeout(writeAppState, STATE_SAVE_DELAY_MILLIS);
+};
+/** saves the settings shortly after one changes here */
+const saveSettings = () => { settingsPending = true; scheduleWrite(); };
+
+/** the app-state can no longer be read: nothing waiting is written, and nothing
+ *  later, since the app-state it would be written onto is no longer known */
+const loseAppState = (error) => {
+  console.error('Could not read the app-state', error);
+  appStateKnown = false; appStateSeen = null;
+  clearTimeout(writeTimer); writeTimer = null;
+  settingsPending = false; placeToSave = null;
+  noticePlaceUnsaved(error);
+};
+
+/** saves this person's place once it is settled; a move before then is remembered */
+const savePlace = () => {
+  if(!placeSettled) { movedEarly = true; return; }
+  if(!me) return/*no one signed in, or not told: no place kept*/;
+  placeToSave = { id: me.id, place: { route: ui.route, phoneView: ui.phoneView } };
+  scheduleWrite();
+};
+
+/** shows this person's saved place, once for each person: when the lists, they and
+ *  the app-state are known, and only if they have not moved meanwhile (then their new
+ *  place is saved). Another person's later saves never move this screen */
+const settlePlace = () => {
+  if(placeSettled || !data || !meKnown || !appStateKnown) return/*settled, or still waiting*/;
+  placeSettled = true;
+  if(movedEarly) { movedEarly = false; savePlace(); return; }
+  const saved = me && appStateSeen && appStateSeen.byUser && appStateSeen.byUser[me.id];
+  if(!saved || (typeof saved !== 'object') || !routeInfo(saved.route)) return/*nothing to restore, or its list is gone*/;
+  ui.route = saved.route;
+  ui.phoneView = (saved.phoneView === PhoneView.Detail) ? PhoneView.Detail : PhoneView.Home;
+  safeRender();
+};
+
+/** takes each User the Platform tells. Another person (or no one) ends the place
+ *  work of the one before, whose place is never saved under them, starts from the
+ *  lists and settles their own; the same person with a new name or picture stays
+ *  where they are */
+const receiveUser = (user) => {
+  const another = meKnown && (idOf(user) !== idOf(me));
+  me = user; meKnown = true;
+  if(another) {
+    placeSettled = false; movedEarly = false; placeToSave = null;
+    ui.route = null/*no list open*/; ui.phoneView = PhoneView.Home;
+    safeRender();
+  } /* else -- the first User told, or the same person */
+  settlePlace();
 };
 
 /** takes the settings an app-state holds: true when one changed */
@@ -1844,6 +1936,7 @@ const closeSwipe = () => {
 const go = (route) => {
   ui.route = route;
   ui.phoneView = PhoneView.Detail;
+  savePlace();
   justToggled.clear();
   closeSwipe();
   render();
@@ -1853,6 +1946,7 @@ const go = (route) => {
 
 const goBack = () => {
   ui.phoneView = PhoneView.Home;
+  savePlace();
   app.classList.remove('phone-detail');
   renderHome();
 };
@@ -1984,6 +2078,7 @@ const deleteList = async (id) => {
   if(ui.route && (ui.route.type === RouteType.List) && (ui.route.id === id)) {
     ui.route = null/*the open list is gone*/;
     ui.phoneView = PhoneView.Home;
+    savePlace();
   } /* else -- another list was open */
   render();
 };
@@ -2107,7 +2202,7 @@ const handleAction = (event, element) => {
       // a wide screen adds to the open list; otherwise to the first list
       let target = (isPad() && ui.route) ? ui.route : null/*the first list*/;
       if(!target || isCompletedView()) target = data.lists[0] ? { type: RouteType.List, id: data.lists[0].id } : null/*no list yet*/;
-      if(target) { ui.route = target; ui.phoneView = PhoneView.Detail; }
+      if(target) { ui.route = target; ui.phoneView = PhoneView.Detail; savePlace(); }
       addItem();
       break;
     }
@@ -2230,18 +2325,34 @@ mqPad.addEventListener('change', () => { closeSheet(); render(); });
 // == Boot ========================================================================
 // the settings first, so that the first render shows them; then the lists, as
 // `content$` gives them. The settings are followed as the lists are: another
-// person's change to one shows here too
+// person's change to one shows here too. The signed-in User says whose place is
+// kept; a Platform too old to tell keeps none
 const boot = async () => {
   try {
-    applySettings(await appState.get());
+    const state = await appState.get();
+    if(!settingsPending) applySettings(state)/*a setting changed here stands*/;
   } catch(error) {
     console.warn('Could not read the app-state', error);
   }
-  appState.onChange$().subscribe((state) => {
-    if(!applySettings(state)) return/*no setting changed*/;
-    justToggled.clear();
-    safeRender();
+  appState.onChange$().subscribe({
+    next: (state) => {
+      appStateSeen = state; appStateKnown = true;
+      settlePlace();
+      const changedHere = settingsPending/*before the write below clears it*/;
+      if(!writeTimer && (settingsPending || placeToSave)) writeAppState()/*waited for the app-state*/;
+      if(changedHere) return/*a setting changed here stands over this older state*/;
+      if(!applySettings(state)) return/*no setting changed*/;
+      justToggled.clear();
+      safeRender();
+    },
+    error: loseAppState,
   });
+  if(typeof window.charmiq.user$ === 'function') {
+    window.charmiq.user$().subscribe({
+      next: receiveUser,
+      error: (error) => { receiveUser(null); noticePlaceUnsaved(error); },
+    });
+  } else meKnown = true;
 
   appContent.content$(APP_CONTENT_SELECTOR).subscribe({
     next: receive,

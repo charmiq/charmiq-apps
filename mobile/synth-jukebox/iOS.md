@@ -15,7 +15,7 @@ theme: charmiq:none
   }
 </style>
 
-<iframe-app height="100svh" width="100%" requested-scopes="%5B%22mcp.platform.generation%22%2C%22mcp.platform.vfs%22%5D">
+<iframe-app height="100svh" width="100%" requested-scopes="%5B%22mcp.platform.generation%22%2C%22mcp.platform.vfs%22%2C%22user.read%22%5D">
   <app-source>
 <!doctype html>
 <html lang="en">
@@ -305,7 +305,10 @@ img {
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(175,82,222,.35);
+  overflow: hidden;
 }
+.avatar[hidden] { display: none; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
 .sec-h {
   display: flex;
   align-items: center;
@@ -2321,7 +2324,7 @@ img {
   <section class="pane tabpane" id="tab-home">
     <header class="nav"><div class="nav-bar"><span class="nav-title">Home</span></div></header>
     <div class="scroll" data-th="34">
-      <div class="lt-row"><h1 class="large-title">Home</h1><div class="avatar">BG</div></div>
+      <div class="lt-row"><h1 class="large-title">Home</h1><div class="avatar" id="avatar" hidden></div></div>
       <div id="homeBody"></div>
     </div>
   </section>
@@ -2444,9 +2447,10 @@ img {
 // the Synth Jukebox: a music library of albums composed live on this device from
 // their seed (no audio files), beside the Studio's takes: songs Lyria 3 Pro writes
 // from a description, each an audio file in the User's Drive. The library is the
-// app-content (`library.json`), shared by everyone on the document; the player's
-// place (tab, page, queue, position) is this screen's alone, and the Application has
-// no settings, so it keeps no app-state
+// app-content (`library.json`), shared by everyone on the document. Each person's
+// place (tab, page, queue, position) is kept in the app-state under their User id
+// (`charmiq.user$`, `user.read`), so it is theirs when they come back; the home
+// screen shows their picture, or their initials
 // ********************************************************************************
 (() => {
 'use strict';
@@ -3576,14 +3580,25 @@ let library = null;
 // from, the queue of track keys (`albumId:index`) with the current index (`qi`), the
 // position in seconds (`pos`), the volume (`vol`), the unshuffled queue while
 // shuffled (`orig`), the repeat and stage modes, and the recently played album ids.
-// It is this screen's alone and never enters the app-state: the app-state is one
-// value for everyone sharing the document, so another person's listening would move it
-const state = {
+// Saved in the app-state under the signed-in User's id (`byUser`), restored once for
+// each person the open app is told of; a person with no saved place, or part of one,
+// starts from a fresh place. The app-state is one value for everyone on the
+// document: each save rewrites only this person's entry onto the latest state, and
+// two people saving at once can drop one's latest place (they come back to the one
+// before). Everyone who reads the document can read every entry
+const freshPlace = () => ({
   tab: Tab.Home, route: null/*no detail page open*/, routeTab: Tab.Home,
   queue: [], qi: 0, pos: 0, vol: .8, shuffle: false, orig: null/*not shuffled*/,
   repeat: Repeat.Off, mode: PlayerMode.Art, recent: [],
-};
-let nowPlayingOpen = false, query = '', booted = false;
+});
+const state = freshPlace();
+let nowPlayingOpen = false, query = '', stateTimer = null/*no app-state write pending*/, booted = false;
+// the signed-in User (null: no one, or not told) and the app-state as last seen; each
+// person's saved place is settled once both are known: restored, unless they already
+// changed it, before which nothing is saved over it. A failed save is told once,
+// until a save succeeds
+let me = null, meKnown = false, appStateSeen = null, appStateKnown = false;
+let placeSettled = false, changedEarly = false, restoring = false, saveFailed = false;
 // a detail page waiting for the album it names to be shown
 let pendingRoute = null/*none waiting*/;
 const specCache = {};
@@ -4055,6 +4070,102 @@ const announceTakes = (previous) => {
   });
 };
 
+// .. Place .......................................................................
+// writes this person's place under their User id, at most once per 200ms, onto the
+// app-state as last seen. Nothing is saved while restoring, before the saved place is
+// settled (a change then is remembered and saved once it is), or for no one
+const saveState = () => {
+  if(restoring) return/*the saved place being shown*/;
+  if(!placeSettled) { changedEarly = true; return; }
+  if(!me) return/*no one signed in, or not told: no place kept*/;
+  if(!appStateKnown) return/*the app-state can no longer be read: nothing is written*/;
+  clearTimeout(stateTimer);
+  stateTimer = setTimeout(() => {
+    if(!me) return/*signed out meanwhile*/;
+    const saved = {
+      tab: state.tab, route: state.route, routeTab: state.routeTab,
+      queue: state.queue, qi: state.qi, pos: Math.round(Engine.position() * 10) / 10, vol: state.vol,
+      shuffle: state.shuffle, orig: state.orig, repeat: state.repeat, mode: state.mode, recent: state.recent,
+    };
+    const latest = (appStateSeen && (typeof appStateSeen === 'object')) ? appStateSeen : {};
+    const byUser = (latest.byUser && (typeof latest.byUser === 'object')) ? latest.byUser : {};
+    window.charmiq.appState.set({ ...latest, byUser: { ...byUser, [me.id]: saved } })
+      .then(() => { saveFailed = false; })
+      .catch((error) => {
+        console.warn('appState.set failed', error);
+        if(saveFailed) return/*already told*/;
+        saveFailed = true;
+        toast('Your place wasn’t saved: ' + messageOf(error) + ' Synth Jukebox tries again when you next move.');
+      });
+  }, 200);
+};
+// takes each valid field of a saved place
+const applyState = (saved) => {
+  if(!saved || (typeof saved !== 'object')) return;
+  if(TAB_LABEL[saved.tab]) state.tab = saved.tab;
+  state.route = (saved.route && (typeof saved.route === 'object')) ? saved.route : null/*no detail page open*/;
+  if(TAB_LABEL[saved.routeTab]) state.routeTab = saved.routeTab;
+  if(Array.isArray(saved.queue)) state.queue = saved.queue.filter((key) => typeof key === 'string');
+  if(typeof saved.qi === 'number') state.qi = saved.qi;
+  if(typeof saved.pos === 'number') state.pos = saved.pos;
+  if(typeof saved.vol === 'number') state.vol = clamp(saved.vol, 0, 1);
+  state.shuffle = !!saved.shuffle; state.orig = Array.isArray(saved.orig) ? saved.orig : null/*not shuffled*/;
+  if(Object.values(Repeat).indexOf(saved.repeat) > -1) state.repeat = saved.repeat;
+  if(Object.values(PlayerMode).indexOf(saved.mode) > -1) state.mode = saved.mode;
+  if(Array.isArray(saved.recent)) state.recent = saved.recent;
+};
+// settles the saved place once the library shows and the User and the app-state are
+// known: this person's place is shown unless they already changed it, which is then
+// saved. Settled once for each person: another person's later saves never move this
+// screen
+const settlePlace = () => {
+  if(placeSettled || !booted || !meKnown || !appStateKnown) return/*settled, or still waiting*/;
+  const saved = me && appStateSeen && appStateSeen.byUser && appStateSeen.byUser[me.id];
+  if(saved && !changedEarly) { restoring = true; applyState(saved); showPlace(); restoring = false; }
+  placeSettled = true;
+  if(changedEarly) { changedEarly = false; saveState(); }
+};
+// the person a User is: null for no one
+const idOf = (user) => (user ? user.id : null);
+// shows a fresh place: nothing playing, loaded, queued or open
+const showFreshPlace = () => {
+  Engine.load(null, 0)/*no track, so no sound and no position*/;
+  if(nowPlayingOpen) closeNowPlaying();
+  app.classList.remove('detail-open'); routeHistory = [];
+  Object.assign(state, freshPlace());
+  restoring = true; showPlace(); restoring = false;
+};
+// takes each User the Platform tells. Another person (or no one) ends the place
+// work of the one before, whose place is never saved under them, starts from a
+// fresh place and settles their own; the same person with a new name or picture
+// stays where they are
+const receiveUser = (user) => {
+  const another = meKnown && (idOf(user) !== idOf(me));
+  me = user; meKnown = true;
+  renderAvatar(user);
+  if(another) {
+    clearTimeout(stateTimer); stateTimer = null; placeSettled = false; changedEarly = false;
+    if(booted) showFreshPlace();
+  } /* else -- the first User told, or the same person */
+  if(booted && !app.classList.contains('detail-open') && (state.tab === Tab.Home)) renderHome();
+  settlePlace();
+};
+// tells the person their place is not kept, and why; the music still plays
+const toastPlaceUnsaved = (error) => toast('Your place isn’t being saved: ' + messageOf(error) + ' Reload to try again.');
+
+// .. Avatar ......................................................................
+// the first letters of the first two words of a name
+const initialsOf = (name) => String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0].toUpperCase()).join('');
+// whom the first pick is made for: the User's first name, or "You"
+const firstNameOf = (user) => String((user && user.name) || '').trim().split(/\s+/)[0] || 'You';
+// the signed-in User's picture, else their initials; hidden for no one
+const renderAvatar = (user) => {
+  const avatar = $('#avatar'), initials = initialsOf(user && user.name);
+  avatar.hidden = !user || (!user.imageUrl && !initials);
+  avatar.title = (user && user.name) || '';
+  avatar.innerHTML = (user && user.imageUrl) ? '<img alt="" src="' + escapeHtml(user.imageUrl) + '">' : escapeHtml(initials);
+};
+
 // == Rendering ===================================================================
 // -- Pages -----------------------------------------------------------------------
 // re-renders with `render`, keeping each horizontal shelf's scroll within `element`
@@ -4088,7 +4199,7 @@ const renderHome = () => {
     const albums = playableAlbums(), pressed = albums.filter(isTake);
     let html = '<div class="sec-h">Top Picks for You</div><div class="hscroll">' + albums.slice(0, 6).map((album, i) => {
       const art = artFor(album);
-      return '<button class="pick" data-action="open-album" data-id="' + album.id + '"><img alt="" src="' + art.url + '"><div class="pick-cap" style="background:' + hslColor(art.palette[0], 24) + '"><div class="pick-kicker">' + ((i === 0) ? 'Made for Big G' : isTake(album) ? 'Fresh from the Studio' : albumLabel(album) + ' Mix') + '</div><div class="pick-title">' + escapeHtml(album.title) + '</div><div class="pick-sub">' + escapeHtml(album.artist) + '</div></div></button>';
+      return '<button class="pick" data-action="open-album" data-id="' + album.id + '"><img alt="" src="' + art.url + '"><div class="pick-cap" style="background:' + hslColor(art.palette[0], 24) + '"><div class="pick-kicker">' + ((i === 0) ? 'Made for ' + escapeHtml(firstNameOf(me)) : isTake(album) ? 'Fresh from the Studio' : albumLabel(album) + ' Mix') + '</div><div class="pick-title">' + escapeHtml(album.title) + '</div><div class="pick-sub">' + escapeHtml(album.artist) + '</div></div></button>';
     }).join('') + '</div>';
     html += '<div class="sec-h">Make Something New</div><button class="compose" data-action="compose"><div class="compose-glyph">' + ICON.spark + '</div><div class="compose-k">Infinite Record Label</div><div class="compose-t">Compose an Album</div><div class="compose-s">Tap to mint a record that has never existed. Every note is written on this device, live. No files, no servers, no repeats.</div></button>' +
       '<button class="compose go-studio" data-action="tab" data-t="' + Tab.Studio + '"><div class="compose-glyph">' + ICON.studio + '</div><div class="compose-k">The Studio</div><div class="compose-t">Press a Song</div><div class="compose-s">Describe any song you can imagine. Lyria 3 Pro writes it, plays it and sings it, and it joins your library.</div></button>';
@@ -4388,7 +4499,7 @@ const startCurrent = (position, autoplay) => {
   state.pos = position || 0;
   state.recent = [track.album.id].concat(state.recent.filter((id) => id !== track.album.id)).slice(0, 10);
   if(!app.classList.contains('detail-open') && (state.tab === Tab.Home)) renderHome();
-  onTrackChange();
+  onTrackChange(); saveState();
 };
 // queues list `context` from `key` (absent: its first track), shuffled when `shuffle`
 const playContext = (context, key, shuffle) => {
@@ -4401,7 +4512,7 @@ const playContext = (context, key, shuffle) => {
 };
 const togglePlay = () => {
   const track = current(); if(!track) return;
-  if(Engine.isPlaying()) { Engine.pause(); }
+  if(Engine.isPlaying()) { Engine.pause(); saveState(); }
   else {
     const spec = specOf(track); let position = Engine.position(); if((spec.duration > 0) && (position >= (spec.duration - .2))) position = 0;
     Engine.play(position);
@@ -4426,8 +4537,8 @@ const previousTrack = () => {
 Engine.onended = () => nextTrack(true);
 Engine.source = (spec) => takeUrl(spec.assetId);
 Engine.onerror = (error) => { toast('Could not play: ' + messageOf(error)); updatePlayUI(); };
-Engine.onstopped = () => { updatePlayUI(); };
-Engine.onresumed = () => { updatePlayUI(); };
+Engine.onstopped = () => { updatePlayUI(); saveState(); };
+Engine.onresumed = () => { updatePlayUI(); saveState(); };
 // the ring, wherever the current track's mark stands, while it loads
 Engine.onloading = () => {
   updatePlayUI();
@@ -4445,7 +4556,7 @@ Engine.onduration = (spec) => {
 const playNext = (key) => {
   if(!current()) { state.queue = [key]; state.qi = 0; startCurrent(0, true); return; }
   state.queue.splice(state.qi + 1, 0, key); if(state.orig) state.orig.push(key);
-  if(state.mode === PlayerMode.Queue) renderQueue(); toast('Playing Next');
+  saveState(); if(state.mode === PlayerMode.Queue) renderQueue(); toast('Playing Next');
 };
 const toggleShuffle = () => {
   const currentKey = state.queue[state.qi]; if(!currentKey) return;
@@ -4457,11 +4568,11 @@ const toggleShuffle = () => {
     if(state.orig) { state.queue = state.orig; state.qi = Math.max(0, state.queue.indexOf(currentKey)); }
     state.orig = null/*not shuffled*/; state.shuffle = false;
   }
-  renderQueue();
+  renderQueue(); saveState();
 };
 const cycleRepeat = () => {
   state.repeat = (state.repeat === Repeat.Off) ? Repeat.All : (state.repeat === Repeat.All) ? Repeat.One : Repeat.Off;
-  renderQueue();
+  renderQueue(); saveState();
 };
 
 // == Library Changes =============================================================
@@ -4504,7 +4615,7 @@ const deleteAlbum = async (id, confirmed) => {
     if(state.queue.length > 0) startCurrent(0, false);
     else { closeNowPlaying(); onTrackChange(); }
   } else state.qi = Math.max(0, state.queue.indexOf(currentKey));
-  renderAll();
+  saveState(); renderAll();
   await updateLibrary(removeAlbum(id));
 };
 
@@ -4603,7 +4714,7 @@ const switchTab = (tab) => {
   } /* else -- no detail page to close */
   $$('.tabpane').forEach((pane) => pane.classList.toggle('on', pane.id === ('tab-' + tab)));
   $$('.tab').forEach((button) => button.classList.toggle('on', button.dataset.t === tab));
-  placeIndicator(); updateNavSolid();
+  placeIndicator(); updateNavSolid(); saveState();
 };
 // the detail pages beneath the one open, the nearest last: a page opened from a
 // detail page (an album from a list of songs) returns to it. Not saved: a relaunch
@@ -4617,19 +4728,19 @@ const openRoute = (route) => {
   renderDetail();
   $('#detailScroll').scrollTop = 0;
   app.classList.add('detail-open');
-  updateNavSolid();
+  updateNavSolid(); saveState();
 };
 // returns to the detail page beneath the open one, or to the tab
 const goBack = () => {
   if(routeHistory.length < 1) { closeDetail(); return; }
   state.route = routeHistory.pop();
   renderDetail(); $('#detailScroll').scrollTop = 0;
-  updateNavSolid();
+  updateNavSolid(); saveState();
 };
 // opens an album's page once the album is shown (a just-composed one arrives with its write)
 const openRouteWhenShown = (route) => { if(albumById(route.id)) openRoute(route); else pendingRoute = route; };
 // closes every detail page, returning to the tab
-const closeDetail = () => { app.classList.remove('detail-open'); state.route = null/*no detail page open*/; routeHistory = []; };
+const closeDetail = () => { app.classList.remove('detail-open'); state.route = null/*no detail page open*/; routeHistory = []; saveState(); };
 
 // == Now Playing =================================================================
 // sizes the cover to the largest square the stage holds
@@ -4676,7 +4787,7 @@ const setModeClasses = () => {
   if(state.mode === PlayerMode.Queue) renderQueue();
 };
 // shows `mode` on the stage; the mode shown again returns to the cover
-const setMode = (mode) => { state.mode = (state.mode === mode) ? PlayerMode.Art : mode; setModeClasses(); };
+const setMode = (mode) => { state.mode = (state.mode === mode) ? PlayerMode.Art : mode; setModeClasses(); saveState(); };
 const renderQueue = () => {
   const playingTrack = current(), element = $('#npQueue'); if(!playingTrack) return;
   const upcoming = state.queue.slice(state.qi + 1);
@@ -4962,12 +5073,12 @@ const bindSlider = (element, onMove, onEnd) => {
 };
 bindSlider($('#npScrub'),
   (x) => { const track = current(); if(!track) return; scrubbing = true; scrubPosition = x * specOf(track).duration; },
-  (x) => { const track = current(); scrubbing = false; if(!track) return; const position = x * specOf(track).duration; Engine.seek(position); state.pos = position; setMediaPosition(); });
+  (x) => { const track = current(); scrubbing = false; if(!track) return; const position = x * specOf(track).duration; Engine.seek(position); state.pos = position; saveState(); setMediaPosition(); });
 const setVolumeUI = () => { $('#volFill').style.width = (state.vol * 100) + '%'; };
-bindSlider($('#npVol'), (x) => { state.vol = x; Engine.setVolume(x); setVolumeUI(); });
+bindSlider($('#npVol'), (x) => { state.vol = x; Engine.setVolume(x); setVolumeUI(); }, () => saveState());
 
 // == Frame Loop ==================================================================
-let smoothedEnergy = 0, wasPlaying = false;
+let lastSave = 0, smoothedEnergy = 0, wasPlaying = false;
 // each frame: the progress bars, and the Now Playing background and score
 const frame = (time) => {
   requestAnimationFrame(frame);
@@ -4984,6 +5095,7 @@ const frame = (time) => {
     $('#npArt').style.transform = 'scale(' + (1 + smoothedEnergy * .03).toFixed(4) + ')';
     if(state.mode === PlayerMode.Score) { if(isTakeSpec(spec)) drawAfterglow(time, playing); else drawScore(spec, position); }
   } /* else -- only the mini player's bar shows */
+  if(playing && ((time - lastSave) > 5000)) { lastSave = time; saveState(); }
 };
 
 // == Media Session ===============================================================
@@ -5014,7 +5126,7 @@ try {
   if(navigator.mediaSession) {
     navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack(false));
     navigator.mediaSession.setActionHandler('previoustrack', previousTrack);
-    navigator.mediaSession.setActionHandler('seekto', (details) => { if(!current() || !(details.seekTime >= 0)) return; Engine.seek(details.seekTime); state.pos = details.seekTime; setMediaPosition(); });
+    navigator.mediaSession.setActionHandler('seekto', (details) => { if(!current() || !(details.seekTime >= 0)) return; Engine.seek(details.seekTime); state.pos = details.seekTime; saveState(); setMediaPosition(); });
   } /* else -- no lock screen controls */
 } catch(error) { /*an action the browser does not support*/ }
 
@@ -5169,10 +5281,9 @@ const paintStatic = () => {
   $('#modeScore').innerHTML = ICON.score; $('#modeQueue').innerHTML = ICON.queue;
   $('#plusIco').innerHTML = ICON.plus; $('#moreIco').innerHTML = ICON.dots;
 };
-// shows the library for the first time, restoring the player's saved place
-const boot = () => {
-  if(booted) return;
-  booted = true;
+// shows the player's place: the track loaded at its position, the volume, the tab,
+// the page open and the stage mode
+const showPlace = () => {
   state.qi = clamp(state.qi, 0, Math.max(0, state.queue.length - 1));
   const track = current();
   if(track) Engine.load(specOf(track), clamp(state.pos, 0, specOf(track).duration - 1));
@@ -5188,15 +5299,40 @@ const boot = () => {
   } /* else -- no saved page, or its album is gone */
   setModeClasses(); onTrackChange();
   requestAnimationFrame(() => { placeIndicator(); updateNavSolid(); });
+};
+// shows the library for the first time; the saved place follows once it is known
+const boot = () => {
+  if(booted) return;
+  booted = true;
+  restoring = true; showPlace(); restoring = false;
   requestAnimationFrame(frame);
   typeIdea(); setInterval(tickTakes, 500); setInterval(turnFlaps, 70);
   new ResizeObserver(() => fitMarquees($('#studioBody'))).observe($('#studioBody'))/*shown, or turned: the rows measure again*/;
   // takes left pressing when the app last closed are asked after at once
   schedulePoll(0);
+  settlePlace();
 };
 const init = async () => {
   paintTop();
   paintStatic();
+  // the signed-in User: their avatar, and whose place is kept. A Platform too old
+  // to tell keeps no place
+  if(typeof window.charmiq.user$ === 'function') {
+    window.charmiq.user$().subscribe({
+      next: receiveUser,
+      error: (error) => { receiveUser(null); toastPlaceUnsaved(error); },
+    });
+  } else { meKnown = true; renderAvatar(null); }
+  window.charmiq.appState.onChange$().subscribe({
+    next: (value) => { appStateSeen = value; appStateKnown = true; settlePlace(); },
+    error: (error) => {
+      // nothing waiting is written, and nothing later: the app-state it would be
+      // written onto is no longer known
+      console.warn('appState.onChange$ failed', error);
+      appStateKnown = false; appStateSeen = null; clearTimeout(stateTimer); stateTimer = null;
+      toastPlaceUnsaved(error);
+    },
+  });
   window.charmiq.appContent.content$("[name='" + LIBRARY_NAME + "']").subscribe({
     next: showLibrary,
     error: (error) => {
