@@ -568,6 +568,29 @@ export type CharmIQError = Error & Readonly<{ code?: string; }>;
 // Provides a clean, ergonomic API for iframe applications to advertise their
 // capabilities and discover other applications in the document. Available globally
 // as `window.charmiq`
+/** a color for each of the document's modes: opaque hex, `#rgb` or `#rrggbb` */
+export type PageTopColor = Readonly<{ light: string; dark: string; }>;
+/** a launch of the page: the address it was launched at (`window.launchQueue`'s) */
+export type LaunchParams = Readonly<{ targetURL: string; }>;
+export interface PageAPI {
+  /** asks the page to badge the installed app's icon (0 clears it; absent, a mark with
+   *  no count), as `navigator.setAppBadge` does. Call it during a tap: where a badge
+   *  needs notification permission, the first request asks the User for it */
+  setAppBadge(contents?: number): void;
+  /** asks the page to clear the installed app's icon badge */
+  clearAppBadge(): void;
+
+  /** asks the page to paint `color` behind the Application, for the document's mode.
+   *  A later request replaces an earlier one; nothing is answered */
+  setTopColor(color: PageTopColor): void;
+
+  /** the page's launches, as `window.launchQueue`: the consumer hears the address the
+   *  page opened with, then each later launch of the open app, each once; a later
+   *  consumer replaces it */
+  launchQueue: Readonly<{ setConsumer(consumer: (params: LaunchParams) => void): void; }>;
+}
+
+// --------------------------------------------------------------------------------
 export interface CharmIQAPI {
   /** AppContent API for Application text content with operational transforms. Store
    *  plain text directly in the document that supports collaborative editing.
@@ -700,6 +723,17 @@ export interface CharmIQAPI {
    *  const { names } = await window.charmiq.resources.list('sound/');
    */
   resources: ResourcesAPI;
+
+  /** the page the Application is shown on. In App mode, its first Application may set
+   *  the color the page paints behind it (an installed phone app's status bar, a
+   *  desktop app's title bar), badge the installed app's icon, and hear the page's
+   *  launches, a Home Screen shortcut's included. Elsewhere each does nothing
+   *  @example
+   *  window.charmiq.page.launchQueue.setConsumer(({ targetURL }) => openTab(new URL(targetURL).searchParams.get('tab')));
+   *  window.charmiq.page.setAppBadge(2);
+   *  window.charmiq.page.setTopColor({ light: '#ffffff', dark: '#1c1c1e' });
+   */
+  page: PageAPI;
 
   /** the signed-in User using the Application, then each change to who they are,
    *  their Organizations, the active one, their roles or their features. `null`

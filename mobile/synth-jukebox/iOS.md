@@ -3563,6 +3563,9 @@ const INGREDIENTS = [
 // .. Vocabulary ..................................................................
 const Tab = Object.freeze({ Home: 'home', Library: 'library', Studio: 'studio', Search: 'search' });
 const TAB_LABEL = { [Tab.Home]: 'Home', [Tab.Library]: 'Library', [Tab.Studio]: 'Studio', [Tab.Search]: 'Search' };
+// whether `tab` names one of the tabs: its own key, never an inherited name
+// (`constructor`, `toString`) that a saved place or a launch could carry
+const isTab = (tab) => (typeof tab === 'string') && Object.prototype.hasOwnProperty.call(TAB_LABEL, tab);
 // the page a detail view shows: an album, the Loved Songs list, every song or every
 // pressed take
 const RouteType = Object.freeze({ Album: 'album', Loved: 'loved', Songs: 'songs', Takes: 'takes' });
@@ -4101,9 +4104,9 @@ const saveState = () => {
 // takes each valid field of a saved place
 const applyState = (saved) => {
   if(!saved || (typeof saved !== 'object')) return;
-  if(TAB_LABEL[saved.tab]) state.tab = saved.tab;
+  if(isTab(saved.tab)) state.tab = saved.tab;
   state.route = (saved.route && (typeof saved.route === 'object')) ? saved.route : null/*no detail page open*/;
-  if(TAB_LABEL[saved.routeTab]) state.routeTab = saved.routeTab;
+  if(isTab(saved.routeTab)) state.routeTab = saved.routeTab;
   if(Array.isArray(saved.queue)) state.queue = saved.queue.filter((key) => typeof key === 'string');
   if(typeof saved.qi === 'number') state.qi = saved.qi;
   if(typeof saved.pos === 'number') state.pos = saved.pos;
@@ -4122,6 +4125,7 @@ const settlePlace = () => {
   const saved = me && appStateSeen && appStateSeen.byUser && appStateSeen.byUser[me.id];
   if(saved && !changedEarly) { restoring = true; applyState(saved); showPlace(); restoring = false; }
   placeSettled = true;
+  hearLaunches();
   if(changedEarly) { changedEarly = false; saveState(); }
 };
 // the person a User is: null for no one
@@ -4414,10 +4418,20 @@ const fitMarquees = (root) => {
     line.style.setProperty('--marquee-duration', Math.max(MARQUEE_MIN_S, overflow / MARQUEE_SPEED / .3).toFixed(2) + 's'/*two travels: 60% of the cycle*/);
   });
 };
+// the count the installed app's icon shows: the takes still pressing (0, none). A
+// tap asks again whatever it shows: where the badge needs permission, a tap is when
+// the page can ask
+let badged = 0;
+const badgeIcon = (count, isTap = false) => {
+  if((count === badged) && !isTap) return/*shown*/;
+  badged = count;
+  const page = window.charmiq.page; if(page && page.setAppBadge) page.setAppBadge(count)/*0 clears it*/;
+};
 // the Studio tab's mark while any take has a part still being made: its record
-// spins and counts them
+// spins and counts them, as does the installed app's icon
 const updateStudioTab = () => {
   const count = takes().filter(isTakeAwaited).length, tab = $('#tabStudio');
+  badgeIcon(count);
   tab.classList.toggle('pressing', count > 0);
   let badge = $('.tab-badge', tab);
   if(count < 1) { if(badge) badge.remove(); return; }
@@ -4681,13 +4695,19 @@ const pressDescription = async () => {
   const written = promptField.value.trim(), prompt = written || shownIdea();
   const ingredients = Array.from(picked).sort((a, b) => a - b).map((i) => INGREDIENTS[i].label);
   pressingDescription = true; $('#pressBtn').disabled = true; promptField.blur();
+  // during the tap, with the take about to press: where the icon's badge needs
+  // permission, it is asked now; the press's outcome then settles the count
+  badgeIcon(takes().filter(isTakeAwaited).length + 1, true/*a tap*/);
   const kept = new Set(picked);
   try {
     promptField.value = ''; picked.clear(); renderChips(); resumeIdeas();
     if(await pressTake(prompt, ingredients)) return;
     // not added: the booth holds the description again to retry
     promptField.value = written; kept.forEach((i) => picked.add(i)); renderChips();
-  } finally { pressingDescription = false; $('#pressBtn').disabled = false; }
+  } finally {
+    pressingDescription = false; $('#pressBtn').disabled = false;
+    badgeIcon(takes().filter(isTakeAwaited).length)/*the takes actually pressing*/;
+  }
 };
 
 // == Navigation ==================================================================
@@ -4699,7 +4719,7 @@ const placeIndicator = () => {
 };
 // selects a tab; the selected tab again closes its detail page or scrolls it to the top
 const switchTab = (tab) => {
-  if(!TAB_LABEL[tab]) tab = Tab.Home;
+  if(!isTab(tab)) tab = Tab.Home;
   if(state.tab === tab) {
     if(app.classList.contains('detail-open')) closeDetail();
     else { const scroll = $('#tab-' + tab + ' .scroll'); if(scroll) scroll.scrollTo({ top: 0, behavior: 'smooth' }); }
@@ -4747,6 +4767,13 @@ const layoutNowPlaying = () => {
   const stage = $('#npStage'), size = Math.min(stage.clientWidth, stage.clientHeight);
   nowPlaying.style.setProperty('--art', Math.max(120, size) + 'px');
 };
+// the page's launches, a Home Screen shortcut's included: `?tab=<tab>` opens that tab.
+// Heard once the person's place is settled, so a launch wins over the saved tab
+const openLaunch = ({ targetURL }) => {
+  let tab = null; try { tab = new URL(targetURL).searchParams.get('tab'); } catch(e) { /*not an address*/ }
+  if(isTab(tab)) switchTab(tab);
+};
+const hearLaunches = () => { const page = window.charmiq.page; if(page && page.launchQueue) page.launchQueue.setConsumer(openLaunch); };
 // the status bar continues what is at the top of the screen: the page's own
 // background, or the Now Playing sheet's base color under its veil (SEE:
 // drawBackground)
