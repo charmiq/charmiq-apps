@@ -584,9 +584,11 @@ export interface PageAPI {
    *  A later request replaces an earlier one; nothing is answered */
   setTopColor(color: PageTopColor): void;
 
-  /** the page's launches, as `window.launchQueue`: the consumer hears the address the
-   *  page opened with, then each later launch of the open app, each once; a later
-   *  consumer replaces it */
+  /** the page's launches, as `window.launchQueue`: the consumer hears the page's latest
+   *  launch not yet heard (the address it opened with, or a shortcut since: one replaced
+   *  before the consumer was set is never heard), then each later launch of the open
+   *  app, several chosen together collapsing to the latest, each once; a later consumer
+   *  replaces it */
   launchQueue: Readonly<{ setConsumer(consumer: (params: LaunchParams) => void): void; }>;
 }
 
