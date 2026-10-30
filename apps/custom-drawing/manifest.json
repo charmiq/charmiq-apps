@@ -3,7 +3,6 @@
   "name": "Custom Drawing",
   "description": "An SVG drawing canvas with shape tools, text, images, rotation, grouping, and export — with reactive state sync and an LLM command surface",
   "requestedScopes": [
-    "application.advertise",
     "asset.read",
     "asset.upload",
     "command.asset.copy.toRichtextAsset",

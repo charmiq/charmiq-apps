@@ -3,7 +3,6 @@
   "name": "Shader Demo",
   "description": "A minimal Shadertoy-style live GLSL player — pulls its fragment shader from a sibling CodeMirror editor and its iChannel textures from a sibling Image Gallery",
   "requestedScopes": [
-    "application.advertise",
     "application.discover",
     "application.call"
   ],

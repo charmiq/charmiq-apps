@@ -3,7 +3,6 @@
   "name": "Stop Motion",
   "description": "The timeline of a stop-motion film of toy-brick scenes: the scene is code in a code editor's scene.js tab, the film plays in Brick Studio, the screen, and scrubs on the timeline, exports as an MP4, and saves to the Drive as one film (its set and its scene). A scene plays sound with sound.at(time, sound, { volume, until }) or actor.sound(time, sound, { volume, until }) to follow an actor across the picture: the sound is any audio file in the Platform named by its URI, charmiq://file/<assetId> (an Asset you upload, download, or generate: create_speech and create_music return assetIds; use 'charmiq://file/' + assetId). cutOut(from, to) cuts that span of the scene's time out of the film, as an editor cuts frames: nothing before it changes, from there the film shows what to and on showed, so whatever moves across it jumps (a cut to the next shot at to hides that); a sound under way plays on. Every command keeps the scene's own times",
   "requestedScopes": [
-    "application.advertise",
     "application.discover",
     "application.call",
     "mcp.platform.vfs"

@@ -602,8 +602,8 @@ export interface CharmIQAPI {
    *  Use this for app-to-app communication (e.g. a previewer subscribing to an
    *  editor's text stream). For host-callable commands described by JSON-Schema
    *  in the app's manifest, use {@link CharmIQAPI.exportCommands} instead —
-   *  calling `advertise('charmiq.command', ...)` will throw. Declares
-   *  `application.advertise`.
+   *  calling `advertise('charmiq.command', ...)` will throw. Needs no declaration:
+   *  any Application may advertise.
    *  @example
    *  window.charmiq.advertise('counter', {
    *    increment: () => ++count,

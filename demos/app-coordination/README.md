@@ -6,7 +6,7 @@
 
 One app owns the state. It advertises a `"counter"` capability with methods (`increment`, `decrement`, `reset`, `add(amount)`) and a reactive `value$()` stream, and exports two commands (`lastValue`, `setValue({ value })`). Any app on the page can discover both.
 
-<iframe-app height="350px" width="100%" requested-scopes="%5B%22application.advertise%22%5D">
+<iframe-app height="350px" width="100%">
   <app-source>
 <!DOCTYPE html>
 <html>
@@ -573,7 +573,7 @@ These three apps share no code and have no knowledge of each other at build time
 
 **Streams across iframes** — the provider's `value$()` returns a `BehaviorSubject` observable. The observer subscribes to it through the proxy, receiving live updates as the controller clicks buttons. RxJS operators like `switchMap` and `retry` work normally across the boundary.
 
-**What each declares** — the provider declares `application.advertise` (announcing `counter` and its commands); the controller and the observer each declare `application.discover` (finding it) and `application.call` (calling its methods and following `value$()`). Each declaration is the `requested-scopes` on its `<iframe-app>`.
+**What each declares** — the provider declares nothing: advertising requires no declaration or consent (here `counter` and its commands); calling it still follows the caller's existing permission rules. The controller and the observer each declare `application.discover` (finding it) and `application.call` (calling its methods and following `value$()`), and each is decided separately. Each declaration is the `requested-scopes` on its `<iframe-app>`.
 
 **Charms can play too** — the provider's commands are the ones a Charm calls. A Charm is told the commands of apps loaded from a `charmiq://` source with a manifest; inline apps like these three it is not told about, so it reaches them through Run Code, a short script that discovers and calls them as the controller does: `const counter = await charmiq.discover('charmiq.command'); return await counter.setValue({ value: 10 });`.
 

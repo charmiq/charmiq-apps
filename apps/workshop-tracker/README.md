@@ -46,5 +46,5 @@ empty, plus one-shot and auto random "student edited something" mutations to
 exercise the live stream. Embed it in place of the Workshop Manager on a test
 page:
 
-<iframe-app height="300px" width="100%" src="charmiq://./mock/roster.html" requested-scopes="%5B%22mcp.platform.vfs%22%2C%22application.advertise%22%5D">
+<iframe-app height="300px" width="100%" src="charmiq://./mock/roster.html" requested-scopes="%5B%22mcp.platform.vfs%22%5D">
 </iframe-app>

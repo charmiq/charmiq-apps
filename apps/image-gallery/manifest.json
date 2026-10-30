@@ -3,7 +3,6 @@
   "name": "Image Gallery",
   "description": "A minimal image gallery backed by platform Assets, with optional labelled slots that other apps can discover and subscribe to",
   "requestedScopes": [
-    "application.advertise",
     "asset.read",
     "command.asset.copy.toRichtextAsset",
     "command.modal.mediaImport.openAndResolve"

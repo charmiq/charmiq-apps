@@ -10,7 +10,7 @@ Unlike the other `apps/`, this is currently a single-file Source application wit
 
 ## Embedding
 
-<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22user.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.richtext.metadata.set%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%2C%22application.advertise%22%5D">
+<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22user.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.richtext.metadata.set%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%5D">
 </iframe-app>
 
 The `requested-scopes` value is the percent-encoded JSON array:
@@ -19,10 +19,10 @@ The `requested-scopes` value is the percent-encoded JSON array:
 ["user.read", "userProfile.search", "mcp.platform.vfs",
  "command.richtext.copy", "command.richtext.metadata.set",
  "command.folder.permission.set", "command.folder.delete",
- "command.folder.name.set", "command.admin.agent.create", "application.advertise"]
+ "command.folder.name.set", "command.admin.agent.create"]
 ```
 
-Its app-state holds everything it keeps (folder config, name pattern, Owners, roster, per-student clone mappings); app-state is the Application's own, so it needs no declaration.
+Its app-state holds everything it keeps (folder config, name pattern, Owners, roster, per-student clone mappings); app-state is the Application's own, so it needs no declaration. It advertises `workshop-data` to the workshop tracker on the same page; advertising needs no declaration either.
 
 | Scope | Used for |
 |---|---|
@@ -35,7 +35,6 @@ Its app-state holds everything it keeps (folder config, name pattern, Owners, ro
 | `command.folder.delete` | Deletes a removed template folder's copy once it is verifiably empty |
 | `command.folder.name.set` | Renames a student's folder when the student is renamed (only if the student has not renamed it themselves) |
 | `command.admin.agent.create` | Import Charms: creates private Agents for a student from their cloned Charm copies (Admin / DefaultAgentAdmin only) |
-| `application.advertise` | Advertises `workshop-data` to the workshop tracker on the same page |
 
 ## User search
 

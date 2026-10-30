@@ -3,9 +3,8 @@
   "name": "Review",
   "description": "A document's review notes: a person stops where something is wrong in what the document's Applications show, circles it on the picture or marks its span on the timeline, and writes a few words. Read the notes with listNotes, show each with showNote (the moment and its marks come back on the picture and the timeline, so a screenshot or a measurement sees what the person saw), fix what it points at, and answer it with replyToNote. Only the person closes a note.",
   "requestedScopes": [
-    "application.discover",
     "application.call",
-    "application.advertise"
+    "application.discover"
   ],
   "bundle": {
     "entry": {

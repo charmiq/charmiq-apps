@@ -3,9 +3,8 @@
   "name": "Gmail Inbox",
   "description": "A read-only, multi-account Gmail inbox — a master-detail viewer built on the CharmIQ OAuth bridge, agent-drivable, with obvious hooks to make it read-write",
   "requestedScopes": [
-    "oauth.token",
     "oauth.manage",
-    "application.advertise"
+    "oauth.token"
   ],
   "bundle": {
     "format": "esm",
