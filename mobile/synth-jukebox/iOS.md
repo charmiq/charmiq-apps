@@ -172,7 +172,6 @@ img {
   z-index: 2;
   transform: translateX(100%);
   transition: transform .5s var(--ease);
-  box-shadow: -10px 0 30px rgba(0,0,0,.1);
 }
 #app.detail-open #detail {
   transform: none;
