@@ -1533,6 +1533,15 @@ export const filmLengthOf = (film: Film): number => film.frames.length / film.sc
 /** the frame showing a scene's time: the nearest, the later of two as near */
 export const frameAtTime = (film: Film, time: number): number => Math.max(0, Math.min(film.frames.length - 1, Math.round(filmTimeOf(film, time) * film.scene.fps)));
 
+/** a frame's timecode, minutes:seconds:frames: the seconds of the film its frame starts
+ *  in, and its frame counted from the first frame starting in that second (at 24000 /
+ *  1001 a second's first frame stands where its whole frames begin, 24 at 1 s) */
+export const timecodeOf = (index: number, fps: number): string => {
+  const seconds = Math.floor((index / fps) + 1e-9/*a second's own first frame*/);
+  const frames = index - Math.ceil((seconds * fps) - 1e-9);
+  return [Math.floor(seconds / 60), seconds % 60, frames].map(value => String(value).padStart(2, '0')).join(':');
+};
+
 // == Turns =======================================================================
 // row-major rotation rows in LDraw's frame (y down), as the stage turns an actor (SEE:
 // brick-shared/turn.ts)

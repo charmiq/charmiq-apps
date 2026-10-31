@@ -1,29 +1,25 @@
 import * as THREE from 'three';
-import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
+import { DepthOfFieldPass } from './depthOfField';
 import type { Fidelity } from './fidelity';
+import { GRADE_GLSL, type Grade } from './grade';
+import { farBlurShare } from './lens';
 
 // the rasterized frame at a stop. Stops 0 and 1 render straight to the canvas;
 // stop 2 adds ambient occlusion (the dark in creases, seams and under overhangs);
 // stop 3 adds what a macro photo of a toy has: a shallow depth of field, a faint
 // vignette and grain. A lens with its own aperture (a film's camera) brings the depth
-// of field to every stop, focused where the lens says
+// of field to every stop, focused where the lens says. The depth of field is a thin
+// lens's through the camera's field of view (SEE: lens.ts)
 // ********************************************************************************
 // == Constants ===================================================================
-/** the f-number a stop's own depth of field opens to (Photo's macro look) */
-export const DEFAULT_APERTURE = 8;
-/** blur per unit of distance from focus, times the distance in focus and the
- *  f-number: the same look at any zoom, shallower as the f-number falls */
-const BLUR_AT_F1 = 0.096;
-/** the most a point blurs (a share of the frame), times the f-number, and the most
- *  at any f-number */
-const MAX_BLUR_AT_F1 = 0.032;
-const MOST_BLUR = 0.03;
+/** the f-number a stop's own depth of field opens to (Photo's toy-photo look) */
+export const DEFAULT_APERTURE = 22;
 
 // == Types =======================================================================
 /** how a frame is focused: the distance in focus (along the view, scene units) and
@@ -50,13 +46,30 @@ const FINISH_SHADER = {
     }`,
 };
 
+/** a stage light's white balance and saturation over the frame's light, before its
+ *  tone curve (SEE: grade.ts) */
+const GRADE_SHADER = {
+  uniforms: { tDiffuse: { value: null }, gradeWhite: { value: new THREE.Vector3(1, 1, 1) }, gradeSaturation: { value: 1 } },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    ${GRADE_GLSL}
+    void main() { vec4 color = texture2D(tDiffuse, vUv); gl_FragColor = vec4(grade(color.rgb), color.a); }`,
+};
+
 // == Effects =====================================================================
 export class Effects {
   private composer: EffectComposer | undefined;
-  private bokeh: BokehPass | undefined;
+  private bokeh: DepthOfFieldPass | undefined;
   private fidelity: Fidelity = 0;
   /** a depth of field at every stop: a lens of its own aperture asks for one */
   private depthOfField = false;
+  /** a stage light's grade, at every stop */
+  private grade: Grade | undefined;
+  private gradePass: ShaderPass | undefined;
   private width = 1;
   private height = 1;
 
@@ -79,17 +92,38 @@ export class Effects {
     if(this.bokeh) this.bokeh.enabled = this.blurs;
   }
 
+  /** grades the frame at every stop (SEE: grade.ts); none draws it as lit. The chain
+   *  built for one stays until the stop changes, its pass switched off without one */
+  public setGrade(grade: Grade | undefined): void {
+    this.grade = grade;
+    if(grade && !this.gradePass) this.build();
+    if(!this.gradePass) return;
+    this.gradePass.enabled = !!grade;
+    this.gradeUniforms();
+  }
+
+  /** the grade pass's white and saturation as the grade says */
+  private gradeUniforms(): void {
+    if(!this.gradePass || !this.grade) return;
+    const { uniforms } = this.gradePass;
+    [uniforms.gradeWhite.value, uniforms.gradeSaturation.value] = [new THREE.Vector3(...this.grade.white), this.grade.saturation];
+  }
+
+  /** whether the frame draws through the chain: a stop's own passes, a lens's depth
+   *  of field or a grade */
+  private get chained(): boolean { return (this.fidelity >= 2) || this.depthOfField || !!this.grade; }
+
   /** whether the frame draws a depth of field: Photo's own, or a lens's */
   private get blurs(): boolean { return (this.fidelity >= 3) || this.depthOfField; }
 
   /** the passes the stop and the depth of field take */
   private build(): void {
-    const { fidelity, depthOfField } = this;
+    const { fidelity, depthOfField, grade } = this;
     // each pass's own targets and materials, then the composer's
     for(const pass of this.composer?.passes ?? []) pass.dispose();
     this.composer?.dispose();
-    this.composer = this.bokeh = undefined;
-    if((fidelity < 2) && !depthOfField) return/*straight to the canvas*/;
+    this.composer = this.bokeh = this.gradePass = undefined;
+    if(!this.chained) return/*straight to the canvas*/;
 
     // a multisampled half-float target keeps edges smooth and highlights unclipped
     const target = new THREE.WebGLRenderTarget(this.width, this.height, { type: THREE.HalfFloatType, samples: 4 });
@@ -105,9 +139,15 @@ export class Effects {
     } /* else -- no occlusion below Shaded */
 
     if((fidelity >= 3) || depthOfField) {
-      this.bokeh = new BokehPass(this.scene, this.camera, { focus: 1, aperture: 0, maxblur: 0 });
+      this.bokeh = new DepthOfFieldPass(this.scene, this.camera);
       composer.addPass(this.bokeh);
     } /* else -- everything in focus */
+
+    if(grade) {
+      this.gradePass = new ShaderPass(GRADE_SHADER);
+      this.gradeUniforms();
+      composer.addPass(this.gradePass);
+    } /* else -- the frame as lit */
 
     composer.addPass(new OutputPass()/*tone mapping and color space*/);
     if(fidelity >= 3) composer.addPass(new ShaderPass(FINISH_SHADER));
@@ -119,13 +159,9 @@ export class Effects {
   /** whether the frame draws a depth of field, so is focused at all */
   public get focuses(): boolean { return !!this.bokeh && this.blurs; }
 
-  /** focuses the depth of field as the lens says */
+  /** focuses the depth of field as the lens says, through the camera's field of view */
   public focus({ distance, aperture = DEFAULT_APERTURE }: Lens): void {
-    if(!this.bokeh) return;
-    const { uniforms } = this.bokeh.materialBokeh;
-    uniforms.focus.value = distance;
-    uniforms.aperture.value = BLUR_AT_F1 / (aperture * Math.max(distance, 1));
-    uniforms.maxblur.value = Math.min(MOST_BLUR, MAX_BLUR_AT_F1 / aperture);
+    this.bokeh?.focus(distance, farBlurShare({ fov: this.camera.fov, aperture, focus: distance }));
   }
 
   public setSize(width: number, height: number): void {
@@ -136,7 +172,7 @@ export class Effects {
   }
 
   public render(): void {
-    if(this.composer && ((this.fidelity >= 2) || this.depthOfField)) this.composer.render();
+    if(this.composer && this.chained) this.composer.render();
     else this.renderer.render(this.scene, this.camera)/*straight to the canvas, a chain kept for a lens aside*/;
   }
 }

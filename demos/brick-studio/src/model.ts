@@ -1,7 +1,7 @@
 import type { ContentChange } from '../../../shared/charmiq';
 import { isSkyLine, skyLine, skyOf, type Sky } from '../../brick-shared/sky';
 import { type CatalogPart, type FigureFace, type FigurePieces, ACCESSORIES, COLORS, DEFAULT_FIGURE_FACE, FIGURE_COLORS, FIGURE_FACES } from './catalog';
-import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartByLDraw, getPartsByLDraw, getShape, gridPosition, type PartShape, isInheritedColor, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
+import { carriedLines, compose, copyPosition, copyTransform, footprintOf, getColor, getColorByCode, getPart, getPartsByLDraw, getShape, gridPosition, type PartShape, isInheritedColor, matrixRotation, mountedCopy, mountsOf, mountSlots, mountTransform, onSafeGrid, placedLines, poseLift, unseated, INHERITED_COLOR, type Copy, type Footprint, type Gear, type Mount, type PartLine, type Placement, type Transform } from './grid';
 import { maxOf, minOf } from './numbers';
 import { isPictureLine, pictureOf, type Picture } from './picture';
 import { isPinLine, pinOf, type Pin } from './pin';
@@ -1196,18 +1196,23 @@ const splitLines = (text: string): Line[] => {
 };
 
 // --------------------------------------------------------------------------------
-/** the Placement an LDraw part line is, when it is a catalog part on the grid */
+/** the Placement an LDraw part line is, when it is a catalog part on the grid: the
+ *  first of its file's parts it reads as, a seated part's seat undone (a casement on
+ *  its window's west pins or its east) */
 const toPlacement = (reference: string, colorCode: number, transform: Transform): Placement | undefined => {
-  const part = getPartByLDraw(reference.replace(/\.dat$/, ''));
   const color = getColorByCode(colorCode);
-  const rotation = matrixRotation(transform.matrix);
-  if(!part || !color || (rotation === undefined)) return undefined;
-
-  const shape = getShape(part);
-  const position = gridPosition(shape, rotation, transform.position);
-  if(!position) return undefined;
-  const placement: Placement = { part: part.key, color: color.key, rotation, ...position };
-  return onSafeGrid(shape, placement) ? placement : undefined/*off the grid's safe numbers: an unchecked part*/;
+  if(!color) return undefined;
+  for(const part of getPartsByLDraw(reference.replace(/\.dat$/, ''))) {
+    const frame = unseated(part, transform);
+    const rotation = matrixRotation(frame.matrix);
+    if(rotation === undefined) continue;
+    const shape = getShape(part);
+    const position = gridPosition(shape, rotation, frame.position);
+    if(!position) continue;
+    const placement: Placement = { part: part.key, color: color.key, rotation, ...position };
+    if(onSafeGrid(shape, placement)) return placement;
+  }
+  return undefined/*off the grid, or off its safe numbers: an unchecked part*/;
 };
 
 const normalizeName = (name: string): string => name.trim().replace(/\\/g, '/').toLowerCase();

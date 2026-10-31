@@ -163,7 +163,7 @@ export class GaitView {
     addEventListener('keydown', event => {
       if(this.root.hidden || !this.film || ((event.key !== 'ArrowLeft') && (event.key !== 'ArrowRight'))) return;
       if((event.target instanceof HTMLInputElement) || (event.target instanceof HTMLSelectElement) || (event.target instanceof HTMLTextAreaElement)) return/*its own keys*/;
-      this.host.step(((event.key === 'ArrowLeft') ? -1 : 1) * (event.shiftKey ? this.film.scene.fps : 1));
+      this.host.step(((event.key === 'ArrowLeft') ? -1 : 1) * (event.shiftKey ? Math.round(this.film.scene.fps)/*a second's frames*/ : 1));
       event.preventDefault();
     });
 

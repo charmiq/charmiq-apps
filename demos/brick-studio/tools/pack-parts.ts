@@ -291,8 +291,8 @@ const measurePart = (library: string, part: CatalogPart) => {
   const { body: measured, studTop, ownStud } = bodyOfAssembly(library, part);
 
   const lowest = measured.maxY / LDU_PER_PLATE/*plates from the origin down to the bottom*/;
-  if(!isWhole(lowest) && !part.pieces) throw new Error(`${ldraw}: bottom ${lowest} plates below the origin is not on a level.`);
-  const base = Math.round(lowest);
+  if(!isWhole(lowest) && !isWhole(lowest * 2) && !part.pieces) throw new Error(`${ldraw}: bottom ${lowest} plates below the origin is not on a level or half a level.`);
+  const base = (part.pieces || isWhole(lowest)) ? Math.round(lowest) : (Math.round(lowest * 2) / 2)/*a flower stem's base, a plate and a half under its stud*/;
   const body = { ...measured, maxY: base * LDU_PER_PLATE/*the level it stands on*/ };
   const bottomFace = body.triangles.flat().filter(([, y]) => Math.abs(y - measured.maxY) < EPSILON)/*its lowest points*/;
   const [minX, maxX] = gridSpan(body.minX, body.maxX, minOf(bottomFace.map(([x]) => x)), maxOf(bottomFace.map(([x]) => x)), ownStud?.[0]);
@@ -636,10 +636,10 @@ writeFileSync(MANIFEST, nextManifest);
 // each part's facts by its name: parts assembled on one file (a holder under different
 // wheels) measure apart
 const measured = Object.fromEntries(CATALOG.filter(part => !part.frame).map(part => [part.key, measurePart(library, part)]));
-// a pane takes its frame's grid shape and fills nothing: it sits in the frame's
-// opening, dropped to the frame's sill
+// a seated part takes its frame's grid shape and fills nothing: a pane sits in the
+// frame's opening, dropped to the frame's sill; any other at its seat
 const frameKey = (frame: string): string => CATALOG.find(other => other.ldraw === frame)!.key/*by contract: a catalog frame*/;
-const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.key, { ...measured[frameKey(part.frame)], studs: [], fill: [], drop: paneDrop(library, part.ldraw, part.frame) }]] : [])) };
+const geometry = { ...measured, ...Object.fromEntries(CATALOG.flatMap(part => part.frame ? [[part.key, { ...measured[frameKey(part.frame)], studs: [], fill: [], ...(part.seat ? {} : { drop: paneDrop(library, part.ldraw, part.frame) }) }]] : [])) };
 // each posable part's fill by pose, in its standing frame
 const poses = Object.fromEntries(CATALOG.filter(part => part.limbs).map(part => [part.key, measurePose(library, part, measured[part.key])]));
 // each hand item's box in its own frame, as an actor of its own stands it

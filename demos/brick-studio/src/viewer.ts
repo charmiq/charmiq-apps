@@ -19,6 +19,7 @@ import { AutoFocus } from './render/autofocus';
 import { Effects, type Lens } from './render/effects';
 import { PATH_TRACED_PARTS, type Fidelity } from './render/fidelity';
 import { framedShare, frameView, type FramingAim, type Share, type ViewPoint } from './render/framing';
+import { gradeOf, keyDirection } from './render/grade';
 import { drawOverlay, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
@@ -207,6 +208,10 @@ export class Viewer {
   private readonly sky = new THREE.HemisphereLight(0xfffaf0, 0xd8d0c0, 0.5);
   private readonly room: THREE.Texture;
   private studio: Studio | undefined;
+  /** the direction the studio was captured lit from */
+  private studioToward = '';
+  /** where the sun's light and shadow cover: the baseplate's middle and its reach */
+  private sunOver: Readonly<{ center: THREE.Vector3; reach: number; }> | undefined;
   private readonly effects: Effects;
   private pathTrace: PathTrace | undefined;
   private pathTraceStale = true;
@@ -581,7 +586,9 @@ export class Viewer {
   private applyLook(fidelity: Fidelity): void {
     const draft = (fidelity < 1);
     const { key = 1, fill = 1, exposure = 1, soft = 0 } = this.stageLight;
-    if(!draft) this.studio ??= createStudio(this.renderer, KEY_DIRECTION);
+    if(!draft) this.captureStudio();
+    this.aimSun();
+    this.effects.setGrade(gradeOf(this.stageLight));
     this.scene.environment = this.backdrop.environment ?? (draft ? this.room : this.studio!.environment);
     this.scene.environmentIntensity = (draft ? 0.42 : 0.9) * fill * (this.backdrop.environment ? SKY_LIGHT : 1);
     this.sky.intensity = (draft ? 0.5 : 0.1) * fill;
@@ -1429,17 +1436,39 @@ export class Viewer {
     this.baseplate = plate;
     this.scene.add(plate);
 
-    // the sun stands high to the south-west of the plate and its shadow covers it
-    const reach = Math.max(width, depth, size.y * 2);
-    const plateCenter = new THREE.Vector3(minX + (width / 2), 0, minZ + (depth / 2));
-    this.sun.target.position.copy(plateCenter);
-    this.sun.position.copy(plateCenter).add(new THREE.Vector3(-0.45, 1, 0.6).normalize().multiplyScalar(reach * 1.5));
+    // the sun's shadow covers the plate
+    this.sunOver = { center: new THREE.Vector3(minX + (width / 2), 0, minZ + (depth / 2)), reach: Math.max(width, depth, size.y * 2) };
+    this.aimSun();
+  }
+
+  /** the direction toward the key light: where a stage's light stands it, else the
+   *  look's own, high to the south-west */
+  private keyToward(): THREE.Vector3 {
+    const from = this.stageLight.from;
+    return from ? new THREE.Vector3(...keyDirection(from)) : KEY_DIRECTION.clone();
+  }
+
+  /** stands the sun toward the key over the baseplate, its shadow covering it */
+  private aimSun(): void {
+    if(!this.sunOver) return/*no baseplate yet*/;
+    const { center, reach } = this.sunOver;
+    this.sun.target.position.copy(center);
+    this.sun.position.copy(center).add(this.keyToward().multiplyScalar(reach * 1.5));
     const camera = this.sun.shadow.camera;
     camera.left = camera.bottom = -reach * 0.75;
     camera.right = camera.top = reach * 0.75;
     camera.near = 0.1;
     camera.far = reach * 4;
     camera.updateProjectionMatrix();
+  }
+
+  /** the studio lit from the key's direction, captured afresh when the key moves */
+  private captureStudio(): void {
+    const toward = this.keyToward(), key = toward.toArray().join(',');
+    if(this.studio && (this.studioToward === key)) return;
+    this.studio?.dispose();
+    this.studio = createStudio(this.renderer, toward);
+    this.studioToward = key;
   }
 
   // ------------------------------------------------------------------------------
@@ -1635,6 +1664,7 @@ export class Viewer {
       tracer.moved(this.lens());
     } /* else -- still: keep refining */
     this.cameraMoved = false;
+    tracer.setGrade(gradeOf(this.stageLight));
     tracer.render();
     return tracer.refining;
   }

@@ -1664,6 +1664,42 @@
 4 16 -24.485 4 -4 -12.485 16 -4 -15.515 16 -4 -27.515 4 -4
 4 16 -4.485 4 -4 7.515 16 -4 4.485 16 -4 -7.515 4 -4
 4 16 15.515 4 -4 27.515 16 -4 24.485 16 -4 12.485 4 -4
+0 FILE 3856.dat
+0 Window  1 x  2 x  3 Shutter
+0 Name: 3856.dat
+0 Author: James Jessiman
+0 !LDRAW_ORG Part UPDATE 2009-03
+0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt
+
+0 BFC CERTIFY CCW
+
+0 !HISTORY 1998-06-20 [PTadmin] Official Update 1998-06
+0 !HISTORY 2002-10-17 [Holly-Wood] Rewrote part; deleted floating edges; added missing edges on ridges; made BFC compliant
+0 !HISTORY 2004-03-02 [PTadmin] Official Update 2004-01
+0 !HISTORY 2007-10-12 [PTadmin] Header formatted for Contributor Agreement
+0 !HISTORY 2008-07-01 [PTadmin] Official Update 2008-01
+0 !HISTORY 2009-02-08 [anathema] Added bumps
+0 !HISTORY 2009-02-22 [anathema] Rebuilt using new subparts
+0 !HISTORY 2009-12-29 [PTadmin] Official Update 2009-03
+
+
+1 16 0 8 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 12 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 16 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 20 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 24 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 28 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 32 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 36 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 40 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 44 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 48 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 52 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 56 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 60 0 1 0 0 0 1 0 0 0 1 s\3856s01.dat
+1 16 0 0 0 1 0 0 0 1 0 0 0 1 s\3856s02.dat
+1 16 0 68 0 -1 0 0 0 -1 0 0 0 1 s\3856s02.dat
+0
 0 FILE 4070.dat
 0 Brick  1 x  1 with Headlight
 0 Name: 4070.dat
@@ -2684,6 +2720,76 @@
 4 15 5.5 12.5 0 2 17.5 0 5 17.5 0 7 14.643 0
 4 15 7 14.643 0 8.5 12.5 0 7 10.357 0 5.5 12.5 0
 4 15 17 17.5 0 17 7.5 0 14 7.5 0 14 17.5 0
+0 FILE parts/s/3856s01.dat
+0 ~Window  1 x  2 x  3 Shutter - Middle
+0 Name: s\3856s01.dat
+0 Author: Alex Taylor [anathema]
+0 !LDRAW_ORG Subpart UPDATE 2009-03
+0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt
+
+0 BFC CERTIFY CCW
+
+0 !HISTORY 2009-12-29 [PTadmin] Official Update 2009-03
+
+
+2 24 2 -1.5 -36 2 1.5 -36
+2 24 2 -1.5 -2 2 1.5 -2
+2 24 -2 -1.5 -36 -2 1.5 -36
+2 24 -2 -1.5 -2 -2 1.5 -2
+4 16 2 -1.5 -2 2 1.5 -2 2 2 0 2 -2 0
+4 16 2 -2 -39 2 2 -39 2 1.5 -36 2 -1.5 -36
+4 16 -2 -2 0 -2 2 0 -2 1.5 -2 -2 -1.5 -2
+4 16 -2 -2 -39 -2 -1.5 -36 -2 1.5 -36 -2 2 -39
+1 16 0 -2 0 2 0 0 0 4 0 0 0 2 2-4cyli.dat
+0 BFC INVERTNEXT
+1 16 0.5 0 -36 1.49977 0 1.49977 1.49977 0 -1.49977 0 34 0 tri3a1.dat
+0 BFC INVERTNEXT
+1 16 -0.5 0 -36 -1.49977 0 -1.49977 -1.49977 0 1.49977 0 34 0 tri3a1.dat
+3 16 -0.5 0 -36 -2 1.5 -36 -2 -1.5 -36
+3 16 2 -1.5 -36 2 1.5 -36 0.5 0 -36
+4 16 2 1.5 -36 2 2 -39 2 2 0 2 1.5 -2
+4 16 -2 1.5 -36 -2 1.5 -2 -2 2 0 -2 2 -39
+4 16 -2 -2 -39 -2 -2 0 -2 -1.5 -2 -2 -1.5 -36
+4 16 2 -1.5 -36 2 -1.5 -2 2 -2 0 2 -2 -39
+1 16 -1.5 0 -39 -0.5 0 0 0 0 2 0 1 0 rect1.dat
+1 16 1.5 0 -39 0.5 0 0 0 0 -2 0 1 0 rect1.dat
+1 16 0 0 -39 0 0 -1 2 0 0 0 -1 0 box3u8p.dat
+0
+0 FILE parts/s/3856s02.dat
+0 ~Window  1 x  2 x  3 Shutter - End
+0 Name: s\3856s02.dat
+0 Author: Alex Taylor [anathema]
+0 !LDRAW_ORG Subpart UPDATE 2009-03
+0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt
+
+0 BFC CERTIFY CCW
+
+0 !HISTORY 2009-12-29 [PTadmin] Official Update 2009-03
+
+
+1 16 0 4 0 2 0 0 0 2 0 0 0 2 2-4cyli.dat
+1 16 0 4 0 2 0 0 0 1 0 0 0 2 4-4edge.dat
+1 16 0 4 0 -2 0 0 0 -1 0 0 0 2 4-8sphe.dat
+1 16 0 4 0 -2 0 0 0 1 0 0 0 -2 2-4ndis.dat
+4 16 2 4 -4 2 6 -39 2 6 0 2 4 0
+4 16 2 1 -4 2 1 -39 2 6 -39 2 4 -4
+4 16 1 0 -4 1 0 -40 1 1 -39 1 1 -4
+4 16 1 6 -39 1 1 -39 1 0 -40 1 6 -40
+4 16 -1 6 -40 -1 0 -40 -1 1 -39 -1 6 -39
+4 16 -1 1 -4 -1 1 -39 -1 0 -40 -1 0 -4
+4 16 -2 4 -4 -2 6 -39 -2 1 -39 -2 1 -4
+4 16 -2 4 0 -2 6 0 -2 6 -39 -2 4 -4
+1 16 1.5 3.5 -21.5 0.5 0 0 0 -2.5 0 0 0 -17.5 box2-7.dat
+1 16 -1.5 3.5 -21.5 0.5 0 0 0 -2.5 0 0 0 -17.5 box2-7.dat
+1 16 0 3 -22 1 0 0 0 -3 0 0 0 -18 box2-7.dat
+0 BFC INVERTNEXT
+1 16 0 2.5 -3 -2 0 0 0 1.5 0 0 0 -1 box2-7.dat
+2 24 2 4 -2 2 4 0
+2 24 2 1 -4 1 1 -4
+2 24 -1 1 -4 -2 1 -4
+2 24 -2 4 -2 -2 4 0
+1 16 0 0.5 -4 -1 0 0 0 0 -0.5 0 -1 0 rect3.dat
+0
 0 FILE parts/s/4865bs01.dat
 0 ~Panel  1 x  2 x  1 with Rounded Corners without Front Face
 0 Name: s\4865bs01.dat

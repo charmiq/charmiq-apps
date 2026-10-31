@@ -1,10 +1,11 @@
+import { lightToneOf, type KeyFrom } from '../../brick-shared/light';
 import { hipsOver, poseRise, type PoseBottoms, HIPS } from '../../brick-shared/rise';
 import { turnOf as turnOfRotation, twistedYaw } from '../../brick-shared/turn';
 
 import { toGear, toPosing } from './build';
 import { getStageFace, ACCESSORIES, ALL_FACES, type Accessory, type CatalogPart, type Grip } from './catalog';
 import { occupiedCells } from './check';
-import { cellsFootprint, compose, copyTransform, footprint, footprintSize, getColor, getPart, getShape, gridPosition, ldrawPosition, matrixRotation, partLines, rotationMatrix, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Copy, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
+import { cellsFootprint, compose, copyTransform, footprint, footprintSize, getColor, getPart, getShape, gridPosition, ldrawPosition, matrixRotation, partLines, placedLines, rotationMatrix, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Copy, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseSets, placedPartCount, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
 import { HELD_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
 import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS, TWIST } from './pose';
@@ -31,9 +32,8 @@ import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LI
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
 export const STAGE_VERSION = 16;
-/** the widest and narrowest a frame's lens opens (f-numbers) */
+/** the widest a frame's lens opens (an f-number); it stops down without end */
 const MIN_APERTURE = 1;
-const MAX_APERTURE = 32;
 /** the farthest a frame's lens shifts, up or down (shares of the picture's height) */
 const MAX_SHIFT = 1;
 
@@ -57,7 +57,8 @@ export const MAX_CAPTURE_HEIGHT = 2_160/*pixels*/;
 /** the largest thumbnail, either side */
 export const MAX_THUMBNAIL = 480/*pixels*/;
 
-/** a reel's most frames a second, and its most frames: a film's two minutes at 60 */
+/** a reel's most frames a second (a whole number or a film rate, 24000 / 1001), and
+ *  its most frames: a film's two minutes at 60 */
 export const MAX_REEL_FPS = 60;
 export const MAX_REEL_LENGTH = 7_200/*frames*/;
 /** the most frames one loadReel call carries */
@@ -93,7 +94,8 @@ export type Point = Readonly<{ x: number; z: number; height: number; }>;
 export type Turn = Readonly<{ yaw: number; pitch: number; roll: number; }>;
 
 /** where an actor stands in one frame: the middle of the bottom of its footprint at
- *  `position`, turned about that point, but a figure's hips (its legs' axle) at its
+ *  `position`, turned about that point, but a swinging part's hinge pin's foot there,
+ *  turned about its pin (a door opening), and a figure's hips (its legs' axle) at its
  *  `x` and `z` and its lowest point, turned, at its `height`, turned about its hips (SEE:
  *  brick-shared/rise.ts hipsOver); a figure's limbs at `pose` and the face it
  *  wears in this frame (its own when none is named); its wheel sets' wheels turned as
@@ -272,8 +274,10 @@ export const floorOf = (input: unknown): Floor | undefined => {
 
 /** how a stage is lit, over the look's own light: its key light and its fill (the
  *  environment and the sky) scaled, its exposure scaled, and its key's shadows
- *  softened (0 the look's own, 1 the softest); each 1 (soft 0) when left out */
-export type StageLight = Readonly<{ key?: number; fill?: number; exposure?: number; soft?: number; }>;
+ *  softened (0 the look's own, 1 the softest); each 1 (soft 0) when left out. Its
+ *  white balance (kelvin, 6500 neutral) and saturation (1 the look's own) grade the
+ *  picture, and `from` stands its key elsewhere (SEE: render/grade.ts) */
+export type StageLight = Readonly<{ key?: number; fill?: number; exposure?: number; soft?: number; white?: number; saturation?: number; from?: KeyFrom; }>;
 /** the most each of a stage's light's scales takes, and the least exposure */
 export const LIGHT_LIMITS = { key: 3, fill: 4, exposure: 4, soft: 1 } as const;
 const LEAST_EXPOSURE = 0.25;
@@ -281,7 +285,7 @@ const LEAST_EXPOSURE = 0.25;
 /** the light a stage call gives */
 export const lightOf = (input: unknown): StageLight => {
   if(input === undefined) return {};
-  if((input === null) || (typeof input !== 'object')) throw new Error('light is { key?, fill?, exposure?, soft? }');
+  if((input === null) || (typeof input !== 'object')) throw new Error('light is { key?, fill?, exposure?, soft?, white?, saturation?, from? }');
   const given = input as Record<string, unknown>;
   const light: Record<string, number> = {};
   for(const [name, most] of Object.entries(LIGHT_LIMITS)) {
@@ -291,7 +295,7 @@ export const lightOf = (input: unknown): StageLight => {
     if(!isFiniteNumber(value) || (value < least) || (value > most)) throw new Error(`light.${name} is ${least} to ${most}`);
     light[name] = value;
   }
-  return light;
+  return { ...light, ...lightToneOf(given) };
 };
 
 // -- Cast ------------------------------------------------------------------------
@@ -428,10 +432,12 @@ const partPiece = (set: Model, index: number, at: string): Piece | string => {
   const standing = { ...placement, x: 0, z: 0, level: 0, rotation: 0 } as const;
   const lift = (ldrawPosition(shape, { ...standing, pose: undefined })[1] - ldrawPosition(shape, standing)[1]) / LDU_PER_PLATE/*its pose's, in whole levels: a posed part's level is its posed bottom*/;
   const actor = partActor(catalogPart, standing);
+  const pin = catalogPart.swings ? placedLines(shape, placement, getColor(placement.color)!.code/*by contract*/)[0].position : undefined;
   return {
     at, actor,
-    // its soles where the set draws them, raised to its lowest point as a shot names it
-    rest: { position: { x: placement.x + (width / 2), z: placement.z + (depth / 2), height: placement.level + lift + actor.rise(undefined) }, turn: { yaw: placement.rotation, pitch: 0, roll: 0 }, ...(placement.pose ? { pose: placement.pose } : {}) },
+    // its soles where the set draws them, raised to its lowest point as a shot names
+    // it; a swinging part's hinge pin
+    rest: { position: pin ? { x: pin[0] / LDU_PER_STUD, z: pin[2] / LDU_PER_STUD, height: placement.level } : { x: placement.x + (width / 2), z: placement.z + (depth / 2), height: placement.level + lift + actor.rise(undefined) }, turn: { yaw: placement.rotation, pitch: 0, roll: 0 }, ...(placement.pose ? { pose: placement.pose } : {}) },
     placements: [index], others: [],
   };
 };
@@ -567,14 +573,16 @@ export const poseBottomsOf = (part: string): PoseBottoms | undefined => {
 
 /** a catalog part's actor, `standing` as dressed at the origin unturned: a frame's pose
  *  over its own (each limb a frame names, the rest as it stands) and its face in place
- *  of its own, for that frame */
+ *  of its own, for that frame. A swinging part (a door, a casement, a shutter) is anchored
+ *  at its hinge pin's foot, so it turns about its pin */
 const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
   const shape = getShape(catalogPart);
   const origin = ldrawPosition(shape, { ...standing, pose: undefined })/*as it stands unposed: a pose turns limbs about their own pivots*/;
   const colorCode = getColor(standing.color)!.code;
   const bottoms = poseBottomsOf(catalogPart.key);
+  const pin = catalogPart.swings ? partLines(shape, standing, colorCode, origin)[0].position : undefined;
   return {
-    anchor: [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
+    anchor: pin ? [pin[0], 0, pin[2]] : [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
     size: { ...(POSE_GEOMETRY[catalogPart.key]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height },
     poses: !!catalogPart.limbs,
     rise: pose => bottoms ? poseRise(bottoms, { ...standing.pose, ...pose }) : 0,
@@ -836,7 +844,7 @@ export const cameraOf = (input: unknown): StageCamera => {
   if((from.x === to.x) && (from.z === to.z) && (from.height === to.height)) throw new Error('camera.target must differ from camera.position');
   if(isFiniteNumber(focus) && (focus <= 0)) throw new Error('camera.focus as a number is studs ahead along the view, more than 0');
   const focused = ((focus === undefined) || isFiniteNumber(focus)) ? focus : toPoint(focus, 'camera.focus');
-  if((aperture !== undefined) && (!isFiniteNumber(aperture) || (aperture < MIN_APERTURE) || (aperture > MAX_APERTURE))) throw new Error(`camera.aperture is an f-number from ${MIN_APERTURE} (the shallowest depth of field) to ${MAX_APERTURE}`);
+  if((aperture !== undefined) && (!isFiniteNumber(aperture) || (aperture < MIN_APERTURE))) throw new Error(`camera.aperture is an f-number, ${MIN_APERTURE} (the shallowest depth of field) or more`);
   return { position: from, target: to, fov: lens, ...(roll ? { roll: roll as number } : {}), ...(shift ? { shift: shift as number } : {}), ...((focused !== undefined) ? { focus: focused } : {}), ...((aperture !== undefined) ? { aperture: aperture as number } : {}) };
 };
 
@@ -858,7 +866,7 @@ export const captureOf = (input: unknown): Readonly<{ width: number; height: num
 export const reelHeaderOf = (input: unknown): ReelHeader | undefined => {
   if(input === undefined) return undefined/*a still, not a film*/;
   const { fps, length, width, height } = (input ?? {}) as Record<string, unknown>;
-  if(!Number.isInteger(fps) || ((fps as number) < 1) || ((fps as number) > MAX_REEL_FPS)) throw new Error(`reel.fps must be a whole number of frames a second, 1 to ${MAX_REEL_FPS}`);
+  if(!isFiniteNumber(fps) || (fps < 1) || (fps > MAX_REEL_FPS)) throw new Error(`reel.fps is frames a second, 1 to ${MAX_REEL_FPS}: a whole number or a film rate (24000 / 1001)`);
   if(!Number.isInteger(length) || ((length as number) < 1) || ((length as number) > MAX_REEL_LENGTH)) throw new Error(`reel.length must be a whole number of frames, 1 to ${MAX_REEL_LENGTH}`);
   let size: Readonly<{ width: number; height: number; }>;
   try { size = captureOf({ width, height })!; }

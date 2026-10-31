@@ -1,3 +1,4 @@
+import { lightToneOf, type LightTone } from '../../brick-shared/light';
 import { skyFrom, type Sky } from '../../brick-shared/sky';
 
 import { keyEasing, type KeyEasing } from './key-easing';
@@ -175,8 +176,12 @@ export type RecordedActor = Readonly<{
  *  walk, as written, the line writing them, and the gait they make */
 export type SceneGait = Readonly<{ name: string; keys: Readonly<Record<string, unknown>>; shape: GaitShape; line?: number; }>;
 
+/** a scene's light over the look's own: its scales, and its color and key */
+export type RecordedLight = Readonly<{ key?: number; fill?: number; exposure?: number; soft?: number; }> & LightTone;
+
 export type Recorded = Readonly<{
   title: string;
+  /** frames a second: a whole number, or a film rate (24000 / 1001) */
   fps: number;
   /** how it is drawn: each actor and camera so unless it says otherwise */
   drawn: Drawn;
@@ -195,7 +200,7 @@ export type Recorded = Readonly<{
   boil?: number;
   /** how the stage is lit over the look's own light, when the scene says (SEE: Brick
    *  Studio's StageLight) */
-  light?: Readonly<{ key?: number; fill?: number; exposure?: number; soft?: number; }>;
+  light?: RecordedLight;
   /** the film's sky over every set's own, when the scene says (SEE: brick-shared/sky.ts) */
   sky?: Sky;
   actors: ReadonlyArray<RecordedActor>;
@@ -250,7 +255,7 @@ export type FigurePart = Readonly<{
 export type SceneError = Readonly<{ message: string; line?: number; }>;
 /** a scene as its Worker records it: each sky the scene gives as it wrote it, with its
  *  line, for `readRecorded` to read */
-export type RecordedCode = Omit<Recorded, 'sky'> & Readonly<{ skies?: ReadonlyArray<Readonly<{ given: unknown; line?: number; }>>; }>;
+export type RecordedCode = Omit<Recorded, 'sky'> & Readonly<{ skies?: ReadonlyArray<Readonly<{ given: unknown; line?: number; }>>; tone?: Readonly<{ given: Readonly<Record<string, unknown>>; line?: number; }>; }>;
 
 // == Cast ========================================================================
 /** what an actor is cast as, in a few words: its component, its part in its color, or
@@ -357,7 +362,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
 
   // .. Recording .................................................................
   // what the scene declares, as it declares it
-  const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, skies: [] as Array<{ given: unknown; line?: number; }> };
+  const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, tone: undefined as { given: Readonly<Record<string, unknown>>; line?: number; } | undefined, skies: [] as Array<{ given: unknown; line?: number; }> };
   // `moves` are the times its paths, wobbles, walks and idling start, each with its call
   // and line: a released thing's begin after its release, a picked-up thing's before it
   type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; released?: Handing; planted?: { end: 'tip'; to: { aboveLevel: number; at: number; }; letGo?: { time: number; push?: number; line?: number; }; }; pickedUp?: Handing; keys: Key[]; moves: Array<{ time: number; what: string; line?: number; }>; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; seat?: number; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
@@ -405,7 +410,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
       settings.skies.push({ given, line: callerLine() });
     }
     if(title !== undefined) settings.title = String(title);
-    if(fps !== undefined) { if(!Number.isInteger(fps) || ((fps as number) < 1) || ((fps as number) > MAX_FPS)) fail(`fps is a whole number from 1 to ${MAX_FPS}`); settings.fps = fps as number; }
+    if(fps !== undefined) { if(!isFiniteNumber(fps) || (fps < 1) || (fps > MAX_FPS)) fail(`fps is frames a second from 1 to ${MAX_FPS}: a whole number (24) or a film rate (24000 / 1001)`); settings.fps = fps as number; }
     if(length !== undefined) { settings.length = toTime(length, 'length'); if(settings.length <= 0) fail('length must be more than 0 seconds'); }
     if((width !== undefined) || (height !== undefined)) {
       if(![width, height].every(value => Number.isInteger(value) && ((value as number) >= 16) && ((value as number) <= 3840))) fail('width and height are whole pixels from 16 to 3840');
@@ -722,7 +727,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
       if((typeof values !== 'object') || (values === null)) fail(`${what} gives { position, orbit, target, fov, roll, shift, dollyZoom, focus, aperture, avoid }`);
       const { position, orbit, target, fov, roll, shift, dollyZoom, focus, aperture, avoid, ...rest } = values as Record<string, unknown>;
       if(Object.keys(rest).length > 0) fail(`${what}: no value '${Object.keys(rest)[0]}' (position, orbit, target, fov, roll, shift, dollyZoom, focus, aperture, avoid)`);
-      if((aperture !== undefined) && (!isFiniteNumber(aperture) || (aperture < 1) || (aperture > 32))) fail(`${what}.aperture is an f-number from 1 (the shallowest: only what it focuses on sharp) to 32 (nearly all sharp)`);
+      if((aperture !== undefined) && (!isFiniteNumber(aperture) || (aperture < 1))) fail(`${what}.aperture is an f-number, 1 (the shallowest: only what it focuses on sharp) or more`);
       if(isFiniteNumber(focus) && (focus <= 0)) fail(`${what}.focus as a number is studs ahead of the camera, more than 0`);
       const focused: Focus | undefined = isFiniteNumber(focus) ? { distance: focus } : toTarget(focus, `${what}.focus`);
       if((roll !== undefined) && !isFiniteNumber(roll)) fail(`${what}.roll is degrees: the camera turned clockwise about where it looks, as seen from behind it`);
@@ -1033,20 +1038,29 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   const FIGURE_FACING = 180;
   const facingOf = (source: Readonly<Record<string, unknown>>): number => (source.component !== undefined) ? 0 : FIGURE_FACING;
   /** a scene's light: its key and fill scaled (0 to 3, 0 to 4), its exposure scaled
-   *  (0.25 to 4) and its key's shadows softened (0 to 1), as Brick Studio's stage takes
-   *  them (SEE: its StageLight) */
+   *  (0.25 to 4), its key's shadows softened (0 to 1), and its white balance,
+   *  saturation and where its key stands (SEE: brick-shared/light.ts), as Brick
+   *  Studio's stage takes them (SEE: its StageLight) */
   const LIGHT_LIMITS: ReadonlyArray<readonly [string, number, number]> = [['key', 0, 3], ['fill', 0, 4], ['exposure', 0.25, 4], ['soft', 0, 1]];
+  const LIGHT_TONES = ['white', 'saturation', 'from'] as const;
   const lightOf = (value: unknown): Record<string, number> => {
-    if((value === null) || (typeof value !== 'object')) fail('scene\'s light is { key?, fill?, exposure?, soft? }');
+    if((value === null) || (typeof value !== 'object')) fail('scene\'s light is { key?, fill?, exposure?, soft?, white?, saturation?, from? }');
     const given = value as Record<string, unknown>;
-    const unknown = Object.keys(given).find(name => !LIGHT_LIMITS.some(([known]) => known === name));
-    if(unknown !== undefined) fail(`scene's light has no '${unknown}' (${LIGHT_LIMITS.map(([name]) => name).join(', ')})`);
-    return Object.fromEntries(LIGHT_LIMITS.flatMap(([name, least, most]) => {
+    const names = [...LIGHT_LIMITS.map(([name]) => name), ...LIGHT_TONES];
+    const unknown = Object.keys(given).find(name => !names.includes(name));
+    if(unknown !== undefined) fail(`scene's light has no '${unknown}' (${names.join(', ')})`);
+    const scaled = Object.fromEntries(LIGHT_LIMITS.flatMap(([name, least, most]) => {
       const each = given[name];
       if(each === undefined) return [];
       if(!isFiniteNumber(each) || (each < least) || (each > most)) fail(`scene's light.${name} is ${least} to ${most}`);
       return [[name, each as number]];
     }));
+    // its color and key kept as written, for the page to read (SEE: readRecorded): they cross to the page as data
+    let tone: Record<string, unknown> = {};
+    try { tone = structuredClone(Object.fromEntries(LIGHT_TONES.filter(name => given[name] !== undefined).map(name => [name, given[name]]))); }
+    catch { fail('scene\'s light is plain data: { key?, fill?, exposure?, soft?, white?, saturation?, from? }'); }
+    settings.tone = { given: tone, line: callerLine() };
+    return scaled;
   };
   /** 0 to 1 over a span: rising over its first `ease` seconds and falling over its last */
   const envelope = (t: number, start: number, end: number, ease: number): number => {
@@ -1911,7 +1925,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
   const cuts = cutsMade(settings.length);
   return {
-    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
+    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...(settings.tone ? { tone: settings.tone } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
     actors: actors.map(({ name, source, ride, released, planted, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, seat, drawn, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), ...(released ? { released } : {}), ...(planted ? { planted } : {}), ...(pickedUp ? { pickedUp } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
@@ -1925,14 +1939,19 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
 };
 
 /** a scene its Worker recorded, as a film reads it: each sky the scene gave read in
- *  Brick Studio's words (SEE: brick-shared/sky.ts), the last standing; throws as
- *  `record` does, naming the line of a sky not in them */
-export const readRecorded = ({ skies, ...recorded }: RecordedCode): Recorded => {
+ *  Brick Studio's words (SEE: brick-shared/sky.ts), the last standing, and its light's
+ *  color and key (SEE: brick-shared/light.ts); throws as `record` does, naming the
+ *  line of a sky or light not in them */
+export const readRecorded = ({ skies, tone, ...recorded }: RecordedCode): Recorded => {
   let sky: Sky | undefined;
   for(const { given, line } of skies ?? []) {
     const read = skyFrom(given);
     if(typeof read === 'string') throw Object.assign(new Error(read), { sceneLine: line });
     sky = read;
   }
-  return { ...recorded, ...(sky ? { sky } : {}) };
+  let lit: LightTone = {};
+  try { lit = tone ? lightToneOf(tone.given) : {}; }
+  catch(error) { throw Object.assign(new Error(`scene's ${(error as Error).message}`), { sceneLine: tone?.line }); }
+  const light = (recorded.light || (Object.keys(lit).length > 0)) ? { ...recorded.light, ...lit } : undefined;
+  return { ...recorded, ...(light ? { light } : {}), ...(sky ? { sky } : {}) };
 };

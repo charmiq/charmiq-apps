@@ -7,8 +7,8 @@ import { pictureFootprint, type Picture } from './picture';
 // at the same level. A part connects to a part directly above it where one of its
 // top studs lies under a cell that part fills from its bottom level (from the level
 // it rests at, for a part hanging below it); a part resting at level 0 stands on the
-// ground. A glass pane fills nothing and is held by the frame
-// at its own position; two panes in one frame collide. A part with no chain of
+// ground. A seated part (a glass pane, a casement, a shutter, a flower) fills nothing
+// and is held by its frame at its own position; two of one part on one frame collide. A part with no chain of
 // connections to the ground floats. A carrier's mount (a hinge's carry, a side
 // face's) fills the cells its turned cells overlap (SEE: grid.ts Mounts): it never
 // collides with its own carrier, it collides with the carrier's other mounts and with
@@ -194,14 +194,14 @@ const mountName = (model: Model, placement: number, mount: Mount): string =>
   (mount.slot === 'top') ? describeIn(model, placement) : `${mount.copy.component} on the ${mount.slot} face of ${describeIn(model, placement)}`;
 
 // -- Glass -----------------------------------------------------------------------
-/** each pane's frame, the frame part at the pane's own position (a pane with none
- *  floats), and each pane a frame holds after its first, with that first: two panes
- *  in one frame collide */
+/** each seated part's frame, the frame part at its own position (one with none
+ *  floats), and each seated part a frame holds after its first of that part, with that
+ *  first: two panes in one frame collide, a west casement and an east one do not */
 const framed = (placements: ReadonlyArray<Placement>): Readonly<{ panes: Map<number/*pane*/, number/*frame*/>; crowded: Array<readonly [number, number]>; }> => {
   const frames = new Map<string, number>()/*frame key -> placement index*/;
   placements.forEach((placement, index) => frames.set(frameKey(getPart(placement.part)!.ldraw/*by contract*/, placement), index));
   const panes = new Map<number, number>();
-  const firstPanes = new Map<number, number>()/*frame index -> its first pane*/;
+  const firstPanes = new Map<string, number>()/*frame index and part -> its first*/;
   const crowded: Array<readonly [number, number]> = [];
   placements.forEach((placement, index) => {
     const frame = getPart(placement.part)!.frame/*by contract*/;
@@ -209,8 +209,9 @@ const framed = (placements: ReadonlyArray<Placement>): Readonly<{ panes: Map<num
     const holder = frames.get(frameKey(frame, placement));
     if(holder === undefined) return/*no frame here: it floats*/;
     panes.set(index, holder);
-    const first = firstPanes.get(holder);
-    if(first === undefined) firstPanes.set(holder, index);
+    const seat = `${holder}/${placement.part}`;
+    const first = firstPanes.get(seat);
+    if(first === undefined) firstPanes.set(seat, index);
     else crowded.push([first, index]);
   });
   return { panes, crowded };

@@ -7,7 +7,7 @@ import type { Limb } from './pose';
 //       tools/pack-parts.ts can load it directly
 // ********************************************************************************
 // == Parts =======================================================================
-export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'mudguard' | 'windscreen' | 'figure' | 'hinge' | 'side';
+export type PartKind = 'brick' | 'plate' | 'tile' | 'slope' | 'round' | 'arch' | 'corner' | 'wedge' | 'inverted' | 'ridge' | 'roof-corner' | 'window' | 'door' | 'glass' | 'curve' | 'plant' | 'rock' | 'fence' | 'detail' | 'creature' | 'vehicle' | 'mudguard' | 'windscreen' | 'figure' | 'hinge' | 'side';
 
 // ................................................................................
 export type CatalogPart = Readonly<{
@@ -16,8 +16,18 @@ export type CatalogPart = Readonly<{
   /** the LDraw file stem in the LDraw Parts Library (e.g. `3001`) */
   ldraw: string;
   kind: PartKind;
-  /** a glass pane's frame (LDraw file stem): the pane sits in it, at its position */
+  /** the part a seated part sits in or on (LDraw file stem): a glass pane's window, a
+   *  casement's or a shutter's window, a flower's stem. It stands at that part's own
+   *  position, fills no cell and is held by it alone */
   frame?: string;
+  /** where a seated part sits on its frame's pins, when not at the frame's own origin:
+   *  its line's transform in the frame's line's frame (LDU), as the library assembles
+   *  them (a casement on its jamb's pins, a flower on its stem's peg) */
+  seat?: Readonly<{ position: readonly [number, number, number]; matrix: ReadonlyArray<number>; }>;
+  /** it swings on a hinge pin, the vertical axis through its LDraw origin (a door, a
+   *  casement, a shutter): an actor cast from it turns about that axis, its position
+   *  the pin's foot (SEE: stage.ts partActor) */
+  swings?: true;
   /** the other LDraw lines the part is assembled from (a wheel set's rims and
    *  tires), as written beside its own line at its origin and rotation 0. Each keeps
    *  its own color, or takes the part's in LDraw's inherited color (16): a part of
@@ -82,8 +92,8 @@ const HAND_GRIP: GripFrame = { position: [0, -0.8229, -9.8948], matrix: [1, 0, 0
 // ................................................................................
 /** whether a kind's underside is open (an arch's span, an inverted slope's face, a
  *  mudguard's wheel well, the cabin under a windscreen's glass, a plant's foliage over
- *  its base): its fill is measured from below there, never assumed to reach its bottom */
-export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'mudguard') || (kind === 'windscreen') || (kind === 'plant') || (kind === 'creature') || (kind === 'figure');
+ *  its base, a door's handle): its fill is measured from below there, never assumed to reach its bottom */
+export const hasOpenUnderside = (kind: PartKind): boolean => (kind === 'inverted') || (kind === 'arch') || (kind === 'mudguard') || (kind === 'windscreen') || (kind === 'plant') || (kind === 'creature') || (kind === 'figure') || (kind === 'door');
 /** whether a kind of part is seen through: a window or door frame (its cells are its
  *  whole block, opening and all), its glass, a fence */
 export const isSeenThrough = (kind: PartKind): boolean => (kind === 'window') || (kind === 'glass') || (kind === 'fence');
@@ -212,10 +222,20 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'window-1x2x3', ldraw: '60593', kind: 'window' },
   { key: 'window-1x4x3', ldraw: '60594', kind: 'window' },
   { key: 'door-frame-1x4x6', ldraw: '60596', kind: 'window' },
+  // a classic door, one piece with no frame of its own (the library's 3861): it hangs
+  // in a wall on its hinge pin, a stud on its top there and a hole under it
+  { key: 'door-1x4x5', ldraw: '3861c', kind: 'door', swings: true },
+  // a classic window: its surround stands proud of its front, with a shutter's tabs at
+  // each side's top and foot and a casement's pins inside each jamb
+  { key: 'window-classic-1x4x3', ldraw: '3853', kind: 'window' },
 
   { key: 'glass-1x2x2', ldraw: '60601', kind: 'glass', frame: '60592' },
   { key: 'glass-1x2x3', ldraw: '60602', kind: 'glass', frame: '60593' },
   { key: 'glass-1x4x3', ldraw: '60603', kind: 'glass', frame: '60594' },
+  // a classic window's casements, each on its jamb's front pins, closed across the
+  // opening toward the other
+  { key: 'window-pane-classic-west', ldraw: '3854', kind: 'glass', frame: '3853', swings: true, seat: { position: [-34, 4, -4], matrix: [0, 0, -1, 0, 1, 0, 1, 0, 0] } },
+  { key: 'window-pane-classic-east', ldraw: '3854', kind: 'glass', frame: '3853', swings: true, seat: { position: [34, 4, -4], matrix: [0, 0, 1, 0, 1, 0, -1, 0, 0] } },
 
   // a plant or rock is named without a size: its foliage or points spread past its
   // base, and its listParts row gives the cells it fills
@@ -229,6 +249,12 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'leaf-plate',      ldraw: '32607', kind: 'plant' },
   { key: 'flower-plate-1x1', ldraw: '24866', kind: 'plant' },
   { key: 'grass-stem',      ldraw: '15279', kind: 'plant' },
+  // a flower stem on its round base, and a flower on each of its three pegs, low,
+  // middle and high, as the library assembles them (3741ac01)
+  { key: 'flower-stem',     ldraw: '3741a', kind: 'plant' },
+  { key: 'flower-low',      ldraw: '3742',  kind: 'plant', frame: '3741a', seat: { position: [0, -17.628, 14.973], matrix: [1, 0, 0, 0, 0.96592, 0.25882, 0, -0.258825, 0.965919] } },
+  { key: 'flower-middle',   ldraw: '3742',  kind: 'plant', frame: '3741a', seat: { position: [-14.089, -22.458, -8.134], matrix: [-0.5, 0.22415, -0.8365, 0, 0.96592, 0.25882, 0.86603, 0.12941, -0.48296] } },
+  { key: 'flower-high',     ldraw: '3742',  kind: 'plant', frame: '3741a', seat: { position: [15.209, -27.287, -8.782], matrix: [-0.5, -0.22415, 0.83651, 0, 0.96592, 0.25882, -0.86603, 0.12941, -0.48296] } },
 
   { key: 'rock-4x4',        ldraw: '42284', kind: 'rock' },
   { key: 'crystal-small',   ldraw: '30385', kind: 'rock' },
@@ -260,6 +286,10 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'taxi-tile-1x2',   ldraw: '3069bp11', kind: 'detail' },
   { key: 'taxi-brick-1x4',  ldraw: '3010p11',  kind: 'detail' },
   { key: 'roof-curved-4x6', ldraw: '98281', kind: 'detail' },
+  // a classic window's louvered shutters, each on its side's tabs, opened flat against
+  // the wall away from the window
+  { key: 'window-shutter-classic-west', ldraw: '3856', kind: 'detail', frame: '3853', swings: true, seat: { position: [-40, 0, -12], matrix: [0, 0, 1, 0, 1, 0, -1, 0, 0] } },
+  { key: 'window-shutter-classic-east', ldraw: '3856', kind: 'detail', frame: '3853', swings: true, seat: { position: [40, 0, -12], matrix: [0, 0, -1, 0, 1, 0, 1, 0, 0] } },
 
   { key: 'curve-2x1',       ldraw: '11477', kind: 'curve' },
   { key: 'curve-3x1',       ldraw: '50950', kind: 'curve' },
@@ -549,6 +579,7 @@ const KIND_WORDS: Readonly<Record<PartKind, ReadonlyArray<string>>> = {
   'ridge':       ['roof', 'peak'],
   'roof-corner': ['roof', 'peak'],
   'window':      ['door', 'frame', 'house'],
+  'door':        ['house', 'entrance', 'hinged', 'open'],
   'glass':       ['pane', 'window'],
   'curve':       ['curved', 'body', 'hood'],
   'plant':       ['nature', 'garden', 'foliage', 'tree', 'flower'],

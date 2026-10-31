@@ -131,8 +131,6 @@ const colorsByKey = new Map(COLORS.map(color => [color.key, color]));
 const colorsByCode = new Map(COLORS.map(color => [color.code, color]));
 
 export const getPart = (key: string): CatalogPart | undefined => partsByKey.get(key);
-/** the first catalog part of a file */
-export const getPartByLDraw = (ldraw: string): CatalogPart | undefined => partsByLDraw.get(ldraw.toLowerCase())?.[0];
 /** every catalog part of a file, in catalog order */
 export const getPartsByLDraw = (ldraw: string): ReadonlyArray<CatalogPart> => partsByLDraw.get(ldraw.toLowerCase()) ?? [];
 export const getColor = (key: string) => colorsByKey.get(key);
@@ -344,7 +342,7 @@ export const placedLines = (shape: PartShape, placement: Placement, colorCode: n
 /** a placement's part lines (SEE: placedLines) with its own origin at `position`
  *  (LDU): a stage's actor stands where its shot puts it, its pose any angle */
 export const partLines = (shape: PartShape, placement: Placement, colorCode: number, position: readonly [number, number, number], rolled = 0): PartLine[] => {
-  const own: PartLine = { ldraw: shape.part.ldraw, colorCode, position, matrix: rotationMatrix(placement.rotation) };
+  const own: PartLine = { ldraw: shape.part.ldraw, colorCode, ...seated(shape.part, { position, matrix: rotationMatrix(placement.rotation) }) };
   const pieces = shape.part.limbs ? posedPieces(shape.part, placement.pose, colorsOf(placement), wornOf(placement), getStageFace(placement.face)) :
     shape.part.hinge ? hingePieces(shape.part, placement.angle ?? 0) :
     (shape.part.wheels && (rolled !== 0)) ? wheelPieces(shape.part, rolledAngle(shape.part, rolled)) :
@@ -353,6 +351,12 @@ export const partLines = (shape: PartShape, placement: Placement, colorCode: num
   const body = lean ? { ...own, ...compose(own, lean) }/*its torso leaning with what it carries*/ : own;
   return [body, ...pieces.map(piece => ({ ...piece, ...compose(own, piece), colorCode: (piece.colorCode === INHERITED_COLOR) ? colorCode : piece.colorCode }))];
 };
+
+/** where a part's own line stands, its frame standing at `frame` (LDU): a seated part
+ *  at its seat on the frame's pins (SEE: CatalogPart#seat), any other at the frame */
+const seated = (part: CatalogPart, frame: Transform): Transform => part.seat ? compose(frame, part.seat) : frame;
+/** where the frame stands under a part's own line (LDU): a seated part's seat undone */
+export const unseated = (part: CatalogPart, line: Transform): Transform => part.seat ? compose(line, invert(part.seat)) : line;
 
 /** the angle (degrees) a wheel set's wheels turn rolling `rolled` studs: the arc
  *  over their tires' radius */

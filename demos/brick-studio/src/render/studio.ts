@@ -16,6 +16,8 @@ export type Studio = Readonly<{
   environment: THREE.Texture;
   /** the raw capture, which the path tracer samples */
   cube: THREE.CubeTexture;
+  /** frees both */
+  dispose: () => void;
 }>;
 
 // == Studio ======================================================================
@@ -48,7 +50,7 @@ export const createStudio = (renderer: THREE.WebGLRenderer, key: THREE.Vector3):
   const prefilter = new THREE.PMREMGenerator(renderer);
   const environment = prefilter.fromCubemap(target.texture).texture;
   prefilter.dispose();
-  return { environment, cube: target.texture };
+  return { environment, cube: target.texture, dispose: () => { environment.dispose(); target.dispose(); } };
 };
 
 /** an emissive rectangle at distance in `direction`, facing the origin */

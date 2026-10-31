@@ -5,6 +5,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import type { Finish } from '../catalog';
 import { DEFAULT_APERTURE, type Lens } from './effects';
+import { GRADE_GLSL, type Grade } from './grade';
+import { apertureWidth } from './lens';
 import { tracedGlass, tracedMetal, TRACED_PLASTIC } from './plastic';
 
 // the top stop: the scene path traced with three-gpu-pathtracer, so reflections,
@@ -20,9 +22,6 @@ export const SETTLE_SAMPLES = 96;
 /** samples after which refining stops */
 export const MAX_SAMPLES = 512;
 
-/** the lens opening as a share of the focus distance, times the f-number: at f/8,
- *  the Photo stop's macro blur */
-const BOKEH_AT_F1 = 0.24;
 /** the key light's disc as a share of its distance: the Photo stop's soft shadow; and
  *  how much wider a stage's softest key's disc is */
 const KEY_SOFTNESS = 0.1;
@@ -50,6 +49,10 @@ export type PathSource = Readonly<{
 export class PathTrace {
   /** what the current traced scene created and must free */
   private owned: Array<THREE.Material | THREE.BufferGeometry> = [];
+  /** the grade the shown samples take, as the rasterized stops' (SEE: grade.ts) */
+  private readonly grade = { gradeWhite: { value: new THREE.Vector3(1, 1, 1) }, gradeSaturation: { value: 1 } };
+  /** the display materials graded, each once */
+  private readonly graded = new WeakSet<THREE.Material>();
 
   private constructor(private readonly tracer: WebGLPathTracer, private readonly view: THREE.PerspectiveCamera, private readonly camera: PhysicalCamera) {}
 
@@ -62,7 +65,17 @@ export class PathTrace {
     tracer.tiles.set(2, 2);
     tracer.minSamples = 2;
     tracer.rasterizeSceneCallback = () => raster();
-    return new PathTrace(tracer, camera, new Lens());
+    const trace = new PathTrace(tracer, camera, new Lens());
+    const shown = tracer.renderToCanvasCallback;
+    tracer.renderToCanvasCallback = (target, renderer, quad) => { trace.gradeShown(quad.material as THREE.ShaderMaterial); shown(target, renderer, quad); };
+    return trace;
+  }
+
+  /** grades the samples shown as the rasterized stops grade theirs; none shows them as
+   *  traced */
+  public setGrade(grade: Grade | undefined): void {
+    this.grade.gradeWhite.value.set(...(grade?.white ?? [1, 1, 1]));
+    this.grade.gradeSaturation.value = grade?.saturation ?? 1;
   }
 
   // ------------------------------------------------------------------------------
@@ -113,12 +126,28 @@ export class PathTrace {
   }
 
   // == Internal ==================================================================
-  /** the lens takes the view camera's place, focused at its distance and opened to
-   *  its aperture */
+  /** the tracer's display material grades each sample before its tone curve: its
+   *  shader is the pinned tracer's own, and one that no longer reads as it did is
+   *  refused, never shown ungraded */
+  private gradeShown(material: THREE.ShaderMaterial): void {
+    if(this.graded.has(material)) return;
+    this.graded.add(material);
+    material.onBeforeCompile = shader => {
+      const [declare, tone] = ['vec4 clampedTexelFatch(', '#if defined( TONE_MAPPING )'];
+      if(!shader.fragmentShader.includes(declare) || !shader.fragmentShader.includes(tone)) throw new Error('the path tracer\'s display shader no longer reads as its grade expects');
+      Object.assign(shader.uniforms, this.grade);
+      shader.fragmentShader = shader.fragmentShader.replace(declare, `${GRADE_GLSL}\n${declare}`).replace(tone, `res.xyz = grade(res.xyz);\n${tone}`);
+    };
+    material.needsUpdate = true;
+  }
+
+  /** the lens takes the view camera's place, focused at its distance and opened as the
+   *  thin lens through its field of view is (SEE: lens.ts), so it blurs as the Photo
+   *  stop's depth of field does */
   private aim({ distance, aperture = DEFAULT_APERTURE }: Lens): void {
     this.camera.copy(this.view);
     this.camera.focusDistance = distance;
-    this.camera.bokehSize = (distance * BOKEH_AT_F1) / aperture;
+    this.camera.bokehSize = apertureWidth({ fov: this.view.fov, aperture, focus: distance }) * 1000/*the tracer reads its opening in thousandths of a scene unit*/;
     this.camera.updateMatrixWorld(true);
   }
 

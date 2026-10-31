@@ -29,7 +29,7 @@
         "three/addons/loaders/LDrawLoader.js": "https://esm.sh/three@0.186.1/examples/jsm/loaders/LDrawLoader.js",
         "three/addons/materials/LDrawConditionalLineMaterial.js": "https://esm.sh/three@0.186.1/examples/jsm/materials/LDrawConditionalLineMaterial.js",
         "three/addons/utils/BufferGeometryUtils.js": "https://esm.sh/three@0.186.1/examples/jsm/utils/BufferGeometryUtils.js",
-        "three/addons/postprocessing/BokehPass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/BokehPass.js",
+        "three/addons/postprocessing/Pass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/Pass.js",
         "three/addons/postprocessing/EffectComposer.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/EffectComposer.js",
         "three/addons/postprocessing/GTAOPass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/GTAOPass.js",
         "three/addons/postprocessing/OutputPass.js": "https://esm.sh/three@0.186.1/examples/jsm/postprocessing/OutputPass.js",
@@ -669,11 +669,11 @@
       },
       {
         "name": "describeStage",
-        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, whether the studio holds a build of its own, its build's sets, and the actor it follows through the film (follow), while it follows one. Asked figures, every figure built as a part of a copy of a component in the first set, at the placed address that casts it (a stand's seated audience)",
+        "description": "Whether a film scene is staged in place of the build (stage), whether the person went back to the build since, whether the studio holds a build of its own, its build's sets, the reel staged (its number, as show and loadReel name it, and its header) while the stage holds one, and the actor it follows through the film (follow), while it follows one. Asked figures, every figure built as a part of a copy of a component in the first set, at the placed address that casts it (a stand's seated audience)",
         "inputSchema": { "type": "object", "properties": { "figures": { "type": "boolean", "description": "List the figures built as parts of the first set's copies" } } },
         "outputSchema": {
           "type": "object",
-          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" }, "sets": { "type": "array", "items": { "type": "string" }, "description": "The build's sets by name, the first first" }, "followed": { "type": "string", "description": "The actor followed through the film, its ghosts and path drawn" },
+          "properties": { "stage": { "type": "integer" }, "staged": { "type": "boolean" }, "left": { "type": "boolean" }, "build": { "type": "boolean" }, "sets": { "type": "array", "items": { "type": "string" }, "description": "The build's sets by name, the first first" }, "reel": { "type": "object", "description": "The reel staged, while the stage holds one: its number and its header as stage took it", "properties": { "id": { "type": "integer" }, "fps": { "type": "number" }, "length": { "type": "integer" }, "width": { "type": "integer" }, "height": { "type": "integer" } }, "required": ["id", "fps", "length", "width", "height"] }, "followed": { "type": "string", "description": "The actor followed through the film, its ghosts and path drawn" },
             "figures": { "type": "array", "description": "Asked figures, each figure built as a part of a copy, copy by copy: its component, where the copy stands and where the figure stands inside it (placed { ...copy, inside } casts it) and where it rests there, as stage's placed answers it", "items": { "type": "object", "properties": { "component": { "type": "string" }, "copy": { "type": "object" }, "inside": { "type": "object" }, "rest": { "type": "object" } }, "required": ["component", "copy", "inside", "rest"] } } },
           "required": ["stage", "staged", "left", "build", "sets"]
         }
@@ -709,12 +709,12 @@
               }
             },
             "floor": { "type": "object", "description": "The area (studs) the baseplate covers at least, so actors have ground to move over: { x, z, width, depth }, its south-west corner and size" },
-            "light": { "type": "object", "description": "How the stage is lit over the look's own light: { key, fill, exposure, soft }, the key light scaled (0 to 3), the fill (the studio's environment and sky) scaled (0 to 4), the exposure scaled (0.25 to 4) and the key's shadows softened (0 the look's own to 1 the softest); each 1 (soft 0) when left out" },
+            "light": { "type": "object", "description": "How the stage is lit over the look's own light: { key, fill, exposure, soft, white, saturation, from }, the key light scaled (0 to 3), the fill (the studio's environment and sky) scaled (0 to 4), the exposure scaled (0.25 to 4) and the key's shadows softened (0 the look's own to 1 the softest); each 1 (soft 0) when left out. white: a white balance, a color temperature 1700 to 25000 kelvin (6500 neutral, lower warmer) or tungsten, warm, neutral, cool or shade. saturation: 0 (gray) to 2 (1 the look's own). from: where the key light stands, { azimuth, elevation } as setView names a direction (azimuth 0 south of the set, 90 east; elevation 1 to 90)" },
             "sky":   { "type": "object", "description": "The stage's sky over every set's own (a film's sky): { horizon, zenith, clouds, seed } or { image }, with lights, as setSky takes it; each set's own when left out" },
             "reel": {
               "type": "object",
               "description": "A film, for Applications: its frames a second (at most 60), length in frames (at most 7200) and the size its frames are drawn at. loadReel then loads its frames",
-              "properties": { "fps": { "type": "integer" }, "length": { "type": "integer" }, "width": { "type": "integer" }, "height": { "type": "integer" } },
+              "properties": { "fps": { "type": "number", "minimum": 1, "maximum": 60, "description": "Frames a second: a whole number, or a film rate (24000 / 1001)" }, "length": { "type": "integer" }, "width": { "type": "integer" }, "height": { "type": "integer" } },
               "required": ["fps", "length", "width", "height"]
             },
             "view": { "type": "string", "description": "The view of the reel's frames this studio shows (the main camera when left out)" },
@@ -851,7 +851,7 @@
                 "roll":     { "type": "number", "description": "Degrees the camera turns clockwise about where it looks, as seen from behind it (level when left out)" },
                 "shift":    { "type": "number", "minimum": -1, "maximum": 1, "description": "The lens shifted up by this share of the picture's height, down when negative, its verticals kept upright: a level camera at -0.37 looks down at the floor below its horizon, which stands 0.13 down the picture. Blender's vertical lens shift against the picture's height (Blender's shift_y is against its larger side). Unshifted when left out" },
                 "focus":    { "description": "What is sharp: a point { x, z, height }, or a number of studs ahead along the view (the target when left out)" },
-                "aperture": { "type": "number", "minimum": 1, "maximum": 32, "description": "The lens's opening as an f-number: 1.4 very shallow (only what it focuses on sharp), 8 a toy photo's, 16 nearly all sharp. Given, the frame has a depth of field at every look; left out, the look's own (Photo's f/8, none below)" }
+                "aperture": { "type": "number", "minimum": 1, "description": "The lens's opening as an f-number, a real lens at a brick's scale: a long lens (a narrow fov) or a near focus blurs more. Through 32 degrees focused 20 studs ahead, 2 leaves only what it focuses on sharp, 8 is a macro's, 22 a toy photo's, 64 nearly all sharp. Given, the frame has a depth of field at every look; left out, the look's own (Photo's f/22, none below)" }
               },
               "required": ["position", "target"]
             },

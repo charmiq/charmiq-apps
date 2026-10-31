@@ -128,15 +128,16 @@ export class StageControl {
 
   // == Stage =====================================================================
   /** whether a stage is shown, whether the person went back to the build since the
-   *  last stage call, whether the studio holds a build of its own, its sets, and the
-   *  actor it follows through the film, while it follows one; asked `figures`, every
-   *  figure built as a part of a copy in its first set (SEE: stage.ts figurePartsOf) */
+   *  last stage call, whether the studio holds a build of its own, its sets, the reel
+   *  staged (its number and header), while a stage holds one, and the actor it follows
+   *  through the film, while it follows one; asked `figures`, every figure built as a
+   *  part of a copy in its first set (SEE: stage.ts figurePartsOf) */
   public async describe(figures?: unknown) {
     if((figures !== undefined) && (typeof figures !== 'boolean')) throw new Error('figures is whether the figures built as parts of the build\'s copies are listed: true or false');
     await this.build.whenReady();
     this.tellBuild()/*the stream says the same from now on*/;
     const [first] = this.build.allSets();
-    return { stage: STAGE_VERSION, staged: !!this.cast, left: this.left, build: this.holds, sets: this.sets, ...(this.followed ? { followed: this.followed.actor } : {}), ...((figures === true) ? { figures: first ? figurePartsOf(first) : [] } : {}) };
+    return { stage: STAGE_VERSION, staged: !!this.cast, left: this.left, build: this.holds, sets: this.sets, ...(this.reel ? { reel: { id: this.reel.id, ...this.reel.header } } : {}), ...(this.followed ? { followed: this.followed.actor } : {}), ...((figures === true) ? { figures: first ? figurePartsOf(first) : [] } : {}) };
   }
 
   /** the screen's state, from now on */
@@ -470,7 +471,7 @@ export class StageControl {
     if(!header || !isFullScreen(this.studio) || event.altKey || event.ctrlKey || event.metaKey) return;
     if(event.key === ' ') { if(this.viewer.isViewHeld) return/*the camera's: up*/; this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' }); }
     else if((event.key === 'ArrowLeft') || (event.key === 'ArrowRight')) {
-      const step = (event.shiftKey ? header.fps : 1) * ((event.key === 'ArrowLeft') ? -1 : 1);
+      const step = (event.shiftKey ? Math.round(header.fps)/*a second's frames*/ : 1) * ((event.key === 'ArrowLeft') ? -1 : 1);
       this.ask({ kind: 'seek', frame: Math.max(0, Math.min(header.length - 1, this.shownFrame + step)) });
     } else return/*not the film's*/;
     event.preventDefault();

@@ -11,7 +11,7 @@ import { PickDialog } from '../../brick-shared/pick-dialog';
 import { exportFilmCommands } from './command';
 import { Director } from './director';
 import { exportFilm, fileName, save } from './export';
-import { filmLengthOf, filmTimeOf, type Film, type Paint } from './film';
+import { filmLengthOf, filmTimeOf, timecodeOf, type Film, type Paint } from './film';
 import { FilmDialog } from './film-dialog';
 import { filmPartsOf, Films } from './films';
 import { GaitView } from './gait-view';
@@ -231,7 +231,7 @@ const showSheet = () => {
   if(!film) { filmTitle.textContent = 'No film yet'; filmFacts.textContent = ''; cast.replaceChildren(); logs.hidden = true; return; }
   const { scene } = film;
   filmTitle.textContent = scene.title;
-  filmFacts.textContent = `${filmLengthOf(film).toFixed(1)} s · ${scene.fps} fps · ${film.frames.length} frames · ${scene.width}×${scene.height}`;
+  filmFacts.textContent = `${filmLengthOf(film).toFixed(1)} s · ${Number(scene.fps.toFixed(3))/*a film rate to the thousandth*/} fps · ${film.frames.length} frames · ${scene.width}×${scene.height}`;
   const stage = studios.stageState;
   const refused = new Map((stage.kind === 'staged') ? stage.refused.map(each => [each.name, each.reason]) : []);
   cast.replaceChildren(...scene.actors.map((actor, index) => {
@@ -525,9 +525,7 @@ const showPlayer = (state: PlayerState) => {
   timeline.setFrame(state.index);
   strip.setFrame(state.index);
   gaitView.setFrame(film?.frames[state.index]);
-  const fps = film?.scene.fps ?? 24;
-  const seconds = Math.floor(state.index / fps), frames = state.index % fps;
-  timecode.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;
+  timecode.textContent = timecodeOf(state.index, film?.scene.fps ?? 24);
   frameCount.textContent = film ? `frame ${state.index + 1} of ${film.frames.length}` : '';
   playButton.setAttribute('aria-pressed', String(state.playing));
   playButton.title = playButton.ariaLabel = state.playing ? 'Pause (Space)' : 'Play (Space)';
