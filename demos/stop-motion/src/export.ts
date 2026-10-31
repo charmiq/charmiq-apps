@@ -1,4 +1,5 @@
-import { soundCuesOf, type Film } from './film';
+import { filmLengthOf, soundCuesOf, type Film } from './film';
+import { frameTime } from './key-easing';
 import { missingSounds, scheduleMix, type SoundBuffers } from './sound';
 import type { Studios } from './studios';
 
@@ -54,7 +55,7 @@ export const exportFilm = async (film: Film, studios: Studios, sounds: SoundBuff
   if(sounds && (sounds.size > 0) && (soundCuesOf(film).length > 0)) {
     if(!(await canEncodeAudio('aac', { numberOfChannels: CHANNELS, sampleRate: SAMPLE_RATE }))) withoutSound = 'This browser encodes no AAC sound';
     else {
-      const mixing = new OfflineAudioContext(CHANNELS, Math.ceil((film.frames.length / fps) * SAMPLE_RATE), SAMPLE_RATE);
+      const mixing = new OfflineAudioContext(CHANNELS, Math.ceil(filmLengthOf(film) * SAMPLE_RATE), SAMPLE_RATE);
       scheduleMix(mixing, film, sounds, 0, 0);
       const audio = new AudioBufferSource({ codec: 'aac', quality: QUALITY_HIGH });
       output.addAudioTrack(audio);
@@ -68,7 +69,7 @@ export const exportFilm = async (film: Film, studios: Studios, sounds: SoundBuff
     if(!image) { await output.cancel(); return undefined; }
     context.drawImage(image, 0, 0, width, height);
     image.close();
-    await source.add(frame.index / fps, 1 / fps);
+    await source.add(frameTime(frame.index, fps), frameTime(1, fps));
     onProgress(frame.index + 1, film.frames.length);
   }
   if(sound) await sound.source.add(sound.mixed);

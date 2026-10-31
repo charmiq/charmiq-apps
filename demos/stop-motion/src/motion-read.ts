@@ -1,4 +1,5 @@
 import { frameAtTime, type Film } from './film';
+import { framesAt } from './key-easing';
 import type { Key, RecordedActor } from './recorder';
 
 // an actor's motion read over a span, as an Agent asks after a note or a footing
@@ -85,7 +86,7 @@ export const motionOf = (film: Film, actor: RecordedActor, from: number, to: num
 export const driverAt = (film: Film, actor: RecordedActor, channel: string, time: number): Driver => {
   const walk = actor.walks?.find(each => (time >= each.start) && (time <= each.end));
   if(walk && WALKED.has(channel)) return { by: 'walk', lines: linesOf([walk]) };
-  const at = time * film.scene.fps;
+  const at = framesAt(time, film.scene.fps);
   const over = actor.spans.filter(span => (at >= span.from) && (at <= span.to) && span.channels.includes(channel) && (span.label !== 'walk')/*a walk's own span: its walk*/);
   const added = linesOf([...((walk && SWUNG.has(channel)) ? [walk] : []), ...over.filter(span => span.mode === 'add')]);
   const driving = drivenAt(actor, channel, time, over.find(span => span.mode === 'set'));

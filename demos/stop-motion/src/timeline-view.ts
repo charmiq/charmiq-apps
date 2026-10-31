@@ -1,3 +1,5 @@
+import { frameTime } from './key-easing';
+
 // how much of the film the timeline shows: the whole film across its lanes, zoomed in
 // from there (the lanes widen by the zoom and scroll sideways), never further out. A
 // zoom stops where a frame is FRAME_PIXELS wide, so a pinch never overshoots, and the
@@ -64,7 +66,7 @@ export const labelWidth = (label: string): number => LABEL_INSET + (label.length
  *  (the film's end, at the step's places) LABEL_GAP clear of the next, out to a minute,
  *  in to a frame */
 export const labelStep = (pixels: number, fps: number, length: number): number => {
-  const steps = [...new Set([...SECOND_STEPS, 2 / fps, 1 / fps])].filter(step => step >= (1 / fps)).sort((a, b) => b - a)/*never finer than a frame*/;
+  const steps = [...new Set([...SECOND_STEPS, frameTime(2, fps), frameTime(1, fps)])].filter(step => step >= frameTime(1, fps)).sort((a, b) => b - a)/*never finer than a frame*/;
   let fitting: number = SECOND_STEPS[0];
   for(const step of steps) if((step * pixels) >= Math.max(LABEL_APART, labelWidth(labelOf(length, step)) + LABEL_GAP)) fitting = step;
   return fitting;

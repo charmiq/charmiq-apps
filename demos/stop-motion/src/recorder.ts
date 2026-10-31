@@ -879,7 +879,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   const cutsMade = (length: number): ReadonlyArray<CutOut> => cutOuts.map(({ from, to, line }) => {
     const call = `cutOut(${from}, ${to})`;
     if(from >= length) fail(`${call} starts at or past the film's end, ${length} s`, line);
-    const [start, end] = [frameOf(from) / settings.fps, frameOf(Math.min(to, length)) / settings.fps];
+    const [start, end] = [frameTimeOf(frameOf(from)), frameTimeOf(frameOf(Math.min(to, length)))];
     if(end <= start) fail(`${call} cuts out less than a frame at ${settings.fps} fps`, line);
     return { from: start, to: end, ...((line !== undefined) ? { line } : {}) };
   }).sort((a, b) => a.from - b.from);
@@ -1116,7 +1116,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
    *  component (which never poses) */
   const alive = (name: string, source: Readonly<Record<string, unknown>>, still: true | undefined, spans: ReadonlyArray<Span>): Span[] => {
     if(still || (source.component !== undefined)) return [...spans];
-    const last = Math.max(0, Math.round(settings.length! * settings.fps) - 1);
+    const last = Math.max(0, frameOf(settings.length!) - 1);
     const moving = spans.filter(span => MOVING.has(span.label)).map(span => [span.from, span.to] as const).sort((a, b) => a[0] - b[0]);
     const gaps: Array<readonly [number, number]> = [];
     let from = 0;
@@ -1125,8 +1125,8 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
       from = Math.max(from, end + 1);
     }
     if(from <= last) gaps.push([from, last]);
-    return [...spans, ...gaps.filter(([start, end]) => ((end - start) / settings.fps) >= ALIVE_GAP).map(([start, end], index) => {
-      const [begin, finish] = [start / settings.fps, end / settings.fps];
+    return [...spans, ...gaps.filter(([start, end]) => frameTimeOf(end - start) >= ALIVE_GAP).map(([start, end], index) => {
+      const [begin, finish] = [frameTimeOf(start), frameTimeOf(end)];
       return { ...sampled(begin, finish, 'add', 'alive', undefined, idleOf(ALIVE_ENERGY, 0, begin, finish, `${name} alive ${index}`, ALIVE_SCALE)), figure: true as const };
     })];
   };
@@ -1295,7 +1295,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
    *  and its partner */
   const walkCrowd = (crowd: Crowd) => {
     const { path, walkers, width } = crowd;
-    const fps = settings.fps, dt = 1 / fps;
+    const fps = settings.fps, dt = frameTimeOf(1);
     const [first, last] = [frameOf(crowd.from), frameOf(crowd.to ?? settings.length!)];
     const next = random(`${String(crowd.seed)} walk`), setOff = random(`${String(crowd.seed)} set off`)/*its own, so the rest of the walk draws as it did*/;
     const edge = Math.max(0, (width / 2) - 1);
@@ -1317,8 +1317,8 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
     const gaits = walkers.map(() => [] as Array<Record<string, number>>), poses = walkers.map(() => [] as Array<Record<string, number>>);
     const paused = (t: number, index: number) => states[index].heldUntil > t;
     // walked from PREROLL before its first frame, so each walker is under way there
-    for(let frame=(first - Math.round(PREROLL * fps)); frame<=last; frame++) {
-      const t = frame / fps, seen = (frame >= first);
+    for(let frame=(first - frameOf(PREROLL)); frame<=last; frame++) {
+      const t = frameTimeOf(frame), seen = (frame >= first);
       walkers.forEach((walker, index) => {
         const state = states[index], me = walker.personality;
         const place = alongPath(path, state.along);
@@ -1624,7 +1624,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
           // its cheer, and its sitting back down after it: each a movement of its own
           const sits = () => Math.min(settings.length!, cheerEnd(member, cheer) + sitDelay(member, cheer));
           member.entry.spans.push(() => sampled(cheer.rises, sits(), 'add', 'cheer', line, cheering(member, cheer)));
-          member.entry.spans.push(() => { const from = Math.min(settings.length!, sits() + (1 / settings.fps)); return sampled(from, Math.max(from, Math.min(settings.length!, sits() + SIT_SECONDS)), 'add', 'sit', line, cheering(member, cheer)); });
+          member.entry.spans.push(() => { const from = Math.min(settings.length!, sits() + frameTimeOf(1)); return sampled(from, Math.max(from, Math.min(settings.length!, sits() + SIT_SECONDS)), 'add', 'sit', line, cheering(member, cheer)); });
         }
         return group;
       },
@@ -1832,15 +1832,16 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   };
 
   // .. Sampling ..................................................................
-  /** the frame at a time, as frames count from 0 */
-  const frameOf = (time: number) => Math.round(time * settings.fps);
+  /** the frame at a time, as frames count from 0, and a frame's time (SEE: key-easing.ts) */
+  const frameOf = (time: number) => Math.round(easing.framesAt(time, settings.fps));
+  const frameTimeOf = (frame: number) => easing.frameTime(frame, settings.fps);
 
   /** a function of time sampled at every frame of a span */
   const sampled = (start: number, end: number, mode: 'set' | 'add', label: string, line: number | undefined, at: (u: number, t: number) => Record<string, number>): Span => {
     const [first, last] = [frameOf(start), frameOf(end)];
     const samples: Array<Record<string, number>> = [];
     for(let frame=first; frame<=last; frame++) {
-      const t = frame / settings.fps;
+      const t = frameTimeOf(frame);
       try { samples.push(at((last > first) ? ((frame - first) / (last - first)) : 1, t)); }
       catch(error) { fail((error as Error).message, (error as { sceneLine?: number; }).sceneLine ?? stackLine(error) ?? line); }
     }
@@ -1925,7 +1926,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   const byTime = <T extends { time: number; ease?: Ease; }>(keys: T[]) => [...keys].sort((a, b) => (a.time - b.time) || (Number(a.ease === 'hold') - Number(b.ease === 'hold')));
   const cuts = cutsMade(settings.length);
   return {
-    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, Math.round(settings.length * settings.fps)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...(settings.tone ? { tone: settings.tone } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
+    title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, frameOf(settings.length)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...(settings.tone ? { tone: settings.tone } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
     actors: actors.map(({ name, source, ride, released, planted, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, seat, drawn, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), ...(released ? { released } : {}), ...(planted ? { planted } : {}), ...(pickedUp ? { pickedUp } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),

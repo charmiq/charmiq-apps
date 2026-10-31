@@ -1,4 +1,4 @@
-import type { Film, FilmFrame, FrameStep } from './film';
+import { secondFrames, type Film, type FilmFrame, type FrameStep } from './film';
 import { glideAt, hipFor, hopShares, keysAt, posedAt, rockAt, strideOf, turnedOn, GaitMove, type GaitShape, type GaitTiming, type Move, type Stance, type Stride, WALK } from './steps';
 
 // the Gait mode: the gait a walker takes shaped on its graphs, a tab for each kind of
@@ -163,7 +163,7 @@ export class GaitView {
     addEventListener('keydown', event => {
       if(this.root.hidden || !this.film || ((event.key !== 'ArrowLeft') && (event.key !== 'ArrowRight'))) return;
       if((event.target instanceof HTMLInputElement) || (event.target instanceof HTMLSelectElement) || (event.target instanceof HTMLTextAreaElement)) return/*its own keys*/;
-      this.host.step(((event.key === 'ArrowLeft') ? -1 : 1) * (event.shiftKey ? Math.round(this.film.scene.fps)/*a second's frames*/ : 1));
+      this.host.step(((event.key === 'ArrowLeft') ? -1 : 1) * (event.shiftKey ? secondFrames(this.film.scene.fps) : 1));
       event.preventDefault();
     });
 

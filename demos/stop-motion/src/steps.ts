@@ -1,6 +1,7 @@
 import { hipsFromSoles, hipsOver, type PoseBottoms } from '../../brick-shared/rise';
 
 import { PERSON_RANGE } from './joint-range';
+import { framesAt } from './key-easing';
 import type { Foot, Walk } from './recorder';
 
 // an actor that clicks onto studs (a figure, a creature) moving as one does: on studs
@@ -1088,11 +1089,11 @@ export class Clicked {
   // own drawing) and in a drawing a frame on ones (SEE: Drawing)
   private drawnAt(move: Move, time: number, shape: GaitShape): number {
     const span = move.end - move.start, u = (span > 0) ? Math.max(0, Math.min(1, (time - move.start) / span)) : 1;
-    if(!this.drawing) return u/*smooth*/;
-    const frames = span * this.drawing.fps, own = drawingsOf(move, shape);
+    if(!this.drawing || (span <= 0)) return u/*smooth, or a move of no length: done*/;
+    const frames = framesAt(span, this.drawing.fps), own = drawingsOf(move, shape);
     if((this.drawing.frames > 1) && (own > (frames / this.drawing.frames))) return u/*quicker than the film draws it*/;
     const drawings = Math.max(1, (this.drawing.frames > 1) ? own : Math.round(frames));
-    return Math.min(1, Math.floor((u * drawings) + 1e-6) / drawings);
+    return Math.min(1, Math.floor(framesAt(Math.max(0, time - move.start), drawings / span)/*its drawings, as the film's frames*/) / drawings);
   }
 
   // `posed` over its values (SEE: applied); a figure its move rolls about a foot's edge

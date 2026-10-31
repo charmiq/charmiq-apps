@@ -47,7 +47,7 @@ Drag to orbit, right-drag to pan, scroll to zoom. Press I (or the info button) f
 - **A Charm that looks at its work.** One command shows the build from all four sides at once. The Charm takes one screenshot, sees what's off, and fixes it.
 - **Watch it go up.** Builds come in steps. Press play and the parts drop in one step at a time.
 - **Build it once.** A tower, a house, a tree with its fence: define it once as a component, place as many copies as you like, and change them all by changing one. Save a design to your Drive and drop it into your next build.
-- **About 180 parts.** Bricks, slopes, arches, windows, trees, fences, figures, wheels, hinges, turntables, side-stud bricks, cats, a cow, an octopus, in 16 solid colors and 7 see-through ones.
+- **About 210 parts.** Bricks, slopes, arches, windows, trees, fences, figures, wheels, hinges, turntables, side-stud bricks, cats, a cow, an octopus, in 23 solid colors, 3 metallic ones and 8 see-through ones.
 - **Figures that pose.** Wave, point, walk, look around, or sit down in the driver's seat: every arm, leg and head turns in 15-degree steps. Give them a hat or hair, and a sword, a lance, a pickaxe or a flashlight to hold.
 - **Things that open and turn.** Lids, drawbridges and turrets ride on hinges and turntables, open as far as you like in 15-degree steps, and still collide where they swing.
 - **Details on every side.** Headlights, grilles, signs and lamps mount on the sides of side-stud bricks, the way real builds do it.

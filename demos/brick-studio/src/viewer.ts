@@ -20,6 +20,7 @@ import { Effects, type Lens } from './render/effects';
 import { PATH_TRACED_PARTS, type Fidelity } from './render/fidelity';
 import { framedShare, frameView, type FramingAim, type Share, type ViewPoint } from './render/framing';
 import { gradeOf, keyDirection } from './render/grade';
+import { fitKeyShadow, keyEdge } from './render/keyShadow';
 import { drawOverlay, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
@@ -60,8 +61,17 @@ const BASEPLATE_THICKNESS = 0.16/*scene units*/;
 /** how much wider than the build a framed view is */
 const FRAME_MARGIN = 1.08;
 
-/** how much more a stage's softest key blurs its shadows than the look's own */
+/** how much more a stage's softest key blurs its shadows than the look's own, below Photo */
 const SOFTEST_SHADOW = 3;
+/** how many texels of the plate's shadow map Photo's own shadow edge spreads either side
+ *  (SEE: photoEdge) */
+const PHOTO_EDGE_TEXELS = 10;
+/** how far the key's shadow covers either side of the plate's middle, as a share of its
+ *  reach, below Photo */
+const PLATE_COVER = 0.75;
+/** how far above the set's highest part the key's shadow covers (scene units): an
+ *  actor leaping over the set still throws its shadow */
+const SET_HEADROOM = 10;
 const DROP_HEIGHT = 2.4/*scene units*/;
 const DROP_MS = 340/*ms*/;
 const DROP_STAGGER_MS = 22/*ms*/;
@@ -210,8 +220,9 @@ export class Viewer {
   private studio: Studio | undefined;
   /** the direction the studio was captured lit from */
   private studioToward = '';
-  /** where the sun's light and shadow cover: the baseplate's middle and its reach */
-  private sunOver: Readonly<{ center: THREE.Vector3; reach: number; }> | undefined;
+  /** where the sun's light and shadow cover: the baseplate's middle and its reach, and
+   *  the set's box over it (SEE: render/keyShadow.ts) */
+  private sunOver: Readonly<{ center: THREE.Vector3; reach: number; box: THREE.Box3; }> | undefined;
   private readonly effects: Effects;
   private pathTrace: PathTrace | undefined;
   private pathTraceStale = true;
@@ -342,6 +353,7 @@ export class Viewer {
     this.sun.shadow.normalBias = 0.02;
     this.sun.shadow.radius = 4;
     this.scene.add(this.sun, this.sun.target, this.sky);
+    this.scene.onBeforeRender = (_renderer, _scene, camera) => this.fitKey(camera)/*before the shadow map is drawn, for each camera drawing the scene*/;
     this.scene.add(this.parts, this.pictures.group, this.ghosts, this.pinMarks.group);
     this.ghostOutlineScene.add(this.ghostOutline);
     this.effects = new Effects(this.renderer, this.scene, this.camera);
@@ -595,7 +607,7 @@ export class Viewer {
     this.sun.intensity = (draft ? 1.6 : 2.4) * key;
     this.renderer.toneMapping = draft ? THREE.ACESFilmicToneMapping : THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = (draft ? 1.05 : 1.2) * exposure;
-    this.sun.shadow.radius = ((fidelity >= 2) ? 10 : 4) * (1 + (SOFTEST_SHADOW * soft));
+    this.sun.shadow.radius = ((fidelity >= 2) ? 10 : 4) * (1 + (SOFTEST_SHADOW * soft))/*Photo's fitted to each view (SEE: fitKey)*/;
 
     // soft, blurred shadows from stop 2; a shadow type change recompiles materials
     const shadows = (fidelity >= 2) ? THREE.VSMShadowMap : THREE.PCFShadowMap;
@@ -1437,7 +1449,8 @@ export class Viewer {
     this.scene.add(plate);
 
     // the sun's shadow covers the plate
-    this.sunOver = { center: new THREE.Vector3(minX + (width / 2), 0, minZ + (depth / 2)), reach: Math.max(width, depth, size.y * 2) };
+    const cover = new THREE.Box3(new THREE.Vector3(minX, -BASEPLATE_THICKNESS, minZ), new THREE.Vector3(minX + width, (box.isEmpty() ? 0 : Math.max(0, box.max.y)) + SET_HEADROOM, minZ + depth));
+    this.sunOver = { center: new THREE.Vector3(minX + (width / 2), 0, minZ + (depth / 2)), reach: Math.max(width, depth, size.y * 2), box: cover };
     this.aimSun();
   }
 
@@ -1448,6 +1461,19 @@ export class Viewer {
     return from ? new THREE.Vector3(...keyDirection(from)) : KEY_DIRECTION.clone();
   }
 
+  /** fits the key's shadow at Photo to what `camera` sees of the set (SEE:
+   *  render/keyShadow.ts); below it the shadow covers the plate as aimSun stands it */
+  private fitKey(camera: THREE.Camera): void {
+    if(!this.sunOver || (this.fidelity < 3)) return/*the plate's cover*/;
+    fitKeyShadow(this.sun, camera, { box: this.sunOver.box }, keyEdge(this.photoEdge(), this.stageLight.soft));
+  }
+
+  /** Photo's own shadow edge (studs either side): PHOTO_EDGE_TEXELS of a map covering the
+   *  plate as aimSun stands it, so each set keeps the softness Photo has always given it */
+  private photoEdge(): number {
+    return PHOTO_EDGE_TEXELS * ((this.sunOver!.reach * PLATE_COVER * 2) / this.sun.shadow.mapSize.x);
+  }
+
   /** stands the sun toward the key over the baseplate, its shadow covering it */
   private aimSun(): void {
     if(!this.sunOver) return/*no baseplate yet*/;
@@ -1455,8 +1481,8 @@ export class Viewer {
     this.sun.target.position.copy(center);
     this.sun.position.copy(center).add(this.keyToward().multiplyScalar(reach * 1.5));
     const camera = this.sun.shadow.camera;
-    camera.left = camera.bottom = -reach * 0.75;
-    camera.right = camera.top = reach * 0.75;
+    camera.left = camera.bottom = -reach * PLATE_COVER;
+    camera.right = camera.top = reach * PLATE_COVER;
     camera.near = 0.1;
     camera.far = reach * 4;
     camera.updateProjectionMatrix();

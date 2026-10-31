@@ -274,9 +274,10 @@ export const floorOf = (input: unknown): Floor | undefined => {
 
 /** how a stage is lit, over the look's own light: its key light and its fill (the
  *  environment and the sky) scaled, its exposure scaled, and its key's shadows
- *  softened (0 the look's own, 1 the softest); each 1 (soft 0) when left out. Its
- *  white balance (kelvin, 6500 neutral) and saturation (1 the look's own) grade the
- *  picture, and `from` stands its key elsewhere (SEE: render/grade.ts) */
+ *  softened (0 the look's own, 1 the softest; at Photo 0 a sun's hard edge); each scale
+ *  1 when left out, the shadows the look's own. Its white balance (kelvin, 6500
+ *  neutral) and saturation (1 the look's own) grade the picture, and `from` stands its
+ *  key elsewhere (SEE: render/grade.ts) */
 export type StageLight = Readonly<{ key?: number; fill?: number; exposure?: number; soft?: number; white?: number; saturation?: number; from?: KeyFrom; }>;
 /** the most each of a stage's light's scales takes, and the least exposure */
 export const LIGHT_LIMITS = { key: 3, fill: 4, exposure: 4, soft: 1 } as const;

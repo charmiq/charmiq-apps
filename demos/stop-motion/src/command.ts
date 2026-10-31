@@ -8,6 +8,7 @@ import type { Avoided } from './clearance';
 import { cameraShots, channelAt, filmLengthOf, filmTimeOf, flightsAt, frameAtTime, holdingOf, plantedAt, pointingsAt, reachOf, sceneTimeOf, setAt, shotAt, shotFrames, soundEndOf, type CameraShot, type Film, type HandProbe, type HandReach, type HeldEnds, type Pointing, type Shot, type WalkLeaps, HANDS, REACH } from './film';
 import { UnsavedChanges, type Films } from './films';
 import { MAX_AREA_CELLS, type CellArea } from './ground';
+import { frameTime, isReached } from './key-easing';
 import { closePairs, closest, isSized, overlapsOf, type Size, CLOSE_GAP } from './measure';
 import { motionOf, type DriverSpan, MOTION_CHANNELS, POSE_CHANNELS } from './motion-read';
 import type { Player } from './player';
@@ -499,7 +500,7 @@ export const momentsOf = (film: Film): ReadonlyArray<FilmMoment> => {
   const releases = (film.handOffs ?? []).filter(each => each.change === 'released'), released = new Set(releases.map(each => each.thing));
   const planting = new Set(scene.actors.filter(actor => actor.planted).map(actor => actor.name));
   const ofActors = scene.actors.filter(actor => !audienceOf.has(actor.name)).flatMap(actor => {
-    const paths = actor.spans.filter(span => span.label === 'path').map(span => ({ end: span.to / scene.fps, line: span.line })).sort((a, b) => a.end - b.end);
+    const paths = actor.spans.filter(span => span.label === 'path').map(span => ({ end: frameTime(span.to, scene.fps), line: span.line })).sort((a, b) => a.end - b.end);
     if(released.has(actor.name)) return paths.slice(-1).map(({ end, line }) => ({ time: end, actor: actor.name, what: 'lands', line }));
     const walks = (actor.walks ?? []).filter(walk => !(actor.walks ?? []).some(next => (next !== walk) && (Math.abs(next.start - walk.end) < MOMENT_LEAD)));
     return [...walks.map(walk => ({ time: walk.end, actor: actor.name, what: 'finishes its walk', line: walk.line })), ...paths.map(({ end, line }) => ({ time: end, actor: actor.name, what: 'finishes its path', line }))];
@@ -510,7 +511,7 @@ export const momentsOf = (film: Film): ReadonlyArray<FilmMoment> => {
     if(audience === undefined) continue;
     for(const span of actor.spans.filter(each => (each.label === 'cheer') || (each.label === 'wave'))) {
       const key = `${audience}|${span.label}|${span.line ?? ''}`;
-      verbs.set(key, [...(verbs.get(key) ?? []), { time: span.from / scene.fps, audience, label: span.label, line: span.line }]);
+      verbs.set(key, [...(verbs.get(key) ?? []), { time: frameTime(span.from, scene.fps), audience, label: span.label, line: span.line }]);
     }
   }
   const started = [...verbs.values()].flatMap(each => [...each].sort((a, b) => a.time - b.time).filter((verb, index, sorted) => (index < 1) || ((verb.time - sorted[index - 1].time) > VERB_SPREAD)))
@@ -520,7 +521,7 @@ export const momentsOf = (film: Film): ReadonlyArray<FilmMoment> => {
     ...scene.actors.flatMap(thing => (thing.planted?.letGo && thing.released) ? [{ time: thing.planted.letGo.time, actor: thing.released.by, what: `lets go of ${thing.name}`, line: thing.planted.letGo.line }] : []),
     ...(film.leaps ?? []).flatMap(walk => walk.times.flatMap((time, at) => [{ time, actor: walk.actor, what: 'takes off', line: walk.line }, { time: walk.lands[at], actor: walk.actor, what: 'lands', line: walk.line }])),
     ...ofActors, ...started,
-  ].filter(({ time }) => (time >= 0) && (time < (scene.length - 1e-6))).sort((a, b) => a.time - b.time).map(({ time, actor, what, line }) => {
+  ].filter(({ time }) => (time >= 0) && !isReached(scene.length, time)).sort((a, b) => a.time - b.time).map(({ time, actor, what, line }) => {
     const shot = shotAt(shots, time)?.name;
     return { time: thousandths(time), actor, what, ...((shot !== undefined) ? { shot } : {}), ...((line !== undefined) ? { line } : {}) };
   });
@@ -649,7 +650,7 @@ const strainedLines = (film: Film, problems: ReadonlyArray<Problem>): ReadonlyAr
     const key = `${actor}|${joint}|${lines.join()}`;
     groups.set(key, [...(groups.get(key) ?? []), problem]);
   }
-  const framesOver = (spans: ReadonlyArray<Problem>) => film.frames.filter(frame => spans.some(span => (frame.time >= (span.from - 1e-6)) && (frame.time < (span.to - 1e-6)))).length;
+  const framesOver = (spans: ReadonlyArray<Problem>) => film.frames.filter(frame => spans.some(span => isReached(span.from, frame.time) && !isReached(span.to, frame.time))).length;
   return [...groups.values()].map(group => {
     const [worst, ...rest] = group, { fix, ...entry } = worst.entry;
     return { ...entry, from: Math.min(worst.from, ...rest.map(each => each.from)), to: Math.max(worst.to, ...rest.map(each => each.to)), frames: framesOver(group), time: (worst.detail as Readonly<{ time: number; }>).time, fix };
@@ -668,7 +669,7 @@ const deadAirIn = ({ heard, staged }: Measured): ReadonlyArray<DeadAir> | undefi
  *  the film `length` seconds long */
 export const deadAirReport = (length: number, { shot, from, to, seconds, after }: DeadAir) => {
   const cutting = `cutOut(${thousandths(from)}, ${thousandths(to)})`;
-  const fix = (to < (shot.to - 1e-6)) ? `start what comes at ${thousandths(to)} s sooner (a cutOut within the shot jumps whatever moves in it)` : (to < (length - 1e-6)) ? `cut to the next shot sooner, or ${cutting}` : `end the film sooner, or ${cutting}`;
+  const fix = !isReached(shot.to, to) ? `start what comes at ${thousandths(to)} s sooner (a cutOut within the shot jumps whatever moves in it)` : !isReached(length, to) ? `cut to the next shot sooner, or ${cutting}` : `end the film sooner, or ${cutting}`;
   return {
     kind: 'dead air' as const, ...((shot.name !== undefined) ? { shot: shot.name } : {}), from: thousandths(from), to: thousandths(to), seconds: thousandths(seconds),
     after: after.what, ...((after.line !== undefined) ? { lines: [after.line] } : {}), fix,
@@ -759,7 +760,7 @@ const audienceDoing = (film: Film, audience: RecordedAudience, from: number, to:
     }
     for(const span of actor.spans.filter(each => ['cheer', 'sit', 'wave'].includes(each.label))) {
       const what = (span.label === 'wave') ? 'wave' : 'cheer';
-      moves.push({ key: `${what}|${span.line ?? ''}`, what, from: span.from / fps, to: span.to / fps, actor: actor.name });
+      moves.push({ key: `${what}|${span.line ?? ''}`, what, from: frameTime(span.from, fps), to: frameTime(span.to, fps), actor: actor.name });
     }
     // an actor given as a member moving by its own keys within the span
     const keyed = actor.keys.filter(key => (key.time > 0) && (key.time >= from) && (key.time <= to)).map(key => key.time);

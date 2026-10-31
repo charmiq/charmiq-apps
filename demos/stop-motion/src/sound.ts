@@ -1,6 +1,7 @@
 import { isPlatformFile, SOUND_FILES } from '../../brick-shared/drive';
 import { listShipped, shippedLister, shippedOf, type ResourceLister } from '../../brick-shared/shipped';
 import { filmLengthOf, filmTimeOf, soundCuesOf, type Film, type StageCamera } from './film';
+import { framesAt, frameTime, isReached, ON_FRAME } from './key-easing';
 import type { Point, SoundCue } from './recorder';
 import { inView } from './screen';
 
@@ -29,8 +30,6 @@ export const SHIPPED_FOLDER = 'sound/';
 const NEAR = 20;
 /** how loud an actor behind the camera sounds, of what it would in front */
 const BEHIND = 0.5;
-/** a time past a frame's that rounding alone puts there (seconds) */
-const TIME_EPSILON = 1e-9;
 
 /** the window (seconds) a sound's loudness is heard over, where it sounds and where it
  *  pauses */
@@ -113,10 +112,10 @@ const soundLeft = (frame: Film['frames'][number]): number => (frame.fadeColor &&
 
 // the frames from `from` up to `to` (seconds): the first's index and how many
 const framesOf = (film: Film, from: number, to: number): Readonly<{ first: number; count: number; }> => {
-  const first = film.frames.findIndex(frame => frame.time >= (from - TIME_EPSILON));
+  const first = film.frames.findIndex(frame => isReached(from, frame.time));
   if(first < 0) return { first: film.frames.length, count: 0 };
   let last = first;
-  while((last < film.frames.length) && (film.frames[last].time < (to - TIME_EPSILON))) last++;
+  while((last < film.frames.length) && !isReached(to, film.frames[last].time)) last++;
   return { first, count: last - first };
 };
 
@@ -198,12 +197,12 @@ const faded = (param: AudioParam, cue: SoundCue, end: number, from: number, at: 
 // the curve's last frame
 const follow = (param: AudioParam, curve: FrameCurve, fps: number, from: number, at: number): void => {
   if(curve.values.length < 1) return;
-  const into = Math.min(curve.values.length - 1, Math.max(0, Math.ceil((from * fps) - curve.first - TIME_EPSILON)))/*the first frame at or past `from`*/;
+  const into = Math.min(curve.values.length - 1, Math.max(0, Math.ceil(framesAt(from, fps) - curve.first)))/*the first frame at or past `from`*/;
   const values = curve.values.subarray(into);
   param.value = values[0];
   if(values.length < 2) return;
-  const start = at + Math.max(0, ((curve.first + into) / fps) - from);
-  param.setValueCurveAtTime(values, start, (values.length - 1) / fps);
+  const start = at + Math.max(0, frameTime(curve.first + into, fps) - from);
+  param.setValueCurveAtTime(values, start, frameTime(values.length - 1, fps));
 };
 
 // == Waveform ====================================================================
@@ -256,7 +255,7 @@ export const soundSpans = (sound: Sampled, minPause: number, most: number): Hear
     else runs.push([window, window + 1]);
   }
   const seconds = (window: number) => Math.min(window * size, sound.length) / sound.sampleRate;
-  const parts = runs.slice(1).map((run, at) => ({ at, pause: seconds(run[0]) - seconds(runs[at][1]) })).filter(({ pause }) => pause >= (minPause - TIME_EPSILON));
+  const parts = runs.slice(1).map((run, at) => ({ at, pause: seconds(run[0]) - seconds(runs[at][1]) })).filter(({ pause }) => pause >= (minPause - ON_FRAME));
   const kept = (parts.length < most) ? parts : [...parts].sort((a, b) => (b.pause - a.pause) || (a.at - b.at)).slice(0, Math.max(0, most - 1)).sort((a, b) => a.at - b.at);
   const ends = [...kept.map(({ at }) => at), runs.length - 1]/*the last run of each span*/;
   return {

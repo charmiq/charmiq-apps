@@ -1,5 +1,6 @@
-import { cameraShots, filmLengthOf, filmTimeOf, frameAtTime, sceneTimeOf, shotAt, type Film } from './film';
+import { cameraShots, filmLengthOf, filmTimeOf, frameAtTime, sceneTimeOf, secondFrames, shotAt, type Film } from './film';
 import type { Inspected, InspectedMark, Inspector } from './inspector';
+import { framesAt, frameTime } from './key-easing';
 import type { ClosePair } from './measure';
 import type { SoundCue } from './recorder';
 import type { Lit, MarkedSpan } from './review-surface';
@@ -356,7 +357,7 @@ export class Timeline {
       last.tick.classList.add('ruler-tick--end');
       if(before && ((before.x + before.width) > (last.x - last.width))) before.tick.textContent = ''/*its tick stands*/;
     } /* else -- the last label within the lanes' inset */
-    ruler.style.setProperty('--frame', atFilm(1 / scene.fps));
+    ruler.style.setProperty('--frame', atFilm(frameTime(1, scene.fps)));
     const head = element(document, 'div', 'row row--ruler');
     head.append(this.zoomControls(film), ruler);
     this.scroller.replaceChildren(head);
@@ -722,7 +723,7 @@ export class Timeline {
     this.dragging = undefined;
     this.root.classList.remove('is-moving');
     if(Math.abs(moved) < DRAG_SLOP) { mark.style.transform = ''; this.redrawStale(); this.scrub(event); return; }
-    const fell = Math.max(0, Math.round((filmTimeOf(film, band.cue!.time) + ((moved / Math.max(1, this.laneWidth)) * filmLengthOf(film))) * film.scene.fps) / film.scene.fps)/*the film's frame it fell on*/;
+    const fell = Math.max(0, frameTime(Math.round(framesAt(filmTimeOf(film, band.cue!.time) + ((moved / Math.max(1, this.laneWidth)) * filmLengthOf(film)), film.scene.fps)), film.scene.fps))/*the film's frame it fell on*/;
     const time = Math.round(sceneTimeOf(film, fell) * 1000) / 1000;
     const refused = await this.host.moveSound(band.cue!, time);
     if(refused !== undefined) { mark.style.transform = ''; this.showNote(refused); }
@@ -774,8 +775,8 @@ export class Timeline {
     const film = this.film;
     if(!film) return;
     const handled: Record<string, () => void> = {
-      ArrowLeft: () => this.host.step(event.shiftKey ? -film.scene.fps : -1),
-      ArrowRight: () => this.host.step(event.shiftKey ? film.scene.fps : 1),
+      ArrowLeft: () => this.host.step(event.shiftKey ? -secondFrames(film.scene.fps) : -1),
+      ArrowRight: () => this.host.step(event.shiftKey ? secondFrames(film.scene.fps) : 1),
       Home: () => this.host.seek(0),
       End: () => this.host.seek(film.frames.length - 1),
       ' ': () => this.host.toggle(),

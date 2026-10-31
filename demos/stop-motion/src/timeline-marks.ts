@@ -1,4 +1,5 @@
 import { cameraShots, soundEndOf, type Film, type FilmFrame } from './film';
+import { frameTime } from './key-easing';
 import type { ClosePair } from './measure';
 import { castAs, type CameraKey, type FadeKey, type Key, type RecordedCamera, type SetKey, type SoundCue, type Span, type Target, type Title } from './recorder';
 
@@ -183,7 +184,7 @@ const titleRow = (titles: ReadonlyArray<Title>): Row => ({
 
 /** a span as a band: its frames as seconds */
 const band = (span: Span, fps: number): RowBand => {
-  const [from, to] = [span.from / fps, span.to / fps];
+  const [from, to] = [frameTime(span.from, fps), frameTime(span.to, fps)];
   const path = (span.mode === 'set');
   return { from, to, label: span.label, kind: path ? 'path' : 'wobble', title: BEHAVIOR_TITLES[span.label] ?? (path ? `Path "${span.label}"` : `Wobble "${span.label}"`), chips: [`${seconds2(from)} – ${seconds2(to)}`, ...span.channels] };
 };

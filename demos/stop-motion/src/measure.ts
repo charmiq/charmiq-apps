@@ -1,4 +1,5 @@
 import { frameEnd, type Film, type Shot } from './film';
+import { isReached } from './key-easing';
 import type { Point, RecordedActor } from './recorder';
 
 // how far apart actors come. An actor's box is its footprint turned by its yaw (pitch
@@ -25,9 +26,6 @@ const OVERLAP_GAP = 0.25;
 const STUDS_PER_PLATE = 0.4;
 /** a gap nearer than this is touching: a turn's trigonometry rounds */
 const TOUCHING = 1e-9/*studs*/;
-/** how far a moment may lie past a frame's time and still reach it: a frame's time is
- *  the quotient of its index and the fps, which rounds */
-const TIME_EPSILON = 1e-9/*seconds*/;
 
 // == Types =======================================================================
 /** an actor's box as the stage sizes it: studs across (x), studs along (z) and
@@ -146,7 +144,7 @@ const handedFrames = (film: Film, one: string, other: string, depthAt: (at: numb
     if(!((handOff.thing === one) && (handOff.by === other)) && !((handOff.thing === other) && (handOff.by === one))) continue;
     const step = (handOff.change === 'released') ? 1 : -1;
     const planted = (step > 0) ? film.scene.actors.find(actor => actor.name === handOff.thing)?.planted : undefined;
-    const letGo = !planted ? handOff.frame : planted.letGo ? film.frames.findIndex(frame => frame.time >= (planted.letGo!.time - 1e-6)) : -1/*hangs to the end*/;
+    const letGo = !planted ? handOff.frame : planted.letGo ? film.frames.findIndex(frame => isReached(planted.letGo!.time, frame.time)) : -1/*hangs to the end*/;
     const hung = (letGo < 0) ? film.frames.length : letGo;
     for(let at=handOff.frame; at<hung; at++) frames.add(at);
     for(let at=((step > 0) ? hung : (handOff.frame - 1)); (at >= 0) && (at < film.frames.length) && (depthAt(at) > OVERLAP_DEEP); at+=step) frames.add(at);
@@ -186,7 +184,7 @@ const nearest = (film: Film, sizes: Readonly<Record<string, Size>>, a: string, b
   film.frames.forEach((frame, index) => {
     const [one, other] = [ones[index], others[index]];
     if(!one || !other) return/*one of them hidden*/;
-    if((frame.time < (from - TIME_EPSILON)) || (frame.time > (to + TIME_EPSILON))) return;
+    if(!isReached(from, frame.time) || !isReached(frame.time, to)) return;
     const up = Math.max(0, other.position.height - (one.position.height + size.height), one.position.height - (other.position.height + otherSize.height)) * STUDS_PER_PLATE;
     const across = Math.max(0, Math.hypot(other.position.x - one.position.x, other.position.z - one.position.z) - reaches);
     if(Math.hypot(across, up) >= best) return/*cannot come nearer*/;

@@ -3,6 +3,7 @@ import { rotation } from '../../brick-shared/turn';
 
 import { cameraShots, frameEnd, isReached, pointIn, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING } from './film';
 import type { GroundProbe } from './ground';
+import { framesAt } from './key-easing';
 import type { Size } from './measure';
 import type { Point, RecordedCamera, Span } from './recorder';
 import { avoidingAt, flying, pathAt, type PartFinding } from './review';
@@ -189,7 +190,7 @@ const easedShares = (film: Film, keys: RecordedCamera, needs: ReadonlyArray<numb
 const isHeld = (frame: FilmFrame): boolean => !!frame.transition && (frame.transition.set !== frame.set);
 
 /** how many frames either way an avoiding camera eases over */
-const easeReach = ({ scene }: Film): number => Math.max(1, Math.round(EASE_SECONDS * scene.fps));
+const easeReach = ({ scene }: Film): number => Math.max(1, Math.round(framesAt(EASE_SECONDS, scene.fps)));
 
 /** the spans a camera is drawn in over, each with the least share it keeps */
 const avoidedOf = (film: Film, shares: ReadonlyArray<number>): ReadonlyArray<Avoided> => {
@@ -342,8 +343,8 @@ const floorOf = (film: Film, surfaces: (set: string | undefined) => SurfaceAt, n
     const frame = film.frames[index], shot = frame?.actors.find(each => each.name === name);
     return shot && surfaceUnder({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set));
   };
-  const first = film.frames.findIndex(frame => (frame.time * film.scene.fps) >= (flight.from - TOUCHING));
-  const next = film.frames.findIndex(frame => (frame.time * film.scene.fps) > (flight.to + TOUCHING));
+  const first = film.frames.findIndex(frame => framesAt(frame.time, film.scene.fps) >= flight.from);
+  const next = film.frames.findIndex(frame => framesAt(frame.time, film.scene.fps) > flight.to);
   const [takeoff, landing] = [under(first), under(((next < 0) ? film.frames.length : next) - 1)];
   return ((takeoff === undefined) || (landing === undefined)) ? undefined : Math.max(takeoff, landing);
 };

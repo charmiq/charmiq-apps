@@ -1,6 +1,7 @@
 import { BehaviorSubject, type Observable } from 'rxjs';
 
 import type { Film } from './film';
+import { framesAt, frameTime } from './key-easing';
 
 // the player: the film's playhead and its clock. It draws nothing: each frame it
 // reaches is shown on the studios, which are the film's screens. Playing, the frame
@@ -92,12 +93,12 @@ export class Player {
     if(!film || !clock) return;
     const { fps } = film.scene;
     let { start, from } = clock;
-    let due = from + Math.floor(((performance.now() - start) / 1000) * fps);
+    let due = from + Math.floor(framesAt((performance.now() - start) / 1000, fps));
     const span = this.span;
     if(span && (due > span.last)) {
       // past the span's end: where the time falls within it, on the clock from its first
       due = span.first + ((due - span.first) % ((span.last - span.first) + 1));
-      [start, from] = [performance.now() - (((due - span.first) / fps) * 1000), span.first];
+      [start, from] = [performance.now() - (frameTime(due - span.first, fps) * 1000), span.first];
       this.clock = { start, from };
       this.sound();
     } /* else -- no span looped, or within it */
@@ -109,14 +110,14 @@ export class Player {
       this.sound(true)/*looped: the sound from the start again, the last playing out*/;
     } /* else -- within the film */
     this.moveTo(due);
-    const next = ((due - from + 1) / fps) - ((performance.now() - start) / 1000)/*seconds to the next frame's start*/;
+    const next = frameTime(due - from + 1, fps) - ((performance.now() - start) / 1000)/*seconds to the next frame's start*/;
     this.wake = setTimeout(() => this.tick(), Math.max(1, next * 1000));
   }
 
   /** the film's sound from where the clock starts */
   private sound(carry = false): void {
     const film = this.film, clock = this.clock;
-    if(film && clock) this.soundtrack?.start(clock.from / film.scene.fps, clock.start, carry);
+    if(film && clock) this.soundtrack?.start(frameTime(clock.from, film.scene.fps), clock.start, carry);
   }
 
   /** the film's end reached: stopped, the sound started playing out */

@@ -182,6 +182,7 @@ export const CATALOG: ReadonlyArray<CatalogPart> = [
   { key: 'slope-45-2x2', ldraw: '3039',   kind: 'slope' },
   { key: 'slope-45-2x3', ldraw: '3038',   kind: 'slope' },
   { key: 'slope-45-2x4', ldraw: '3037',   kind: 'slope' },
+  { key: 'slope-45-2x8', ldraw: '4445',   kind: 'slope' },
   { key: 'slope-33-3x1', ldraw: '4286',   kind: 'slope' },
   { key: 'slope-33-3x2', ldraw: '3298',   kind: 'slope' },
   { key: 'slope-33-3x4', ldraw: '3297',   kind: 'slope' },
@@ -546,6 +547,7 @@ export const COLORS: ReadonlyArray<CatalogColor> = [
   { key: 'dark-red',     code: 320 },
   { key: 'dark-green',   code: 288 },
   { key: 'sand-green',   code: 378 },
+  { key: 'sand-blue',    code: 379 },
   { key: 'dark-blue',    code: 272 },
   { key: 'dark-tan',     code: 28 },
 

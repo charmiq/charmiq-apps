@@ -3,7 +3,7 @@ import { rotation, turnOf, twistedYaw, type Turn } from '../../brick-shared/turn
 import { listed } from '../../brick-shared/words';
 
 import { pastRange, type PastRange, type RangedJoint, RANGED_JOINTS } from './joint-range';
-import { keyEasing } from './key-easing';
+import { ease, eased, framesAt, frameTime, isReached, ON_FRAME } from './key-easing';
 import type { Aim, Area, CameraKey, CameraPlace, CutOut, Ease, Drawn, FaceKey, FadeKey, Hand, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
 import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, median, poseOf, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG, ON_SURFACE } from './steps';
 
@@ -49,9 +49,6 @@ export const DEFAULT_FOV = 32/*degrees: the studio's own lens*/;
  *  ground over: a height lasting under half of it moves nothing, and a tilt or a pan
  *  eases over the whole of it (SEE: followed) */
 const FOLLOW_WINDOW = 1/*seconds*/;
-/** how far a key's time may lie past a frame's and still take effect at it: a frame's
- *  time is the quotient of its index and the fps, which rounds */
-const TIME_EPSILON = 1e-9/*seconds*/;
 /** how long a title takes to come in and to go */
 const TITLE_EASE = 0.25/*seconds*/;
 /** how far a plan reaches past everything it shows */
@@ -247,7 +244,7 @@ const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
   let shownCount = 0;
   const shownAt = times.map(time => { const at = shownCount; if(!cutOutAt(scene, time)) shownCount++; return at; });
   const shownIndex = (index: number) => shownAt[index] ?? 0;
-  const cuts = [...new Set([...cameraShots(scene.camera, scene.length).map(shot => shot.from), ...(scene.sets ?? []).map(key => key.time)].map(cut => times.findIndex(time => time >= (cut - TIME_EPSILON))).filter(index => index > 0))].sort((a, b) => a - b);
+  const cuts = [...new Set([...cameraShots(scene.camera, scene.length).map(shot => shot.from), ...(scene.sets ?? []).map(key => key.time)].map(cut => times.findIndex(time => isReached(cut, time))).filter(index => index > 0))].sort((a, b) => a - b);
   const drawnFrame = (own: Drawn | undefined, index: number) => {
     if((own ?? scene.drawn) !== 'twos') return index;
     const cut = cuts.filter(each => each <= index).pop() ?? 0;
@@ -267,7 +264,7 @@ const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
     ...actor, keys: releaseKeyed(actor, hands?.released.get(actor.name), handOffs.find(each => (each.thing === actor.name) && (each.change === 'released')), scene, times, drawnFrame),
     spans: actor.spans.filter(span => (!span.figure || figures.has(actor.name))/*a figure's alone*/ && (!span.glide || !clicks.has(actor.name) || !!actor.ride)/*a walk stepped*/),
   }));
-  const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), bottoms, actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [from / scene.fps, to / scene.fps] as const), drawingOf(actor.drawn))]));
+  const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), bottoms, actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [frameTime(from, scene.fps), frameTime(to, scene.fps)] as const), drawingOf(actor.drawn))]));
   const worlds: Array<Omit<FilmFrame, 'camera' | 'views' | 'transition'>> = []/*each frame but its cameras*/, placements: Array<ReadonlyMap<string, Placed>> = [], drawings: Array<ReadonlyMap<string, number>> = [], walkedOver: Array<ReadonlyMap<string, number>> = [], headed: Array<ReadonlyMap<string, number>> = [];
   const rolled = new Map<string, number>();
   const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();
@@ -290,7 +287,7 @@ const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
       const ground = grounds.get(actor.name)?.[shownIndex(drawn)];
       // following the ground, its own height counts from the ground (its piece's place
       // and turn kept): what its keys and paths give it, over the ground under it
-      const keyed = boiled(localAt(actor, drawnTime * scene.fps, drawnTime, (rest?.position && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest), actor, drawn, scene.boil, figures.has(actor.name), clicks.has(actor.name));
+      const keyed = boiled(localAt(actor, framesAt(drawnTime, scene.fps), drawnTime, (rest?.position && (ground !== undefined)) ? { ...rest, position: { ...rest.position, height: 0 } } : rest), actor, drawn, scene.boil, figures.has(actor.name), clicks.has(actor.name));
       const lifted = (ground === undefined) ? keyed : { channels: { ...keyed.channels, height: (keyed.channels.height ?? 0) + ground } };
       const grounded = turned.get(actor.name) ? { channels: { ...lifted.channels, yaw: (lifted.channels.yaw ?? 0) + turned.get(actor.name)! } } : lifted;
       if(ground !== undefined) levels[actor.name] = ground;
@@ -322,7 +319,7 @@ const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
       const parent = actor.ride && placed.get(actor.ride.parent);
       const ridden = parent ? riding(parent, actor.ride!.offset, own, figures.has(actor.name) ? { bottoms } : undefined) : own;
       // its own values at a time, over the ground it follows then (where a flight lands)
-      const keyedAt = (at: number) => { const channels = localAt(actor, at * scene.fps, at, rest).channels, under = grounds.get(actor.name)?.[shownIndex(Math.max(0, times.findIndex(each => each >= (at - TIME_EPSILON))))]; return (under === undefined) ? channels : { ...channels, height: (channels.height ?? 0) + under }; };
+      const keyedAt = (at: number) => { const channels = localAt(actor, framesAt(at, scene.fps), at, rest).channels, under = grounds.get(actor.name)?.[shownIndex(Math.max(0, times.findIndex(each => isReached(at, each))))]; return (under === undefined) ? channels : { ...channels, height: (channels.height ?? 0) + under }; };
       const standing = plants.place(actor, index, ridden, placed, placements, keyedAt, figures.has(actor.name) ? { bottoms } : undefined);
       within(actor, standing.position, time);
       const handed = (actor.released && !(index >= (shownFrom.get(actor.name) ?? Infinity)))/*not yet let go of*/ || (index >= (shownUntil.get(actor.name) ?? Infinity))/*taken up*/;
@@ -351,8 +348,8 @@ const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
     for(const actor of scene.actors) {
       if(!actor.looks) continue;
       const drawn = drawnFrame(actor.drawn, index), before = (index > 0) ? drawnFrame(actor.drawn, index - 1) : -1;
-      const step = (drawn !== index) ? 0/*a held frame*/ : (before >= 0) ? (time - times[before]) : (1 / scene.fps);
-      looking(actor, times[drawn], step, placed, (lag: number) => placements[index - Math.round(lag * scene.fps)], headings, looked, turned);
+      const step = (drawn !== index) ? 0/*a held frame*/ : (before >= 0) ? (time - times[before]) : frameTime(1, scene.fps);
+      looking(actor, times[drawn], step, placed, (lag: number) => placements[index - Math.round(framesAt(lag, scene.fps))], headings, looked, turned);
     }
 
     const actors = scene.actors.flatMap(({ name, faces, reactions, hands, drawn }) => {
@@ -402,9 +399,9 @@ const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
   const frames: FilmFrame[] = [];
   for(const frame of worlds) {
     const { index, time } = frame;
-    const seen = (camera: RecordedCamera) => { const drawn = cameraDrawn(camera, index), drawnTime = times[drawn]; return cameraAt(camera, drawnTime * scene.fps, drawnTime, placements[index], following(camera, drawn), headed[index]); };
+    const seen = (camera: RecordedCamera) => { const drawn = cameraDrawn(camera, index), drawnTime = times[drawn]; return cameraAt(camera, framesAt(drawnTime, scene.fps), drawnTime, placements[index], following(camera, drawn), headed[index]); };
     const views = Object.fromEntries(scene.views.filter(view => !view.plan).map(view => [view.name, seen(view)]));
-    const transition = transitionAt(scene, time * scene.fps/*where it stands among the scene's own frames*/, time, placements[index], following(scene.camera, index), headed[index], frame.set, frames);
+    const transition = transitionAt(scene, framesAt(time, scene.fps)/*where it stands among the scene's own frames*/, time, placements[index], following(scene.camera, index), headed[index], frame.set, frames);
     frames.push({ ...frame, camera: seen(scene.camera), views, ...(transition ? { transition } : {}) });
   }
   if(hands) { shownOnce(scene, handOffs, times, placements); withinReach(scene, handOffs, hands.pickedUp, grips, placements); }
@@ -436,7 +433,7 @@ const cutFrom = (film: Film): Film => {
 };
 
 /** the scene's cut-out a time lies within: from its start up to its end */
-export const cutOutAt = (scene: Recorded, time: number): CutOut | undefined => scene.cutOuts?.find(cut => (time >= (cut.from - TIME_EPSILON)) && (time < (cut.to - TIME_EPSILON)));
+export const cutOutAt = (scene: Recorded, time: number): CutOut | undefined => scene.cutOuts?.find(cut => isReached(cut.from, time) && !isReached(cut.to, time));
 
 /** the footsteps a film's figures make (`a.footsteps`): a sound where each foot is set
  *  down within the span its footsteps name, following the figure, one of their sounds
@@ -508,7 +505,7 @@ const handOffsOf = (scene: Recorded, times: ReadonlyArray<number>, drawnFrame: (
     const handing = actor[change];
     if(!handing) return [];
     const holder = scene.actors.find(each => each.name === handing.by)!/*by contract: recorded*/;
-    const frame = times.findIndex((_, index) => (times[drawnFrame(holder.drawn, index)] + TIME_EPSILON) >= handing.time);
+    const frame = times.findIndex((_, index) => isReached(handing.time, times[drawnFrame(holder.drawn, index)]));
     return (frame < 0) ? [] : [{ thing: actor.name, by: handing.by, hand: handing.hand, change, frame, time: times[frame], ...((handing.line !== undefined) ? { line: handing.line } : {}) }];
   }));
 
@@ -523,7 +520,7 @@ const releaseKeyed = (actor: RecordedActor, held: Held | undefined, handOff: Han
   const near = (channel: 'yaw' | 'pitch' | 'roll') => { const next = actor.keys.find(key => channel in key.values)?.values[channel]; return (next === undefined) ? held.turn[channel] : next + wrapped(held.turn[channel] - next); };
   const release: Key = { time: times[drawnFrame(holder.drawn, handOff.frame)], values: { ...held.position, yaw: near('yaw'), pitch: near('pitch'), roll: near('roll'), visible: 1 }, ease: 'linear', ...((handOff.line !== undefined) ? { line: handOff.line } : {}) };
   // each path's last values held from its end, the keys after it moving it on from there
-  const left = actor.spans.filter(span => span.mode === 'set').map((span): Key => ({ time: span.to / scene.fps, values: span.samples[span.samples.length - 1], ease: 'hold', ...((span.line !== undefined) ? { line: span.line } : {}) }));
+  const left = actor.spans.filter(span => span.mode === 'set').map((span): Key => ({ time: frameTime(span.to, scene.fps), values: span.samples[span.samples.length - 1], ease: 'hold', ...((span.line !== undefined) ? { line: span.line } : {}) }));
   return [...actor.keys, release, ...left].sort((a, b) => a.time - b.time);
 };
 
@@ -627,7 +624,7 @@ const plantsOf = (scene: Recorded, hands: Hands | undefined, times: ReadonlyArra
   type Motion = { thing: RecordedActor; by: string; end: Point; free: Point; tip: Point; fromAngle: number; position: Point; matrix: ReadonlyArray<number>; heading: Readonly<{ x: number; z: number; }>; length: number; angles: Array<number | undefined>; letGo?: number; push: number; carried?: Readonly<{ offset: Point; matrix: ReadonlyArray<number>; own: ReadonlyArray<number>; }>; flight?: Readonly<{ from: number; at: Point; speed: Point; until?: number; to?: Point; turn: Turn; toTurn?: Turn; }>; };
   /** when a figure is next placed after a time by its own keys, a walk or a path:
    *  Infinity for never */
-  const nextPlacing = (actor: RecordedActor, after: number): number => Math.min(Infinity, ...actor.keys.filter(key => (key.time > (after + TIME_EPSILON)) && ['x', 'z', 'height'].some(channel => channel in key.values)).map(key => key.time), ...(actor.walks ?? []).filter(walk => walk.start > after).map(walk => walk.start), ...actor.spans.filter(span => (span.label === 'path') && ((span.from / scene.fps) > after)).map(span => span.from / scene.fps));
+  const nextPlacing = (actor: RecordedActor, after: number): number => Math.min(Infinity, ...actor.keys.filter(key => !isReached(key.time, after) && ['x', 'z', 'height'].some(channel => channel in key.values)).map(key => key.time), ...(actor.walks ?? []).filter(walk => walk.start > after).map(walk => walk.start), ...actor.spans.filter(span => (span.label === 'path') && (frameTime(span.from, scene.fps) > after)).map(span => frameTime(span.from, scene.fps)));
   const motions: Motion[] = scene.actors.flatMap(thing => {
     const held = hands?.released.get(thing.name) as (Held & Partial<Pick<HeldItem, 'grip' | 'tip'>>) | undefined;
     if(!thing.planted || !thing.released || !held?.tip || !held.grip) return [];
@@ -640,7 +637,7 @@ const plantsOf = (scene: Recorded, hands: Hands | undefined, times: ReadonlyArra
     // middle of the flight to its figure's next key, at the top of a fall with none
     const figure = scene.actors.find(actor => actor.name === thing.released!.by), pushed = thing.planted.letGo?.push ?? 0;
     const push = ((letGo === undefined) || (pushed <= 0) || !figure) ? 0 : (() => {
-      const until = nextPlacing(figure, letGo), from = times[times.findIndex(time => time >= (letGo - TIME_EPSILON)) - 1] ?? letGo/*the flight's first frame: the one before*/;
+      const until = nextPlacing(figure, letGo), from = times[times.findIndex(time => isReached(letGo, time)) - 1] ?? letGo/*the flight's first frame: the one before*/;
       return Number.isFinite(until) ? ((4 * pushed) / (until - from)) : Math.sqrt(2 * GRAVITY * pushed);
     })();
     // its angle each frame: eased up to its turn's end, then held; once let go, falling
@@ -668,7 +665,7 @@ const plantsOf = (scene: Recorded, hands: Hands | undefined, times: ReadonlyArra
     };
     let angle = 0, spin = 0, falling = false, lying = false, last = plantedAt;
     const angles = times.map(time => {
-      if(time < (plantedAt - TIME_EPSILON)) return undefined;
+      if(!isReached(plantedAt, time)) return undefined;
       if((letGo === undefined) || (time < letGo)) return easedAt(time);
       if(!falling) { falling = true; angle = easedAt(letGo); spin = ((easedAt(letGo + 1e-3) - easedAt(letGo - 1e-3)) / 2e-3) - ((push * STUDS_PER_PLATE) / length)/*its free end shoved back as the hands push off*/; last = letGo; }
       const step = (time - last) / FALL_STEPS, surfaces = surfacesAt(time);
@@ -746,7 +743,7 @@ const plantsOf = (scene: Recorded, hands: Hands | undefined, times: ReadonlyArra
         } else motion.flight = { from, at, speed, turn };
       }
       const flight = motion.flight;
-      if((flight.until !== undefined) && (time >= (flight.until - TIME_EPSILON))) return standing/*its own keys again*/;
+      if((flight.until !== undefined) && isReached(flight.until, time)) return standing/*its own keys again*/;
       const t = time - flight.from;
       if(flight.until !== undefined) {
         // from how it was moving to where its next key stands it: its speed at letting go,
@@ -1214,7 +1211,7 @@ const LEFT_SET_BEFORE = 1e-3;
 /** a fade's color and shape at a time: those of the key it eases into, else the last
  *  key's (black and the whole picture when no key names them) */
 const fadeStyleAt = (keys: ReadonlyArray<FadeKey>, time: number): Readonly<{ fadeColor?: string; fadeShape?: 'iris'; }> => {
-  const key = keys.find(each => !isReached(each.time, time - TIME_EPSILON)) ?? keys[keys.length - 1];
+  const key = keys.find(each => isReached(time, each.time)/*at or after it*/) ?? keys[keys.length - 1];
   return { ...(key?.color ? { fadeColor: key.color } : {}), ...(key?.shape ? { fadeShape: key.shape } : {}) };
 };
 
@@ -1286,7 +1283,7 @@ const followed = (times: ReadonlyArray<number>, drawn: ReadonlyArray<number>, ru
   const smooth = (start: number, end: number) => {
     // the run's frames within half a window's seconds of a frame, either way
     const near = (index: number, seconds: number): ReadonlyArray<number> => {
-      const reach = (other: number) => Math.abs(times[other] - times[index]) <= ((seconds / 2) + TIME_EPSILON);
+      const reach = (other: number) => Math.abs(times[other] - times[index]) <= ((seconds / 2) + ON_FRAME);
       let [from, to] = [index, index];
       while((from > start) && reach(from - 1)) from--;
       while((to < (end - 1)) && reach(to + 1)) to++;
@@ -1335,14 +1332,14 @@ export const faceAt = (faces: ReadonlyArray<FaceKey> | undefined, time: number):
 export const stagedSets = (scene: Recorded, first: string): ReadonlyArray<string> | undefined => {
   const keys = scene.sets;
   if(!keys || (keys.length < 1)) return undefined;
-  const names = [...((keys[0].time > TIME_EPSILON) ? [first] : []), ...keys.map(key => key.set)];
+  const names = [...(!isReached(keys[0].time, 0) ? [first] : []), ...keys.map(key => key.set)];
   return names.filter((name, index) => names.findIndex(other => other.toLowerCase() === name.toLowerCase()) === index);
 };
 
 /** the face a reaction gives at a time, the last declared of those then: none outside
  *  every reaction */
 export const reactionAt = (reactions: ReadonlyArray<Reaction> | undefined, time: number): string | undefined =>
-  reactions?.filter(reaction => (time >= (reaction.from - TIME_EPSILON)) && (time < (reaction.to - TIME_EPSILON))).pop()?.face;
+  reactions?.filter(reaction => isReached(reaction.from, time) && !isReached(reaction.to, time)).pop()?.face;
 
 /** how fast a head turns to what it looks at, and back (degrees a second), and how
  *  fast it takes to looking and leaves it (shares a second) */
@@ -1363,7 +1360,7 @@ const looking = (actor: RecordedActor, time: number, step: number, placed: Map<s
   // of those under way and in reach, the one begun latest (declared latest of two at once)
   let active: Look | undefined, at: Point | undefined;
   for(const look of actor.looks!) {
-    if((time < (look.from - TIME_EPSILON)) || (time >= (look.to - TIME_EPSILON)) || (active && (look.from < active.from))) continue;
+    if(!isReached(look.from, time) || isReached(look.to, time) || (active && (look.from < active.from))) continue;
     const aimed = target(look);
     if(aimed && (Math.hypot(aimed.x - standing.position.x, aimed.z - standing.position.z) <= look.within)) [active, at] = [look, aimed];
   }
@@ -1389,7 +1386,7 @@ const looking = (actor: RecordedActor, time: number, step: number, placed: Map<s
 const heldAt = <K extends Readonly<{ time: number; }>>(keys: ReadonlyArray<K> | undefined, time: number): K | undefined => {
   let held: K | undefined;
   for(const key of keys ?? []) {
-    if(key.time > (time + TIME_EPSILON)) break;
+    if(!isReached(key.time, time)) break;
     held = key;
   }
   return held;
@@ -1419,11 +1416,8 @@ const keysGiving = (keys: ReadonlyArray<Key>): ReadonlyMap<string, ReadonlyArray
 };
 const keysByChannel = new WeakMap<ReadonlyArray<Key>, ReadonlyMap<string, ReadonlyArray<Key>>>();
 
-/** whether a time has reached a key, an ease's curve, and a value at a time over keys
- *  sorted by time (SEE: key-easing.ts) */
-const KEY_EASING = keyEasing();
-export const { isReached, ease } = KEY_EASING;
-const { eased } = KEY_EASING;
+/** whether a time has reached a key, and an ease's curve (SEE: key-easing.ts) */
+export { ease, isReached };
 
 /** the camera key in force at a time, of keys sorted by time: the last it has reached,
  *  else the first, held before it as its values are (SEE: eased) */
@@ -1434,20 +1428,18 @@ export const keyInForce = <K extends Readonly<{ time: number; }>>(keys: Readonly
  *  span's add */
 const applySpans = (channels: Record<string, number>, spans: ReadonlyArray<Span>, at: number) => {
   for(const mode of ['set', 'add'] as const) for(const span of spans) {
-    if((span.mode !== mode) || (at < (span.from - FRAME_EPSILON)) || (at > (span.to + FRAME_EPSILON))) continue;
+    if((span.mode !== mode) || (at < span.from) || (at > span.to)) continue;
     // between two of its frames (a film slowed past the scene's), each value eased
     // from the one to the next
     const into = Math.min(span.to, Math.max(span.from, at)) - span.from;
-    const whole = Math.floor(into + FRAME_EPSILON), part = into - whole;
+    const whole = Math.floor(into), part = into - whole;
     const [sample, next] = [span.samples[whole], span.samples[Math.min(span.samples.length - 1, whole + 1)]];
     for(const [channel, own] of Object.entries(sample)) {
-      const value = ((part > FRAME_EPSILON) && (channel in next)) ? own + ((next[channel] - own) * part) : own;
+      const value = ((part > 0) && (channel in next)) ? own + ((next[channel] - own) * part) : own;
       channels[channel] = (mode === 'set') ? value : ((channels[channel] ?? 0) + value);
     }
   }
 };
-/** how near a frame's place among the scene's frames is to a whole one (frames) */
-const FRAME_EPSILON = 1e-6;
 
 // == Clock =======================================================================
 // the film's own time against the scene's: a frame a 1/fps of the film's time after
@@ -1471,7 +1463,7 @@ export const sceneTimesOf = (scene: Recorded): ReadonlyArray<number> => everyTim
  *  less than half a frame from the scene's end, as a film of the scene's own frames
  *  would. Throws, naming the speed's line, past MAX_FILM_FRAMES */
 const everyTimeOf = (scene: Recorded): ReadonlyArray<number> => {
-  if(!scene.speed || (scene.speed.length < 1)) return Array.from({ length: scene.frames }, (_, index) => index / scene.fps);
+  if(!scene.speed || (scene.speed.length < 1)) return Array.from({ length: scene.frames }, (_, index) => frameTime(index, scene.fps));
   const times: number[] = [];
   for(let time=0; ;) {
     const rate = channelAt(scene.speed, 'speed', time)!;
@@ -1493,14 +1485,14 @@ export const filmTimeOf = (film: Film, time: number): number => {
   const step = (index: number) => paceAt(film, index);
   if(time <= frames[0].time) return (time - frames[0].time) / (step(0) * scene.fps);
   let low = 0, high = frames.length - 1;
-  while(low < high) { const middle = Math.ceil((low + high) / 2); if(frames[middle].time <= time) low = middle; else high = middle - 1; }
-  return (low + ((time - frames[low].time) / step(low))) / scene.fps;
+  while(low < high) { const middle = Math.ceil((low + high) / 2); if(isReached(frames[middle].time, time)) low = middle; else high = middle - 1; }
+  return frameTime(low + Math.max(0, (time - frames[low].time) / step(low))/*a time standing on its frame's: that frame's*/, scene.fps);
 };
 
 /** the scene's time a film's own time (seconds) shows: between its frames' */
 export const sceneTimeOf = (film: Film, filmTime: number): number => {
   const { frames, scene } = film;
-  const at = filmTime * scene.fps;
+  const at = framesAt(filmTime, scene.fps);
   const index = Math.max(0, Math.min(frames.length - 1, Math.floor(at)));
   return frames[index].time + (paceAt(film, index) * (at - index));
 };
@@ -1517,10 +1509,10 @@ const paceAt = (film: Film, index: number): number => {
   const { frames, scene } = film;
   if(index < (frames.length - 1)) {
     const [time, next] = [frames[index].time, frames[index + 1].time];
-    const cut = scene.cutOuts?.find(each => (each.from > (time + TIME_EPSILON)) && (each.from < (next - TIME_EPSILON)))/*the frame before a cut-out ends at it*/;
+    const cut = scene.cutOuts?.find(each => !isReached(each.from, time) && !isReached(next, each.from))/*the frame before a cut-out ends at it*/;
     return (cut?.from ?? next) - time;
   } /* else -- the last frame: as long as the one before */
-  return (index > 0) ? (frames[index].time - frames[index - 1].time) : (1 / scene.fps);
+  return (index > 0) ? (frames[index].time - frames[index - 1].time) : frameTime(1, scene.fps);
 };
 
 /** the scene's time a frame's span ends at: where the next frame stands, the last
@@ -1528,17 +1520,20 @@ const paceAt = (film: Film, index: number): number => {
 export const frameEnd = (film: Film, index: number): number => film.frames[index].time + paceAt(film, index);
 
 /** how long the film runs (seconds of its own) */
-export const filmLengthOf = (film: Film): number => film.frames.length / film.scene.fps;
+export const filmLengthOf = (film: Film): number => frameTime(film.frames.length, film.scene.fps);
+
+/** the whole frames a second of the film steps over at its fps (24 at 24000 / 1001) */
+export const secondFrames = (fps: number): number => Math.round(framesAt(1, fps));
 
 /** the frame showing a scene's time: the nearest, the later of two as near */
-export const frameAtTime = (film: Film, time: number): number => Math.max(0, Math.min(film.frames.length - 1, Math.round(filmTimeOf(film, time) * film.scene.fps)));
+export const frameAtTime = (film: Film, time: number): number => Math.max(0, Math.min(film.frames.length - 1, Math.round(framesAt(filmTimeOf(film, time), film.scene.fps))));
 
 /** a frame's timecode, minutes:seconds:frames: the seconds of the film its frame starts
  *  in, and its frame counted from the first frame starting in that second (at 24000 /
  *  1001 a second's first frame stands where its whole frames begin, 24 at 1 s) */
 export const timecodeOf = (index: number, fps: number): string => {
-  const seconds = Math.floor((index / fps) + 1e-9/*a second's own first frame*/);
-  const frames = index - Math.ceil((seconds * fps) - 1e-9);
+  const seconds = Math.floor(frameTime(index, fps) + ON_FRAME/*a second's own first frame*/);
+  const frames = index - Math.ceil(framesAt(seconds, fps));
   return [Math.floor(seconds / 60), seconds % 60, frames].map(value => String(value).padStart(2, '0')).join(':');
 };
 
