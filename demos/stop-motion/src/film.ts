@@ -217,9 +217,10 @@ type Followed = (actor: string) => Point;
  *  starting from its rest (each value it keys from its keys, the rest from where the
  *  piece stood), each actor following the ground standing on it (its keyed height
  *  above the surface under it), each actor that clicks onto studs (and rides nothing)
- *  walking and standing as one does (SEE: steps.ts; its walks' glide left out), each
- *  head turned to what it looks at (SEE: looking), each actor not kept still shifted
- *  a frame at a time by the scene's boil (SEE: boiled), each thing a hand lets go of
+ *  walking and standing as one does (SEE: steps.ts; its walks' glide left out; one cast
+ *  `click: false` standing between its walks where its keys place it), each head
+ *  turned to what it looks at (SEE: looking), each actor not kept still shifted a
+ *  frame at a time by the scene's boil (SEE: boiled), each thing a hand lets go of
  *  shown from its hand-off's frame, standing where its hand let go of it (`hands`),
  *  moving on by its own keys from there and held where each of its paths leaves it,
  *  until a key hides it, and each thing a hand takes up hidden from its
@@ -264,7 +265,7 @@ const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
     ...actor, keys: releaseKeyed(actor, hands?.released.get(actor.name), handOffs.find(each => (each.thing === actor.name) && (each.change === 'released')), scene, times, drawnFrame),
     spans: actor.spans.filter(span => (!span.figure || figures.has(actor.name))/*a figure's alone*/ && (!span.glide || !clicks.has(actor.name) || !!actor.ride)/*a walk stepped*/),
   }));
-  const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), bottoms, actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [frameTime(from, scene.fps), frameTime(to, scene.fps)] as const), drawingOf(actor.drawn))]));
+  const clicked = new Map(order.filter(actor => clicks.has(actor.name) && !actor.ride).map(actor => [actor.name, new Clicked(actor.walks ?? [], actor.ground?.step, figures.has(actor.name), actor.click === false, bottoms, actor.spans.filter(span => span.label === 'crowd').map(({ from, to }) => [frameTime(from, scene.fps), frameTime(to, scene.fps)] as const), drawingOf(actor.drawn))]));
   const worlds: Array<Omit<FilmFrame, 'camera' | 'views' | 'transition'>> = []/*each frame but its cameras*/, placements: Array<ReadonlyMap<string, Placed>> = [], drawings: Array<ReadonlyMap<string, number>> = [], walkedOver: Array<ReadonlyMap<string, number>> = [], headed: Array<ReadonlyMap<string, number>> = [];
   const rolled = new Map<string, number>();
   const looked = new Map<string, Readonly<{ angle: number; engaged: number; }>>();

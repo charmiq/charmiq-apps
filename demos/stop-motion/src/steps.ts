@@ -1032,7 +1032,8 @@ const wrapped = (angle: number): number => ((((angle + 180) % 360) + 360) % 360)
  *  quarter round); walking in a crowd (`crowding`, its spans in seconds), stepping to
  *  a stud straight ahead and standing between steps with its legs straight down. Off
  *  studs, in the air or lying it is where it is keyed, and clicks in afresh where it
- *  lands */
+ *  lands. One standing as keyed (`asKeyed`, cast `click: false`) stands between its
+ *  walks exactly where its keys place it, on studs or off, each walk starting there */
 export class Clicked {
   /** each walk's moves, and the stance it ends in */
   private laid = new Map<Walk, Readonly<{ moves: ReadonlyArray<Move>; last: Stance; }>>();
@@ -1054,7 +1055,7 @@ export class Clicked {
   /** where its keys last moved it, when, and the pace they carried it there at */
   private moved: Readonly<{ x: number; z: number; time: number; pace: number; }> | undefined;
 
-  public constructor(private readonly walks: ReadonlyArray<Walk>, private readonly climb: number | undefined, private readonly figure: boolean, private readonly bottoms: PoseBottoms | undefined, private readonly crowding: ReadonlyArray<readonly [number, number]> = [], private readonly drawing?: Drawing) {}
+  public constructor(private readonly walks: ReadonlyArray<Walk>, private readonly climb: number | undefined, private readonly figure: boolean, private readonly asKeyed: boolean, private readonly bottoms: PoseBottoms | undefined, private readonly crowding: ReadonlyArray<readonly [number, number]> = [], private readonly drawing?: Drawing) {}
 
   /** a walk's moves, once laid */
   public movesOf(walk: Walk): ReadonlyArray<Move> | undefined { return this.laid.get(walk)?.moves; }
@@ -1127,6 +1128,7 @@ export class Clicked {
 
   private standing(channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
     if((channels.visible ?? 1) < 0.5) { this.stance = this.moving = this.keyedOff = this.stillFrom = this.moved = undefined; return { ...channels }/*unseen: clicked in afresh where it shows again*/; }
+    if(this.asKeyed) { this.stance = undefined; return { ...channels }/*where its keys place it: its next walk starts there*/; }
     const pace = this.paceAt(channels, time);
     if(this.moving) {
       const { start, end } = this.moving;

@@ -157,6 +157,10 @@ export type RecordedActor = Readonly<{
   ground?: Readonly<{ step: number; start?: number; }>;
   /** it stands as keyed alone: no figure's idling where nothing else moves it, no boil */
   still?: true;
+  /** cast `click: false`: on studs it stands exactly where its keys place it, never
+   *  clicked in, its walks still laid as steps and its feet still judged (SEE: steps.ts
+   *  Clicked) */
+  click?: false;
   /** an audience's member lifted from the set: the level its feet stand on standing
    *  (plates). It sits or stands where the build placed it, rising and hopping in place,
    *  so the film never measures its footing (SEE: audience) */
@@ -365,7 +369,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   const settings = { title: 'Untitled film', fps: 24, drawn: 'twos' as Drawn, length: undefined as number | undefined, width: 1280, height: 720, floor: undefined as { x: number; z: number; width: number; depth: number; } | undefined, boil: 0, light: undefined as Record<string, number> | undefined, tone: undefined as { given: Readonly<Record<string, unknown>>; line?: number; } | undefined, skies: [] as Array<{ given: unknown; line?: number; }> };
   // `moves` are the times its paths, wobbles, walks and idling start, each with its call
   // and line: a released thing's begin after its release, a picked-up thing's before it
-  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; released?: Handing; planted?: { end: 'tip'; to: { aboveLevel: number; at: number; }; letGo?: { time: number; push?: number; line?: number; }; }; pickedUp?: Handing; keys: Key[]; moves: Array<{ time: number; what: string; line?: number; }>; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; seat?: number; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
+  type Entry = { name: string; source: Record<string, unknown>; ride?: { parent: string; offset: Point; }; released?: Handing; planted?: { end: 'tip'; to: { aboveLevel: number; at: number; }; letGo?: { time: number; push?: number; line?: number; }; }; pickedUp?: Handing; keys: Key[]; moves: Array<{ time: number; what: string; line?: number; }>; walks: Walk[]; footsteps: Footsteps[]; faces: FaceKey[]; hands: HandKey[]; reactions: Reaction[]; looks: Array<Omit<Look, 'to'> & { to?: number; }>; ground?: { step: number; start?: number; }; still?: true; click?: false; seat?: number; drawn?: Drawn; spans: Array<() => Span>; line?: number; };
   const actors: Entry[] = [];
   /** each actor's handle, the actor it keys: an audience takes actors by their handles */
   const handles = new Map<unknown, Entry>();
@@ -455,7 +459,10 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
     if(actors.some(each => each.name === name)) fail(`actor '${String(name)}' is declared twice`);
     if(actors.length >= MAX_ACTORS) fail(`a scene holds at most ${MAX_ACTORS} actors`);
     if((typeof source !== 'object') || (source === null)) fail(`actor '${String(name)}' names what it is: { component }, { part, color } or { placed: { x, z, level } }`);
-    const entry: Entry = { name: name as string, source: { ...(source as Record<string, unknown>) }, keys: [], moves: [], walks: [], footsteps: [], faces: [], hands: [], reactions: [], looks: [], spans: [], line: callerLine() };
+    // whether it clicks onto studs is the scene's, never the stage's dressing
+    const { click = true, ...dressing } = source as Record<string, unknown>;
+    if(typeof click !== 'boolean') fail(`actor '${String(name)}': click is true or false (false stands it exactly where its keys place it, never clicked onto studs)`);
+    const entry: Entry = { name: name as string, source: dressing, keys: [], moves: [], walks: [], footsteps: [], faces: [], hands: [], reactions: [], looks: [], spans: [], ...(click ? {} : { click: false as const }), line: callerLine() };
     actors.push(entry);
     const handle = {
       name,
@@ -1928,10 +1935,10 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   return {
     title: settings.title, fps: settings.fps, drawn: settings.drawn, length: settings.length, frames: Math.max(1, frameOf(settings.length)), width: settings.width, height: settings.height, ...(settings.floor ? { floor: settings.floor } : {}), ...(settings.light ? { light: settings.light } : {}), ...(settings.tone ? { tone: settings.tone } : {}), ...((settings.skies.length > 0) ? { skies: settings.skies } : {}),
     ...((settings.boil > 0) ? { boil: settings.boil } : {}),
-    actors: actors.map(({ name, source, ride, released, planted, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, seat, drawn, spans, line }) => ({
+    actors: actors.map(({ name, source, ride, released, planted, pickedUp, keys, walks, footsteps, faces, hands, reactions, looks, ground, still, click, seat, drawn, spans, line }) => ({
       name, source, ...(ride ? { ride } : {}), ...(released ? { released } : {}), ...(planted ? { planted } : {}), ...(pickedUp ? { pickedUp } : {}), keys: byTime(keys), ...((faces.length > 0) ? { faces: byTime(faces) } : {}), ...((hands.length > 0) ? { hands: byTime(hands) } : {}),
       ...((reactions.length > 0) ? { reactions } : {}), ...((looks.length > 0) ? { looks: looks.map(look => ({ ...look, to: look.to ?? settings.length! })) } : {}), ...(ground ? { ground } : {}),
-      ...(still ? { still } : {}), ...((seat !== undefined) ? { seat } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((footsteps.length > 0) ? { footsteps } : {}), ...((line !== undefined) ? { line } : {}),
+      ...(still ? { still } : {}), ...((click === false) ? { click } : {}), ...((seat !== undefined) ? { seat } : {}), ...(drawn ? { drawn } : {}), spans: alive(name, source, still, spans.map(span => span())), ...((walks.length > 0) ? { walks: [...walks].sort((a, b) => a.start - b.start) } : {}), ...((footsteps.length > 0) ? { footsteps } : {}), ...((line !== undefined) ? { line } : {}),
     })),
     camera: { keys: byTime(cameras.get('main')!.keys), spans: cameras.get('main')!.spans.map(span => span()), ...(cameras.get('main')!.drawn ? { drawn: cameras.get('main')!.drawn } : {}) },
     views: [...cameras].filter(([name]) => name !== 'main').map(([name, { keys, spans, drawn }]) => ({ name, keys: byTime(keys), spans: spans.map(span => span()), ...(drawn ? { drawn } : {}), ...(plans.has(name) ? { plan: plans.get(name)! } : {}) })),
