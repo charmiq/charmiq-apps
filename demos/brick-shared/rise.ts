@@ -21,9 +21,15 @@ const STUDS_PER_PLATE = 0.4;
  *  its top lie over the soles (plates), and how far it reaches across (`x`, east) and
  *  along (`z`, north) the footprint's middle (studs, least first) */
 export type BodyBox = Readonly<{ bottom: number; top: number; x: readonly [number, number]; z: readonly [number, number]; }>;
+/** where a figure's limb turns, as its pose is drawn (SEE: Brick Studio's pose.ts
+ *  limbLines): its pivot piece's origin, studs east (`x`) and north (`z`) of the
+ *  footprint's middle and plates over the soles (`height`); the pivot's own axis it
+ *  turns on (`x` a swing raising it forward, `y` a turn clockwise seen from above); and
+ *  the pivot's own rows, as LDraw writes them (its y down), whose axes it turns about */
+export type Joint = Readonly<{ at: Readonly<{ x: number; z: number; height: number; }>; axis: 'x' | 'y'; matrix: ReadonlyArray<number>; }>;
 /** a figure's bodies' boxes: its core (torso and hips), and each limb's at each
- *  measured angle, keyed by the angle */
-export type PoseBottoms = Readonly<{ core: BodyBox; limbs: Readonly<Record<string, Readonly<Record<string, BodyBox>>>>; }>;
+ *  measured angle, keyed by the angle; and each limb's joint, by limb */
+export type PoseBottoms = Readonly<{ core: BodyBox; limbs: Readonly<Record<string, Readonly<Record<string, BodyBox>>>>; joints?: Readonly<Record<string, Joint>>; }>;
 /** how a figure is tipped from upright (degrees): `pitch` raising its south side (its
  *  front), `roll` its west side */
 export type Tilt = Readonly<{ pitch: number; roll: number; }>;
@@ -63,12 +69,13 @@ export const hipsFromSoles = (bottoms: PoseBottoms | undefined, pose: Readonly<P
   return { x: reach * ((cy * sr) + (sy * sp * cr)), z: reach * ((cy * sp * cr) - (sy * sr)), height: over * cp * cr };
 };
 
+// == Bodies ======================================================================
+/** each of a figure's bodies' boxes at `pose`: its core, and each limb at its angle */
+export const bodiesOf = (bottoms: PoseBottoms, pose: Readonly<Partial<Record<string, number>>> | undefined): ReadonlyArray<BodyBox> =>
+  [bottoms.core, ...Object.entries(bottoms.limbs).map(([limb, measured]) => bodyAt(measured, pose?.[limb] ?? 0))];
+
 // == Internal ====================================================================
 const radians = (degrees: number): number => degrees * (Math.PI / 180);
-
-/** each of a figure's bodies' boxes at `pose`: its core, and each limb at its angle */
-const bodiesOf = (bottoms: PoseBottoms, pose: Readonly<Partial<Record<string, number>>> | undefined): ReadonlyArray<BodyBox> =>
-  [bottoms.core, ...Object.entries(bottoms.limbs).map(([limb, measured]) => bodyAt(measured, pose?.[limb] ?? 0))];
 
 /** a limb's box at any angle: each of its extents straight between the measured angles
  *  about it */

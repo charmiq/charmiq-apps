@@ -32,6 +32,14 @@ const HEEL = 0.4375;
 const FOOT_EDGE = 1;
 /** plates a stud high */
 const PLATES_PER_STUD = 2.5;
+/** a stud's height (plates: 4 LDU), where a sole off the stud grid rests on a studded
+ *  top's studs */
+const STUD_HEIGHT = 0.5;
+/** how near a foot's middle lies to a stud's middle (studs), and its heading to a
+ *  quarter turn and its leg to hanging (degrees), to be clicked onto the stud: a hair,
+ *  as a figure clicked in stands exactly so (SEE: clickedNear) */
+const ON_GRID = 1e-3;
+const SQUARE = 1e-3;
 /** how far a foot travelling over studs clears the plate (studs): a stud's height
  *  (1.7 LDU), and how near (studs) the stud it leaves or lands on it may sink below that */
 const STUD_CLEAR = 1.7 / 20;
@@ -299,35 +307,65 @@ export const feetInto = (set: Readonly<Record<string, number>>, surfaceAt: Surfa
 
 /** how far a figure's feet reach into the set (SEE: feetInto) and the top (plates) of
  *  the part they reach deepest into; none when clear */
-export const feetIn = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): Readonly<{ into: number; top?: number; }> =>
+export const feetIn = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): Readonly<{ into: number; top?: number; flat?: true; }> =>
   reachIn(set, surfaceAt, LEGS.map(([limb, side]) => [set[limb] ?? 0, side, LEG] as const));
+
+/** how far a standing figure's feet reach into the set, judged against the studs (SEE:
+ *  feetIn): on its feet (SEE: onItsFeet), a sole flat and clicked onto the stud grid
+ *  (SEE: clickedOn) is down at a studded top's level, one off the grid only on its
+ *  studs' tops, STUD_HEIGHT up, so at the top's level it stands among the studs, that
+ *  far in; a smooth top's level is down for either. A sole tipped (a leg swung, a figure
+ *  lying) and a walker's feet, its gait's, are read as feetIn reads them */
+export const standingIn = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): Readonly<{ into: number; top?: number; flat?: true; }> =>
+  reachIn(set, surfaceAt, LEGS.map(([limb, side]) => [set[limb] ?? 0, side, LEG] as const), true);
 
 /** a figure's legs, by channel, and the side each stands on (its right +) */
 const LEGS = [['pose.leftLeg', -1], ['pose.rightLeg', 1]] as const;
 /** how far points of a figure's legs reach into the set (SEE: feetInto): each named by
  *  its leg's angle (degrees, forward +), its side and how far down the leg from the
  *  hip's axis it lies (studs: LEG its sole), at the foot's heel and toe and its inner
- *  and outer edge */
-const reachIn = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt, points: ReadonlyArray<readonly [number, -1 | 1, number]>): Readonly<{ into: number; top?: number; }> => {
+ *  and outer edge; `onStuds`, each sole judged against the studs (SEE: standingIn),
+ *  saying when the deepest is a sole standing flat (`flat`: read exactly, its corners
+ *  its sole's) */
+const reachIn = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt, points: ReadonlyArray<readonly [number, -1 | 1, number]>, onStuds = false): Readonly<{ into: number; top?: number; flat?: true; }> => {
   const [fx, fz] = forwardOf(set.yaw ?? 0), [rx, rz] = rightOf(set.yaw ?? 0), base = (set.height ?? 0) / PLATES_PER_STUD;
-  let into = 0, deepest: number | undefined;
+  let into = 0, deepest: number | undefined, flatDeepest = false;
   for(const [degrees, side, down] of points) {
     const leg = radians(degrees), [cos, sin] = [Math.cos(leg), Math.sin(leg)];
+    // where a top holds this sole (studs): a studded top's studs' tops off the grid
+    const flat = onStuds && (down === LEG) && (Math.abs(degrees) <= SQUARE) && onItsFeet(set);
+    const rise = (flat && !clickedOn(set, side)) ? STUD_HEIGHT : 0;
+    const restOf = (surface: Surface) => (surface.height + (surface.studded ? rise : 0)) / PLATES_PER_STUD;
     for(const a of [-HEEL, TOE]) for(const across of [0.05, 0.95]) {
       const along = (a * cos) + (down * sin), up = base + LEG - ((down * cos) - (a * sin));
       const x = (set.x ?? 0) + (fx * along) + (rx * side * across * FOOT_EDGE), z = (set.z ?? 0) + (fz * along) + (rz * side * across * FOOT_EDGE);
-      const [cx, cz] = [Math.floor(x), Math.floor(z)], topOf = (ax: number, az: number) => Math.max(0, ...surfaceAt(ax, az).map(surface => surface.height)) / PLATES_PER_STUD;
-      const heights = surfaceAt(cx, cz).map(surface => surface.height / PLATES_PER_STUD);
-      if((heights.length < 1) || heights.some(height => height <= (up + (ON_SURFACE / PLATES_PER_STUD)))) continue/*over a surface: in the air*/;
-      const top = Math.min(...heights), below = top - up;
+      const [cx, cz] = [Math.floor(x), Math.floor(z)], topOf = (ax: number, az: number) => Math.max(0, ...surfaceAt(ax, az).map(restOf));
+      const surfaces = surfaceAt(cx, cz);
+      if((surfaces.length < 1) || surfaces.some(surface => restOf(surface) <= (up + (ON_SURFACE / PLATES_PER_STUD)))) continue/*over a surface: in the air*/;
+      const lowest = surfaces.reduce((least, surface) => (restOf(surface) < restOf(least)) ? surface : least), top = restOf(lowest), below = top - up;
       if(below <= into) continue/*clear, or no deeper*/;
       // across its cell only toward a side opening onto something lower: out of the part
       const sides = [[x - cx, -1, 0], [cx + 1 - x, 1, 0], [z - cz, 0, -1], [cz + 1 - z, 0, 1]].filter(([, dx, dz]) => topOf(cx + dx, cz + dz) < (top - 1e-9)).map(([distance]) => distance);
       into = Math.min(below, ...sides);
-      deepest = top * PLATES_PER_STUD;
+      deepest = lowest.height;
+      flatDeepest = flat;
     }
   }
-  return (deepest === undefined) ? { into } : { into, top: deepest };
+  return (deepest === undefined) ? { into } : { into, top: deepest, ...(flatDeepest ? { flat: true as const } : {}) };
+};
+
+/** whether a figure stands on its feet, tilted no further than UPRIGHT: its soles
+ *  under it, never lying or bent over onto its hands */
+const onItsFeet = (set: Readonly<Record<string, number>>): boolean => (Math.abs(set.pitch ?? 0) <= UPRIGHT) && (Math.abs(set.roll ?? 0) <= UPRIGHT);
+
+/** whether a figure's foot (its side, its right +) stands clicked onto the stud grid,
+ *  its pose as `set` places it: square to the studs (its heading a quarter turn) with
+ *  the foot's middle on a stud's middle, both within ON_GRID (SEE: clickedNear) */
+const clickedOn = (set: Readonly<Record<string, number>>, side: -1 | 1): boolean => {
+  const yaw = set.yaw ?? 0, [rx, rz] = rightOf(yaw);
+  const offStud = (value: number) => Math.abs((value - Math.floor(value)) - 0.5);
+  return (Math.abs(wrapped(yaw - quarterOf(yaw))) <= SQUARE)
+    && (offStud((set.x ?? 0) + (rx * side * 0.5 * FOOT_EDGE)) <= ON_GRID) && (offStud((set.z ?? 0) + (rz * side * 0.5 * FOOT_EDGE)) <= ON_GRID);
 };
 
 /** the top (plates) of what is under a figure's feet, its pose as `set` places it: the
@@ -361,6 +399,27 @@ export const feetAbove = (set: Readonly<Record<string, number>>, surfaceAt: Surf
  *  heading and height as `set` gives them and its legs straight down (SEE: feetAbove):
  *  a figure standing, sitting or posing as it would stand there */
 export const lowestAbove = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number => feetAbove({ ...set, 'pose.leftLeg': 0, 'pose.rightLeg': 0 }, surfaceAt);
+
+/** how far a standing figure's lowest point stands over where its soles would rest
+ *  (studs; 0 when one rests or reaches into the set), its place, heading and height as
+ *  `set` gives them and its legs straight down (SEE: lowestAbove), judged against the
+ *  studs: a sole clicked onto the grid rests at a studded top's level, one off it on the
+ *  studs' tops, either at a smooth top's level (SEE: standingIn) */
+export const standingAbove = (set: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): number => {
+  const [fx, fz] = forwardOf(set.yaw ?? 0), [rx, rz] = rightOf(set.yaw ?? 0), up = (set.height ?? 0) / PLATES_PER_STUD;
+  let above = Infinity;
+  for(const side of [-1, 1] as const) {
+    const rise = (!onItsFeet(set) || clickedOn(set, side)) ? 0 : STUD_HEIGHT;
+    for(const a of [-HEEL, TOE]) for(const across of [0.05, 0.95]) {
+      const x = (set.x ?? 0) + (fx * a) + (rx * side * across * FOOT_EDGE), z = (set.z ?? 0) + (fz * a) + (rz * side * across * FOOT_EDGE);
+      const under = surfaceAt(Math.floor(x), Math.floor(z)).filter(surface => (surface.height / PLATES_PER_STUD) <= (up + (ON_SURFACE / PLATES_PER_STUD)));
+      if(under.length < 1) return 0/*within a part: in the set*/;
+      const top = under.reduce((highest, surface) => (surface.height > highest.height) ? surface : highest);
+      above = Math.min(above, Math.max(0, up - ((top.height + (top.studded ? rise : 0)) / PLATES_PER_STUD))/*among the studs: in the set*/);
+    }
+  }
+  return above;
+};
 
 /** the quarter heading nearest a heading, unwrapped as it is (450 stays 450) */
 export const quarterOf = (yaw: number): number => Math.round(yaw / 90) * 90;
@@ -1052,6 +1111,11 @@ export class Clicked {
   /** each moment a foot of its was set down, as its moves were begun and laid */
   // SEE: film.ts footstepsOf
   public readonly landed: number[] = [];
+  /** where it last stood clicked in, and how far its click moved it from its keys there
+   *  (studs, degrees): off the studs it stands that far from its keys, so it leaves them
+   *  from where it stood, until it stands again; among its studs' height over where it
+   *  stood, on its studs' grid itself, its sway a tilt as on them */
+  private clickedBy: Readonly<{ at: Stance; x: number; z: number; yaw: number; }> | undefined;
   /** where its keys last moved it, when, and the pace they carried it there at */
   private moved: Readonly<{ x: number; z: number; time: number; pace: number; }> | undefined;
 
@@ -1070,9 +1134,13 @@ export class Clicked {
     return { walk, move, u: this.drawnAt(move, time, walk.shape ?? WALK) };
   }
 
+  /** whether a hop, a turn or a crowd's step between walks is under way at `time`, as
+   *  its last `at` laid it: its feet its move's, never standing */
+  public movingAt(time: number): boolean { return (this.moving !== undefined) && (time < this.moving.end); }
+
   /** carried off its studs (hanging from what it planted, flying on from it): it clicks
    *  in afresh where it lands, as an unseen one does where it shows again */
-  public lift(): void { this.stance = this.moving = this.walked = this.keyedOff = this.stillFrom = this.moved = undefined; }
+  public lift(): void { this.stance = this.moving = this.walked = this.keyedOff = this.stillFrom = this.moved = this.clickedBy = undefined; }
 
   /** what the actor's own values become at `time`, keyed (`channels`: its keys,
    *  spans, ground and boil), on the surfaces of the set standing then */
@@ -1110,6 +1178,7 @@ export class Clicked {
   }
 
   private walking(walk: Walk, channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
+    this.clickedBy = undefined/*its walk places it*/;
     if(!this.laid.has(walk)) {
       const from = this.stance ?? this.keyedStance(channels, surfaceAt) ?? { x: walk.points[0].x, z: walk.points[0].z, yaw: channels.yaw ?? 0, level: channels.height ?? 0, studded: false };
       const moves = layWalk(walk, from, surfaceAt, this.climb, this.figure);
@@ -1127,7 +1196,7 @@ export class Clicked {
   }
 
   private standing(channels: Readonly<Record<string, number>>, time: number, surfaceAt: SurfaceAt): Record<string, number> {
-    if((channels.visible ?? 1) < 0.5) { this.stance = this.moving = this.keyedOff = this.stillFrom = this.moved = undefined; return { ...channels }/*unseen: clicked in afresh where it shows again*/; }
+    if((channels.visible ?? 1) < 0.5) { this.stance = this.moving = this.keyedOff = this.stillFrom = this.moved = this.clickedBy = undefined; return { ...channels }/*unseen: clicked in afresh where it shows again*/; }
     if(this.asKeyed) { this.stance = undefined; return { ...channels }/*where its keys place it: its next walk starts there*/; }
     const pace = this.paceAt(channels, time);
     if(this.moving) {
@@ -1139,14 +1208,22 @@ export class Clicked {
     const keyed = this.keyedStance(channels, surfaceAt);
     const crowding = this.figure && this.crowding.some(([from, to]) => (time >= from) && (time <= to));
     const standing = (at: Stance) => crowding ? { set: { ...stood(at).set, 'pose.leftLeg': 0, 'pose.rightLeg': 0 }, add: {} } : stood(at);
-    if(keyed && !keyed.studded && this.figure) return this.offStuds(channels, keyed, time, pace, standing, crowding);
-    if(!keyed?.studded) { this.stance = undefined; return { ...channels }; }
+    if(keyed && !keyed.studded && this.figure) { this.clickedBy = undefined; return this.offStuds(channels, keyed, time, pace, standing, crowding); }
+    if(!keyed?.studded) {
+      // off the studs, lifted from where it stood clicked in: its keys moved as its click moved them
+      this.stance = undefined;
+      const by = this.clickedBy;
+      if(!by) return { ...channels };
+      if((channels.height ?? 0) < (by.at.level + STUD_HEIGHT - ON_SURFACE)) return { ...channels, x: by.at.x, z: by.at.z, yaw: by.at.yaw }/*rising off its studs, still among them*/;
+      return { ...channels, x: (channels.x ?? 0) + by.x, z: (channels.z ?? 0) + by.z, yaw: (channels.yaw ?? 0) + by.yaw };
+    } /* else -- on studs: clicked in */
+    const clicked = (at: Stance) => { this.clickedBy = { at, x: at.x - keyed.x, z: at.z - keyed.z, yaw: at.yaw - keyed.yaw }; return applied(channels, standing(at)); };
     const stance = this.stance;
-    if(!stance) { this.stance = { ...keyed, ...clickedNear(keyed.x, keyed.z, keyed.yaw) }; return applied(channels, standing(this.stance)); }
+    if(!stance) { this.stance = { ...keyed, ...clickedNear(keyed.x, keyed.z, keyed.yaw) }; return clicked(this.stance); }
     const turnBy = (Math.abs(wrapped(keyed.yaw - stance.yaw)) > (45 + PAST_QUARTER)) ? (quarterOf(stance.yaw + wrapped(keyed.yaw - stance.yaw)) - stance.yaw) : 0;
     const apart = Math.max(Math.abs(keyed.x - stance.x), Math.abs(keyed.z - stance.z));
     const level = Math.abs(keyed.level - stance.level) < ON_SURFACE;
-    if((turnBy === 0) && (apart <= (0.5 + PAST_STUD)) && level) return applied(channels, standing(stance));
+    if((turnBy === 0) && (apart <= (0.5 + PAST_STUD)) && level) return clicked(stance);
     const to = { ...keyed, ...clickedNear(keyed.x, keyed.z, stance.yaw + turnBy) };
     const turnOnly = (apart <= (0.5 + PAST_STUD)) && level && (Math.abs(turnBy) === 90) && this.figure;
     // in a crowd, keyed a whole stud or more straight ahead: a step of one, quicker the
@@ -1158,7 +1235,7 @@ export class Clicked {
     this.begin(turnOnly ? { kind: 'turn', from: stance, to: turnedOn(stance, turnBy), start: time, end: time + TURN_SECONDS, foot: (turnBy < 0) ? 'left' : 'right' }
       : ahead ? { kind: 'step', from: stance, to: step, start: time, end: this.stepEnd(time, pace, along), foot: this.lead = (this.lead === 'left') ? 'right' : 'left' }
       : { kind: 'hop', from: stance, to, start: time, end: time + HOP_SECONDS, foot: 'left' });
-    return applied(channels, standing(stance));
+    return clicked(stance);
   }
 
   /** a figure standing off studs (a tiled floor), its feet making every move as a walk's
@@ -1230,7 +1307,7 @@ export class Clicked {
   /** where the actor's keys stand it, upright on a surface, studded or not; none in
    *  the air or lying */
   private keyedStance(channels: Readonly<Record<string, number>>, surfaceAt: SurfaceAt): Stance | undefined {
-    if((Math.abs(channels.pitch ?? 0) > UPRIGHT) || (Math.abs(channels.roll ?? 0) > UPRIGHT)) return undefined;
+    if(!onItsFeet(channels)) return undefined;
     const place = { x: channels.x ?? 0, z: channels.z ?? 0, yaw: channels.yaw ?? 0 };
     const level = channels.height ?? 0;
     const surface = standingOn(surfaceAt, clickedNear(place.x, place.z, place.yaw), level) ?? standingOn(surfaceAt, place, level);

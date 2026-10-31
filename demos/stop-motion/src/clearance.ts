@@ -1,7 +1,7 @@
 import { hipsOver, type PoseBottoms, HIPS } from '../../brick-shared/rise';
 import { rotation } from '../../brick-shared/turn';
 
-import { cameraShots, frameEnd, isReached, pointIn, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, FLOATING } from './film';
+import { cameraShots, frameEnd, isReached, pointIn, type Feet, type Film, type FilmFrame, type Shot, type StageCamera, ALOFT } from './film';
 import type { GroundProbe } from './ground';
 import { framesAt } from './key-easing';
 import type { Size } from './measure';
@@ -223,7 +223,7 @@ const keyOf = (track: number, frame: number, share: number): string => `${track}
 // == Bodies ======================================================================
 /** the film with each figure's body held against the set's parts at each frame it is in
  *  the air: its lowest point over what is under it (on its set's `surfaces`) past
- *  film.ts FLOATING, or flying (SEE: review.ts flying). Its body's points (SEE: BODY),
+ *  film.ts ALOFT, or flying (SEE: review.ts flying). Its body's points (SEE: BODY),
  *  turned as it stands, are asked of the probe set by set; the part holding most of
  *  them is written on its feet with the points in it and how deep the deepest is, its
  *  least way out of the part (SEE: wayOut). Over a keyed flight (a path keying its
@@ -238,7 +238,7 @@ export const bodiesThrough = async (film: Film, figures: ReadonlySet<string>, bo
   // never one riding, nor an audience's member lifted from the set: it rises and hops in
   // place over the seat the build gave it
   const unheld = new Set(film.scene.actors.filter(actor => actor.ride || (actor.seat !== undefined)).map(actor => actor.name));
-  const aloft = (frame: FilmFrame, index: number, shot: Shot) => (lowestAbove({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set)) > FLOATING) || flying(film, shot.name, index);
+  const aloft = (frame: FilmFrame, index: number, shot: Shot) => (lowestAbove({ ...shot.position, yaw: shot.turn.yaw }, surfaces(frame.set)) > ALOFT) || flying(film, shot.name, index);
   const floors = new Map<Span, number | undefined>();
   const bodies = film.frames.flatMap((frame, index) => frame.actors.filter(shot => figures.has(shot.name) && !unheld.has(shot.name) && aloft(frame, index, shot)).map(shot => {
     const flight = pathAt(film, shot.name, frame.time, ['height']);

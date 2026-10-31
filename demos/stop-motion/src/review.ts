@@ -3,7 +3,7 @@ import { isPlatformFile } from '../../brick-shared/drive';
 import { cameraShots, channelAt, filmTimeOf, frameAtTime, frameEnd, keyInForce, shotAt, shotFrames, soundEndOf, tiltOf, type CameraShot, type Feet, type Film, type FilmFrame, type ShotFrames } from './film';
 import { pastRange, withinFrom, type PastRange, type RangedJoint } from './joint-range';
 import { framesAt, frameTime, isReached } from './key-easing';
-import { inBox, isSized, pointGap, rideChain, rideRoot, segmentEnters, tallOf, type Box, type Size } from './measure';
+import { inBox, inPart, isSized, partsOf, pointGap, rideChain, rideRoot, segmentEnters, tallOf, type Box, type Size } from './measure';
 import { driverAt, type Driver } from './motion-read';
 import type { CutOut, Key, Point, Recorded, RecordedActor, RecordedCamera, Span, TransitionShape } from './recorder';
 import { boxOnScreen, viewAngle, type ScreenBox } from './screen';
@@ -36,12 +36,14 @@ const COPY_PLACE = /^(.+ at x -?[\d.]+ z -?[\d.]+) level -?[\d.]+(?: rotation -?
 /** the longest a figure's footing goes unmeasured (seconds: a pause between its steps)
  *  and its span still runs on */
 const FOOTING_GAP = 0.25;
-/** how deep a figure's feet go into the set before it shows (studs: about a plate), past
- *  a walker's toe brushing a tread's edge */
+/** how deep a figure's feet go into the set before it shows (studs: about a plate),
+ *  past a walker's toe brushing a tread's edge or a swung leg's sole read at its
+ *  corners; flat soles held a while show at any depth (SEE: HELD) */
 const FOOTING_DEEP = 0.3;
-/** how long a figure not stepping floats before it shows (seconds), past a keyed jump's
- *  takeoff and landing */
-const FLOATING_LONG = 1;
+/** how long a figure not stepping floats, or stands its flat soles shallower in the set
+ *  (among a top's studs), before it shows (seconds): past a keyed jump's takeoff and
+ *  landing, rising and falling through the studs' height */
+const HELD = 1;
 /** how fast a figure in the air rises or falls (plates a second) over FLIGHT_WINDOW
  *  either side of a frame to be flying there, never resting: a jump's arc even at its
  *  top, never a height easing over a wait between far keys */
@@ -244,9 +246,9 @@ export const avoidingAt = (camera: RecordedCamera, time: number): boolean =>
 
 // -- Problems --------------------------------------------------------------------
 /** where the camera goes wrong over the film: inside a part (as the probe found), else
- *  inside an actor, else a part hiding its target (as the probe found), else an actor
- *  hiding it, else its own subject before the point it aims at; each as a span of the
- *  frames it holds over */
+ *  inside an actor's parts (SEE: measure.ts partsOf), else a part hiding its target (as
+ *  the probe found), else an actor hiding it, else its own subject before the point it
+ *  aims at; each as a span of the frames it holds over */
 export const cameraProblems = (film: Film, sizes: Readonly<Record<string, Size>>, parts: ReadonlyArray<PartFinding | undefined>): ReadonlyArray<CameraProblem> => {
   const spans: Array<{ from: number; to: number; kind: CameraKind; by: string; cause: CameraCause; frame: number; }> = [];
   film.frames.forEach((frame, index) => {
@@ -272,8 +274,8 @@ const problemAt = (film: Film, sizes: Readonly<Record<string, Size>>, frame: Fil
   if(parts?.inside) return { kind: 'inside', by: parts.inside, cause: 'part' };
   const { position, target } = frame.camera;
   const boxes = boxesAt(film, sizes, frame);
-  const inside = boxes.find(([, box]) => inBox(box, position));
-  if(inside) return { kind: 'inside', by: inside[0], cause: 'actor' };
+  const inside = frame.actors.find(shot => isSized(sizes, shot.name) && partsOf(shot, sizes[shot.name]).some(part => inPart(part, position)));
+  if(inside) return { kind: 'inside', by: inside.name, cause: 'actor' };
   if(parts?.hidden) return { kind: 'hidden', by: parts.hidden, cause: 'part' };
   const aimed = subjectAt(film.scene, frame.time);
   const subject = aimed ?? standingAt(boxes, target);
@@ -331,14 +333,16 @@ const ownerOf = ({ by, cause }: CameraProblem): Readonly<{ owner: string; name: 
  *  tipped as it moves (a walker lying on its back), or its body through a part in the
  *  air (a keyed flight through a bar). Each a span of the frames it holds over (a
  *  body's for each part), a pause between steps within it, and the most it reaches:
- *  feet in the set only where they go a plate deep (a toe brushing a tread's edge is a
- *  walk's own), a figure in the air only held there a second and never while it flies
- *  (SEE: flying), a figure tipped only while its walk lays its steps or it travels along
+ *  feet in the set where they go a plate deep (a toe brushing a tread's edge is a walk's
+ *  own) or where they stand flat in it held a second (off the stud grid at a studded
+ *  top's level, among its studs; never a jump rising through them), a figure in the
+ *  air only held there a second and never while it flies (SEE: flying), a figure tipped only while its walk lays its steps or it travels along
  *  the ground off one (one lying still, asleep or fallen, is the scene's own).
  *  A film made without the set's surfaces measures none */
 export const footingProblems = (film: Film): ReadonlyArray<FootingProblem> => {
   const problems = footingSpans(film).flatMap(span => isFooting(span) ? [span] : [])
-    .filter(span => (span.kind === 'above') || (span.kind === 'tipped') || (span.kind === 'through') || ((span.kind === 'into') && (span.most >= FOOTING_DEEP)) || ((span.kind === 'floating') && ((span.to - span.from) >= FLOATING_LONG)));
+    .filter(span => (span.kind === 'above') || (span.kind === 'tipped') || (span.kind === 'through') || ((span.kind === 'into') && ((span.most >= FOOTING_DEEP) || (!!span.flat && ((span.to - span.from) >= HELD)))) || ((span.kind === 'floating') && ((span.to - span.from) >= HELD)))
+    .map(({ flat: _flat, ...problem }) => problem);
   return problems.map(problem => problem.heldBack ? { ...problem, upright: uprightAt(film, problems, problem) } : problem);
 };
 
@@ -367,8 +371,8 @@ export const clearancesOf = (film: Film): ReadonlyArray<Clearance> =>
 // -- Spans -----------------------------------------------------------------------
 /** a footing span as it is gathered: a keyed flight's clearance (placed by its path,
  *  its line, and when and where its body is least over its part) among the footing
- *  problems */
-type FootingSpan = { -readonly [K in keyof FootingProblem]: K extends 'kind' ? FootingKind | 'clearance' : FootingProblem[K] } & { least?: Readonly<{ time: number; point: string; }>; };
+ *  problems, and feet in the set read off flat soles in any of its frames (`flat`) */
+type FootingSpan = { -readonly [K in keyof FootingProblem]: K extends 'kind' ? FootingKind | 'clearance' : FootingProblem[K] } & { least?: Readonly<{ time: number; point: string; }>; flat?: true; };
 const isFooting = (span: FootingSpan): span is FootingSpan & FootingProblem => span.kind !== 'clearance';
 
 /** every span a figure's feet or body go wrong over, unfiltered, and every keyed
@@ -378,13 +382,13 @@ const footingSpans = (film: Film): ReadonlyArray<FootingSpan> => {
   const spans: FootingSpan[] = [];
   film.frames.forEach((frame, index) => {
     for(const [actor, feet] of Object.entries(frame.feet ?? {})) {
-      for(const { kind, reach, part, points, point } of wrongAt(film, actor, index, feet)) {
+      for(const { kind, reach, part, points, point, flat } of wrongAt(film, actor, index, feet)) {
         const open = spans.find(span => (span.actor === actor) && (span.kind === kind) && (span.part === part) && ((frame.time - span.to) <= FOOTING_GAP));
         const worse = open && ((kind === 'clearance') ? (reach < open.most) : (reach > open.most))/*a clearance at its least, the rest at their most*/;
-        if(open) { open.to = frameEnd(film, index); if(worse) { open.most = reach; if(points) open.points = points; if(point !== undefined) open.least = { time: frame.time, point }; } continue; }
+        if(open) { open.to = frameEnd(film, index); if(flat) open.flat = true; if(worse) { open.most = reach; if(points) open.points = points; if(point !== undefined) open.least = { time: frame.time, point }; } continue; }
         const at = frame.actors.find(shot => shot.name === actor)!.position;
         const by = (kind === 'clearance') ? { by: 'path' as const, lines: linesOf([pathAt(film, actor, frame.time, ['height']) ?? {}]) }/*its flight*/ : (kind === 'tipped') ? tiltedBy(film, actor, frame.time) : placedBy(film, actor, frame.time);
-        spans.push({ actor, from: frame.time, to: frameEnd(film, index), kind, most: reach, at, ...((feet.surface !== undefined) ? { surface: feet.surface } : {}), ...((feet.on !== undefined) ? { on: feet.on } : {}), ...((part !== undefined) ? { part } : {}), ...(points ? { points } : {}), ...((point !== undefined) ? { least: { time: frame.time, point } } : {}), ...by });
+        spans.push({ actor, from: frame.time, to: frameEnd(film, index), kind, most: reach, at, ...((feet.surface !== undefined) ? { surface: feet.surface } : {}), ...((feet.on !== undefined) ? { on: feet.on } : {}), ...((part !== undefined) ? { part } : {}), ...(points ? { points } : {}), ...((point !== undefined) ? { least: { time: frame.time, point } } : {}), ...(flat ? { flat } : {}), ...by });
       }
     }
   });
@@ -396,11 +400,11 @@ const footingSpans = (film: Film): ReadonlyArray<FootingSpan> => {
  *  never while it flies, tipped only while its walk lays its steps or it travels on the
  *  ground (neither resting in the air nor flying); and a keyed flight's clearance with
  *  the body's point setting it */
-const wrongAt = (film: Film, actor: string, index: number, feet: Feet): ReadonlyArray<Readonly<{ kind: FootingKind | 'clearance'; reach: number; part?: string; points?: ReadonlyArray<string>; point?: string; }>> => {
+const wrongAt = (film: Film, actor: string, index: number, feet: Feet): ReadonlyArray<Readonly<{ kind: FootingKind | 'clearance'; reach: number; part?: string; points?: ReadonlyArray<string>; point?: string; flat?: true; }>> => {
   const walking = film.frames[index].steps?.[actor] !== undefined;
   const aloft = (feet.floating !== undefined) || flying(film, actor, index);
   return [
-    ...((feet.into !== undefined) ? [{ kind: 'into' as const, reach: feet.into }] : []),
+    ...((feet.into !== undefined) ? [{ kind: 'into' as const, reach: feet.into, ...(feet.flat ? { flat: feet.flat } : {}) }] : []),
     ...((feet.above !== undefined) ? [{ kind: 'above' as const, reach: feet.above }] : []),
     ...(((feet.floating !== undefined) && !flying(film, actor, index)) ? [{ kind: 'floating' as const, reach: feet.floating }] : []),
     ...(((feet.tipped !== undefined) && (walking || (!aloft && traveling(film, actor, index)))) ? [{ kind: 'tipped' as const, reach: feet.tipped }] : []),

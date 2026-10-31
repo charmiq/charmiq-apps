@@ -5,7 +5,7 @@ import { listed } from '../../brick-shared/words';
 import { pastRange, type PastRange, type RangedJoint, RANGED_JOINTS } from './joint-range';
 import { ease, eased, framesAt, frameTime, isReached, ON_FRAME } from './key-easing';
 import type { Aim, Area, CameraKey, CameraPlace, CutOut, Ease, Drawn, FaceKey, FadeKey, Hand, HandKey, Key, Look, Point, Reaction, Recorded, RecordedActor, RecordedCamera, SetKey, SoundCue, Span, Target, Title, TransitionShape } from './recorder';
-import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, lowestAbove, median, poseOf, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG, ON_SURFACE } from './steps';
+import { aloft, feetAbove, feetIn, gaitMoveOf, jitter, leapsOf, median, poseOf, standingAbove, standingIn, surfaceUnder, Clicked, type Drawing, type GaitMove, type Leaps, type SurfaceAt, BASEPLATE, FRONT, HANG, ON_SURFACE } from './steps';
 
 // a film: a recorded scene (SEE: recorder.ts) evaluated at every frame as the
 // stage's frames take them. Each value eases from key to key; a function of time
@@ -29,15 +29,16 @@ const STUDS_PER_PLATE = 0.4;
 /** how far from the origin the stage takes a point (studs) and how high (plates) */
 const MAX_COORDINATE = 400;
 const MAX_HEIGHT = 2_000;
-/** how far a foot may reach into the set before a frame says so (studs): a hair, as a
- *  sole resting on a surface rounds */
-const INTO_SET = 0.01;
+/** how far a sole may stand from where it rests, into the set or over it, before a
+ *  frame says so (studs): a hair, as a sole resting on a surface rounds */
+const RESTING = 0.01;
 /** how far a walker's feet stand over the set before they are over nothing (studs): a
  *  brick, past what a step lifts them (a hop's flight is in the air, never over nothing) */
 const OVER_NOTHING = 1.2;
-/** how far a figure not stepping rests over what is under it before it floats (studs):
- *  half a plate, past a sole's rounding */
-export const FLOATING = 0.2;
+/** how far a figure's lowest point stands over the top under it before its body is in
+ *  the air (studs): over a studded top's studs, a stud's height, half a plate (SEE:
+ *  clearance.ts bodiesThrough) */
+export const ALOFT = 0.2;
 /** how far a figure's body tilts from upright before it is tipped (degrees): past any
  *  lean a step, a turn or a run gives it */
 const TIPPED = 45;
@@ -121,11 +122,12 @@ export type FilmFrame = Readonly<{
  *  is (`through`, studs: its least way out), and over a keyed flight the body's least
  *  clearance over the top of a part it crosses and the body's point setting it
  *  (`clearance`, studs, below 0 through it), as staging probes them (SEE: clearance.ts
- *  bodiesThrough); the top (plates) of the part its feet are in, else of what is under
- *  them (SEE: steps.ts feetIn, surfaceUnder); and following the ground, the level
- *  (plates) the ground stands it on (`ground`) and the part whose top that is (`on`, as
- *  staging probes it: SEE clearance.ts groundedOn) */
-export type Feet = Readonly<{ into?: number; above?: number; floating?: number; tipped?: number; through?: Readonly<{ part: string; points: ReadonlyArray<string>; depth: number; }>; clearance?: Readonly<{ part: string; studs: number; point: string; }>; surface?: number; ground?: number; on?: string; }>;
+ *  bodiesThrough); whether its feet's depth is read off soles standing flat, exactly
+ *  (`flat`: SEE steps.ts standingIn); the top (plates) of the part its feet are in,
+ *  else of what is under them (SEE: steps.ts feetIn, surfaceUnder); and following the
+ *  ground, the level (plates) the ground stands it on (`ground`) and the part whose top
+ *  that is (`on`, as staging probes it: SEE clearance.ts groundedOn) */
+export type Feet = Readonly<{ into?: number; flat?: true; above?: number; floating?: number; tipped?: number; through?: Readonly<{ part: string; points: ReadonlyArray<string>; depth: number; }>; clearance?: Readonly<{ part: string; studs: number; point: string; }>; surface?: number; ground?: number; on?: string; }>;
 /** a walker's move under way in a frame (SEE: FilmFrame.steps) */
 export type FrameStep = Readonly<{ move: GaitMove; u: number; gait?: string; }>;
 
@@ -308,12 +310,13 @@ const everyFrameOf = (scene: Recorded, facts: StageFacts): Film => {
       // over what is under it, as it would stand there, and its tilt from upright
       if(stepping && figures.has(actor.name) && (actor.seat === undefined)/*an audience's seat is the build's own*/ && ((local.channels.visible ?? 1) >= 0.5)) {
         const soles = { ...local.channels, height: solesUnder(local.channels.height ?? 0, poseOf(local.channels), bottoms) };
-        const { into, top } = feetIn(soles, standingOn), above = (under && !aloft(under.move, under.u, under.walk.shape)) ? feetAbove(soles, standingOn) : 0/*a hop's flight is in the air*/;
-        const floating = under ? 0 : lowestAbove(local.channels, standingOn);
+        const moved = under || stepping.movingAt(time)/*its feet its move's*/;
+        const { into, top, flat } = moved ? feetIn(soles, standingOn) : standingIn(soles, standingOn), above = (under && !aloft(under.move, under.u, under.walk.shape)) ? feetAbove(soles, standingOn) : 0/*a hop's flight is in the air*/;
+        const floating = (under || (into > RESTING)) ? 0/*stepping, or in the set: never floating as well*/ : standingAbove(local.channels, standingOn);
         const tipped = tiltOf({ pitch: local.channels.pitch ?? 0, roll: local.channels.roll ?? 0 }, local.channels['pose.lean'] ?? 0);
-        if((into > INTO_SET) || (above > OVER_NOTHING) || (floating > FLOATING) || (tipped > TIPPED)) {
-          const surface = (into > INTO_SET) ? top : surfaceUnder((floating > FLOATING) ? local.channels : soles, standingOn);
-          feet[actor.name] = { ...((into > INTO_SET) ? { into } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > FLOATING) ? { floating } : {}), ...((tipped > TIPPED) ? { tipped } : {}), ...((surface !== undefined) ? { surface } : {}), ...((ground !== undefined) ? { ground } : {}) };
+        if((into > RESTING) || (above > OVER_NOTHING) || (floating > RESTING) || (tipped > TIPPED)) {
+          const surface = (into > RESTING) ? top : surfaceUnder((floating > RESTING) ? local.channels : soles, standingOn);
+          feet[actor.name] = { ...((into > RESTING) ? { into, ...(flat ? { flat } : {}) } : {}), ...((above > OVER_NOTHING) ? { above } : {}), ...((floating > RESTING) ? { floating } : {}), ...((tipped > TIPPED) ? { tipped } : {}), ...((surface !== undefined) ? { surface } : {}), ...((ground !== undefined) ? { ground } : {}) };
         }
       } /* else -- riding, unseen, or not a figure on studs */
       const own = placedOf(local);

@@ -1,26 +1,38 @@
+import { bodiesOf, hipsOver, type BodyBox, type Joint, type PoseBottoms, HIPS } from '../../brick-shared/rise';
+import { rotation } from '../../brick-shared/turn';
+
 import { frameEnd, type Film, type Shot } from './film';
 import { isReached } from './key-easing';
 import type { Point, RecordedActor } from './recorder';
 
 // how far apart actors come. An actor's box is its footprint turned by its yaw (pitch
-// and roll aside) and its height from its position up, unposed, as the stage sizes
-// it. Two boxes' gap is the distance between them, 0 where they touch or overlap.
-// Over a film, every two actors that do not ride together are measured: a pair coming
-// within CLOSE_GAP is close, and a pair standing more than OVERLAP_DEEP in each other
-// (the least their boxes overlap any way) overlaps, but a thing leaving or reaching the
-// hand of the figure letting go of it or taking it up. A film holds up to 64 actors for
-// 7,200 frames, so each actor's track is indexed once per film, a frame is boxed only
-// when the distance between the actors' reaches could beat the nearest found, a pair
-// whose tracks never come within CLOSE_GAP (or never meet, for overlaps) is passed
-// over whole, and a film's close pairs and overlaps are found once for the sizes
-// given. Only an actor the stage sized (its own entry, whatever its name) is measured
+// and roll aside) about its position (a swinging part's its pin, its footprint's middle
+// off it) and its height from its position up, unposed, as the stage sizes it; its
+// parts are the boxes they fill, turned with it: a figure's bodies as its pose stands
+// them, any other actor's as the stage measures them. Two boxes' gap is the distance
+// between them, 0 where they touch or overlap. Over a film, every two actors that do
+// not ride together are measured: a pair coming within CLOSE_GAP is close, and a pair
+// whose parts stand more than PARTS_DEEP in each other (the least two of their parts
+// overlap any way, the deepest two) overlaps, OVERLAP_DEEP where the stage gave either
+// its box alone, but a thing leaving or reaching the hand of the figure letting go of
+// it or taking it up. A film holds up to 64 actors for 7,200 frames, so each actor's
+// track is indexed once per film, a frame is boxed only when the distance between the
+// actors' reaches could beat the nearest found, a pair whose tracks never come within
+// CLOSE_GAP (or never meet, for overlaps) is passed over whole, and a film's close
+// pairs and overlaps are found once for the sizes given. Only an actor the stage sized
+// (its own entry, whatever its name) is measured
 // ********************************************************************************
 // == Constants ===================================================================
 /** two actors this near are close */
 export const CLOSE_GAP = 2/*studs*/;
-/** two actors standing deeper than this in each other overlap (studs): past a hand
- *  brushing a sleeve */
+/** two actors standing deeper than this in each other overlap (studs), their boxes
+ *  alone known: past a hand brushing a sleeve, a box holding the air round its parts */
 export const OVERLAP_DEEP = 0.5;
+/** two actors whose parts stand deeper than this in each other overlap (studs: 2 LDU),
+ *  the parts known: past a limb's box eased between the angles it is measured at (a
+ *  hundredth of a stud or so) and a contact pressed a hair into a face, short of any
+ *  hand or door edge passing into what it touches */
+export const PARTS_DEEP = 0.1;
 /** the longest two actors part (seconds) with their overlap still running on */
 const OVERLAP_GAP = 0.25;
 const STUDS_PER_PLATE = 0.4;
@@ -29,10 +41,14 @@ const TOUCHING = 1e-9/*studs*/;
 
 // == Types =======================================================================
 /** an actor's box as the stage sizes it: studs across (x), studs along (z) and
- *  plates up, unturned and unposed */
-export type Size = Readonly<{ width: number; depth: number; height: number; }>;
-/** an actor's box where it stands: its footprint's middle at `position`, turned by
- *  `yaw` (degrees, clockwise seen from above) */
+ *  plates up, unturned and unposed; where its footprint's middle lies from its
+ *  position in its own frame (`middle`, studs east and north: a swinging part's, its
+ *  position its pin), none at its position; and its parts (SEE: partsOf): the boxes
+ *  they fill in its own frame from its position (`bodies`, as the stage measures them),
+ *  or a figure's pose geometry (`bottoms`, the stage's, its bodies posed) */
+export type Size = Readonly<{ width: number; depth: number; height: number; middle?: Readonly<{ x: number; z: number; }>; bodies?: ReadonlyArray<BodyBox>; bottoms?: PoseBottoms; }>;
+/** an actor's box where it stands: turned by `yaw` (degrees, clockwise seen from
+ *  above) about `position`, its footprint's middle there or its size's `middle` off it */
 export type Box = Readonly<{ position: Point; yaw: number; size: Size; }>;
 /** where two actors come closest: the first frame of their least gap */
 export type Closest = Readonly<{ frame: number; time: number; gap: number; }>;
@@ -91,12 +107,13 @@ export const closePairs = (film: Film, sizes: Readonly<Record<string, Size>>): R
   return pairs;
 };
 
-/** every span two actors of a film stand more than OVERLAP_DEEP in each other, a part
- *  of OVERLAP_GAP or less running on, with the most they stand in and the first frame
- *  they do; the longest first, ties in the scene's order; two that ride together never,
- *  nor an actor the stage gave no size, nor a thing and the figure whose hand lets go
- *  of it or takes it up while it leaves or reaches the hand (SEE: handedFrames). Found
- *  once for a film and the sizes given */
+/** every span two actors' parts of a film stand more than PARTS_DEEP in each other
+ *  (OVERLAP_DEEP for a box alone: SEE: deepOf), a part of OVERLAP_GAP or less running
+ *  on, with the most they stand in and the first frame they do; the longest first, ties
+ *  in the scene's order; two that ride together never, nor an actor the stage gave no
+ *  size, nor a thing and the figure whose hand lets go of it or takes it up while it
+ *  leaves or reaches the hand (SEE: handedFrames). Found once for a film and the sizes
+ *  given */
 export const overlapsOf = (film: Film, sizes: Readonly<Record<string, Size>>): ReadonlyArray<Overlap> => {
   const known = overlapsFound.get(film);
   if(known?.sizes === sizes) return known.overlaps;
@@ -109,15 +126,15 @@ export const overlapsOf = (film: Film, sizes: Readonly<Record<string, Size>>): R
       if(rideRoot(film.scene.actors, one) === rideRoot(film.scene.actors, other)) continue/*riding together*/;
       if(apart(extents.get(one.name)!, extents.get(other.name)!) > 0) continue/*their tracks never meet*/;
       const [ones, others, size, otherSize] = [tracks.get(one.name)!, tracks.get(other.name)!, sizes[one.name], sizes[other.name]];
-      const reaches = reachOf(size) + reachOf(otherSize);
-      const depthAt = (at: number) => { const [a, b] = [ones[at], others[at]]; return (a && b) ? depthBetween({ position: a.position, yaw: a.turn.yaw, size }, { position: b.position, yaw: b.turn.yaw, size: otherSize }) : 0; };
-      const handed = handedFrames(film, one.name, other.name, depthAt);
+      const reaches = reachOf(size) + reachOf(otherSize), deep = deepOf(size, otherSize);
+      const depthAt = (at: number) => { const [a, b] = [ones[at], others[at]]; return (a && b) ? partsDepth(partsOf(a, size), partsOf(b, otherSize)) : 0; };
+      const handed = handedFrames(film, one.name, other.name, depthAt, deep);
       let open: { actors: readonly [string, string]; from: number; to: number; most: number; frame: number; time: number; } | undefined;
       film.frames.forEach((frame, at) => {
         const [a, b] = [ones[at], others[at]];
         if(!a || !b || (Math.hypot(b.position.x - a.position.x, b.position.z - a.position.z) >= reaches) || handed.has(at)) return/*hidden, out of reach, or leaving or reaching a hand*/;
-        const depth = depthBetween({ position: a.position, yaw: a.turn.yaw, size }, { position: b.position, yaw: b.turn.yaw, size: otherSize });
-        if(depth <= OVERLAP_DEEP) return;
+        const depth = depthAt(at);
+        if(depth <= deep) return;
         if(open && ((frame.time - open.to) <= OVERLAP_GAP)) {
           open.to = frameEnd(film, at);
           if(depth > open.most) [open.most, open.frame, open.time] = [depth, frame.index, frame.time];
@@ -133,12 +150,12 @@ export const overlapsOf = (film: Film, sizes: Readonly<Record<string, Size>>): R
 };
 
 /** the frames a thing and the figure whose hand lets go of it or takes it up stand
- *  more than OVERLAP_DEEP in each other (`depthAt`) at that hand-off: from the frame it
+ *  more than `deep` in each other (`depthAt`) at that hand-off: from the frame it
  *  leaves the hand until it stands clear of the figure, and back from the frame before
  *  the hand takes it to the first it stands clear (SEE: film.ts HandOff); a thing the
  *  hand plants, every frame the figure hangs from it and then from its letting go until
  *  it stands clear */
-const handedFrames = (film: Film, one: string, other: string, depthAt: (at: number) => number): ReadonlySet<number> => {
+const handedFrames = (film: Film, one: string, other: string, depthAt: (at: number) => number, deep: number): ReadonlySet<number> => {
   const frames = new Set<number>();
   for(const handOff of film.handOffs ?? []) {
     if(!((handOff.thing === one) && (handOff.by === other)) && !((handOff.thing === other) && (handOff.by === one))) continue;
@@ -147,10 +164,162 @@ const handedFrames = (film: Film, one: string, other: string, depthAt: (at: numb
     const letGo = !planted ? handOff.frame : planted.letGo ? film.frames.findIndex(frame => isReached(planted.letGo!.time, frame.time)) : -1/*hangs to the end*/;
     const hung = (letGo < 0) ? film.frames.length : letGo;
     for(let at=handOff.frame; at<hung; at++) frames.add(at);
-    for(let at=((step > 0) ? hung : (handOff.frame - 1)); (at >= 0) && (at < film.frames.length) && (depthAt(at) > OVERLAP_DEEP); at+=step) frames.add(at);
+    for(let at=((step > 0) ? hung : (handOff.frame - 1)); (at >= 0) && (at < film.frames.length) && (depthAt(at) > deep); at+=step) frames.add(at);
   }
   return frames;
 };
+
+// == Parts =======================================================================
+/** a box as it stands, turned any way: its middle (studs east, up and north of the
+ *  stage's origin), its own three axes (unit vectors in the same) and how far it
+ *  reaches along each from its middle (studs) */
+export type Solid = Readonly<{ middle: Vector; axes: readonly [Vector, Vector, Vector]; half: Vector; }>;
+type Vector = readonly [number, number, number];
+/** a part of an actor where it stands: the solids it lies within, all of them (a turned
+ *  limb within its own box turned with it and within its box aligned to its figure) */
+export type Part = ReadonlyArray<Solid>;
+
+/** an actor's parts where it stands (SEE: Size), as the stage draws them: a figure's
+ *  core, and each limb within its box as its pose stands it over the soles (its height
+ *  its lowest point, its pose's rise under it) and, where the stage gives its joint,
+ *  within its own box turned with it about the joint (SEE: limbSolid), the figure turned
+ *  about its hips; any other actor's bodies, turned about its position; its box alone,
+ *  turned by its yaw as a box is (SEE: Box), where the stage gave neither */
+export const partsOf = (shot: Pick<Shot, 'position' | 'turn' | 'pose'>, size: Size): ReadonlyArray<Part> => {
+  const known = (size.bottoms !== undefined) || (size.bodies !== undefined);
+  const placed = placedIn(known ? shot : { ...shot, turn: { ...shot.turn, pitch: 0, roll: 0 } }/*a box alone turned as every box is, its yaw*/, size.bottoms);
+  const boxed = ({ bottom, top, x, z }: BodyBox): Solid => placed({ middle: [(x[0] + x[1]) / 2, ((bottom + top) / 2) * STUDS_PER_PLATE, (z[0] + z[1]) / 2], axes: AXES, half: [(x[1] - x[0]) / 2, ((top - bottom) / 2) * STUDS_PER_PLATE, (z[1] - z[0]) / 2] });
+  if(!known) {
+    const [mx, mz, w, d] = [size.middle?.x ?? 0, size.middle?.z ?? 0, size.width / 2, size.depth / 2];
+    return [[boxed({ bottom: 0, top: size.height, x: [mx - w, mx + w], z: [mz - d, mz + d] })]];
+  } /* else -- its parts known */
+  if(!size.bottoms) return size.bodies!.map(body => [boxed(body)]);
+  const { bottoms } = size, [core, ...limbs] = bodiesOf(bottoms, shot.pose);
+  return [[boxed(core)], ...Object.keys(bottoms.limbs).map((limb, index) => {
+    const turned = limbSolid(bottoms, limb, shot.pose?.[limb] ?? 0);
+    return [boxed(limbs[index]), ...(turned ? [placed(turned)] : [])];
+  })];
+};
+
+/** a limb's own box turned with it about its joint, as the pose is drawn (SEE: Brick
+ *  Studio's pose.ts limbLines), in its figure's frame (studs from the footprint's middle,
+ *  up from the soles): its box measured at the angle it lies tightest at (the least
+ *  volume, the lowest angle of as tight), turned on its pivot's own axis by the rest of
+ *  the way to `angle`; none without its joint */
+const limbSolid = (bottoms: PoseBottoms, limb: string, angle: number): Solid | undefined => {
+  const joint = bottoms.joints?.[limb], tightest = tightestOf(bottoms, limb);
+  if(!joint || !tightest) return undefined;
+  const { box: { bottom, top, x, z } } = tightest;
+  const pivot: Vector = [joint.at.x, joint.at.height * STUDS_PER_PLATE, joint.at.z];
+  const turn = jointTurn(joint, angle - tightest.angle);
+  const middle: Vector = [(x[0] + x[1]) / 2, ((bottom + top) / 2) * STUDS_PER_PLATE, (z[0] + z[1]) / 2];
+  const moved = turn(minus(middle, pivot));
+  return { middle: [pivot[0] + moved[0], pivot[1] + moved[1], pivot[2] + moved[2]], axes: [turn(AXES[0]), turn(AXES[1]), turn(AXES[2])], half: [(x[1] - x[0]) / 2, ((top - bottom) / 2) * STUDS_PER_PLATE, (z[1] - z[0]) / 2] };
+};
+
+/** a joint's turn by `degrees` on its pivot's own axis (its rows, the swing or turn,
+ *  the rows' inverse: SEE Brick Studio's pose.ts conjugate), on a vector in a figure's
+ *  frame (up, where LDraw's y runs down) */
+const jointTurn = ({ matrix, axis }: Joint, degrees: number): ((vector: Vector) => Vector) => {
+  const [cos, sin] = [Math.cos(degrees * (Math.PI / 180)), Math.sin(degrees * (Math.PI / 180))];
+  const rotation = (axis === 'x') ? [1, 0, 0, 0, cos, sin, 0, -sin, cos]/*a swing, its hanging toward its front*/ : [cos, 0, sin, 0, 1, 0, -sin, 0, cos]/*a turn, clockwise seen from above*/;
+  const turned = multiplied(multiplied(matrix, rotation), inverted(matrix));
+  return ([vx, vy, vz]) => { const [x, y, z] = [0, 1, 2].map(row => (turned[row * 3] * vx) + (turned[(row * 3) + 1] * -vy) + (turned[(row * 3) + 2] * vz)); return [x, -y, z]; };
+};
+
+/** the box a limb lies tightest in among the angles it is measured at (SEE:
+ *  limbSolid), found once for its pose geometry */
+const tightestOf = (bottoms: PoseBottoms, limb: string): Readonly<{ angle: number; box: BodyBox; }> | undefined => {
+  let known = tightest.get(bottoms);
+  if(!known) tightest.set(bottoms, known = new Map());
+  if(!known.has(limb)) {
+    const volume = ({ bottom, top, x, z }: BodyBox) => (x[1] - x[0]) * (top - bottom) * (z[1] - z[0]);
+    const [first] = Object.entries(bottoms.limbs[limb] ?? {}).map(([angle, box]) => ({ angle: Number(angle), box })).sort((a, b) => (volume(a.box) - volume(b.box)) || (a.angle - b.angle));
+    known.set(limb, first);
+  }
+  return known.get(limb);
+};
+const tightest = new WeakMap<PoseBottoms, Map<string, Readonly<{ angle: number; box: BodyBox; }> | undefined>>();
+
+/** a solid in an actor's own frame (studs from where it stands, up from its bottom: a
+ *  figure's soles, `bottoms` its pose geometry) placed where it stands and turned as it
+ *  is (SEE: brick-shared/turn.ts rotation): a figure about its hips, its height its
+ *  lowest point turned (SEE: brick-shared/rise.ts hipsOver), anything else about its
+ *  position */
+const placedIn = ({ position, turn, pose }: Pick<Shot, 'position' | 'turn' | 'pose'>, bottoms: PoseBottoms | undefined) => {
+  const matrix = rotation(turn);
+  const turned = ([x, y, z]: Vector): Vector => { const [a, b, c] = [0, 1, 2].map(row => (matrix[row * 3] * x) + (matrix[(row * 3) + 1] * -y) + (matrix[(row * 3) + 2] * z)); return [a, -b, c]; }/*LDraw's y runs down*/;
+  const [about, origin]: readonly [number, number] = bottoms ? [HIPS * STUDS_PER_PLATE, (position.height + hipsOver(bottoms, pose, turn)) * STUDS_PER_PLATE] : [0, position.height * STUDS_PER_PLATE];
+  return ({ middle, axes, half }: Solid): Solid => {
+    const moved = turned([middle[0], middle[1] - about, middle[2]]);
+    return { middle: [position.x + moved[0], origin + moved[1], position.z + moved[2]], axes: [turned(axes[0]), turned(axes[1]), turned(axes[2])], half };
+  };
+};
+
+/** whether a point lies within a solid */
+const inSolid = ({ middle, axes, half }: Solid, point: Point): boolean => {
+  const away = minus([point.x, point.height * STUDS_PER_PLATE, point.z], middle);
+  return axes.every((axis, index) => Math.abs(dot(away, axis)) <= (half[index] + TOUCHING));
+};
+
+/** whether a point lies within a part: within every solid it lies within */
+export const inPart = (part: Part, point: Point): boolean => part.every(solid => inSolid(solid, point));
+
+/** how deep two solids stand in each other (studs): the least their extents overlap
+ *  along any axis that could part them (each one's own, and each pair's cross), 0 where
+ *  they are apart or touch (SEE: depthBetween, as boxes) */
+export const solidDepth = (a: Solid, b: Solid): number => {
+  const between = minus(b.middle, a.middle);
+  const reach = ({ axes, half }: Solid, axis: Vector) => axes.reduce((sum, own, index) => sum + (half[index] * Math.abs(dot(own, axis))), 0);
+  const crosses = a.axes.flatMap(one => b.axes.map(other => cross(one, other))).filter(axis => Math.hypot(...axis) > 1e-9).map(axis => { const length = Math.hypot(...axis); return [axis[0] / length, axis[1] / length, axis[2] / length] as const; });
+  let least = Infinity;
+  for(const axis of [...a.axes, ...b.axes, ...crosses]) {
+    const [ra, rb, at] = [reach(a, axis), reach(b, axis), dot(between, axis)];
+    const overlap = Math.min(ra, at + rb) - Math.max(-ra, at - rb)/*one's extent along it within the other's*/;
+    if(overlap < TOUCHING) return 0;
+    least = Math.min(least, overlap);
+  }
+  return least;
+};
+
+/** how deep two parts stand in each other (studs): as deep as the shallowest of their
+ *  solids' (each lies within all of its own) */
+const partDepth = (a: Part, b: Part): number => Math.min(...a.flatMap(one => b.map(other => solidDepth(one, other))));
+
+/** how deep two actors' parts stand in each other (studs): the deepest any two do,
+ *  two out of each other's reach passed over */
+const partsDepth = (a: ReadonlyArray<Part>, b: ReadonlyArray<Part>): number => {
+  let deepest = 0;
+  for(const one of a) for(const other of b) {
+    const [x, y] = [one[0], other[0]];
+    if(Math.hypot(...minus(y.middle, x.middle)) >= (Math.hypot(...x.half) + Math.hypot(...y.half))) continue/*apart*/;
+    deepest = Math.max(deepest, partDepth(one, other));
+  }
+  return deepest;
+};
+
+const AXES: readonly [Vector, Vector, Vector] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+const dot = (a: Vector, b: Vector): number => (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2]);
+const minus = (a: Vector, b: Vector): Vector => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross = (a: Vector, b: Vector): Vector => [(a[1] * b[2]) - (a[2] * b[1]), (a[2] * b[0]) - (a[0] * b[2]), (a[0] * b[1]) - (a[1] * b[0])];
+/** 3 by 3 rows multiplied, and inverted (SEE: Brick Studio's pose.ts: a library matrix is
+ *  rounded, so its inverse is exact, never its transpose) */
+const multiplied = (a: ReadonlyArray<number>, b: ReadonlyArray<number>): number[] =>
+  [0, 1, 2].flatMap(row => [0, 1, 2].map(column => (a[row * 3] * b[column]) + (a[(row * 3) + 1] * b[3 + column]) + (a[(row * 3) + 2] * b[6 + column])));
+const inverted = (m: ReadonlyArray<number>): number[] => {
+  const [a, b, c, d, e, f, g, h, i] = m;
+  const det = (a * ((e * i) - (f * h))) - (b * ((d * i) - (f * g))) + (c * ((d * h) - (e * g)));
+  return [(e * i) - (f * h), (c * h) - (b * i), (b * f) - (c * e), (f * g) - (d * i), (a * i) - (c * g), (c * d) - (a * f), (d * h) - (e * g), (b * g) - (a * h), (a * e) - (b * d)].map(value => value / det);
+};
+
+/** the stage's sizes with each figure's pose geometry (`bottoms`), by which its parts
+ *  stand as each frame poses it (SEE: Size); as they are without pose geometry */
+export const posedSizes = (sizes: Readonly<Record<string, Size>>, figures: ReadonlySet<string>, bottoms: PoseBottoms | undefined): Readonly<Record<string, Size>> =>
+  bottoms ? Object.fromEntries(Object.entries(sizes).map(([name, size]) => [name, figures.has(name) ? { ...size, bottoms } : size])) : sizes;
+
+/** how deep two actors stand in each other before they overlap (studs): PARTS_DEEP
+ *  where the stage gave both their parts, else OVERLAP_DEEP */
+const deepOf = (a: Size, b: Size): number => ([a, b].every(size => (size.bodies !== undefined) || (size.bottoms !== undefined)) ? PARTS_DEEP : OVERLAP_DEEP);
 
 // == Tracks ======================================================================
 /** each film's overlaps, for the sizes they were found for */
@@ -212,8 +381,19 @@ const apart = (a: Extent, b: Extent): number => {
   return Math.hypot(Math.max(0, b.west - a.east, a.west - b.east), Math.max(0, b.south - a.north, a.south - b.north));
 };
 
-/** the radius a footprint turns within */
-const reachOf = (size: Size): number => Math.hypot(size.width / 2, size.depth / 2);
+/** the radius about its position an actor turns within: its footprint's (its middle
+ *  off its position included) and its parts', a figure's in any pose */
+const reachOf = (size: Size): number => {
+  const known = reaches.get(size);
+  if(known !== undefined) return known;
+  const boxReach = ({ x, z }: Pick<BodyBox, 'x' | 'z'>) => Math.hypot(Math.max(Math.abs(x[0]), Math.abs(x[1])), Math.max(Math.abs(z[0]), Math.abs(z[1])));
+  const [mx, mz, w, d] = [size.middle?.x ?? 0, size.middle?.z ?? 0, size.width / 2, size.depth / 2];
+  const parts = [...(size.bodies ?? []), ...(size.bottoms ? [size.bottoms.core, ...Object.values(size.bottoms.limbs).flatMap(angles => Object.values(angles))] : [])];
+  const reach = Math.max(boxReach({ x: [mx - w, mx + w], z: [mz - d, mz + d] }), ...parts.map(boxReach));
+  reaches.set(size, reach);
+  return reach;
+};
+const reaches = new WeakMap<Size, number>();
 
 /** whether the stage sized an actor: its own entry, never one every object inherits */
 export const isSized = (sizes: Readonly<Record<string, Size>>, name: string): boolean => Object.hasOwn(sizes, name);
@@ -235,6 +415,13 @@ export const rideChain = (actors: ReadonlyArray<RecordedActor>, actor: RecordedA
 export const rideRoot = (actors: ReadonlyArray<RecordedActor>, actor: RecordedActor): string => {
   const chain = rideChain(actors, actor);
   return chain[chain.length - 1].name;
+};
+
+/** where a box's footprint's middle stands (studs east and north): its position, or
+ *  its size's `middle` off it, turned with it */
+export const footprintMiddle = ({ position, yaw, size }: Box): Readonly<{ x: number; z: number; }> => {
+  const angle = yaw * (Math.PI / 180), [mx, mz] = [size.middle?.x ?? 0, size.middle?.z ?? 0];
+  return { x: position.x + (mx * Math.cos(angle)) + (mz * Math.sin(angle)), z: position.z - (mx * Math.sin(angle)) + (mz * Math.cos(angle)) };
 };
 
 /** a box's eight corners: its footprint's at its bottom, then at its top */
@@ -281,15 +468,15 @@ export const segmentEnters = (box: Box, from: Point, to: Point): number | undefi
 const boxFrameOf = (box: Box, point: Point): readonly [number, number, number] => {
   const angle = box.yaw * (Math.PI / 180);
   const [dx, dz] = [point.x - box.position.x, point.z - box.position.z];
-  return [(dx * Math.cos(angle)) - (dz * Math.sin(angle)), (point.height - box.position.height) * STUDS_PER_PLATE, (dx * Math.sin(angle)) + (dz * Math.cos(angle))];
+  return [(dx * Math.cos(angle)) - (dz * Math.sin(angle)) - (box.size.middle?.x ?? 0), (point.height - box.position.height) * STUDS_PER_PLATE, (dx * Math.sin(angle)) + (dz * Math.cos(angle)) - (box.size.middle?.z ?? 0)];
 };
 
 /** a box's footprint corners, in order round it (x east, z north) */
 const corners = ({ position, yaw, size }: Box): ReadonlyArray<Corner> => {
   const angle = yaw * (Math.PI / 180);
   const north: Corner = [Math.sin(angle), Math.cos(angle)], east: Corner = [Math.cos(angle), -Math.sin(angle)];
-  const [w, d] = [size.width / 2, size.depth / 2];
-  return [[-w, -d], [w, -d], [w, d], [-w, d]].map(([across, along]) => [position.x + (across * east[0]) + (along * north[0]), position.z + (across * east[1]) + (along * north[1])] as const);
+  const [w, d, mx, mz] = [size.width / 2, size.depth / 2, size.middle?.x ?? 0, size.middle?.z ?? 0];
+  return [[mx - w, mz - d], [mx + w, mz - d], [mx + w, mz + d], [mx - w, mz + d]].map(([across, along]) => [position.x + (across * east[0]) + (along * north[0]), position.z + (across * east[1]) + (along * north[1])] as const);
 };
 
 /** the distance between two convex footprints, 0 where they meet */

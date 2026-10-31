@@ -1,14 +1,14 @@
 import { lightToneOf, type KeyFrom } from '../../brick-shared/light';
-import { hipsOver, poseRise, type PoseBottoms, HIPS } from '../../brick-shared/rise';
+import { hipsOver, poseRise, type BodyBox, type Joint, type PoseBottoms, HIPS } from '../../brick-shared/rise';
 import { turnOf as turnOfRotation, twistedYaw } from '../../brick-shared/turn';
 
 import { toGear, toPosing } from './build';
 import { getStageFace, ACCESSORIES, ALL_FACES, type Accessory, type CatalogPart, type Grip } from './catalog';
 import { occupiedCells } from './check';
-import { cellsFootprint, compose, copyTransform, footprint, footprintSize, getColor, getPart, getShape, gridPosition, ldrawPosition, matrixRotation, partLines, placedLines, rotationMatrix, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Copy, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
+import { cellsFootprint, compose, copyTransform, footprint, footprintSize, filledCells, getColor, getPart, getShape, gridPosition, ldrawPosition, matrixRotation, partLines, placedLines, rotationMatrix, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Copy, type FilledCell, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseSets, placedPartCount, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
 import { HELD_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { bankOf, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS, TWIST } from './pose';
+import { bankOf, pieceLines, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS, TWIST } from './pose';
 
 // a stage: a scene the studio shows in place of its build while another Application
 // (a film) drives it. Its sets are a build's, each shown as it is: LDraw text's, or
@@ -133,8 +133,13 @@ export type Marks = Readonly<{ paths: ReadonlyArray<Readonly<{ label: string; co
  *  wide for each unit high */
 export type PlanPicture = Readonly<{ area: Area; paths: Marks['paths']; labels: ReadonlyArray<Readonly<{ text: string; x: number; z: number; }>>; camera: StageCamera; aspect: number; }>;
 
-/** an actor's box: studs across (x) and along (z), plates up, unturned and unposed */
-export type Size = Readonly<{ width: number; depth: number; height: number; }>;
+/** an actor's box: studs across (x) and along (z), plates up, unturned and unposed;
+ *  where its footprint's middle lies from its position in its own frame (`middle`,
+ *  studs east and north: a swinging part's, its position its pin), none at its
+ *  position; and the boxes its parts fill in its own frame from its position
+ *  (`bodies`: a door's body and handle, a car's cells), none for what poses, whose
+ *  bodies its pose geometry gives (SEE: brick-shared/rise.ts PoseBottoms) */
+export type Size = Readonly<{ width: number; depth: number; height: number; middle?: Readonly<{ x: number; z: number; }>; bodies?: ReadonlyArray<BodyBox>; }>;
 
 /** words over a frame: a card filling it or a caption along its foot, drawn at
  *  `opacity` (0 to 1) */
@@ -517,7 +522,7 @@ const copyActor = (set: Model, rotation: Rotation, parts: ReadonlyArray<Placemen
   const back = inverseOf(turnedAt(rest.position, rest.turn))/*the scene's frame into its own*/;
   return {
     anchor: [0, 0, 0],
-    size,
+    size: { ...size, bodies: cellBodies(parts.flatMap(placement => occupiedCells(set, placement)), rest) },
     poses: false,
     rise: () => 0,
     clicks: false,
@@ -539,7 +544,7 @@ const componentActor = (set: Model, component: Component): Actor => {
   const parts = component.placements.map(placement => getPart(placement.part)!/*by contract*/);
   return {
     anchor: [((minX + maxX) / 2) * LDU_PER_STUD, 0, ((minZ + maxZ) / 2) * LDU_PER_STUD],
-    size: { width: maxX - minX, depth: maxZ - minZ, height },
+    size: { width: maxX - minX, depth: maxZ - minZ, height, bodies: cellBodies(component.placements.flatMap(placement => occupiedCells(set, placement)), { position: { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2, height: 0 }, turn: UNTURNED }) },
     poses: false,
     rise: () => 0,
     clicks: false,
@@ -549,6 +554,49 @@ const componentActor = (set: Model, component: Component): Actor => {
     parts: placedPartCount(set, component.placements) + component.others.length/*what its carriers carry included*/,
     lines: (_, rolled) => [...component.placements.flatMap(placement => drawnLines(set, placement, rolled * alongNorth(placement.rotation))), ...component.others],
   };
+};
+
+/** an actor unturned */
+const UNTURNED: Turn = { yaw: 0, pitch: 0, roll: 0 };
+/** the boxes cells fill in an actor's own frame (SEE: Size `bodies`), the actor standing
+ *  at `rest` in the cells' frame: each cell turned into its own frame, each column's runs
+ *  of levels, the columns of a row side by side holding the same runs one strip and
+ *  the strips of rows one after another alike one box (so a copy turned any way answers
+ *  its component's boxes); studs from its position across and along, plates up from it */
+const cellBodies = (cells: ReadonlyArray<FilledCell>, rest: Pick<Rest, 'position' | 'turn'>): ReadonlyArray<BodyBox> => {
+  const back = inverseOf(turnedAt(rest.position, rest.turn));
+  const own = (x: number, z: number) => compose(back, { matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], position: ldrawPoint({ x, z, height: rest.position.height }) }).position;
+  const exact = (value: number) => { const rounded = Math.round(value * 1e9) / 1e9; return Object.is(rounded, -0) ? 0 : rounded; };
+  // each cell's west and south edges in its own frame, a stud each way
+  const columns = new Map<string, Readonly<{ x: number; z: number; runs: Array<[number, number]>; }>>();
+  for(const { x, z, bottom, top } of cells) {
+    const corners = [own(x, z), own(x + 1, z + 1)];
+    const [west, south] = [exact(Math.min(...corners.map(corner => corner[0])) / LDU_PER_STUD), exact(Math.min(...corners.map(corner => corner[2])) / LDU_PER_STUD)];
+    const key = `${west}|${south}`;
+    if(!columns.has(key)) columns.set(key, { x: west, z: south, runs: [] });
+    columns.get(key)!.runs.push([bottom - rest.position.height, top - rest.position.height]);
+  }
+  // each column's runs joined where they meet, then each row's columns alike joined
+  const joined = [...columns.values()].map(({ x, z, runs }) => ({ x, z, runs: runs.sort((a, b) => a[0] - b[0]).reduce<Array<[number, number]>>((all, [bottom, top]) => {
+    const last = all[all.length - 1];
+    if(last && (bottom <= last[1])) last[1] = Math.max(last[1], top);
+    else all.push([bottom, top]);
+    return all;
+  }, []) })).sort((a, b) => (a.z - b.z) || (a.x - b.x));
+  const alike = (a: ReadonlyArray<readonly [number, number]>, b: ReadonlyArray<readonly [number, number]>) => (a.length === b.length) && a.every(([bottom, top], index) => (bottom === b[index][0]) && (top === b[index][1]));
+  const strips: Array<{ z: number; west: number; east: number; runs: ReadonlyArray<readonly [number, number]>; }> = [];
+  for(const { x, z, runs } of joined) {
+    const last = strips[strips.length - 1];
+    if(last && (last.z === z) && (last.east === x) && alike(last.runs, runs)) last.east = x + 1;
+    else strips.push({ z, west: x, east: x + 1, runs });
+  }
+  const boxes: Array<{ south: number; north: number; west: number; east: number; runs: ReadonlyArray<readonly [number, number]>; }> = [];
+  for(const { z, west, east, runs } of strips) {
+    const below = boxes.find(box => (box.north === z) && (box.west === west) && (box.east === east) && alike(box.runs, runs));
+    if(below) below.north = z + 1;
+    else boxes.push({ south: z, north: z + 1, west, east, runs });
+  }
+  return boxes.flatMap(({ south, north, west, east, runs }) => runs.map(([bottom, top]) => ({ bottom, top, x: [west, east] as const, z: [south, north] as const })));
 };
 
 /** the cells some parts and what their hinges and faces carry fill (their footprint,
@@ -562,14 +610,29 @@ const filledBy = (set: Model, parts: ReadonlyArray<Placement>): Footprint => {
 /** the level the tallest of some parts reaches (tires above the studs included) */
 const tallestTop = (parts: ReadonlyArray<Placement>): number => Math.max(...parts.map(placement => placement.level + getShape(getPart(placement.part)!/*by contract*/).height));
 
-/** a posable part's bodies' boxes over its soles at each measured angle (SEE:
- *  brick-shared/rise.ts), from its pose geometry; none for a part that never poses */
+/** a posable part's bodies' boxes over its soles at each measured angle, and each
+ *  limb's joint (SEE: brick-shared/rise.ts), from its pose geometry and its pieces;
+ *  none for a part that never poses */
 export const poseBottomsOf = (part: string): PoseBottoms | undefined => {
   const geometry = POSE_GEOMETRY[part];
   if(!geometry) return undefined;
   const boxOf = ({ bottom, reach }: (typeof geometry)['core']) => ({ bottom, top: reach.top, x: reach.x, z: reach.z });
   const limbs = Object.fromEntries(Object.entries(geometry.limbs).map(([limb, angles]) => [limb, Object.fromEntries(Object.entries(angles).map(([angle, body]) => [angle, boxOf(body)]))]));
-  return { core: boxOf(geometry.core), limbs };
+  return { core: boxOf(geometry.core), limbs, joints: jointsOf(getPart(part)!/*by contract: a posable part's*/) };
+};
+
+/** each limb's joint (SEE: brick-shared/rise.ts Joint): its pivot piece as the part
+ *  writes it, in its standing frame, the frame its pose geometry is measured in (from
+ *  its footprint's middle, over its bottom) */
+const jointsOf = (catalogPart: CatalogPart): Readonly<Record<string, Joint>> => {
+  const shape = getShape(catalogPart), lines = pieceLines(catalogPart);
+  const [middleX, middleZ, bottomY] = [((shape.width / 2) - shape.origin[0]) * LDU_PER_STUD, ((shape.depth / 2) - shape.origin[1]) * LDU_PER_STUD, shape.base * LDU_PER_PLATE];
+  const exact = (value: number) => { const rounded = Math.round(value * 1e9) / 1e9; return Object.is(rounded, -0) ? 0 : rounded; };
+  return Object.fromEntries(LIMBS.map(limb => {
+    const { pieces, axis } = catalogPart.limbs![limb]/*by contract*/;
+    const { position: [x, y, z], matrix } = lines[pieces[0]];
+    return [limb, { at: { x: exact((x - middleX) / LDU_PER_STUD), z: exact((z - middleZ) / LDU_PER_STUD), height: exact((bottomY - y) / LDU_PER_PLATE) }, axis, matrix: [...matrix] }];
+  }));
 };
 
 /** a catalog part's actor, `standing` as dressed at the origin unturned: a frame's pose
@@ -582,9 +645,15 @@ const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
   const colorCode = getColor(standing.color)!.code;
   const bottoms = poseBottomsOf(catalogPart.key);
   const pin = catalogPart.swings ? partLines(shape, standing, colorCode, origin)[0].position : undefined;
+  const anchor = pin ? [pin[0], 0, pin[2]] as const : [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD] as const;
+  // its cells about its anchor, standing as dressed at the origin unturned; a figure's
+  // bodies are its pose geometry's
+  const [x, z] = [anchor[0] / LDU_PER_STUD, anchor[2] / LDU_PER_STUD];
+  const middle = { x: (shape.width / 2) - x, z: (shape.depth / 2) - z };
+  const cells = catalogPart.limbs ? {} : { bodies: cellBodies(filledCells(shape, standing), { position: { x, z, height: 0 }, turn: UNTURNED }), ...(((middle.x !== 0) || (middle.z !== 0)) ? { middle } : {}) };
   return {
-    anchor: pin ? [pin[0], 0, pin[2]] : [(shape.width / 2) * LDU_PER_STUD, 0, (shape.depth / 2) * LDU_PER_STUD],
-    size: { ...(POSE_GEOMETRY[catalogPart.key]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height },
+    anchor,
+    size: { ...(POSE_GEOMETRY[catalogPart.key]?.body ?? { width: shape.width, depth: shape.depth })/*a figure as it measures, never its cells*/, height: shape.height, ...cells },
     poses: !!catalogPart.limbs,
     rise: pose => bottoms ? poseRise(bottoms, { ...standing.pose, ...pose }) : 0,
     ...(bottoms ? { bottoms, hips: (pose: Pose | undefined, turn: Turn) => hipsOver(bottoms, { ...standing.pose, ...pose }, turn) } : {}),
@@ -620,7 +689,7 @@ const heldActorOf = (accessory: Accessory, item: Readonly<Record<string, unknown
   const colorCode = getColor(color)!.code;
   return {
     anchor,
-    size: { width: (x[1] - x[0]) / LDU_PER_STUD, depth: (z[1] - z[0]) / LDU_PER_STUD, height: (y[1] - y[0]) / LDU_PER_PLATE },
+    size: { width: (x[1] - x[0]) / LDU_PER_STUD, depth: (z[1] - z[0]) / LDU_PER_STUD, height: (y[1] - y[0]) / LDU_PER_PLATE, bodies: [{ bottom: 0, top: (y[1] - y[0]) / LDU_PER_PLATE, x: [(x[0] - anchor[0]) / LDU_PER_STUD, (x[1] - anchor[0]) / LDU_PER_STUD], z: [(z[0] - anchor[2]) / LDU_PER_STUD, (z[1] - anchor[2]) / LDU_PER_STUD] }]/*its own box, measured*/ },
     poses: false,
     rise: () => 0,
     clicks: false,

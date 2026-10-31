@@ -5,7 +5,7 @@ import type { PoseBottoms } from '../../brick-shared/rise';
 import { bodiesThrough, clearanceOf, groundedOn, type Avoided, type Probe } from './clearance';
 import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandAsk, type HandProbe, type HeldItem, type Paint, type Rest, type StageFacts } from './film';
 import { groundsOf, surfacesIn, surfacesOf, surfacesProbed, type CellArea, type ExtentProbe, type GroundProbe, type SurfaceProbe } from './ground';
-import type { Size } from './measure';
+import { posedSizes, type Size } from './measure';
 import type { FigurePart, Point, Recorded } from './recorder';
 import type { PartFinding } from './review';
 
@@ -21,7 +21,7 @@ import type { PartFinding } from './review';
 // found, each thing a hand lets go of standing where the stage says the hand held it
 // and each pick-up within the hand's reach (SEE: film.ts handsOf), its camera held against the set's parts (drawn in where it avoids them; SEE:
 // clearance.ts), each figure's body in the air held against them and the part the ground stands a figure on named, loaded on every screen a page at a time; the stage's sizes of the
-// actors and the parts each frame's camera meets are kept for measuring and review. A
+// actors (each figure's with its pose geometry) and the parts each frame's camera meets are kept for measuring and review. A
 // plan's camera path is dashed where its camera stands inside a part. A frame is then a number sent to each screen, and each studio's
 // state streams back: the person going back to a build pauses the film at once, a
 // build appearing in a studio or emptied out chooses the screens again, and each
@@ -284,7 +284,7 @@ export class Studios {
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
       this.staged = { scene, film, screens, reels: reels as number[], edits, surfaceProbe, extentProbe, handProbe };
-      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: answer.sizes ?? {}, grips: answer.grips ?? {}, parts, avoided });
+      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: posedSizes(answer.sizes ?? {}, facts.figures, facts.bottoms), grips: answer.grips ?? {}, parts, avoided });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
     }

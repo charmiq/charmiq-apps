@@ -1,5 +1,5 @@
 import type { Film } from './film';
-import type { Size } from './measure';
+import { footprintMiddle, type Size } from './measure';
 import { type Surface, type SurfaceAt, BASEPLATE } from './steps';
 
 // the ground actors follow (SEE: recorder.ts ground): each frame's footprint of every
@@ -56,7 +56,8 @@ export const groundsOf = async (film: Film, sizes: Readonly<Record<string, Size>
     const shot = frame.actors.find(each => each.name === actor.name);
     if(!shot) return undefined/*hidden: no ground to stand on*/;
     const size = sizes[actor.name];
-    const footprint = { x: rounded(shot.position.x), z: rounded(shot.position.z), width: size.width, depth: size.depth, yaw: rounded(shot.turn.yaw) };
+    const middle = footprintMiddle({ position: shot.position, yaw: shot.turn.yaw, size });
+    const footprint = { x: rounded(middle.x), z: rounded(middle.z), width: size.width, depth: size.depth, yaw: rounded(shot.turn.yaw) };
     const key = `${frame.set ?? ''}|${footprint.x}|${footprint.z}|${footprint.width}|${footprint.depth}|${footprint.yaw}`;
     asked.set(key, { set: frame.set, footprint });
     return key;
