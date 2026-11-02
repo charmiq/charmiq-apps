@@ -15,7 +15,8 @@
  *  pelvis tilts); the trunk bent forward over the legs and back. A wrist turns a toy's
  *  hand, which has no thumb, so a hand turned half round holds a thing as a person's
  *  holds it the other way round in the fist; a twist turns the whole figure on its
- *  feet: neither is bounded */
+ *  feet; a hat turns on its head's stud, a toy's joint and no person's: none is
+ *  bounded */
 export const PERSON_RANGE = {
   head: { least: -80, most: 80 },
   leftArm: { least: -60, most: 190 }, rightArm: { least: -60, most: 190 },

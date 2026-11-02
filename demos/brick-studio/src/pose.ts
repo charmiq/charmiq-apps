@@ -16,12 +16,13 @@ export const LIMBS = ['head', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'] as c
 export type Limb = typeof LIMBS[number];
 
 /** a figure's further joints, which a stage's frame alone turns, at any angle: its
- *  lean (forward: torso and hips one rigid block over the legs' axle, the legs keeping
- *  their place, so each leg's angle to the hips takes up the lean) and each hand's turn
- *  on its forearm (the right clockwise as the figure looks down its arm, the left
- *  mirroring it). A build's figure stands with them at 0, and its cells are measured
- *  without them */
-export const FRAME_LIMBS = ['lean', 'rightWrist', 'leftWrist'] as const;
+ *  hat's turn on the head's stud (clockwise seen from above about the head's own
+ *  vertical, added to the head's turn; nothing without a hat), its lean (forward: torso
+ *  and hips one rigid block over the legs' axle, the legs keeping their place, so each
+ *  leg's angle to the hips takes up the lean) and each hand's turn on its forearm (the
+ *  right clockwise as the figure looks down its arm, the left mirroring it). A build's
+ *  figure stands with them at 0, and its cells are measured without them */
+export const FRAME_LIMBS = ['hat', 'lean', 'rightWrist', 'leftWrist'] as const;
 export type FrameLimb = typeof FRAME_LIMBS[number];
 /** what a stage's frame also takes in a figure's pose: its `twist`, no joint (a toy
  *  figure has no waist) but a turn of the whole figure, taken into its yaw (SEE:
@@ -91,7 +92,8 @@ export type FigureColorCodes = Readonly<Partial<Record<FigurePieces, number>>>;
 /** every piece of a part at a pose, in its catalog order, wearing `face`, each piece
  *  group `colors` names in its color, then the accessories it wears, in slot order.
  *  Each limb turns first, then each hand on its forearm, then torso and hips lean
- *  (SEE: leanTurn), what is held turning with what holds it */
+ *  (SEE: leanTurn), what is held turning with what holds it; the hat turns on its
+ *  head's stud last, the head where its limb puts it */
 export const posedPieces = (part: CatalogPart, pose: Pose | undefined, colors?: FigureColorCodes, worn?: Worn, face?: FigureFace): PieceLine[] => {
   const lines = pieceLines(part, face);
   for(const limb of LIMBS) {
@@ -108,11 +110,19 @@ export const posedPieces = (part: CatalogPart, pose: Pose | undefined, colors?: 
   const lean = leanTurn(part, pose);
   if(lean) for(const index of part.leaning!) lines[index] = turned(lines[index], lean);
   for(const [pieces, colorCode] of Object.entries(colors ?? {}) as Array<[FigurePieces, number]>) for(const index of part[pieces] ?? []) lines[index] = { ...lines[index], colorCode };
-  const gear = SLOTS_IN_ORDER.flatMap(slot => worn?.[slot] ? [accessoryLine(part, slot, lines[part.slots![slot].piece], worn[slot]!.accessory, worn[slot]!.grip, worn[slot]!.colorCode)] : []);
+  const gear = SLOTS_IN_ORDER.flatMap(slot => worn?.[slot] ? [accessoryLine(part, slot, wornOn(lines[part.slots![slot].piece], slot, pose), worn[slot]!.accessory, worn[slot]!.grip, worn[slot]!.colorCode)] : []);
   // a print's back turned to the front on the head alone, after what the head wears
   // has taken its place from it
   if(face && ('back' in face) && (part.facePiece !== undefined)) lines[part.facePiece] = { ...lines[part.facePiece], matrix: multiply(lines[part.facePiece].matrix, HALF_TURN_ABOUT_Y) };
   return [...lines, ...gear];
+};
+
+/** the piece a slot's accessory takes its place from: a hat's head turned by the
+ *  pose's `hat` about the head's own vertical through its origin, its stud (SEE:
+ *  FRAME_LIMBS); any other slot's piece as posed */
+const wornOn = (carrier: PieceLine, slot: Slot, pose: Pose | undefined): PieceLine => {
+  const angle = (slot === 'hat') ? (pose?.hat ?? 0) : 0;
+  return (angle === 0) ? carrier : { ...carrier, matrix: multiply(carrier.matrix, turnOf(angle)) };
 };
 
 /** how a part's torso and hips lean at a pose, its own line and its leaning pieces

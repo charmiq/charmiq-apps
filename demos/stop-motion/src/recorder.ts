@@ -290,7 +290,7 @@ export const recordCode = (easing: KeyEasing, code: string, shipped: ReadonlyArr
   const MAX_NAME = 40/*characters*/;
   const MAX_VOLUME = 4;
   const EASES = ['linear', 'ease-in', 'ease-out', 'ease-in-out', 'hold'];
-  const LIMBS = ['head', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg', 'twist', 'lean', 'rightWrist', 'leftWrist'];
+  const LIMBS = ['head', 'hat', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg', 'twist', 'lean', 'rightWrist', 'leftWrist'];
   const MAX_CROWD = 40/*walkers*/;
   const MAX_STEP = 48/*plates*/;
   /** a walk's pace when none is given (studs a second) and the fastest */

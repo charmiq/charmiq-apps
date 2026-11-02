@@ -18,7 +18,7 @@ import type { Key, RecordedActor } from './recorder';
 /** the channels read: an actor's place and turn */
 export const MOTION_CHANNELS = ['x', 'z', 'height', 'yaw', 'pitch', 'roll'] as const;
 /** a figure's pose channels read, as a key names them under `pose` */
-export const POSE_CHANNELS = ['head', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg', 'lean', 'leftWrist', 'rightWrist'] as const;
+export const POSE_CHANNELS = ['head', 'hat', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg', 'lean', 'leftWrist', 'rightWrist'] as const;
 /** the channels a walk lays itself, over any key or path: its place, its heading and a
  *  figure's legs */
 const WALKED = new Set<string>(['x', 'z', 'height', 'yaw', 'pose.leftLeg', 'pose.rightLeg']);
