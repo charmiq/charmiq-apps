@@ -207,9 +207,10 @@ export interface AppStateAPI {
 }
 
 // == Capability (advertise / discover) ===========================================
-// proxy returned by discover() / emitted by discover$(). Methods ending in `$`
-// return Observables; other methods return Promises. Apps typically know the
-// shape of the remote capability and cast the proxy to a concrete interface
+// proxy returned by discover() / emitted by discover$() / answered by discoverAll().
+// Methods ending in `$` return Observables; other methods return Promises. Apps
+// typically know the shape of the remote capability and cast the proxy to a concrete
+// interface
 export type CapabilityProxy = Record<string, (...args: any[]) => any>;
 
 // --------------------------------------------------------------------------------
@@ -230,9 +231,14 @@ export type AdvertiseCapability = (
  *  supplying it avoids an `as unknown as X` cast. Defaults to {@link CapabilityProxy}
  *  when not supplied */
 export type DiscoverCapability  = <T = CapabilityProxy>(capability: string) => Promise<T>;
-/** observable variant — emits the current provider set whenever it changes. The
- *  type parameter narrows each proxy as with {@link DiscoverCapability} */
+/** observable variant — emits the provider set when the Platform answers (empty when
+ *  none provides the capability), then whenever it changes. The type parameter narrows
+ *  each proxy as with {@link DiscoverCapability} */
 export type DiscoverCapability$ = <T = CapabilityProxy>(capability: string) => Observable<T[]>;
+/** one-shot variant — the provider set when the Platform answers, empty when none
+ *  provides the capability. The type parameter narrows each proxy as with
+ *  {@link DiscoverCapability} */
+export type DiscoverCapabilityAll = <T = CapabilityProxy>(capability: string) => Promise<T[]>;
 
 // == Commands ====================================================================
 /** export this Application's MCP-style command surface — the methods declared in
@@ -638,7 +644,8 @@ export interface CharmIQAPI {
   advertise: AdvertiseCapability;
 
   /** discover Applications by capability (Observable-based, full control). Returns an
-   *  Observable that emits arrays of proxies whenever providers change. Declares
+   *  Observable that emits an array of proxies when the Platform answers (empty when no
+   *  application provides the capability), then whenever providers change. Declares
    *  `application.discover`, and `application.call` to call what it finds. It errors
    *  with the reason and `code` (`functions/permission-denied`) when the Platform
    *  refuses the discovery.
@@ -664,6 +671,17 @@ export interface CharmIQAPI {
    *  counter.value$().pipe(retry()).subscribe(...);  // use retry() for streams
    */
   discover: DiscoverCapability;
+  /** discover every Application providing a capability, once. Returns a Promise that
+   *  resolves to a proxy for each application advertising it when the Platform
+   *  answers, or an empty array when none does: a snapshot, so an application that
+   *  advertises later is found by a later call. Declares `application.discover`, and
+   *  `application.call` to call what it finds. It rejects with the reason and `code`
+   *  (`functions/permission-denied`) when the Platform refuses the discovery.
+   *  @example
+   *  const counters = await window.charmiq.discoverAll('counter');
+   *  const values = await Promise.all(counters.map(counter => counter.value()));
+   */
+  discoverAll: DiscoverCapabilityAll;
 
   /** export this Application's MCP-style command surface — the methods declared
    *  in the app's `manifest.json` under `commands` with JSON-Schema `inputSchema`

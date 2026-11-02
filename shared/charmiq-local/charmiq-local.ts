@@ -449,6 +449,7 @@ const makeRegistry = () => {
     advertise: (capability: string, methods: Record<string, (...args: any[]) => any>) => { capabilities.set(capability, methods); },
     discover: <T>(capability: string) => Promise.resolve((capabilities.get(capability) ?? {}) as T),
     discover$: <T>(capability: string) => makeObservable<T[]>(() => (capabilities.has(capability) ? [capabilities.get(capability) as T] : []), new Set()),
+    discoverAll: <T>(capability: string) => Promise.resolve(capabilities.has(capability) ? [capabilities.get(capability) as T] : []),
     exportCommands: (methods: Record<string, (...args: any[]) => any>) => { capabilities.set('charmiq.command', methods); },
   };
 };
@@ -475,6 +476,7 @@ export const installLocalBridge = (): void => {
     advertise: registry.advertise,
     discover: registry.discover,
     discover$: registry.discover$,
+    discoverAll: registry.discoverAll,
     exportCommands: registry.exportCommands,
 
     mcp: {
