@@ -2,70 +2,7 @@
 
 *A customizable "Are You Sure" confirmation dialog — built as a Web Component with TSX, SCSS, and zero frameworks.*
 
-<iframe-app height="280px" width="100%">
-  <app-source>
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; background: #f9fafb; }
-    .controls { display: flex; gap: 12px; margin-bottom: 16px; }
-    .btn { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; color: white; transition: transform 0.15s; }
-    .btn:hover { transform: translateY(-1px); }
-    .btn.warning { background: #f59e0b; }
-    .btn.error { background: #dc2626; }
-    .btn.info { background: #3b82f6; }
-    .log { padding: 12px 16px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; font-family: monospace; font-size: 13px; color: #6b7280; }
-    .log .entry { padding: 2px 0; }
-    .log .confirmed { color: #059669; }
-    .log .cancelled { color: #dc2626; }
-  </style>
-  <script type="module" src="charmiq://."></script>
-</head>
-<body>
-  <div class="controls">
-    <button class="btn warning" onclick="document.getElementById('w').show()">Warning</button>
-    <button class="btn error" onclick="document.getElementById('e').show()">Error</button>
-    <button class="btn info" onclick="document.getElementById('i').show()">Info (no cancel)</button>
-  </div>
-  <div class="log" id="log">click a button above</div>
-
-  <ays-dialog id="w" type="warning" primary-text="Delete" cancel-text="Cancel">
-    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
-    <span slot="title">Delete Project?</span>
-    <span slot="message">This will permanently delete the project and all its contents. This action cannot be undone.</span>
-  </ays-dialog>
-
-  <ays-dialog id="e" type="error" primary-text="Force Delete" cancel-text="Go Back">
-    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
-    <span slot="title">This Cannot Be Undone</span>
-    <span slot="message">All data associated with this resource will be permanently destroyed. There is no recovery path.</span>
-  </ays-dialog>
-
-  <ays-dialog id="i" type="info" primary-text="Got It">
-    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
-    <span slot="title">Update Available</span>
-    <span slot="message">A new version is available. The page will reload to apply the update.</span>
-  </ays-dialog>
-
-  <script>
-    const log = document.getElementById('log');
-    let n = 0;
-    const entry = (type, action) => {
-      if(n === 0) log.textContent = '';
-      n++;
-      const d = document.createElement('div');
-      d.className = 'entry ' + action;
-      d.textContent = '[' + n + '] ' + type + ' → ' + action;
-      log.insertBefore(d, log.firstChild);
-    };
-    document.addEventListener('ays-confirmed', e => entry(e.detail.type, 'confirmed'));
-    document.addEventListener('ays-cancelled', e => entry(e.detail.type, 'cancelled'));
-  </script>
-</body>
-</html>
-  </app-source>
+<iframe-app height="280px" width="100%" src="charmiq://./demo">
 </iframe-app>
 
 Click the buttons above. Each triggers a different dialog type — warning, error, info. The event log shows which CustomEvent fired. That's the full component running live.
@@ -76,11 +13,31 @@ This is a Web Component built with:
 
 - **TSX without React.** JSX is syntactic sugar for function calls. The compiler sees `<div class="foo">` and emits `h('div', { class: 'foo' })`. Here, `h()` comes from [Preact](https://preactjs.com) — a 3KB library that provides the same `createElement` as React. Preact loads at runtime via the import map. No React, no virtual DOM diffing overhead for this use case — just a battle-tested DOM factory.
 
-- **SCSS in a separate file.** The component's styles live in [`ays-dialog.scss`](charmiq://./ays-dialog.scss), not in a JavaScript string. Real SCSS with variables, nesting, `:host` selectors — and real syntax highlighting in the editor. The pipeline compiles it to CSS; the component loads it into its shadow root via a `<link>`.
+- **SCSS in a separate file.** The component's styles live in [`ays-dialog.scss`](charmiq://./ays-dialog.scss), not in a JavaScript string. Real SCSS with variables, nesting, `:host` selectors — and real syntax highlighting in the editor. The component imports the file, the pipeline compiles it to CSS text, and the component puts that text in a `<style>` in its shadow root.
 
 - **The pipeline handles everything.** TypeScript compilation, JSX transformation, SCSS compilation — all from a manifest and source files. No bundler config, no build step, no `node_modules`.
 
-- **No indirection.** The manifest sets `output: "script"` and points directly at [`ays-dialog.tsx`](charmiq://./ays-dialog.tsx) — no HTML shell, no intermediary `main.tsx`. The component registers itself. The `<iframe-app>` fixtures above load it with `<script type="module" src="charmiq://."></script>`, which the Platform resolves to the compiled entry point. The `type="module"` is required because the manifest declares `format: "esm"` — the compiled output uses ES module syntax (`import`/`export`), and browsers only parse that inside module scripts.
+- **No indirection.** The manifest sets `output: "script"` and points directly at [`ays-dialog.tsx`](charmiq://./ays-dialog.tsx) — no HTML shell, no intermediary `main.tsx`. The component registers itself when its module runs.
+
+## Using it in an Application
+
+An Application bundles the component: it mounts the folder holding it and imports it, and the build carries the component and its styles. The demo above is [`demo/`](charmiq://./demo/manifest.json), which mounts this folder at `/ays-dialog`:
+
+```json aK4nR8pWqM
+"mounts": { "/ays-dialog": ".." },
+"dependencies": {
+  "importMap": {
+    "preact": "https://esm.sh/preact@11.0.0",
+    "preact/jsx-runtime": "https://esm.sh/preact@11.0.0/jsx-runtime"
+  }
+}
+```
+
+```ts bM5pS9qXrN
+import '/ays-dialog/ays-dialog';
+```
+
+The importing Application's import map supplies Preact, since the component's import of it becomes part of that Application's build. The CodeMirror editor ([`apps/codemirror-editor`](charmiq://../../apps/codemirror-editor/manifest.json)) mounts the whole `shared/` folder at `/shared` and imports `/shared/ays-dialog/ays-dialog` for its close-tab confirmation.
 
 ## The files
 
@@ -88,7 +45,8 @@ This is a Web Component built with:
 |------|------|
 | [`manifest.json`](charmiq://./manifest.json) | declares the script entry, `output: "script"`, ESM format, and the Preact import map |
 | [`ays-dialog.tsx`](charmiq://./ays-dialog.tsx) | the Web Component — lifecycle, attributes, shadow DOM, JSX template |
-| [`ays-dialog.scss`](charmiq://./ays-dialog.scss) | component shadow DOM styles — proper SCSS, loaded via `<link>` |
+| [`ays-dialog.scss`](charmiq://./ays-dialog.scss) | component shadow DOM styles — proper SCSS, imported as compiled CSS text |
+| [`demo/`](charmiq://./demo/manifest.json) | the demo above: an Application that mounts this folder and imports the component |
 
 ## How the JSX factory works
 
@@ -135,15 +93,15 @@ The component's styles live in [`ays-dialog.scss`](charmiq://./ays-dialog.scss) 
 }
 ```
 
-The component loads these into its shadow root via a `<link>` element:
+The component imports the stylesheet as text and puts it in its shadow root:
 
 ```tsx kM7nP2rQwB
-const styleHref = new URL('./ays-dialog.scss', import.meta.url).href;
-// in render():
-shadow.appendChild(<link rel="stylesheet" href={styleHref} />);
+import componentStyles from './ays-dialog.scss';
+// in the template:
+<style>{componentStyles}</style>
 ```
 
-The pipeline compiles SCSS → CSS when the browser requests the file. The shadow DOM boundary guarantees these styles can't leak out and page styles can't leak in.
+The pipeline compiles SCSS → CSS as it builds, and the CSS text travels inside the script: no separate stylesheet request. The shadow DOM boundary guarantees these styles can't leak out and page styles can't leak in.
 
 ---
 

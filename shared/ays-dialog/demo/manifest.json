@@ -1,0 +1,20 @@
+{
+  "id": "ai.charmiq.shared.ays-dialog.demo",
+  "name": "AYS Dialog Demo",
+  "description": "The AYS dialog's three types, each opened by a button, with the events they fire",
+  "requestedScopes": [],
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts"
+    },
+    "format": "esm",
+    "mounts": { "/ays-dialog": ".." },
+    "dependencies": {
+      "importMap": {
+        "preact": "https://esm.sh/preact@11.0.0",
+        "preact/jsx-runtime": "https://esm.sh/preact@11.0.0/jsx-runtime"
+      }
+    }
+  }
+}

@@ -2,9 +2,7 @@
   "id": "ai.charmiq.shared.codemirror-editor",
   "name": "CodeMirror Editor",
   "description": "A multi-tab code editor with collaborative editing, OT content sync, and configurable language modes",
-  "requestedScopes": [
-    "fetch.platform"
-  ],
+  "requestedScopes": [],
   "bundle": {
     "entry": {
       "html": "/src/index.html",
@@ -20,7 +18,9 @@
         "codemirror": "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.js",
         "@codemirror/state": "https://esm.sh/@codemirror/state@6.7.6",
         "@codemirror/collab": "https://esm.sh/@codemirror/collab@6.1.1?deps=@codemirror/state@6.7.6",
-        "@codemirror/commands": "https://esm.sh/@codemirror/commands@6.11.1?deps=@codemirror/state@6.7.6"
+        "@codemirror/commands": "https://esm.sh/@codemirror/commands@6.11.1?deps=@codemirror/state@6.7.6",
+        "preact": "https://esm.sh/preact@11.0.0",
+        "preact/jsx-runtime": "https://esm.sh/preact@11.0.0/jsx-runtime"
       }
     }
   },

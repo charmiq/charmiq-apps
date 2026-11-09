@@ -717,7 +717,9 @@ export interface CharmIQAPI {
    *  - `text` (default)
    *  - `arrayBuffer` (useful for binary payloads like images/files)
    *
-   *  Requests are still subject to platform proxy/auth/allowlist policy.
+   *  The CharmIQ page sends the request, with its own origin and Referer, to an address
+   *  outside CharmIQ only, and attaches no CharmIQ credential: a CharmIQ API URL or
+   *  `charmiq://` URI is refused.
    *  @example
    *  const response = await window.charmiq.fetch('https://api.example.com/data', {
    *    headers: { 'Authorization': `Bearer ${token}` }

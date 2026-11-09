@@ -6,8 +6,8 @@ import type { GmailHeader, GmailMessage, GmailPayload } from './types';
 //
 // Gmail's REST API sends permissive CORS headers, so these run as a direct
 // `fetch` with the bearer token. An API that rejected a cross-origin call from
-// the app's null origin would instead go through `window.charmiq.fetch` (the
-// Platform CORS proxy)
+// the app's null origin would instead go through `window.charmiq.fetch` (sent by
+// the CharmIQ page, from its own origin)
 // ********************************************************************************
 // == Constants ===================================================================
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';

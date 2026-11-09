@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; background: #f9fafb; }
+    .controls { display: flex; gap: 12px; margin-bottom: 16px; }
+    .btn { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; color: white; transition: transform 0.15s; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn.warning { background: #f59e0b; }
+    .btn.error { background: #dc2626; }
+    .btn.info { background: #3b82f6; }
+    .log { padding: 12px 16px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; font-family: monospace; font-size: 13px; color: #6b7280; }
+    .log .entry { padding: 2px 0; }
+    .log .confirmed { color: #059669; }
+    .log .cancelled { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <button class="btn warning" onclick="document.getElementById('w').show()">Warning</button>
+    <button class="btn error" onclick="document.getElementById('e').show()">Error</button>
+    <button class="btn info" onclick="document.getElementById('i').show()">Info (no cancel)</button>
+  </div>
+  <div class="log" id="log">click a button above</div>
+
+  <ays-dialog id="w" type="warning" primary-text="Delete" cancel-text="Cancel">
+    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
+    <span slot="title">Delete Project?</span>
+    <span slot="message">This will permanently delete the project and all its contents. This action cannot be undone.</span>
+  </ays-dialog>
+
+  <ays-dialog id="e" type="error" primary-text="Force Delete" cancel-text="Go Back">
+    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+    <span slot="title">This Cannot Be Undone</span>
+    <span slot="message">All data associated with this resource will be permanently destroyed. There is no recovery path.</span>
+  </ays-dialog>
+
+  <ays-dialog id="i" type="info" primary-text="Got It">
+    <svg slot="icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>
+    <span slot="title">Update Available</span>
+    <span slot="message">A new version is available. The page will reload to apply the update.</span>
+  </ays-dialog>
+
+  <script>
+    const log = document.getElementById('log');
+    let n = 0;
+    const entry = (type, action) => {
+      if(n === 0) log.textContent = '';
+      n++;
+      const d = document.createElement('div');
+      d.className = 'entry ' + action;
+      d.textContent = '[' + n + '] ' + type + ' → ' + action;
+      log.insertBefore(d, log.firstChild);
+    };
+    document.addEventListener('ays-confirmed', e => entry(e.detail.type, 'confirmed'));
+    document.addEventListener('ays-cancelled', e => entry(e.detail.type, 'cancelled'));
+  </script>
+</body>
+</html>

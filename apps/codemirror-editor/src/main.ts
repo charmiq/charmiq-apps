@@ -1,4 +1,5 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
+import '/shared/ays-dialog/ays-dialog'/*defines <ays-dialog>, the close-tab confirmation*/;
 import { CommandSurface } from './command';
 import { ConfigStore, DEFAULT_MODE } from './config-store';
 import { ContentBridge } from './content-bridge';
