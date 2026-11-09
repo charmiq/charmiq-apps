@@ -1,5 +1,6 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { CharmIQServices } from '../../../shared/charmiq-services';
+import { appStateFailureNotice } from '/shared/app-state-settings/app-state-settings';
 import { AssetResolver } from './asset-resolver';
 import { CommandSurface, type GalleryActions } from './command-surface';
 import { ConfigStore, type ConfigField, type GalleryConfig, type OrientationMode } from './config-store';
@@ -26,7 +27,7 @@ const charmiqGlobal: CharmIQAPI = window.charmiq;
 
 // == Create Instances ============================================================
 const contentBridge  = new ContentBridge(charmiqGlobal.appContent);
-const configStore    = new ConfigStore(charmiqGlobal.appState);
+const configStore    = new ConfigStore(charmiqGlobal.appState, (failure, error) => gridView.setNotice(appStateFailureNotice(failure, error)));
 const model          = new GalleryModel();
 const assetResolver  = new AssetResolver();
 const gridView       = new GridView();

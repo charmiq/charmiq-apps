@@ -1,9 +1,11 @@
 import type { MermaidConfig } from 'mermaid';
 
 import type { AppStateAPI } from '../../../shared/charmiq';
+import { AppStateSettings, type AppStateFailure, type AppStateView } from '/shared/app-state-settings/app-state-settings';
 
 // owns diagram configuration persisted via appState. All reads/writes go
-// through here — nobody else touches appState directly
+// through here — nobody else touches appState directly. Each setting is written
+// onto the latest state (SEE: shared/app-state-settings)
 // ********************************************************************************
 // == Types =======================================================================
 /** Mermaid theme names supported by the library */
@@ -17,7 +19,7 @@ export interface DiagramConfig {
 }
 
 // ................................................................................
-/** callback when config changes (from a remote appState update) */
+/** callback when config changes (here or from a remote appState update) */
 type ConfigChangedCallback = (config: Readonly<DiagramConfig>) => void;
 
 // == Defaults ====================================================================
@@ -28,55 +30,41 @@ const DEFAULT_CONFIG: Readonly<DiagramConfig> = {
 // == Class =======================================================================
 /** manages diagram configuration via appState */
 export class ConfigStore {
-  private readonly appState: AppStateAPI;
+  private readonly settings: AppStateSettings;
   private config: DiagramConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: AppStateAPI) {
-    this.appState = appState;
+  /** `onFailure` tells the person a setting was not saved or the app state can no
+   *  longer be read */
+  public constructor(appState: AppStateAPI, onFailure: (failure: AppStateFailure, error: unknown) => void) {
+    this.settings = new AppStateSettings(appState, view => this.applyState(view), onFailure);
   }
 
-  /** register callback for config changes from remote updates */
+  /** register callback for config changes */
   public onConfigChange(cb: ConfigChangedCallback): void {
     this.onConfigChanged = cb;
   }
 
-  /** load initial state from appState and subscribe to ongoing changes */
-  public async init(): Promise<void> {
-    const state = await this.appState.get();
-    if(state) this.applyState(state);
-
-    this.appState.onChange$().subscribe((state: Record<string, unknown> | null) => {
-      if(!state) return;/*no state yet*/
-      this.applyState(state);
-    });
+  /** follows the app state; resolves once it is known (or unreadable) */
+  public init(): Promise<void> {
+    return this.settings.start();
   }
 
   // == Getters ===================================================================
   public getConfig(): Readonly<DiagramConfig> { return this.config; }
 
-  // == Writers (fetch-merge-set) ==================================================
-  /** merge partial config and persist to appState */
-  public async setConfig(partial: Readonly<Partial<DiagramConfig>>): Promise<void> {
-    const newConfig = { ...this.config, ...partial };
-
-    // optimistic local update
-    if(JSON.stringify(newConfig) === JSON.stringify(this.config)) return;/*no change*/
-    this.config = newConfig;
-    if(this.onConfigChanged) this.onConfigChanged({ ...this.config });
-
-    // persist — the onChange$ subscription reconciles if someone else writes
-    try {
-      await this.appState.set(newConfig);
-    } catch(error) {
-      console.error('failed to persist config:', error);
-    }
+  // == Writers ===================================================================
+  /** changes the settings named: shown at once, each written onto the latest state.
+   *  Answers whether every one was saved */
+  public setConfig(partial: Readonly<Partial<DiagramConfig>>): Promise<boolean> {
+    const saves = Object.entries(partial).map(([key, value]) => this.settings.change([key], value));
+    return Promise.all(saves).then(saved => saved.every(Boolean));
   }
 
   // == Internal ==================================================================
-  /** apply an incoming appState snapshot and notify callbacks if changed */
-  private applyState(state: Record<string, unknown>): void {
+  /** apply the settings shown and notify callbacks if changed */
+  private applyState(state: AppStateView): void {
     const newConfig: DiagramConfig = {
       theme: (typeof state.theme === 'string' ? state.theme : DEFAULT_CONFIG.theme) as MermaidTheme,
       ...(state.flowchart !== undefined

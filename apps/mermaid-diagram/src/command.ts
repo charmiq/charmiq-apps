@@ -31,7 +31,7 @@ export class CommandSurface {
         return { ...this.configStore.getConfig() };
       },
       setConfig: async (partial: Record<string, unknown>) => {
-        await this.configStore.setConfig(partial);
+        if(!(await this.configStore.setConfig(partial))) throw new Error('The configuration was not saved: the diagram shows its saved configuration.');
       }
     });
   }

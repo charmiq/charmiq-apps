@@ -22,10 +22,12 @@ import { composeName, mintSlug, type TabContentChange, type TabId, type TabInfo,
 //
 // Deletion: ContentBridge filters out platform `deleted=true` events (those are
 // bookkeeping and fire spuriously during first-save). Local removal is therefore
-// driven  *proactively* in `delete()` — update `tabs`, switch active tab, and
-// clean up appState before asking the bridge to remove the app-content. The
-// tradeoff: a remote client deleting a tab is invisible in the tab list until
-// reload; the tab's live text says the file was removed and keeps what it holds.
+// driven by `delete()`: it asks the bridge to remove the app-content, the tab shown
+// marked deleting meanwhile, and only once the document has removed it updates
+// `tabs`, switches the active tab and cleans up appState; a refusal keeps the tab,
+// its text and settings, and is told. The tradeoff: a remote client deleting a tab
+// is invisible in the tab list until reload; the tab's live text says the file was
+// removed and keeps what it holds.
 //
 // Text: each tab's text is its live text's (shared/collab-text), which keeps this
 // client's changes confirmed and rebased over everyone else's. The bridge's change
@@ -70,6 +72,10 @@ export class TabManager {
   /** tracks tab IDs whose slug-less names we've already submitted a rewrite for,
    *  so concurrent ingest events don't trigger a second migration */
   private readonly migrationsInFlight = new Set<TabId>();
+  /** tabs whose deletion the document has not yet answered, each with its answer:
+   *  shown, marked deleting; a second request for one takes the same answer */
+  private readonly deleting = new Map<TabId, Promise<void>>();
+  private onDeleteRefusedCallback: ((name: string, error: unknown) => void) | null = null;
 
   // reactive surface — fed by `notify()` (tabs / activeTab) and by content
   // mutations from each tab's live text (`follow`) and the user's (`localChange`)
@@ -78,7 +84,6 @@ export class TabManager {
   private readonly changesSubject   = new Subject<TabContentChange>();
 
   private onTabsChanged: TabsChangedCallback | null = null;
-  private initialSetupDone = false;
 
   // == Lifecycle =================================================================
   public constructor(contentBridge: ContentBridge, configStore: ConfigStore, editorWrapper: EditorWrapper) {
@@ -235,22 +240,15 @@ export class TabManager {
       } /* else -- slug refers to a tab not currently present */
     }
 
-    // append tabs whose slug is not yet in the persisted order
+    // append tabs whose slug is not yet in the persisted order, in the app-contents'
+    // order (the same for every viewer). Drawing the tabs saves nothing: the order is
+    // saved by the person's reorder alone, so a refused save never comes back as
+    // another save from the redraw that shows the saved order again
     const appended: TabId[] = [];
-    const newSlugs: TabSlug[] = [];
     for(const [id, tab] of this.tabs) {
-      if(tab.slug === null) {
-        appended.push(id)/*include in render order, exclude from persistence*/;
-      } else if(!orderedSlugSet.has(tab.slug)) {
-        appended.push(id);
-        newSlugs.push(tab.slug);
-      } /* else -- already in the persisted order */
+      if((tab.slug === null) || !orderedSlugSet.has(tab.slug)) appended.push(id);
+      /* else -- already in the persisted order */
     }
-
-    if(this.initialSetupDone && (newSlugs.length > 0)) {
-      // persist only the slugs we know — slug-null tabs join the order on echo
-      this.configStore.updateTabOrder([...orderSlugs, ...newSlugs])/*async*/;
-    } /* else -- nothing new to persist */
 
     return [...ordered, ...appended];
   }
@@ -258,8 +256,6 @@ export class TabManager {
   // == Public Actions ============================================================
   /** mark the initial setup phase as complete (called after discovery settles) */
   public markInitialSetupDone(): void {
-    this.initialSetupDone = true;
-
     if(this.tabs.size < 1) this.createDefaultTab();
   }
 
@@ -279,8 +275,7 @@ export class TabManager {
       await this.contentBridge.set(content, `[name='${uniqueSelector}']`, composeName(slug, displayName));
 
       // slug is already known — persist mode without waiting for echo
-      try { await this.configStore.updateTabMode(slug, mode); }
-      catch(error) { console.error('failed to set tab mode:', error); }
+      this.configStore.updateTabMode(slug, mode);
     } catch(error) {
       console.error('failed to create tab:', error);
       this.locallyCreatedSlugs.delete(slug);
@@ -288,12 +283,51 @@ export class TabManager {
   }
 
   // -- Delete Tab ----------------------------------------------------------------
-  /** delete a tab (shows confirmation first — see toolbar.ts for dialog flow).
-   *  Updates local state + appState first, then tells the bridge to remove the
-   *  app-content — see module header on why we don't react to bridge events */
-  public async delete(tabId: TabId): Promise<void> {
+  /** delete a tab (shows confirmation first — see toolbar.ts for dialog flow). The
+   *  bridge removes the app-content first, then local state + appState follow;
+   *  rejects with the document's refusal, the tab kept — see module header on why
+   *  we don't react to bridge events */
+  public delete(tabId: TabId): Promise<void> {
+    const asked = this.deleting.get(tabId);
+    if(asked) return asked/*already asked: its answer*/;
     const removed = this.tabs.get(tabId);
-    if(!removed || (this.tabs.size <= 1)) return;
+    if(!removed || !this.canDelete(tabId)) return Promise.resolve()/*nothing to delete, or it would be the last*/;
+
+    const deletion = this.deleteFromDocument(tabId, removed);
+    this.deleting.set(tabId, deletion);
+    this.notify();
+    return deletion;
+  }
+
+  /** true when the tab can be deleted: another tab stays, one not itself being deleted */
+  public canDelete(tabId: TabId): boolean {
+    if(!this.tabs.has(tabId)) return false;
+    for(const id of this.tabs.keys()) if((id !== tabId) && !this.deleting.has(id)) return true;
+    return false/*it would be the last*/;
+  }
+
+  /** true while the document has not answered a tab's deletion */
+  public isDeleting(tabId: TabId): boolean { return this.deleting.has(tabId); }
+
+  /** register callback fired with a tab's name when the document refuses its deletion */
+  public onDeleteRefused(cb: (name: string, error: unknown) => void): void {
+    this.onDeleteRefusedCallback = cb;
+  }
+
+  // ..............................................................................
+  /** the document deletes the app-content first: until it answers the tab stays,
+   *  marked deleting; a refusal keeps its tab, text and settings, and is told */
+  private async deleteFromDocument(tabId: TabId, removed: Tab): Promise<void> {
+    try {
+      await this.contentBridge.remove(`[id='${tabId}']`);
+    } catch(error) {
+      this.deleting.delete(tabId);
+      this.notify();
+      if(this.activeTabId === tabId) this.onStatusChanged?.(this.statuses.get(tabId) ?? { kind: 'loading' })/*where its text stands now*/;
+      this.onDeleteRefusedCallback?.(removed.displayName || UNTITLED_TAB_NAME, error);
+      throw error;
+    }
+    this.deleting.delete(tabId);
 
     // pick the next active tab (if removing the active one) before mutating
     let newActiveTabId: TabId | null = null;
@@ -307,19 +341,16 @@ export class TabManager {
       } /* else -- no other tabs */
     }
 
-    // proactive local removal — tabs map, live text, migration tracking, appState
+    // the document deleted it: the tab, its live text, migration tracking, appState
     this.tabs.delete(tabId);
     this.live.get(tabId)?.dispose();
     this.live.delete(tabId);
     this.statuses.delete(tabId);
     this.migrationsInFlight.delete(tabId);
-    if(removed.slug !== null) this.configStore.removeTab(removed.slug)/*async*/;
+    if(removed.slug !== null) this.configStore.removeTab(removed.slug);
 
     if(newActiveTabId) this.switchTab(newActiveTabId);
     else this.notify();
-
-    try { await this.contentBridge.remove(`[id='${tabId}']`); }
-    catch(error) { console.error('failed to remove app-content for deleted tab:', error); }
   }
 
   // -- Switch Tab ----------------------------------------------------------------
@@ -354,13 +385,13 @@ export class TabManager {
   // -- Reorder Tabs --------------------------------------------------------------
   /** reorder tabs (called after drag-and-drop). Translates ids → slugs before
    *  persisting; slug-less tabs are dropped from the persisted order */
-  public async reorder(newOrder: TabId[]): Promise<void> {
+  public reorder(newOrder: TabId[]): void {
     const slugOrder: TabSlug[] = [];
     for(const id of newOrder) {
       const slug = this.tabs.get(id)?.slug;
       if(slug) slugOrder.push(slug);
     }
-    await this.configStore.updateTabOrder(slugOrder);
+    this.configStore.updateTabOrder(slugOrder);
   }
 
   // -- Mode for Active Tab -------------------------------------------------------
@@ -525,6 +556,9 @@ export class TabManager {
         if(this.activeTabId !== tabId) return;
         if(live.isEditable()) this.editorWrapper.unlock();
         else this.editorWrapper.lock();
+        // while its deletion waits, what its text's status says waits too: a removal
+        // is the deletion's own, and a refusal shows it then (SEE: deleteFromDocument)
+        if(this.deleting.has(tabId)) return;
         this.onStatusChanged?.(status);
       },
     });

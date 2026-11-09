@@ -1,4 +1,5 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
+import { appStateFailureNotice } from '/shared/app-state-settings/app-state-settings';
 import { CommandSurface } from './command';
 import { ConfigStore } from './config-store';
 import { ContentBridge } from './content-bridge';
@@ -8,7 +9,12 @@ import { ContentBridge } from './content-bridge';
 const charmiq: CharmIQAPI = window.charmiq;
 
 // == Create Instances ============================================================
-const configStore = new ConfigStore(charmiq.appState);
+/** shows why a setting was not saved or the settings stopped updating */
+const notice = document.getElementById('notice')!;
+const configStore = new ConfigStore(charmiq.appState, (failure, error) => {
+  notice.textContent = appStateFailureNotice(failure, error);
+  notice.hidden = false;
+});
 const contentBridge = new ContentBridge(
   charmiq.appContent,
   document.getElementById('diagram')!,

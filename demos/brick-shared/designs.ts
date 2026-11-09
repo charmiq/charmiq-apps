@@ -54,7 +54,8 @@ export class DesignStore {
     this.documentState.entry$(FOLDER_STATE).subscribe(chosen => this.follow(chosen));
   }
 
-  /** reads the app state. A state that cannot be read leaves the top of the Drive */
+  /** reads the app state. While it cannot be read, nothing is saved, listed or found
+   *  in the folder (SEE: knownFolder) */
   public init(): Promise<void> {
     this.ready = this.documentState.init().catch(error => console.warn('the designs folder could not be read:', error));
     return this.ready;
@@ -88,10 +89,10 @@ export class DesignStore {
 
   /** the designs in the folder (at most MAX_LISTED), each its document */
   public async list(): Promise<ReadonlyArray<Design>> {
-    await this.ready;
+    const folder = await this.knownFolder();
     const designs: Design[] = [];
     for(let offset=0; designs.length<MAX_LISTED;) {
-      const page = await this.drive.list(this.folder.id, offset);
+      const page = await this.drive.list(folder.id, offset);
       designs.push(...page.files);
       if(!page.hasMore) break;
       offset += page.read;
@@ -110,7 +111,7 @@ export class DesignStore {
    *  (it is read-only) */
   public async write(name: string, replace: boolean, text: () => string | Promise<string>/*read once the name is clear*/, own?: Design): Promise<SavedInFolder> {
     const clean = this.designName(name);
-    await this.ready;
+    await this.knownFolder()/*refused while it cannot be read*/;
     const ldraw = await text();
     const folder = this.folder;
     const { found: existing, unseen } = await this.find(folder, clean);
@@ -148,6 +149,16 @@ export class DesignStore {
   }
 
   // == Internal ==================================================================
+  /** the folder the app state names, once read: refused while the app state cannot
+   *  be read, so nothing is saved, listed or found in a folder it does not name */
+  private async knownFolder(): Promise<Folder> {
+    await this.ready;
+    const unread = this.documentState.readError;
+    if(unread !== undefined) throw new DesignError(`The ${this.words.noun}s folder could not be read from the document (${unread}): reload to try again.`);
+    return this.folder;
+  }
+
+  // ------------------------------------------------------------------------------
   /** takes the folder the app state names, telling listeners when it changed */
   private follow(chosen: unknown): void {
     const next = isFolder(chosen) ? chosen : TOP_OF_DRIVE;
@@ -159,8 +170,7 @@ export class DesignStore {
   /** the design of that name in the folder, and the folder */
   private async named(typed: string): Promise<Readonly<{ design: Design; folder: Folder; }>> {
     const name = this.designName(typed);
-    await this.ready;
-    const folder = this.folder;
+    const folder = await this.knownFolder();
     const { found, unseen } = await this.find(folder, name);
     if(found) return { design: found, folder };
     throw new DesignError(unseen

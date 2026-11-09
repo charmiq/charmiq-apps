@@ -1,4 +1,5 @@
 import type { AppStateAPI } from '../../../shared/charmiq';
+import { AppStateSettings, type AppStateFailure, type AppStateView } from '/shared/app-state-settings/app-state-settings';
 
 // owns the small amount of configuration this demo persists via appState:
 //   * autoCompile          -- recompile automatically after debounced edits
@@ -44,14 +45,16 @@ const DEBOUNCE_MAX_MS = 5_000;
 
 // == Class =======================================================================
 export class ConfigStore {
-  private readonly appState: AppStateAPI;
+  private readonly settings: AppStateSettings;
 
   private config: ShaderDemoConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: AppStateAPI) {
-    this.appState = appState;
+  /** `onFailure` tells the person a setting was not saved or the app state can no
+   *  longer be read */
+  public constructor(appState: AppStateAPI, onFailure: (failure: AppStateFailure, error: unknown) => void) {
+    this.settings = new AppStateSettings(appState, view => this.applyState(view), onFailure);
   }
 
   // ------------------------------------------------------------------------------
@@ -60,80 +63,38 @@ export class ConfigStore {
   }
 
   // ------------------------------------------------------------------------------
-  public async init(): Promise<void> {
-    const state = await this.appState.get();
-    if(state) this.applyState(state);
-
-    this.appState.onChange$().subscribe((state: AppState | null) => {
-      if(!state) return;
-      this.applyState(state);
-    });
+  /** follows the app state (each setting written onto the latest state, SEE:
+   *  shared/app-state-settings); resolves once it is known (or unreadable) */
+  public init(): Promise<void> {
+    return this.settings.start();
   }
 
   // == Getters ===================================================================
   public getConfig(): Readonly<ShaderDemoConfig> { return this.config; }
 
-  // == Writers (fetch-merge-set) =================================================
-  /** persist the autoCompile toggle */
-  public async updateAutoCompile(enabled: boolean): Promise<void> {
-    if(enabled === this.config.autoCompile) return;/*no change*/
-
-    this.config = { ...this.config, autoCompile: enabled };
-    await this.persist({ autoCompile: enabled });
+  // == Writers ===================================================================
+  /** persist the autoCompile toggle: shown at once, written onto the latest state.
+   *  Answers whether it was saved */
+  public updateAutoCompile(enabled: boolean): Promise<boolean> {
+    return this.settings.change(['config', 'autoCompile'], enabled);
   }
 
   // == Internal ==================================================================
-  private async persist(patch: Partial<ShaderDemoConfig>): Promise<void> {
-    try {
-      const state = (await this.appState.get()) || {};
-      const currentConfig = (state as AppState).config || {};
-      await this.appState.set({
-        ...state,
-        config: { ...currentConfig, ...patch }
-      });
-    } catch(error) {
-      console.error('shader-demo: failed to persist config:', error);
-    }
-  }
 
   // ------------------------------------------------------------------------------
-  /** apply an incoming appState snapshot to local state and notify the callback.
-   *  Each field is merged individually so unrelated updates don't clobber the rest
-   *  of the configuration */
-  private applyState(state: AppState): void {
-    if(!state.config) return;
+  /** apply the settings shown and notify the callback with the fields that changed.
+   *  The settings shown are the whole state: each field is its value there, its
+   *  default where the state holds none (a refused save, another viewer's removal) */
+  private applyState(view: AppStateView): void {
+    const incoming: Readonly<Partial<ShaderDemoConfig>> = (view as AppState).config ?? {};
+    const next: ShaderDemoConfig = {
+      autoCompile:           (typeof incoming.autoCompile === 'boolean') ? incoming.autoCompile : DEFAULT_CONFIG.autoCompile,
+      autoCompileDebounceMs: (typeof incoming.autoCompileDebounceMs === 'number') ? Math.max(DEBOUNCE_MIN_MS, Math.min(DEBOUNCE_MAX_MS, Math.round(incoming.autoCompileDebounceMs))) : DEFAULT_CONFIG.autoCompileDebounceMs,
+      debug:                 (typeof incoming.debug === 'boolean') ? incoming.debug : DEFAULT_CONFIG.debug,
+    };
+    const changedFields = new Set<ConfigField>((Object.keys(next) as ConfigField[]).filter(field => next[field] !== this.config[field]));
 
-    const incoming = state.config;
-    const current = this.config;
-    const changedFields = new Set<ConfigField>();
-
-    let autoCompile           = current.autoCompile;
-    let autoCompileDebounceMs = current.autoCompileDebounceMs;
-    let debug                 = current.debug;
-
-    if(typeof incoming.autoCompile === 'boolean') {
-      if(incoming.autoCompile !== autoCompile) {
-        autoCompile = incoming.autoCompile;
-        changedFields.add('autoCompile');
-      } /* else -- autoCompile unchanged */
-    } /* else -- autoCompile not in this update */
-
-    if(typeof incoming.autoCompileDebounceMs === 'number') {
-      const clamped = Math.max(DEBOUNCE_MIN_MS, Math.min(DEBOUNCE_MAX_MS, Math.round(incoming.autoCompileDebounceMs)));
-      if(clamped !== autoCompileDebounceMs) {
-        autoCompileDebounceMs = clamped;
-        changedFields.add('autoCompileDebounceMs');
-      } /* else -- debounce unchanged */
-    } /* else -- debounce not in this update */
-
-    if(typeof incoming.debug === 'boolean') {
-      if(incoming.debug !== debug) {
-        debug = incoming.debug;
-        changedFields.add('debug');
-      } /* else -- debug unchanged */
-    } /* else -- debug not in this update */
-
-    this.config = { autoCompile, autoCompileDebounceMs, debug };
+    this.config = next;
     if((changedFields.size > 0) && this.onConfigChanged) {
       this.onConfigChanged({ ...this.config }, changedFields);
     } /* else -- nothing actually changed */

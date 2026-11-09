@@ -301,8 +301,8 @@ body {
 }
 
 // == Sync Notice =================================================================
-// shown when the text can no longer be saved: it says why, and offers the text and
-// a reload
+// shown when the text can no longer be saved (it says why, and offers the text and
+// a reload), and when a setting was not saved or the settings stopped updating
 .sync-notice {
   display: flex;
   align-items: center;
@@ -390,6 +390,12 @@ body {
   &.dragging {
     opacity: 0.5;
     cursor: move;
+  }
+
+  // the document has not yet answered its deletion
+  &.deleting {
+    opacity: 0.5;
+    pointer-events: none;
   }
 
   &.single-tab {

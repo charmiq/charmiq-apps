@@ -559,15 +559,18 @@ const readFolderShares = async (folderId) => {
 let persistQueue = Promise.resolve();
 const persist = (mutate) => {
   const run = persistQueue.then(async () => {
-    const fetched = normalizeState(await window.charmiq.appState.get());
+    const read = await window.charmiq.appState.get();
+    const fetched = normalizeState(read);
     const next = mutate(fetched) || fetched;
     lastWrittenJson = JSON.stringify(next);
-    await window.charmiq.appState.set(next);
+    // written onto the state as read: a field this page does not know stays as saved
+    await window.charmiq.appState.set({ ...((read && (typeof read === 'object')) ? read : {}), ...next });
     state = next;
     publishWorkshopData();
     render();
   });
-  persistQueue = run.catch(() => { /* a failed write never wedges the queue */ });
+  // a failed write never wedges the queue, and is told to the person
+  persistQueue = run.catch((error) => toast(`Your change wasn't saved: ${error?.message ?? error}. Try it again, or reload to see the saved workshop.`, { error: true }));
   return run;
 };
 
@@ -1741,14 +1744,18 @@ const boot = async () => {
   // live refresh for other open copies of this page; own writes echo back and are
   // suppressed by content equality
   try {
-    window.charmiq.appState.onChange$().subscribe((incoming) => {
-      const normalized = normalizeState(incoming);
-      const json = JSON.stringify(normalized);
-      if(json === lastWrittenJson) return;
-      state = normalized;
-      lastWrittenJson = json;
-      publishWorkshopData();
-      render();
+    window.charmiq.appState.onChange$().subscribe({
+      next: (incoming) => {
+        const normalized = normalizeState(incoming);
+        const json = JSON.stringify(normalized);
+        if(json === lastWrittenJson) return;
+        state = normalized;
+        lastWrittenJson = json;
+        publishWorkshopData();
+        render();
+      },
+      // what shows is now the last state read: say so
+      error: (error) => toast(`The workshop stopped updating: ${error?.message ?? error}. Reload to see the latest.`, { error: true }),
     });
   } catch { /* live refresh unavailable; explicit actions still re-render */ }
 

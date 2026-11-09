@@ -162,8 +162,7 @@ export class CommandSurface {
   }
 
   private async removeTab(tabId: TabId): Promise<boolean> {
-    const tabs = this.tabManager.getTabs();
-    if(!tabs.has(tabId) || (tabs.size <= 1)) return false;
+    if(!this.tabManager.canDelete(tabId)) return false/*no such tab, or it would be the last*/;
     await this.tabManager.delete(tabId);
     return true;
   }

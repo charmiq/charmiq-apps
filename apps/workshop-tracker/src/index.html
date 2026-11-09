@@ -272,14 +272,17 @@ const normalizeOwnState = (raw) => ({
 });
 const persistAssigned = (mutate) => {
   const run = persistQueue.then(async () => {
-    const fetched = normalizeOwnState(await window.charmiq.appState.get());
+    const read = await window.charmiq.appState.get();
+    const fetched = normalizeOwnState(read);
     const next = mutate(fetched) || fetched;
     lastWrittenJson = JSON.stringify(next);
-    await window.charmiq.appState.set(next);
+    // written onto the state as read: a field this page does not know stays as saved
+    await window.charmiq.appState.set({ ...((read && (typeof read === 'object')) ? read : {}), ...next });
     assigned = new Set(next.assignedUris);
     render();
   });
-  persistQueue = run.catch(() => { /* a failed write never wedges the queue */ });
+  // a failed write never wedges the queue, and is told to the person
+  persistQueue = run.catch((error) => toast(`The Assignment wasn't saved: ${error?.message ?? error}. Toggle it again to try once more.`, { error: true }));
   return run;
 };
 
@@ -562,7 +565,7 @@ const render = () => {
           turningOn ? set.add(uri) : set.delete(uri);
           s.assignedUris = [...set];
           return s;
-        });
+        }).catch(() => { /* told by persistAssigned */ });
       }
       else if(action === 'check-one') checkAssignments([el.dataset.uri]);
       else if(action === 'check-all') checkAssignments([...assigned].filter(uri => walk?.docs.some(doc => doc.uri === uri)));
@@ -579,18 +582,24 @@ const boot = async () => {
   try {
     assigned = new Set(normalizeOwnState(await window.charmiq.appState.get()).assignedUris);
     lastWrittenJson = JSON.stringify({ assignedUris: [...assigned] });
-  } catch { /* fresh state */ }
+  } catch(error) {
+    toast(`The saved Assignments could not be read: ${error?.message ?? error}. Reload to try again.`, { error: true });
+  }
 
   // live refresh of Assignments from other open copies; own writes echo back
   // and are suppressed by content equality
   try {
-    window.charmiq.appState.onChange$().subscribe((incoming) => {
-      const normalized = normalizeOwnState(incoming);
-      const json = JSON.stringify(normalized);
-      if(json === lastWrittenJson) return;
-      assigned = new Set(normalized.assignedUris);
-      lastWrittenJson = json;
-      render();
+    window.charmiq.appState.onChange$().subscribe({
+      next: (incoming) => {
+        const normalized = normalizeOwnState(incoming);
+        const json = JSON.stringify(normalized);
+        if(json === lastWrittenJson) return;
+        assigned = new Set(normalized.assignedUris);
+        lastWrittenJson = json;
+        render();
+      },
+      // what shows is now the last state read: say so
+      error: (error) => toast(`The Assignments stopped updating: ${error?.message ?? error}. Reload to see the latest.`, { error: true }),
     });
   } catch { /* live refresh unavailable */ }
 

@@ -125,7 +125,8 @@ export class Toolbar {
       if(!tab) continue;
 
       const tabElement = document.createElement('div');
-            tabElement.className = `tab ${id === activeTabId ? 'active' : ''} ${isSingleTab ? 'single-tab' : ''}`;
+            tabElement.className = `tab ${id === activeTabId ? 'active' : ''} ${isSingleTab ? 'single-tab' : ''} ${this.tabManager.isDeleting(id) ? 'deleting' : ''}`;
+            tabElement.setAttribute('aria-busy', String(this.tabManager.isDeleting(id)));
             tabElement.dataset.id = id;
 
       if(!isSingleTab) tabElement.draggable = true;
@@ -154,8 +155,8 @@ export class Toolbar {
 
       tabElement.appendChild(nameElement);
 
-      // close button (multi-tab only)
-      if(!isSingleTab) {
+      // close button (multi-tab only, never on the last tab not being deleted)
+      if(!isSingleTab && this.tabManager.canDelete(id)) {
         const closeBtn = document.createElement('div');
         closeBtn.className = 'tab-close';
         closeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
@@ -396,13 +397,13 @@ export class Toolbar {
   // == Private: Close Tab Dialog =================================================
   private bindCloseTabDialog(): void {
     this.closeTabDialog.addEventListener('ays-confirmed', async () => {
-      if(this.tabToCloseId) await this.tabManager.delete(this.tabToCloseId);
+      if(this.tabToCloseId) await this.tabManager.delete(this.tabToCloseId).catch(() => {/*told on the notice*/});
     });
   }
 
   private requestCloseTab(tabId: TabId): void {
+    if(!this.tabManager.canDelete(tabId)) return/*it would be the last*/;
     const tabs = this.tabManager.getTabs();
-    if(tabs.size <= 1) return;
 
     this.tabToCloseId = tabId;
     const tab = tabs.get(tabId);

@@ -1,4 +1,5 @@
 import type { OAuthAuthDescriptor } from '../../../shared/charmiq';
+import { AppStateSettings, appStateFailureNotice } from '/shared/app-state-settings/app-state-settings';
 import { extractBody, fetchInboxPage, getHeader } from './gmail-client';
 import { disconnectAccount, isCancelled, pickAccount, resolveAccount, toDescriptor } from './gmail-oauth';
 import type { GmailMessage, InboxEmail } from './types';
@@ -68,6 +69,16 @@ export class InboxModel {
   private isBusy = false;
   private query = '';
 
+  /** the chosen accounts and selection, each written onto the latest app state
+   *  (SEE: shared/app-state-settings); read once at start, a failed save shown */
+  private readonly settings = new AppStateSettings(window.charmiq.appState, () => {/*read once at start*/}, (failure, error) => {
+    this.error = appStateFailureNotice(failure, error);
+    if(failure === 'read') this.stateUnread = this.error;
+    this.emit();
+  });
+  /** why the app state can no longer be read: it stays shown through each new attempt */
+  private stateUnread: string | null = null;
+
   private readonly listeners = new Set<() => void>();
 
   // == Subscription ==============================================================
@@ -105,11 +116,15 @@ export class InboxModel {
 
   private setBusy(busy: boolean): void { this.isBusy = busy; this.emit(); }
 
-  private persist(): void {
-    void window.charmiq.appState.set({
-      activeAccountIds: this.accounts.map(account => account.id),
-      selectedEmailId: this.selectedId ?? undefined,
-    } satisfies PersistedState).catch(error => console.error('gmail-inbox: persist failed', error));
+  /** saves the accounts chosen here: only when they change, so a selection never
+   *  writes this tab's list over another tab's */
+  private persistAccounts(): void {
+    void this.settings.change(['activeAccountIds'], this.accounts.map(account => account.id) satisfies PersistedState['activeAccountIds']);
+  }
+
+  /** saves the email selected here */
+  private persistSelection(): void {
+    void this.settings.change(['selectedEmailId'], (this.selectedId ?? undefined) satisfies PersistedState['selectedEmailId']);
   }
 
   /** load one account's first page (current query applied) into the per-account store */
@@ -124,7 +139,7 @@ export class InboxModel {
    *  set. Dedups by `providerAccountId` (one inbox per Google identity) */
   private async load(activeIds: readonly string[], restoreSelectionId?: string): Promise<void> {
     this.status = 'initializing';
-    this.error = null;
+    this.error = this.stateUnread;
     this.emit();
 
     this.emailsByAccount.clear();
@@ -162,14 +177,15 @@ export class InboxModel {
   // == Lifecycle =================================================================
   /** load the persisted accounts + selection */
   public async init(): Promise<void> {
-    const persisted = (await window.charmiq.appState.get().catch(() => null)) as PersistedState | null;
-    await this.load(persisted?.activeAccountIds ?? [], persisted?.selectedEmailId);
+    await this.settings.start()/*an unreadable state is shown, and opens no accounts*/;
+    const persisted = this.settings.view() as PersistedState;
+    await this.load(Array.isArray(persisted.activeAccountIds) ? persisted.activeAccountIds : [], (typeof persisted.selectedEmailId === 'string') ? persisted.selectedEmailId : undefined);
   }
 
   // == Actions ===================================================================
   /** open the Platform account picker (existing + connect-new) and add the choice */
   public async addAccount(): Promise<void> {
-    this.error = null/*a new attempt replaces the last failure*/;
+    this.error = this.stateUnread/*a new attempt replaces the last failure*/;
     this.setBusy(true);
     try {
       const auth = await pickAccount();
@@ -178,7 +194,7 @@ export class InboxModel {
       const account = toDescriptor(auth);
       await this.loadFirstPage(account, auth.accessToken);
       this.accounts = [...this.accounts, account];
-      this.persist();
+      this.persistAccounts();
       this.reaggregate();
       if(!this.selectedId) this.selectedId = this.emails[0]?.id ?? null;
     } catch(error) {
@@ -191,7 +207,7 @@ export class InboxModel {
 
   /** dismiss the failure notice */
   public dismissError(): void {
-    this.error = null;
+    this.error = this.stateUnread;
     this.emit();
   }
 
@@ -200,7 +216,7 @@ export class InboxModel {
     this.emailsByAccount.delete(account.id);
     this.pageTokens.delete(account.id);
     this.accounts = this.accounts.filter(existing => existing.id !== account.id);
-    this.persist();
+    this.persistAccounts();
     this.reaggregate();
     if(!this.selectedId || !this.emails.some(email => email.id === this.selectedId)) this.selectedId = this.emails[0]?.id ?? null;
     this.emit();
@@ -208,7 +224,7 @@ export class InboxModel {
 
   /** disconnect an account entirely (revoke), then drop it from the inbox */
   public async disconnectAccount(account: OAuthAuthDescriptor): Promise<void> {
-    this.error = null/*a new attempt replaces the last failure*/;
+    this.error = this.stateUnread/*a new attempt replaces the last failure*/;
     this.setBusy(true);
     try {
       await disconnectAccount(account);
@@ -232,7 +248,7 @@ export class InboxModel {
     const pending = this.accounts.filter(account => this.pageTokens.get(account.id));
     if(pending.length < 1) return;
 
-    this.error = null/*a new attempt replaces the last failure*/;
+    this.error = this.stateUnread/*a new attempt replaces the last failure*/;
     this.setBusy(true);
     try {
       await Promise.all(pending.map(async account => {
@@ -253,7 +269,7 @@ export class InboxModel {
   /** select an email (drives the detail view + the LLM-watch experience) */
   public select(emailId: string): void {
     this.selectedId = emailId;
-    this.persist();
+    this.persistSelection();
     this.emit();
   }
 

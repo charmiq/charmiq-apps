@@ -114,7 +114,7 @@ export class SettingsPanel {
     this.renderAllPresetSections();
   }
 
-  private async save(): Promise<void> {
+  private save(): void {
     const current = this.configStore.getConfig();
     const next: DrawingConfig = {
       ...current,
@@ -127,7 +127,7 @@ export class SettingsPanel {
       showInfoBar:         this.showInfoBarInput.checked,
       presets:             this.workingPresets,
     };
-    await this.configStore.replace(next);
+    this.configStore.replace(next);
     this.close();
   }
 

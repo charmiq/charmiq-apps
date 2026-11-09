@@ -1,4 +1,5 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
+import { appStateFailureNotice } from '/shared/app-state-settings/app-state-settings';
 import '/shared/ays-dialog/ays-dialog'/*defines <ays-dialog>, the close-tab confirmation*/;
 import { CommandSurface } from './command';
 import { ConfigStore, DEFAULT_MODE } from './config-store';
@@ -15,8 +16,16 @@ const charmiq: CharmIQAPI = window.charmiq;
 // == Create Instances ============================================================
 const editorWrapper = new EditorWrapper();
 const contentBridge = new ContentBridge(charmiq.appContent);
-const configStore = new ConfigStore(charmiq.appState);
+/** shows why a setting or a tab's deletion was not saved, or the settings stopped
+ *  updating, with a reload */
+const showNotice = (text: string) => {
+  document.getElementById('noticeText')!.textContent = text;
+  document.getElementById('notice')!.hidden = false;
+};
+document.getElementById('noticeReloadBtn')!.addEventListener('click', () => window.location.reload());
+const configStore = new ConfigStore(charmiq.appState, (failure, error) => showNotice(appStateFailureNotice(failure, error)));
 const tabManager = new TabManager(contentBridge, configStore, editorWrapper);
+tabManager.onDeleteRefused((name, error) => showNotice(`"${name}" wasn't deleted${((error instanceof Error) && error.message) ? `: ${error.message}` : ''}. Delete it again to try once more.`));
 const toolbar = new Toolbar(tabManager, configStore, editorWrapper);
 const commandSurface = new CommandSurface(tabManager, editorWrapper);
 

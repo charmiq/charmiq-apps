@@ -1,4 +1,5 @@
 import type { AppStateAPI } from '../../../shared/charmiq';
+import { AppStateSettings, type AppStateFailure, type AppStateView } from '/shared/app-state-settings/app-state-settings';
 
 // owns gallery configuration (slot definitions, orientation override, zoom,
 // item cap, picker category) persisted via appState. Only this module touches
@@ -74,32 +75,29 @@ const ZOOM_MAX = 400/*px*/;
 /** manages gallery configuration via appState. Configuration only — item
  *  data and slot bindings live in appContent */
 export class ConfigStore {
-  private readonly appState: AppStateAPI;
+  private readonly settings: AppStateSettings;
 
   private config: GalleryConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: AppStateAPI) {
-    this.appState = appState;
+  /** `onFailure` tells the person a setting was not saved or the app state can no
+   *  longer be read */
+  public constructor(appState: AppStateAPI, onFailure: (failure: AppStateFailure, error: unknown) => void) {
+    this.settings = new AppStateSettings(appState, view => this.applyState(view), onFailure);
   }
 
   // ------------------------------------------------------------------------------
-  /** register callback for config changes arriving from remote appState updates */
+  /** register callback for config changes */
   public onConfigChange(cb: ConfigChangedCallback): void {
     this.onConfigChanged = cb;
   }
 
   // ------------------------------------------------------------------------------
-  /** load initial state from appState and subscribe to ongoing changes */
-  public async init(): Promise<void> {
-    const state = await this.appState.get();
-    if(state) this.applyState(state);
-
-    this.appState.onChange$().subscribe((state: AppState | null) => {
-      if(!state) return;/*no state to apply*/
-      this.applyState(state);
-    });
+  /** follows the app state (each setting written onto the latest state, SEE:
+   *  shared/app-state-settings); resolves once it is known (or unreadable) */
+  public init(): Promise<void> {
+    return this.settings.start();
   }
 
   // == Getters ===================================================================
@@ -112,91 +110,32 @@ export class ConfigStore {
     return !!slots && (slots.length > 0);
   }
 
-  // == Writers (fetch-merge-set) =================================================
+  // == Writers ===================================================================
   /** persist the zoom preference (slider position) */
-  public async updateZoomSize(zoomSize: number): Promise<void> {
+  public updateZoomSize(zoomSize: number): void {
     const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(zoomSize)));
-    if(clamped === this.config.zoomSize) return;/*no change*/
-
-    this.config = { ...this.config, zoomSize: clamped };
-    try {
-      const state = await this.appState.get() || {};
-      const currentConfig = (state as AppState).config || {};
-      await this.appState.set({
-        ...state,
-        config: { ...currentConfig, zoomSize: clamped }
-      });
-    } catch(error) {
-      console.error('failed to update zoomSize:', error);
-    }
+    void this.settings.change(['config', 'zoomSize'], clamped)/*a failed save is told through onFailure*/;
   }
 
   // == Internal ==================================================================
-  /** apply an incoming appState snapshot to local state and notify the
-   *  callback. Each field is merged individually — a field absent from the
-   *  incoming payload keeps its current value, so partial updates from other
-   *  collaborators don't clobber unrelated fields. The callback receives the
-   *  set of fields whose value actually changed (empty => no callback) */
-  private applyState(state: AppState): void {
-    if(!state.config) return;/*nothing to merge*/
-
-    const incoming = state.config;
-    const next: GalleryConfig = { ...this.config };
-    const changedFields = new Set<ConfigField>();
-
-    // slots (readonly array of definitions; undefined disables slot mode).
-    // presence check (not type check) — explicit undefined is meaningful here
-    if('slots' in incoming) {
-      const nextSlots = this.normalizeSlots(incoming.slots);
-      if(!slotsEqual(nextSlots, next.slots)) {
-        next.slots = nextSlots;
-        changedFields.add('slots');
-      } /* else -- slots unchanged */
-    } /* else -- slots not in this update */
-
-    // maxItems (0 = unlimited)
-    if(typeof incoming.maxItems === 'number') {
-      const clamped = Math.max(0, Math.floor(incoming.maxItems));
-      if(clamped !== next.maxItems) {
-        next.maxItems = clamped;
-        changedFields.add('maxItems');
-      } /* else -- maxItems unchanged */
-    } /* else -- maxItems not in this update */
-
-    // assetCategory (only 'image' is implemented, but accept the shape)
-    if(typeof incoming.assetCategory === 'string') {
-      const cat = incoming.assetCategory as AssetCategory;
-      if(cat !== next.assetCategory) {
-        next.assetCategory = cat;
-        changedFields.add('assetCategory');
-      } /* else -- assetCategory unchanged */
-    } /* else -- assetCategory not in this update */
-
-    // showLightbox
-    if(typeof incoming.showLightbox === 'boolean') {
-      if(incoming.showLightbox !== next.showLightbox) {
-        next.showLightbox = incoming.showLightbox;
-        changedFields.add('showLightbox');
-      } /* else -- showLightbox unchanged */
-    } /* else -- showLightbox not in this update */
-
-    // orientation (auto | horizontal | vertical)
-    if(typeof incoming.orientation === 'string') {
-      const orient = normalizeOrientation(incoming.orientation);
-      if(orient !== next.orientation) {
-        next.orientation = orient;
-        changedFields.add('orientation');
-      } /* else -- orientation unchanged */
-    } /* else -- orientation not in this update */
-
-    // zoomSize
-    if(typeof incoming.zoomSize === 'number') {
-      const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(incoming.zoomSize)));
-      if(z !== next.zoomSize) {
-        next.zoomSize = z;
-        changedFields.add('zoomSize');
-      } /* else -- zoomSize unchanged */
-    } /* else -- zoomSize not in this update */
+  /** apply the settings shown and notify the callback. The settings shown are the
+   *  whole state: each field is its value there, its default where the state holds
+   *  none (a refused save, another viewer's removal). The callback receives the set
+   *  of fields whose value actually changed (empty => no callback) */
+  private applyState(view: AppStateView): void {
+    const incoming: Readonly<Partial<GalleryConfig>> = (view as AppState).config ?? {};
+    const next: GalleryConfig = {
+      // presence check (not type check): an explicit undefined disables slot mode
+      slots:         ('slots' in incoming) ? this.normalizeSlots(incoming.slots) : DEFAULT_CONFIG.slots,
+      maxItems:      (typeof incoming.maxItems === 'number') ? Math.max(0, Math.floor(incoming.maxItems)) : DEFAULT_CONFIG.maxItems/*0 = unlimited*/,
+      // only 'image' is implemented, but accept the shape
+      assetCategory: (typeof incoming.assetCategory === 'string') ? incoming.assetCategory as AssetCategory : DEFAULT_CONFIG.assetCategory,
+      showLightbox:  (typeof incoming.showLightbox === 'boolean') ? incoming.showLightbox : DEFAULT_CONFIG.showLightbox,
+      orientation:   (typeof incoming.orientation === 'string') ? normalizeOrientation(incoming.orientation) : DEFAULT_CONFIG.orientation,
+      zoomSize:      (typeof incoming.zoomSize === 'number') ? Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(incoming.zoomSize))) : DEFAULT_CONFIG.zoomSize,
+    };
+    const changedFields = new Set<ConfigField>((Object.keys(next) as ConfigField[]).filter(field =>
+      (field === 'slots') ? !slotsEqual(next.slots, this.config.slots) : (next[field] !== this.config[field])));
 
     this.config = next;
     if((changedFields.size > 0) && this.onConfigChanged) {

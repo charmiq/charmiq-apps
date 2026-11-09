@@ -1,5 +1,6 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { CharmIQServices } from '../../../shared/charmiq-services';
+import { appStateFailureNotice } from '/shared/app-state-settings/app-state-settings';
 import { RecordSaveError } from '/shared/line-records/record-sync';
 
 import { CanvasViewport } from './canvas-viewport';
@@ -40,7 +41,7 @@ const exportHandler  = new ExportHandler(textMeasure, selection);
 const generation     = new GenerationHandler(exportHandler, renderer, selection);
 const clipboard      = new ClipboardHandler(viewport, renderer, selection, textMeasure);
 const contentBridge  = new ContentBridge(charmiq.appContent);
-const configStore    = new ConfigStore(charmiq.appState);
+const configStore    = new ConfigStore(charmiq.appState, (failure, error) => reportSettingFailure(appStateFailureNotice(failure, error)));
 const propsPanel     = new PropertiesPanel(renderer, selection, configStore);
 const settingsPanel  = new SettingsPanel(configStore);
 const commandSurface = new CommandSurface(renderer, selection);
@@ -76,6 +77,11 @@ const reportFailure = (title: string, error: unknown) => {
   const description = (error instanceof RecordSaveError) ? error.message : 'Try again.';
   if(commandService) toastError(commandService, title, description);
   else console.error(`${title}:`, error)/*no host to show it*/;
+};
+/** shows why a setting was not saved or the settings stopped updating */
+const reportSettingFailure = (notice: string) => {
+  if(commandService) toastError(commandService, notice);
+  else console.error(notice)/*no host to show it*/;
 };
 
 // helper: save current elements via the content bridge

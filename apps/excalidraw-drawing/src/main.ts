@@ -1,4 +1,5 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
+import { appStateFailureNotice } from '/shared/app-state-settings/app-state-settings';
 import { renderApp } from './app-component';
 import { CommandSurface } from './command';
 import { ConfigStore } from './config-store';
@@ -11,18 +12,21 @@ import type { ExcalidrawAPI } from './content-bridge';
 const charmiq: CharmIQAPI = window.charmiq;
 
 // == Create Instances ============================================================
+/** shows why the drawing or a setting could not be saved or read */
+const showNotice = (text: string) => {
+  const notice = document.getElementById('notice')!;
+  notice.textContent = text;
+  notice.hidden = false;
+};
+/** shows why the drawing could not be saved or read */
+const showFailure = (failure: unknown) => showNotice(((failure instanceof Error) && failure.message) ? failure.message
+                                                   : 'The drawing could not be read. Reload to try again.');
+
 const contentBridge = new ContentBridge(charmiq.appContent);
-const configStore = new ConfigStore(charmiq.appState);
+const configStore = new ConfigStore(charmiq.appState, (failure, error) => showNotice(appStateFailureNotice(failure, error)));
 const libraryHandler = new LibraryHandler();
 const commandSurface = new CommandSurface(contentBridge, configStore);
 
-/** shows why the drawing could not be saved or read */
-const showFailure = (failure: unknown) => {
-  const notice = document.getElementById('notice')!;
-  notice.textContent = (failure instanceof Error) && failure.message ? failure.message
-                     : 'The drawing could not be read. Reload to try again.';
-  notice.hidden = false;
-};
 contentBridge.onFailure(showFailure);
 
 // == Init ========================================================================
@@ -62,7 +66,7 @@ const start = async () => {
     }
   });
 
-  // react to remote config changes by pushing into the React tree
+  // react to config changes by pushing into the React tree
   configStore.onConfigChange((cfg) => {
     appHandle.setConfig(cfg);
   });

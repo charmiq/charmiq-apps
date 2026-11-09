@@ -1,4 +1,5 @@
 import type { AppStateAPI } from '../../../shared/charmiq';
+import { AppStateSettings, type AppStateFailure, type AppStateView } from '/shared/app-state-settings/app-state-settings';
 
 import type { TabSlug } from './tab-types';
 import { textSizeOf, DEFAULT_TEXT_SIZE } from './text-size';
@@ -56,7 +57,7 @@ const DEFAULT_CONFIG: Readonly<EditorConfig> = {
 // == Class =======================================================================
 /** manages editor configuration and tab metadata via appState */
 export class ConfigStore {
-  private readonly appState: AppStateAPI;
+  private readonly settings: AppStateSettings;
 
   private config: EditorConfig = { ...DEFAULT_CONFIG };
   private tabModes: Record<TabSlug, string> = {};
@@ -67,8 +68,10 @@ export class ConfigStore {
   private onTabOrderChanged: TabOrderChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: AppStateAPI) {
-    this.appState = appState;
+  /** `onFailure` tells the person a setting was not saved or the app state can no
+   *  longer be read */
+  public constructor(appState: AppStateAPI, onFailure: (failure: AppStateFailure, error: unknown) => void) {
+    this.settings = new AppStateSettings(appState, view => this.applyState(view), onFailure);
   }
 
   // ------------------------------------------------------------------------------
@@ -88,21 +91,9 @@ export class ConfigStore {
   }
 
   // ------------------------------------------------------------------------------
-  /** load initial state from appState and subscribe to ongoing changes */
-  public async init(): Promise<void> {
-    const state = await this.appState.get();
-    if(state) this.applyState(state);
-
-    this.appState.onChange$().subscribe((state: AppState | null) => {
-      if(!state) {
-        this.tabModes = {};
-        this.tabOrder = [];
-        if(this.onConfigChanged) this.onConfigChanged({ ...this.config });
-        return;
-      } /* else -- state exists, apply it */
-
-      this.applyState(state);
-    });
+  /** follows the app state; resolves once it is known (or unreadable) */
+  public init(): Promise<void> {
+    return this.settings.start();
   }
 
   // == Getters ===================================================================
@@ -111,128 +102,67 @@ export class ConfigStore {
   public getTabMode(slug: TabSlug): string { return this.tabModes[slug] || DEFAULT_MODE; }
   public getTabOrder(): ReadonlyArray<TabSlug> { return this.tabOrder; }
 
-  // == Writers (fetch-merge-set) ==================================================
-  /** update a single editor config option in appState */
-  public async updateEditorConfig<K extends keyof EditorConfig>(key: K, value: EditorConfig[K]): Promise<void> {
-    this.config[key] = value;
-
-    try {
-      const state = await this.appState.get() || {};
-      const currentConfig = (state as AppState).config || {};
-      if((currentConfig as any)[key] === value) return;/*already matches*/
-
-      await this.appState.set({
-        ...state,
-        config: { ...currentConfig, [key]: value }
-      });
-    } catch(error) {
-      console.error('failed to update editor config:', error);
-    }
+  // == Writers ===================================================================
+  // each setting is written onto the latest state, a tab's mode by its slug, so
+  // that another person's change to another setting or tab stands (SEE:
+  // shared/app-state-settings). A failed save is told through onFailure
+  /** update a single editor config option */
+  public updateEditorConfig<K extends keyof EditorConfig>(key: K, value: EditorConfig[K]): void {
+    void this.settings.change(['config', key], value);
   }
 
   // ------------------------------------------------------------------------------
-  /** update a tab's language mode in appState */
-  public async updateTabMode(slug: TabSlug, mode: string): Promise<void> {
-    this.tabModes[slug] = mode;
-
-    try {
-      const state = await this.appState.get() || {};
-      const currentModes = (state as AppState).tabModes || {};
-      if((currentModes as any)[slug] === mode) return;/*already matches*/
-
-      await this.appState.set({
-        ...state,
-        tabModes: { ...currentModes, [slug]: mode }
-      });
-    } catch(error) {
-      console.error('failed to update tab mode:', error);
-    }
+  /** update a tab's language mode */
+  public updateTabMode(slug: TabSlug, mode: string): void {
+    void this.settings.change(['tabModes', slug], mode);
   }
 
-  /** update the tab display order in appState */
-  public async updateTabOrder(newOrder: TabSlug[]): Promise<void> {
-    this.tabOrder = newOrder;
-
-    try {
-      const state = await this.appState.get() || {};
-      if(JSON.stringify((state as AppState).tabOrder) === JSON.stringify(newOrder)) return/*already matches*/;
-
-      await this.appState.set({
-        ...state,
-        tabOrder: newOrder
-      });
-    } catch(error) {
-      console.error('failed to update tab order:', error);
-    }
+  /** update the tab display order */
+  public updateTabOrder(newOrder: ReadonlyArray<TabSlug>): void {
+    void this.settings.change(['tabOrder'], newOrder);
   }
 
-  /** remove a tab's mode and order entry from appState (cleanup on delete) */
-  public async removeTab(slug: TabSlug): Promise<void> {
-    delete this.tabModes[slug];
-    this.tabOrder = this.tabOrder.filter(s => s !== slug);
-
-    try {
-      const state = await this.appState.get() || {};
-      const newModes = { ...(state as AppState).tabModes || {} };
-      delete (newModes as any)[slug];
-
-      const newOrder = ((state as AppState).tabOrder || []).filter(s => s !== slug);
-
-      await this.appState.set({
-        ...state,
-        tabModes: newModes,
-        tabOrder: newOrder
-      });
-    } catch(error) {
-      console.error('failed to clean up tab state:', error);
-    }
+  /** remove a tab's mode and order entry (cleanup on delete) */
+  public removeTab(slug: TabSlug): void {
+    void this.settings.change(['tabModes', slug], undefined/*removed*/);
+    this.updateTabOrder(this.tabOrder.filter(s => s !== slug));
   }
 
   // == Internal ==================================================================
-  /** apply an incoming appState snapshot to local state and notify callbacks */
-  private applyState(state: AppState): void {
-    // config (including maxTabs)
-    if(state.config) {
-      let configChanged = false;
-      const boolKeys: (keyof EditorConfig)[] = ['lineNumbers', 'lineWrapping', 'smartIndent', 'indentWithTabs'];
-      for(const key of boolKeys) {
-        if((typeof state.config[key] === 'boolean') && (state.config[key] !== this.config[key])) {
-          (this.config as any)[key] = state.config[key]!;
-          configChanged = true;
-        } /* else -- missing or invalid key/value */
-      }
-
+  /** apply the settings shown to local state and notify callbacks */
+  private applyState(view: AppStateView): void {
+    const state = view as AppState;
+    // config (including maxTabs): the settings shown are the whole state, so each
+    // option is its value there, its default where the state holds none (a refused
+    // save, another viewer's removal)
+    const incoming: Readonly<Partial<EditorConfig>> = state.config ?? {};
+    const optionOf = (key: 'lineNumbers' | 'lineWrapping' | 'smartIndent' | 'indentWithTabs') => (typeof incoming[key] === 'boolean') ? incoming[key] : DEFAULT_CONFIG[key];
+    const config: EditorConfig = {
+      lineNumbers:    optionOf('lineNumbers'),
+      lineWrapping:   optionOf('lineWrapping'),
+      smartIndent:    optionOf('smartIndent'),
+      indentWithTabs: optionOf('indentWithTabs'),
       // the text's size, a whole number of pixels within reach
-      const textSize = textSizeOf(state.config.textSize);
-      if((textSize !== undefined) && (textSize !== this.config.textSize)) {
-        this.config.textSize = textSize;
-        configChanged = true;
-      } /* else -- missing, out of reach or unchanged */
+      textSize:       textSizeOf(incoming.textSize) ?? DEFAULT_CONFIG.textSize,
+      maxTabs:        (typeof incoming.maxTabs === 'number') ? Math.max(0, Math.floor(incoming.maxTabs)) : DEFAULT_CONFIG.maxTabs/*0 = unlimited*/,
+    };
+    if(JSON.stringify(config) !== JSON.stringify(this.config)) {
+      this.config = config;
+      if(this.onConfigChanged) this.onConfigChanged({ ...this.config });
+    } /* else -- config unchanged */
 
-      // maxTabs (0 or undefined = unlimited)
-      if(typeof state.config.maxTabs === 'number') {
-        const incoming = Math.max(0, Math.floor(state.config.maxTabs));
-        if(incoming !== this.config.maxTabs) {
-          this.config.maxTabs = incoming;
-          configChanged = true;
-        } /* else -- maxTabs unchanged */
-      } /* else -- maxTabs not in this update */
-
-      if(configChanged && this.onConfigChanged) this.onConfigChanged({ ...this.config });
-    } /* else -- no config */
-
-    // tab modes
-    if(state.tabModes) {
-      this.tabModes = { ...state.tabModes } as Record<TabSlug, string>;
+    // tab modes (none: every tab takes the default mode)
+    const tabModes = (state.tabModes && (typeof state.tabModes === 'object')) ? { ...state.tabModes } as Record<TabSlug, string> : {};
+    if(JSON.stringify(tabModes) !== JSON.stringify(this.tabModes)) {
+      this.tabModes = tabModes;
       if(this.onTabModesChanged) this.onTabModesChanged(this.tabModes);
-    } /* else -- no tab modes */
+    } /* else -- tab modes unchanged */
 
-    // tab order
-    if(state.tabOrder && Array.isArray(state.tabOrder)) {
-      if(JSON.stringify(this.tabOrder) !== JSON.stringify(state.tabOrder)) {
-        this.tabOrder = [...state.tabOrder] as TabSlug[];
-        if(this.onTabOrderChanged) this.onTabOrderChanged(this.tabOrder);
-      } /* else -- tab order matches, no update needed */
-    } /* else -- no tab order */
+    // tab order (none: the app-contents' order)
+    const tabOrder = Array.isArray(state.tabOrder) ? [...state.tabOrder] as TabSlug[] : [];
+    if(JSON.stringify(tabOrder) !== JSON.stringify(this.tabOrder)) {
+      this.tabOrder = tabOrder;
+      if(this.onTabOrderChanged) this.onTabOrderChanged(this.tabOrder);
+    } /* else -- tab order matches, no update needed */
   }
 }

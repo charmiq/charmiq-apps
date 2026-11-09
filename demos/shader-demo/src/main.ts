@@ -1,4 +1,5 @@
 import type { CharmIQAPI } from '../../../shared/charmiq';
+import { appStateFailureNotice } from '/shared/app-state-settings/app-state-settings';
 import { ChannelBinder, CHANNEL_SLOT_IDS, type SamplerMeta } from './channel-binder';
 import { ConfigStore } from './config-store';
 import { dbg, setDbgEnabled } from './debug';
@@ -54,7 +55,7 @@ const refusalTextEl  = document.getElementById('refusalText')!;
 const renderer     = new Renderer(canvas);
 const channelBinder = new ChannelBinder(renderer.getContext());
 const editorBridge  = new EditorBridge();
-const configStore   = charmiqGlobal?.appState ? new ConfigStore(charmiqGlobal.appState) : null;
+const configStore   = charmiqGlobal?.appState ? new ConfigStore(charmiqGlobal.appState, (failure, error) => showRefusal(appStateFailureNotice(failure, error))) : null;
 const toolbar       = new Toolbar();
 
 // == Compile pipeline ============================================================
@@ -208,9 +209,9 @@ const advertiseCommands = (): void => {
     compile:        () => compile(),
     setAutoCompile: async ({ enabled }: { enabled: boolean; }) => {
       if(!configStore) return false;
-      await configStore.updateAutoCompile(enabled);
-      toolbar.setAutoCompile(enabled);
-      return true;
+      const saved = await configStore.updateAutoCompile(enabled);
+      toolbar.setAutoCompile(configStore.getConfig().autoCompile/*the saved value again when refused*/);
+      return saved;
     }
   });
 };

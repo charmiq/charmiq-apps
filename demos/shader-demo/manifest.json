@@ -59,7 +59,7 @@
       },
       {
         "name": "setAutoCompile",
-        "description": "Toggle auto-compile on shader text change (debounced)",
+        "description": "Toggle auto-compile on shader text change (debounced). Answers true once the setting is saved, false when it was not (the player then shows the saved setting)",
         "inputSchema": {
           "type": "object",
           "properties": {

@@ -1,7 +1,9 @@
 import type { AppStateAPI } from '../../../shared/charmiq';
+import { AppStateSettings, type AppStateFailure, type AppStateView } from '/shared/app-state-settings/app-state-settings';
 
 // owns drawing configuration persisted via appState. All reads/writes go
-// through here — nobody else touches appState directly
+// through here — nobody else touches appState directly. Each setting is written
+// onto the latest state (SEE: shared/app-state-settings)
 // ********************************************************************************
 // == Types =======================================================================
 /** drawing configuration options synced to appState */
@@ -11,7 +13,7 @@ export interface DrawingConfig {
 }
 
 // ................................................................................
-/** callback when config changes (from a remote appState update) */
+/** callback when config changes (here or from a remote appState update) */
 type ConfigChangedCallback = (config: Readonly<DrawingConfig>) => void;
 
 // == Defaults ====================================================================
@@ -22,50 +24,36 @@ const DEFAULT_CONFIG: Readonly<DrawingConfig> = {
 // == Class =======================================================================
 /** manages drawing configuration via appState */
 export class ConfigStore {
-  private readonly appState: AppStateAPI;
+  private readonly settings: AppStateSettings;
   private config: DrawingConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
   // == Lifecycle =================================================================
-  public constructor(appState: AppStateAPI) {
-    this.appState = appState;
+  /** `onFailure` tells the person a setting was not saved or the app state can no
+   *  longer be read */
+  public constructor(appState: AppStateAPI, onFailure: (failure: AppStateFailure, error: unknown) => void) {
+    this.settings = new AppStateSettings(appState, view => this.applyState(view), onFailure);
   }
 
-  /** register callback for config changes from remote updates */
+  /** register callback for config changes */
   public onConfigChange(cb: ConfigChangedCallback): void {
     this.onConfigChanged = cb;
   }
 
-  /** load initial state from appState and subscribe to ongoing changes */
-  public async init(): Promise<void> {
-    const state = await this.appState.get();
-    if(state) this.applyState(state);
-
-    this.appState.onChange$().subscribe((state: Record<string, unknown> | null) => {
-      if(!state) return;/*no state yet*/
-      this.applyState(state);
-    });
+  /** follows the app state; resolves once it is known (or unreadable) */
+  public init(): Promise<void> {
+    return this.settings.start();
   }
 
   // == Getters ===================================================================
   public getConfig(): Readonly<DrawingConfig> { return this.config; }
 
-  // == Writers (fetch-merge-set) ==================================================
-  /** merge partial config and persist to appState */
-  public async setConfig(partial: Readonly<Partial<DrawingConfig>>): Promise<void> {
-    const newConfig = { ...this.config, ...partial };
-
-    // optimistic local update
-    if(JSON.stringify(newConfig) === JSON.stringify(this.config)) return;/*no change*/
-    this.config = newConfig;
-    if(this.onConfigChanged) this.onConfigChanged({ ...this.config });
-
-    // persist — the onChange$ subscription reconciles if someone else writes
-    try {
-      await this.appState.set(newConfig);
-    } catch(error) {
-      console.error('failed to persist config:', error);
-    }
+  // == Writers ===================================================================
+  /** changes the settings named: shown at once, each written onto the latest state.
+   *  Answers whether every one was saved */
+  public setConfig(partial: Readonly<Partial<DrawingConfig>>): Promise<boolean> {
+    const saves = Object.entries(partial).map(([key, value]) => this.settings.change([key], value));
+    return Promise.all(saves).then(saved => saved.every(Boolean));
   }
 
   // == CSS =======================================================================
@@ -88,8 +76,8 @@ export class ConfigStore {
   }
 
   // == Internal ==================================================================
-  /** apply an incoming appState snapshot and notify callbacks if changed */
-  private applyState(state: Record<string, unknown>): void {
+  /** apply the settings shown and notify callbacks if changed */
+  private applyState(state: AppStateView): void {
     const newConfig: DrawingConfig = {
       showMainMenu: state.showMainMenu !== false,/*default: true*/
       ...(state.viewModeEnabled !== undefined

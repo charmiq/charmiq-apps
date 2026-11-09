@@ -1,4 +1,5 @@
 import type { AppStateAPI } from '../../../shared/charmiq';
+import { AppStateSettings, type AppStateFailure, type AppStateView } from '/shared/app-state-settings/app-state-settings';
 
 // owns drawing configuration persisted via appState. Configuration includes grid
 // visibility / color, canvas background, read-only flag, and UI chrome toggles
@@ -122,12 +123,14 @@ export const DEFAULT_CONFIG: Readonly<DrawingConfig> = {
 
 // == Class =======================================================================
 export class ConfigStore {
-  private readonly appState: AppStateAPI;
+  private readonly settings: AppStateSettings;
   private config: DrawingConfig = { ...DEFAULT_CONFIG };
   private onConfigChanged: ConfigChangedCallback | null = null;
 
-  public constructor(appState: AppStateAPI) {
-    this.appState = appState;
+  /** `onFailure` tells the person a setting was not saved or the app state can no
+   *  longer be read */
+  public constructor(appState: AppStateAPI, onFailure: (failure: AppStateFailure, error: unknown) => void) {
+    this.settings = new AppStateSettings(appState, view => this.applyState(view), onFailure);
   }
 
   // ------------------------------------------------------------------------------
@@ -136,142 +139,99 @@ export class ConfigStore {
   }
 
   // ------------------------------------------------------------------------------
-  /** load initial state from appState and subscribe to ongoing changes */
-  public async init(): Promise<void> {
-    const state = await this.appState.get();
-    if(state) this.applyState(state);
-
-    this.appState.onChange$().subscribe((state: AppState | null) => {
-      if(state) this.applyState(state);
-      /* else -- no state yet; defaults already in place */
-    });
+  /** follows the app state; resolves once it is known (or unreadable) */
+  public init(): Promise<void> {
+    return this.settings.start();
   }
 
   // == Getters ===================================================================
   public getConfig(): Readonly<DrawingConfig> { return this.config; }
 
   // == Writers ===================================================================
-  /** update a single config field in appState (fetch-merge-set) */
-  public async update<K extends keyof DrawingConfig>(key: K, value: DrawingConfig[K]): Promise<void> {
-    if(this.config[key] === value) return;/*no-op*/
-    this.config = { ...this.config, [key]: value };
-
-    try {
-      const state = (await this.appState.get()) || {};
-      const currentConfig = (state as AppState).config || {};
-      await this.appState.set({
-        ...state,
-        config: { ...currentConfig, [key]: value },
-      });
-    } catch(error) {
-      console.error('failed to update drawing config:', error);
-    }
-
-    if(this.onConfigChanged) this.onConfigChanged(this.config);
+  // each setting is written onto the latest state, a palette list by list, so that
+  // another person's change to another setting or list stands (SEE:
+  // shared/app-state-settings). A failed save is told through onFailure
+  /** update a single config field */
+  public update<K extends keyof DrawingConfig>(key: K, value: DrawingConfig[K]): void {
+    void this.settings.change(['config', key], value);
   }
 
   // ------------------------------------------------------------------------------
-  /** bulk replace of the full config object (used by the settings panel) */
-  public async replace(config: DrawingConfig): Promise<void> {
-    this.config = { ...config };
-
-    try {
-      const state = (await this.appState.get()) || {};
-      await this.appState.set({ ...state, config: { ...config } });
-    } catch(error) {
-      console.error('failed to replace drawing config:', error);
+  /** writes the settings panel's config: only what differs from the config shown */
+  public replace(config: DrawingConfig): void {
+    for(const key of Object.keys(config) as Array<keyof DrawingConfig>) {
+      if((key === 'presets') || (key === 'recents')) {
+        const lists = config[key];
+        for(const list of Object.keys(lists) as Array<keyof DrawingPresets>) this.changeList(key, list, lists[list]);
+        continue;
+      } /* else -- a field */
+      if(JSON.stringify(config[key]) !== JSON.stringify(this.config[key])) this.update(key, config[key]);
     }
-
-    if(this.onConfigChanged) this.onConfigChanged(this.config);
   }
 
   // ------------------------------------------------------------------------------
   /** append a value to the front of a recents list, de-dupe, and trim to
-   *  RECENTS_MAX. Equality is reference for primitives and deep for font-family
-   *  entries (matched by `family`) */
-  public async pushRecent<K extends keyof DrawingRecents>(list: K, value: DrawingRecents[K][number]): Promise<void> {
+   *  RECENTS_MAX */
+  public pushRecent<K extends keyof DrawingRecents>(list: K, value: DrawingRecents[K][number]): void {
     const prior = this.config.recents[list] as ReadonlyArray<unknown>;
-    const matches = (a: unknown, b: unknown): boolean => {
-      if((typeof a === 'object') && (typeof b === 'object') && a && b) return (a as any).family === (b as any).family;
-      return a === b;
-    };
-    const deduped = [value, ...prior.filter(v => !matches(v, value))].slice(0, RECENTS_MAX);
-    const nextRecents: DrawingRecents = { ...this.config.recents, [list]: deduped };
-    await this.update('recents', nextRecents);
+    this.changeList('recents', list, [value, ...prior.filter(v => !sameEntry(v, value))].slice(0, RECENTS_MAX));
   }
 
   // ------------------------------------------------------------------------------
   /** promote a recents entry into the preset list (and remove it from recents).
    *  used by the pin action on a recents swatch */
-  public async pinToPreset<K extends keyof DrawingPresets>(list: K, value: DrawingPresets[K][number]): Promise<void> {
+  public pinToPreset<K extends keyof DrawingPresets>(list: K, value: DrawingPresets[K][number]): void {
     const priorPresets = this.config.presets[list] as ReadonlyArray<unknown>;
     const priorRecents = this.config.recents[list as keyof DrawingRecents] as ReadonlyArray<unknown>;
-    const matches = (a: unknown, b: unknown): boolean => {
-      if((typeof a === 'object') && (typeof b === 'object') && a && b) return (a as any).family === (b as any).family;
-      return a === b;
-    };
-    if(priorPresets.some(v => matches(v, value))) return;/*already a preset*/
+    if(priorPresets.some(v => sameEntry(v, value))) return;/*already a preset*/
 
-    const nextPresets: DrawingPresets = { ...this.config.presets, [list]: [...priorPresets, value] };
-    const nextRecents: DrawingRecents = { ...this.config.recents, [list]: priorRecents.filter(v => !matches(v, value)) };
-
-    this.config = { ...this.config, presets: nextPresets, recents: nextRecents };
-    try {
-      const state = (await this.appState.get()) || {};
-      const currentConfig = (state as AppState).config || {};
-      await this.appState.set({
-        ...state,
-        config: { ...currentConfig, presets: nextPresets, recents: nextRecents },
-      });
-    } catch(error) {
-      console.error('failed to pin preset:', error);
-    }
-    if(this.onConfigChanged) this.onConfigChanged(this.config);
+    this.changeList('presets', list, [...priorPresets, value]);
+    this.changeList('recents', list, priorRecents.filter(v => !sameEntry(v, value)));
   }
 
   // ------------------------------------------------------------------------------
   /** remove a value from a preset list */
-  public async removePreset<K extends keyof DrawingPresets>(list: K, value: DrawingPresets[K][number]): Promise<void> {
+  public removePreset<K extends keyof DrawingPresets>(list: K, value: DrawingPresets[K][number]): void {
     const priorPresets = this.config.presets[list] as ReadonlyArray<unknown>;
-    const matches = (a: unknown, b: unknown): boolean => {
-      if((typeof a === 'object') && (typeof b === 'object') && a && b) return (a as any).family === (b as any).family;
-      return a === b;
-    };
-    const nextPresets: DrawingPresets = { ...this.config.presets, [list]: priorPresets.filter(v => !matches(v, value)) };
-    await this.update('presets', nextPresets);
+    this.changeList('presets', list, priorPresets.filter(v => !sameEntry(v, value)));
   }
 
   // == Internal ==================================================================
-  private applyState(state: AppState): void {
-    if(!state.config) return;/*nothing to apply*/
+  /** changes one palette list, whole */
+  private changeList(palette: 'presets' | 'recents', list: keyof DrawingPresets, entries: ReadonlyArray<unknown>): void {
+    if(JSON.stringify(entries) === JSON.stringify(this.config[palette][list])) return/*unchanged*/;
+    void this.settings.change(['config', palette, list], entries);
+  }
 
-    const next: DrawingConfig = { ...this.config };
-    let changed = false;
+  // ------------------------------------------------------------------------------
+  /** apply the settings shown. They are the whole state: each setting and palette
+   *  list is its value there, its default where the state holds none (a refused
+   *  save, another viewer's removal) */
+  private applyState(view: AppStateView): void {
+    const config: Readonly<Partial<DrawingConfig>> = (view as AppState).config ?? {};
+    const next: DrawingConfig = { ...DEFAULT_CONFIG };
 
     const boolKeys: (keyof DrawingConfig)[] = ['showGrid', 'readOnly', 'showToolbar', 'showPropertiesPanel', 'showInfoBar'];
     for(const key of boolKeys) {
-      const v = (state.config as any)[key];
+      const v = (config as any)[key];
       if((typeof v === 'boolean') && (v !== (next as any)[key])) {
         (next as any)[key] = v;
-        changed = true;
       } /* else -- not present or unchanged */
     }
 
     const strKeys: (keyof DrawingConfig)[] = ['gridColor', 'backgroundColor'];
     for(const key of strKeys) {
-      const v = (state.config as any)[key];
+      const v = (config as any)[key];
       if((typeof v === 'string') && (v !== (next as any)[key])) {
         (next as any)[key] = v;
-        changed = true;
       } /* else -- not present or unchanged */
     }
 
     const numKeys: (keyof DrawingConfig)[] = ['initialPanX', 'initialPanY', 'initialZoom'];
     for(const key of numKeys) {
-      const v = (state.config as any)[key];
+      const v = (config as any)[key];
       if((typeof v === 'number') && Number.isFinite(v) && (v !== (next as any)[key])) {
         (next as any)[key] = v;
-        changed = true;
       } /* else -- not present or unchanged */
     }
 
@@ -279,9 +239,9 @@ export class ConfigStore {
     // way a persisted config written before presets existed (or that only
     // customized a subset) still lights up the remaining lists with sensible
     // defaults rather than showing an empty dropdown
-    const rawPresets = (state.config as any).presets;
+    const rawPresets = (config as any).presets;
     if(rawPresets && (typeof rawPresets === 'object')) {
-      const mergedPresets: DrawingPresets = { ...DEFAULT_PRESETS, ...next.presets };
+      const mergedPresets: DrawingPresets = { ...DEFAULT_PRESETS };
       if(Array.isArray(rawPresets.strokeColors))     mergedPresets.strokeColors     = rawPresets.strokeColors.filter((v: unknown) => typeof v === 'string');
       if(Array.isArray(rawPresets.backgroundColors)) mergedPresets.backgroundColors = rawPresets.backgroundColors.filter((v: unknown) => typeof v === 'string');
       if(Array.isArray(rawPresets.textColors))       mergedPresets.textColors       = rawPresets.textColors.filter((v: unknown) => typeof v === 'string');
@@ -289,12 +249,11 @@ export class ConfigStore {
       if(Array.isArray(rawPresets.fontSizes))        mergedPresets.fontSizes        = rawPresets.fontSizes.filter((v: unknown) => (typeof v === 'number') && Number.isFinite(v));
       if(Array.isArray(rawPresets.fontFamilies))     mergedPresets.fontFamilies     = rawPresets.fontFamilies.filter((v: any) => v && (typeof v.label === 'string') && (typeof v.family === 'string'));
       next.presets = mergedPresets;
-      changed = true;
     } /* else -- no presets persisted; defaults remain */
 
-    const rawRecents = (state.config as any).recents;
+    const rawRecents = (config as any).recents;
     if(rawRecents && (typeof rawRecents === 'object')) {
-      const mergedRecents: DrawingRecents = { ...DEFAULT_RECENTS, ...next.recents };
+      const mergedRecents: DrawingRecents = { ...DEFAULT_RECENTS };
       if(Array.isArray(rawRecents.strokeColors))     mergedRecents.strokeColors     = rawRecents.strokeColors.filter((v: unknown) => typeof v === 'string').slice(0, RECENTS_MAX);
       if(Array.isArray(rawRecents.backgroundColors)) mergedRecents.backgroundColors = rawRecents.backgroundColors.filter((v: unknown) => typeof v === 'string').slice(0, RECENTS_MAX);
       if(Array.isArray(rawRecents.textColors))       mergedRecents.textColors       = rawRecents.textColors.filter((v: unknown) => typeof v === 'string').slice(0, RECENTS_MAX);
@@ -302,12 +261,18 @@ export class ConfigStore {
       if(Array.isArray(rawRecents.fontSizes))        mergedRecents.fontSizes        = rawRecents.fontSizes.filter((v: unknown) => (typeof v === 'number') && Number.isFinite(v)).slice(0, RECENTS_MAX);
       if(Array.isArray(rawRecents.fontFamilies))     mergedRecents.fontFamilies     = rawRecents.fontFamilies.filter((v: any) => v && (typeof v.label === 'string') && (typeof v.family === 'string')).slice(0, RECENTS_MAX);
       next.recents = mergedRecents;
-      changed = true;
     } /* else -- no recents persisted; defaults remain */
 
-    if(changed) {
+    if(JSON.stringify(next) !== JSON.stringify(this.config)) {
       this.config = next;
       if(this.onConfigChanged) this.onConfigChanged(this.config);
     } /* else -- nothing actually changed */
   }
 }
+
+// == Helpers =====================================================================
+/** one palette entry: font-family entries match by `family`, the rest by value */
+const sameEntry = (a: unknown, b: unknown): boolean => {
+  if((typeof a === 'object') && (typeof b === 'object') && a && b) return (a as { family?: unknown; }).family === (b as { family?: unknown; }).family;
+  return a === b;
+};
