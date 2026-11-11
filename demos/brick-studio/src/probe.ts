@@ -72,19 +72,33 @@ type Columns = Readonly<{ spans: ReadonlyMap<number, ReadonlyArray<Span>>; exten
 
 // == Probe =======================================================================
 /** the parts at points and across segments of a set as a stage shows it */
-export const probe = (model: Model, points: ReadonlyArray<ProbePoint>, segments: ReadonlyArray<readonly [ProbePoint, ProbePoint]>, grounds: ReadonlyArray<ProbeGround> = []): Probed => {
+export const probe = (model: Model, points: ReadonlyArray<ProbePoint>, segments: ReadonlyArray<readonly [ProbePoint, ProbePoint]>, grounds: ReadonlyArray<ProbeGround> = []): Probed =>
+  probing(model)(points, segments, grounds);
+
+/** a set's probe, its parts' cells read once: what answers many probes of one set as it
+ *  stands (a figure dragged across it, asked with every move) */
+export const probing = (model: Model): ((points: ReadonlyArray<ProbePoint>, segments: ReadonlyArray<readonly [ProbePoint, ProbePoint]>, grounds?: ReadonlyArray<ProbeGround>) => Probed) => {
   const columns = columnsOf(model), surfaces = surfacesBy(columns), studs = studsOf(model);
   const name = (part: number | undefined) => (part === undefined) ? null : describeIn(model, part);
-  const under = grounds.map(ground => surfacesUnder(columns, surfaces, ground));
   const { extent } = columns;
-  return {
-    points: points.map(point => name(partsAt(columns, point)[0]?.part)),
-    segments: segments.map(([from, to]) => name(firstAcross(columns, from, to))),
-    grounds: under,
-    studded: grounds.map((ground, index) => under[index].map(surface => isStudded(columns, surfaces, studs, ground, surface))),
-    tops: grounds.map((ground, index) => under[index].map(surface => topPart(surfaces, ground, surface))),
-    ...(extent ? { extent: { x: extent.minX, z: extent.minZ, width: extent.maxX - extent.minX, depth: extent.maxZ - extent.minZ } } : {}),
+  return (points, segments, grounds = []) => {
+    const under = grounds.map(ground => surfacesUnder(columns, surfaces, ground));
+    return {
+      points: points.map(point => name(partsAt(columns, point)[0]?.part)),
+      segments: segments.map(([from, to]) => name(firstAcross(columns, from, to))),
+      grounds: under,
+      studded: grounds.map((ground, index) => under[index].map(surface => isStudded(columns, surfaces, studs, ground, surface))),
+      tops: grounds.map((ground, index) => under[index].map(surface => topPart(surfaces, ground, surface))),
+      ...(extent ? { extent: { x: extent.minX, z: extent.minZ, width: extent.maxX - extent.minX, depth: extent.maxZ - extent.minZ } } : {}),
+    };
   };
+};
+
+/** a set's parts by their place among its placements, its cells read once: for each
+ *  point, the placement whose cells hold it, none for a point standing clear */
+export const placing = (model: Model): ((points: ReadonlyArray<ProbePoint>) => ReadonlyArray<number | undefined>) => {
+  const columns = columnsOf(model);
+  return points => points.map(point => partsAt(columns, point)[0]?.part);
 };
 
 /** the points and segments a probe call gives, or a refusal naming the first that is

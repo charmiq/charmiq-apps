@@ -789,6 +789,35 @@
         "outputSchema": { "type": "object", "properties": { "followed": { "type": ["string", "null"] }, "ghosts": { "type": "integer" } }, "required": ["followed", "ghosts"] }
       },
       {
+        "name": "pose",
+        "description": "Hand a cast actor of a frame to the person to pose by hand on the studio's picture, for Applications that keep its pose: the frame is shown as frame shows it (set, actors, camera), and from then the person drags a figure's limb, head, hat, hand or torso to turn its joint, drags its hips to carry it across the set (it clicks onto studs; Alt sets it down free, Shift lifts it), drags the ring at its feet to turn it and the knob over its head to tip it, and presses a foot to pin it (every turn then pivots about that foot). A gesture stops at the last pose that passes no piece into the set. Every move is drawn in the studio; once a gesture ends the actor's shot is told on the stage's state (asked: { kind: 'posed', actor, position, turn, pose, pin }, pin null with no foot pinned), and Enter, Escape, the left and right arrows and z with Ctrl or Cmd pressed over the studio are told as keys (asked: { kind: 'key', key, shift, alt }). Holding R shows the reference picture alone, holding E the drawing before the frame. Call it again to stand the actor as you say (a change undone, a value typed). Without an actor the pose ends; it also ends when a frame of the reel is shown, a scene is staged or the build is shown again. Nothing a pose draws is in a capture",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "actor":  { "type": "string", "description": "The cast actor posed; leave it out to end the pose" },
+            "pin":    { "type": "string", "enum": ["leftLeg", "rightLeg"], "description": "The leg of a figure whose foot is pinned where it stands; leave it out for none" },
+            "set":    { "type": "string", "description": "The staged set the frame stands on; the first when left out" },
+            "actors": { "type": "array", "description": "The frame's actors, as frame takes them, the actor posed among them: each { name, position, turn?, pose?, face?, rightHand?, leftHand?, rolled? }", "items": { "type": "object" } },
+            "camera": { "type": "object", "description": "The frame's camera, as frame takes it: { position, target, fov? }" }
+          }
+        },
+        "outputSchema": { "type": "object", "properties": { "posing": { "type": ["string", "null"], "description": "The actor posed; null once the pose ends" } }, "required": ["posing"] }
+      },
+      {
+        "name": "reference",
+        "description": "Lay a reference picture over the staged scene, to pose against: drawn over the stage where it is shown, whole within the picture, never in a capture, a thumbnail or a storyboard. It stands through every frame and through a scene staged again, until it is taken down (no image) or the build is shown again. Resolves once the picture is read and drawn, so a screenshot next shows it; a picture that cannot be read is refused",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "image":   { "type": "string", "description": "The picture: a charmiq://file/ uri, or a picture Brick Studio ships by name; leave it out to take the reference down" },
+            "opacity": { "type": "number", "description": "How strongly it shows over the stage, 0 to 1 (0.5)" },
+            "view":    { "type": "string", "enum": ["over", "difference"], "description": "over (when left out): the picture over the stage at its opacity; difference: where the picture and the stage differ, what matches going dark" },
+            "flip":    { "type": "boolean", "description": "true shows the picture alone, as a drawing is flipped to" }
+          }
+        },
+        "outputSchema": { "type": "object", "properties": { "reference": { "type": ["string", "null"], "description": "The picture laid over the stage; null once taken down" }, "width": { "type": "integer", "description": "The picture's width in pixels" }, "height": { "type": "integer" } }, "required": ["reference"] }
+      },
+      {
         "name": "thumbnail",
         "description": "A loaded frame of the staged reel as a small picture (at most 480 a side), for Applications, through one of the frame's views when named; the frame shown stays as it is",
         "inputSchema": {

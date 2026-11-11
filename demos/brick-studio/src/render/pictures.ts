@@ -142,8 +142,7 @@ const faceTexture = (image: Pixels | undefined, width: number, height: number, f
   const scale = MOST_FACE / Math.max(width, height);
   const canvas = Object.assign(document.createElement('canvas'), { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) });
   const context = canvas.getContext('2d')!;
-  const source = Object.assign(document.createElement('canvas'), { width: image.width, height: image.height });
-  source.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(image.data), image.width, image.height), 0, 0);
+  const source = pictureCanvas(image);
   if(fit === 'stretch') context.drawImage(source, 0, 0, canvas.width, canvas.height);
   else {
     // covering: the larger scale, the overflow cropped; contained: the smaller, the
@@ -157,6 +156,13 @@ const faceTexture = (image: Pixels | undefined, width: number, height: number, f
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
+};
+
+/** an image's pixels as a picture to draw from */
+export const pictureCanvas = (image: Pixels): HTMLCanvasElement => {
+  const canvas = Object.assign(document.createElement('canvas'), { width: image.width, height: image.height });
+  canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(image.data), image.width, image.height), 0, 0);
+  return canvas;
 };
 
 /** an image's bytes as pixels, at most MOST_PICTURE wide */

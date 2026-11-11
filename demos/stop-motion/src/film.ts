@@ -1,3 +1,4 @@
+import { placeIn } from '../../brick-shared/plant';
 import { hipsOver, poseRise, type PoseBottoms, HIPS } from '../../brick-shared/rise';
 import { rotation, turnOf, twistedYaw, type Turn } from '../../brick-shared/turn';
 import { listed } from '../../brick-shared/words';
@@ -1074,10 +1075,7 @@ const riding = (parent: Placed, offset: Point, own: Placed, figure: Readonly<{ b
 
 /** a point at an offset (studs across and along, plates up) in the frame of an actor
  *  standing at `origin` turned by `matrix` (SEE: rotation) */
-export const pointIn = (origin: Point, matrix: ReadonlyArray<number>, offset: Point): Point => {
-  const moved = multiplyVector(matrix, [offset.x * LDU_PER_STUD, -offset.height * LDU_PER_PLATE, offset.z * LDU_PER_STUD]);
-  return { x: origin.x + (moved[0] / LDU_PER_STUD), z: origin.z + (moved[2] / LDU_PER_STUD), height: origin.height - (moved[1] / LDU_PER_PLATE) };
-};
+export const pointIn: (origin: Point, matrix: ReadonlyArray<number>, offset: Point) => Point = placeIn;
 
 /** where a point stands in the frame of an actor standing at `origin` turned by
  *  `matrix` (studs across and along, plates up; SEE: pointIn, its inverse) */

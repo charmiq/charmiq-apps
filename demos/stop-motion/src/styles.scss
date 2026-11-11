@@ -160,7 +160,7 @@
 }
 
 #loopButton[aria-pressed='false'] { background: var(--bench); color: var(--ink-soft); }
-#storyboardButton[aria-pressed='true'], #gaitButton[aria-pressed='true'] { background: var(--outline); color: #FFFDF2; }
+#storyboardButton[aria-pressed='true'], #gaitButton[aria-pressed='true'], #poseButton[aria-pressed='true'] { background: var(--outline); color: #FFFDF2; }
 
 // the film's sound loading, waiting on a press, or unable to play (its title says why)
 .sound-chip {
@@ -1124,6 +1124,76 @@
 .gait-handle { fill: var(--brick-yellow); stroke: var(--outline); stroke-width: 1.5; cursor: grab; }
 .gait-moment { stroke: var(--brick-red); stroke-width: 3; cursor: ew-resize; }
 .gait-playhead { stroke: var(--brick-red); stroke-width: 1.5; opacity: 0.6; }
+
+// == Pose ========================================================================
+// the Pose mode: in place of the timeline, the picture track and the sheet, a strip of
+// what the studio's picture cannot carry while a figure is posed on it by hand: the
+// actor, the key, the reference's controls and a drawer of the exact values, closed
+// until asked for (SEE: pose-view.ts); the bar keeps the transport, Close pose and
+// Export, its film-only tools and the Gait mode's way in hidden
+.motion.is-pose {
+  .timeline, .strip, .sheet, #soundChip, #soundButton, #storyboardButton, #loopButton, #gaitButton { display: none; }
+  .floor { grid-template-columns: minmax(0, 1fr); }
+  .deck { grid-template-rows: auto minmax(0, 1fr); }
+}
+.motion.is-gait #poseButton { display: none; }
+
+.pose[hidden] { display: none; }
+.pose {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  align-content: start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 3px;
+  background: var(--lane);
+  overflow: auto;
+}
+
+.pose-head, .pose-references { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.pose-actor, .pose-view { font: inherit; font-size: 13px; max-width: 220px; }
+.pose-key { @extend %mono-caps; font-size: 10px; white-space: nowrap; }
+.pose-note { @extend %mono-caps; flex: 1; min-width: 120px; font-size: 9px; color: var(--ink-soft); overflow-wrap: break-word; }
+.pose-note[data-state='refused'] { color: var(--brick-red); }
+.pose[data-drafted='false'] .pose-write { background: var(--bench); color: var(--ink-soft); }
+.pose-reference-name {
+  @extend %mono-caps;
+  min-width: 0;
+  max-width: 260px;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  &.is-refused { color: var(--brick-red); }
+}
+.pose-look { display: flex; align-items: center; gap: 6px; }
+.pose-look[hidden] { display: none; }
+.pose-every .pose-value { width: 5ch; }
+.pose-opacity { width: 110px; accent-color: var(--brick-azure); }
+
+.pose-pinned { @extend %mono-caps; font-size: 10px; color: var(--brick-red); white-space: nowrap; }
+.pose-pinned:empty { display: none; }
+.pose-onion[aria-pressed='true'] { background: var(--outline); color: #FFFDF2; }
+
+// the exact values: closed, one line; open, each value a number under its name
+.pose-exact { min-height: 0; overflow: auto; }
+.pose-exact > summary { cursor: pointer; width: max-content; }
+.pose-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px 24px; align-content: start; padding-top: 8px; }
+.pose-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px 10px; min-width: 0; }
+.pose-group > .eyebrow { margin: 0; grid-column: 1 / -1; }
+.pose-number {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+.pose-value { @extend %mono-caps; width: 100%; font-size: 11px; text-align: right; }
+.pose-scrub { width: 100%; accent-color: var(--brick-red); }
 
 // == Narrow ======================================================================
 @media (max-width: 720px) {

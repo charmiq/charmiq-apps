@@ -26,6 +26,8 @@ export abstract class DesignDialog {
   private view: View = { kind: 'save' };
   /** the folders walked into, the top of the Drive first */
   private path: Folder[] = [TOP_OF_DRIVE];
+  /** the folder walked into last: where a file picked from the list lies */
+  protected get here(): Folder { return this.path[this.path.length - 1]; }
   private search = '';
   private searchTimer: number | undefined;
   /** the name last saved or opened, offered by the next save */

@@ -15,6 +15,9 @@ const STEP = 15/*degrees*/;
  *  the point it turns about */
 export const HIPS = 3.5;
 const STUDS_PER_PLATE = 0.4;
+/** how far the middle of a foot's sole stands to its leg's side of the figure's middle
+ *  (studs) */
+const FOOT = 0.5;
 
 // == Types =======================================================================
 /** a body's bounding box in its figure's frame standing: how high its lowest point and
@@ -67,6 +70,18 @@ export const hipsFromSoles = (bottoms: PoseBottoms | undefined, pose: Readonly<P
   const [cy, sy, cp, sp, cr, sr] = [Math.cos(radians(yaw)), Math.sin(radians(yaw)), Math.cos(radians(pitch)), Math.sin(radians(pitch)), Math.cos(radians(roll)), Math.sin(radians(roll))];
   const reach = over * STUDS_PER_PLATE/*studs*/;
   return { x: reach * ((cy * sr) + (sy * sp * cr)), z: reach * ((cy * sp * cr) - (sy * sr)), height: over * cp * cr };
+};
+
+/** where the middle of a foot's sole stands from a figure's hips, in the figure's own
+ *  frame standing unturned (studs east and north, plates up), its `leg` swung to `angle`
+ *  (degrees forward, toward its front): FOOT to the leg's side of its joint (its right
+ *  its west), as far under the joint as the joint stands over the soles, swung about
+ *  the joint's east-west axis. Where no stage has measured the figure, its legs turn on
+ *  its hips. The point a planted foot holds (SEE: Stop Motion's pose-draft.ts) */
+export const soleFromHips = (bottoms: PoseBottoms | undefined, leg: 'leftLeg' | 'rightLeg', angle: number): Readonly<{ x: number; z: number; height: number; }> => {
+  const joint = bottoms?.joints?.[leg]?.at ?? { x: 0, z: 0, height: HIPS };
+  const [c, s] = [Math.cos(radians(angle)), Math.sin(radians(angle))];
+  return { x: joint.x + ((leg === 'rightLeg') ? -FOOT : FOOT), z: joint.z - (s * joint.height * STUDS_PER_PLATE), height: (joint.height - HIPS) - (c * joint.height) };
 };
 
 // == Bodies ======================================================================

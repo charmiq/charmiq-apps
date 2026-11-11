@@ -5,8 +5,9 @@ import type { CharmIQAPI } from '../../../shared/charmiq';
 
 import { DocumentState } from '../../brick-shared/app-state';
 import { DesignStore } from '../../brick-shared/designs';
-import { isPlatformFile, Drive, type DriveFile, SOUND_FILES } from '../../brick-shared/drive';
+import { isPlatformFile, Drive, type DriveFile, type Folder, PICTURE_FILES, SOUND_FILES } from '../../brick-shared/drive';
 import { PickDialog } from '../../brick-shared/pick-dialog';
+import type { Leg } from '../../brick-shared/plant';
 
 import { exportFilmCommands } from './command';
 import { Director } from './director';
@@ -17,15 +18,18 @@ import { filmPartsOf, Films } from './films';
 import { GaitView } from './gait-view';
 import { closePairs } from './measure';
 import { Player, type PlayerState } from './player';
+import { draftShot, keyOn, type Draft } from './pose-draft';
+import { lookFrom, lookText, pictureFrom, referenceAt, runFrom, runOf, type ReferenceLook, type ReferencePicture, type ReferenceRun, REFERENCE_LOOK_KEY, REFERENCE_STATE, REFERENCES_STATE } from './pose-reference';
+import { PoseView } from './pose-view';
 import { castAs, type Recorded, type SceneError, type SoundCue } from './recorder';
 import { TimelineSurface } from './review-surface';
-import { addSound, applyEdit, isRefusal, regait, retimeSound, sameGait, sameSounds, soundsAdded, soundsMoved, writtenGait, type Refusal, type SceneEdit } from './scene-edit';
+import { addSound, applyEdit, isRefusal, keysRekeyed, regait, rekey, retimeSound, sameGait, sameKeys, sameSounds, soundsAdded, soundsMoved, writtenGait, type Refusal, type SceneEdit } from './scene-edit';
 import { runScene } from './scene-runner';
 import { SceneSource, SCENE_TAB, type MeasuredScene } from './scene-source';
 import { listShippedSounds, peaksOf, shippedSoundsLister, soundsOf, SoundBank } from './sound';
 import { Soundtrack, type SoundState } from './soundtrack';
 import { Strip } from './strip';
-import { Studios, type StageState } from './studios';
+import { messageOf, Studios, type StageState } from './studios';
 import { Inspector } from './inspector';
 import { actorColor, Timeline, type TimelineSounds } from './timeline';
 import type { SoundReading } from './timeline-marks';
@@ -86,6 +90,7 @@ const playButton = element<HTMLButtonElement>('playButton');
 const loopButton = element<HTMLButtonElement>('loopButton');
 const storyboardButton = element<HTMLButtonElement>('storyboardButton');
 const gaitButton = element<HTMLButtonElement>('gaitButton');
+const poseButton = element<HTMLButtonElement>('poseButton');
 const exportButton = element<HTMLButtonElement>('exportButton');
 const soundChip = element<HTMLButtonElement>('soundChip');
 const soundButton = element<HTMLButtonElement>('soundButton');
@@ -133,6 +138,11 @@ const soundtrack = new Soundtrack(bank);
 const documentState = charmiq && new DocumentState(charmiq.appState);
 const soundStore = documentState && drive && new DesignStore(drive, documentState, { noun: 'sound', listing: 'describeFilm', pick: 'Add' }, SOUND_FILES);
 const soundDialog = soundStore && new PickDialog(element('sounds'), soundStore, file => addSoundAt(file), 'The sound was not added');
+/** the pictures in the Drive the Pose mode's reference is picked from */
+const referenceStore = documentState && drive && new DesignStore(drive, documentState, { noun: 'picture', listing: 'describeFilm', pick: 'Use' }, PICTURE_FILES);
+const referenceDialog = referenceStore && new PickDialog(element('references'), referenceStore, (file, folder) => useReference(file, folder), 'The reference was not changed');
+/** the most pages of a folder a reference run is listed from */
+const REFERENCE_PAGES = 20;
 
 // -- Director --------------------------------------------------------------------
 /** runs the scene once its shipped sounds are listed, its audiences lifted from the
@@ -159,6 +169,7 @@ const timeline = new Timeline(element('timeline'), {
   sounds: () => soundsKnown, fixed: cue => fixedWhy(cue), moveSound: (cue, time) => moveSound(cue, time),
   viewed: span => strip.setSpan(span)/*the picture track frames it*/,
   gait: actor => { gaitView.choose(actor); showGait(true); },
+  pose: actor => { poseView.choose(actor); showPose(true); },
   followActor: actor => { followed = actor; follow(); },
 }, inspector);
 const strip = new Strip(element('strip'), index => { player.pause(); player.seek(index); }, () => void developTrack(), (from, to) => timeline.showSpan(from, to));
@@ -166,6 +177,12 @@ const strip = new Strip(element('strip'), index => { player.pause(); player.seek
  *  shown on it */
 const surface = new TimelineSurface({ film: () => film, frame: () => player.current.index, timeline, player, shown: index => studios.whenShown(index) });
 const gaitView = new GaitView(element('gait'), { write: (name, keys) => writeGait(name, keys), seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), rewind: index => player.seek(index), loop: span => player.loopSpan(span), close: () => showGait(false) });
+const poseView = new PoseView(element('pose'), {
+  pose: (actor, index, values, pin) => poseOn(actor, index, values, pin), write: (actor, index, values) => writeKey(actor, index, values),
+  seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), close: () => showPose(false),
+  onion: skin => { onionSkin = skin; follow(); },
+  pickReference: () => referenceDialog?.open(), removeReference: () => { keepReference(undefined).catch((failure: unknown) => poseView.say(messageOf(failure))); }, every: frames => keepEvery(frames), look: look => keepLook(look),
+});
 
 // -- Film Files ------------------------------------------------------------------
 /** the film's files: Stop Motion reads and writes the main studio's build and the
@@ -188,9 +205,14 @@ let exporting: { cancelled: boolean; stop: () => void; } | undefined;
 // == Film ========================================================================
 /** the actor the studios follow through the film (its row's name pressed), while one is */
 let followed: string | undefined;
-/** tells the studios whom to follow: the actor followed, with its keys at the film's
- *  times, or no one. A film staged again follows no one until told */
+/** the Pose mode's onion skin, while it is on: the actor posed, and how far back
+ *  (seconds) its drawings before the frame are drawn */
+let onionSkin: Readonly<{ actor: string; before: number; }> | undefined;
+/** tells the studios whom to follow: the Pose mode's onion skin while it is on (the
+ *  drawings before the frame alone, no key marked), else the actor followed, with its
+ *  keys at the film's times, or no one. A film staged again follows no one until told */
 const follow = () => {
+  if(onionSkin) { studios.follow({ actor: onionSkin.actor, keys: [], before: onionSkin.before, after: 0 }); return; }
   const actor = followed && film?.scene.actors.find(each => each.name === followed);
   studios.follow(actor ? { actor: actor.name, keys: [...new Set(actor.keys.map(key => key.time))].map(time => filmTimeOf(film!, time)) } : undefined);
 };
@@ -204,6 +226,7 @@ const showFilm = (next: Film) => {
   follow()/*staged again, the studios follow no one until told*/;
   strip.show(next);
   gaitView.setFilm(next);
+  poseView.setFilm(next);
   showSheet();
   showStatus();
 };
@@ -344,12 +367,100 @@ try { if(localStorage.getItem(STORYBOARD_KEY) === 'true') showStoryboard(true); 
 /** shows the Gait mode in place of the timeline, the picture track and the sheet, or
  *  the film again */
 const showGait = (on: boolean) => {
+  if(on) showPose(false)/*one mode in the timeline's place*/;
   gaitButton.setAttribute('aria-pressed', String(on));
   gaitButton.textContent = on ? 'Close gait' : 'Gait';
   document.querySelector('.motion')!.classList.toggle('is-gait', on);
   gaitView.show(on);
 };
 gaitButton.addEventListener('click', () => showGait(gaitButton.getAttribute('aria-pressed') !== 'true'));
+
+// -- Pose ------------------------------------------------------------------------
+/** whether the Pose mode stands in the timeline's place */
+const isPosing = () => poseButton.getAttribute('aria-pressed') === 'true';
+/** shows the Pose mode in place of the timeline, the picture track and the sheet, its
+ *  reference picture laid over the studio's stage, or the film again, the reference
+ *  taken down: the film is paused while a figure is posed */
+const showPose = (on: boolean) => {
+  if(on === isPosing()) return/*as it stands*/;
+  if(on) { showGait(false)/*one mode in the timeline's place*/; player.pause(); }
+  poseButton.setAttribute('aria-pressed', String(on));
+  poseButton.textContent = on ? 'Close pose' : 'Pose';
+  document.querySelector('.motion')!.classList.toggle('is-pose', on);
+  poseView.show(on);
+  void layReference();
+};
+poseButton.addEventListener('click', () => showPose(!isPosing()));
+
+/** hands a figure to the main studio to pose by hand at a frame as its draft stands it,
+ *  its pinned foot named, or, with no values, ends the studio's pose and shows the
+ *  film's frame again. While the film is not staged nothing is handed: the mode hands
+ *  it again once it is (SEE: PoseView.repose) */
+const poseOn = (name: string, index: number, values: Draft | undefined, pin?: Leg) => {
+  const actor = film?.scene.actors.find(each => each.name === name), frame = film?.frames[index];
+  if(studios.stageState.kind !== 'staged') return/*no stage to pose on*/;
+  if(!values || !film || !actor || !frame) { studios.pose(undefined).then(() => player.redraw()).catch((failure: unknown) => poseView.say(messageOf(failure))); return; }
+  studios.pose(frame, draftShot(film, actor, index, values), pin).catch((failure: unknown) => poseView.say(messageOf(failure)));
+};
+
+// .. Reference ...................................................................
+/** the Pose mode's reference as the document keeps it (its single picture, and the run
+ *  of pictures that follows the film), how it lies over the stage as this browser keeps
+ *  it, and the picture a studio's stage holds now */
+let referencePicture: ReferencePicture | undefined;
+let referenceRun: ReferenceRun | undefined;
+let referenceLook: ReferenceLook = lookFrom(null);
+try { referenceLook = lookFrom(localStorage.getItem(REFERENCE_LOOK_KEY)); } catch { /*storage can be absent or refused*/ }
+let referenceLaid: string | undefined;
+
+/** lays the reference of the frame shown over the main studio's stage while the Pose
+ *  mode is open and the film staged, as its look says, and takes it down otherwise; a
+ *  picture the studio cannot show is said in the mode. `again` lays the picture already
+ *  laid afresh (its look changed) */
+const layReference = async (again = false) => {
+  const shown = isPosing() ? referenceAt(referenceRun, referencePicture, player.current.index) : undefined;
+  if((studios.stageState.kind !== 'staged') || (!again && (shown?.uri === referenceLaid))) { poseView.setReference(shown); return; }
+  try {
+    await studios.reference(shown && { image: shown.uri, ...referenceLook });
+    referenceLaid = shown?.uri;
+    poseView.setReference(shown);
+  } catch(failure) {
+    poseView.setReference(shown, `${shown?.label ?? 'The reference'} is not shown: ${messageOf(failure)}`);
+  }
+};
+
+/** keeps the reference in the document's app state (none: no reference), where
+ *  everyone on the document poses against it: its picture, and the run that follows
+ *  the film from it when its folder holds more */
+const keepReference = async (picture: ReferencePicture | undefined, run?: ReferenceRun) => {
+  if(!documentState) throw new Error('This document keeps no reference picture.');
+  await documentState.write(REFERENCE_STATE, picture ?? null);
+  await documentState.write(REFERENCES_STATE, (run && (run.pictures.length > 1)) ? run : null);
+};
+/** uses a picture of the Drive as the reference, chosen on the frame shown: the
+ *  pictures after it in its folder, by name, follow the film from that frame */
+const useReference = async (file: DriveFile, folder: Folder) => {
+  const frame = player.current.index, files: DriveFile[] = [];
+  for(let offset=0, pages=0; referenceStore && (pages < REFERENCE_PAGES); pages++) {
+    const page = await referenceStore.browse(folder, offset);
+    files.push(...page.files);
+    if(!page.hasMore) break;
+    offset += page.read;
+  }
+  await keepReference({ uri: file.uri, name: file.fileName, frame }, runOf(files, file, frame));
+};
+/** how many frames each picture of the run stands for, as the person says */
+const keepEvery = (frames: number) => {
+  if(!documentState || !referenceRun) return/*no run to pace*/;
+  documentState.write(REFERENCES_STATE, { ...referenceRun, every: frames }).catch((failure: unknown) => poseView.say(messageOf(failure)));
+};
+
+/** keeps how the reference lies over the stage in this browser, and shows it so */
+const keepLook = (look: ReferenceLook) => {
+  referenceLook = look;
+  try { localStorage.setItem(REFERENCE_LOOK_KEY, lookText(look)); } catch { /*a preference only*/ }
+  void layReference(true);
+};
 
 // == File ========================================================================
 /** the film's file: its name, and whether it is saved; `note`, a word about the last
@@ -509,6 +620,19 @@ const writeGait = async (name: string, keys: Readonly<Record<string, unknown>>):
   return editScene(scene, edit, (_, after) => sameGait(after.gaits?.find(each => each.name === name)?.keys, writtenGait(keys)) ? undefined/*it walks it*/ : 'The Gait mode cannot make this change to the scene: change it there');
 };
 
+/** writes `values` into the key an actor's frame holds, or as a held key of its own
+ *  where the frame holds none: undefined once the scene holds it, else why not */
+const writeKey = async (name: string, index: number, values: Draft): Promise<string | undefined> => {
+  const scene = source.scene;
+  if(!scene) return 'No code editor holds the scene';
+  const actor = film?.scene.actors.find(each => each.name === name), frame = film?.frames[index];
+  if(!film || !actor || !frame) return 'The film no longer shows that frame: try again';
+  const key = keyOn(film, actor, index);
+  const edit = rekey(scene.code, actor, key, frame.time, values);
+  if(isRefusal(edit)) return edit.refused;
+  return editScene(scene, edit, (before, after) => sameKeys(after.actors, keysRekeyed(before.actors, name, key, frame.time, values)) ? undefined/*it holds the key*/ : 'The Pose mode cannot make this change to the scene: change it there');
+};
+
 soundButton.disabled = !soundDialog;
 soundButton.addEventListener('click', () => soundDialog?.open());
 
@@ -525,6 +649,8 @@ const showPlayer = (state: PlayerState) => {
   timeline.setFrame(state.index);
   strip.setFrame(state.index);
   gaitView.setFrame(film?.frames[state.index]);
+  poseView.setFrame(film?.frames[state.index]);
+  if(isPosing()) void layReference()/*the run's picture for the frame shown*/;
   timecode.textContent = timecodeOf(state.index, film?.scene.fps ?? 24);
   frameCount.textContent = film ? `frame ${state.index + 1} of ${film.frames.length}` : '';
   playButton.setAttribute('aria-pressed', String(state.playing));
@@ -539,7 +665,9 @@ player.state$.pipe(map(state => state.playing), distinctUntilChanged(), skip(1))
 studios.asked$.subscribe(ask => {
   if(ask.kind === 'play') player.play();
   else if(ask.kind === 'pause') player.pause();
-  else player.seek(ask.frame);
+  else if(ask.kind === 'seek') player.seek(ask.frame);
+  else if(ask.kind === 'posed') poseView.posed(ask.actor, { position: ask.position, turn: ask.turn, ...(ask.pose ? { pose: ask.pose } : {}) }, ask.pin)/*a gesture on the studio's picture ended: the figure as posed by hand*/;
+  else poseView.key(ask)/*a key the mode takes, pressed over the studio*/;
 });
 
 element('firstButton').addEventListener('click', () => { player.pause(); player.seek(0); });
@@ -626,7 +754,8 @@ studios.state$.subscribe((stage: StageState) => {
   showChip();
   showStatus();
   showSheet();
-  if(stage.kind === 'staged') { showTimeline()/*the actors sized*/; void developTrack(); }
+  if(stage.kind === 'staged') { showTimeline()/*the actors sized*/; void developTrack(); void layReference()/*over the stage staged*/; poseView.setBottoms(stage.bottoms)/*what a pinned foot's contact is read from*/; poseView.repose()/*its figure handed to the stage staged*/; }
+  else if(stage.kind !== 'staging') referenceLaid = undefined/*a stage ended takes its reference down with it*/;
 });
 studios.studios$.subscribe(() => { showChip(); showStatus(); void director.restage(); })/*new studios: the scene staged again on them*/;
 
@@ -647,6 +776,9 @@ source.text$.pipe(map(({ code }) => code), distinctUntilChanged(), debounceTime(
 source.init(charmiq);
 studios.init(charmiq);
 void soundStore?.init()/*the folder sounds are added from first*/;
+void referenceStore?.init()/*the folder a reference is picked from first*/;
+documentState?.entry$(REFERENCE_STATE).subscribe(entry => { referencePicture = pictureFrom(entry); void layReference(); })/*the reference the document keeps, from anywhere*/;
+documentState?.entry$(REFERENCES_STATE).subscribe(entry => { referenceRun = runFrom(entry); void layReference(); })/*and the run that follows the film*/;
 if(films) {
   void films.store.init()/*the folder the app state names*/;
   films.init().catch((failure: unknown) => { fileState.textContent = (failure as Error).message; fileState.dataset.state = 'error'; })/*the film's file the app state names*/;

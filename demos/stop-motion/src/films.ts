@@ -37,6 +37,8 @@ export const STARTER_SCENE = [
   '// A new film. Cast actors (the build\'s components, or catalog parts), key them over',
   '// time, and cut the camera between shots: How It Works says how. The sky is the',
   '// film\'s own, over every set\'s: change its colors and clouds, or name a picture.',
+  '// To place a figure a drawing at a time, cast it with click: false and double-click',
+  '// its row on the timeline: Pose poses it there against a picture from your Drive.',
   'scene({ title: \'Untitled film\', fps: 24, length: 5, sky: { horizon: \'#CFE2F3\', zenith: \'#4F87C7\', clouds: 0.35, seed: 1 } })',
   '',
   'camera.at(0, { orbit: { angle: 30, distance: 40, height: 30 }, target: { x: 0, z: 0, height: 4 } })',

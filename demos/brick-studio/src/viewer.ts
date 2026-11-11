@@ -9,10 +9,12 @@ import type { Sky } from '../../brick-shared/sky';
 
 import { CATALOG, resourceFamily, type Finish } from './catalog';
 import { requestDraw } from './frame-request';
-import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_STUD, type PartLine } from './grid';
+import { baseplateArea, getColor, getColorByCode, getColorValue, isDrawable, partFiles, tracedStudCells, LDU_PER_PLATE, LDU_PER_STUD, type PartLine } from './grid';
 import { drawnLines, partCount, type Model } from './model';
+import type { PoseMarks } from './pose-gesture';
+import { edgesOf, type Edges, type Spot } from './pose-settle';
 import type { PictureBox, PicturePoint } from './review';
-import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type GhostPath, type Point, type ShownActors, type StageCamera, type StageLight, type ViewCamera } from './stage';
+import { isPlan, ldrawPoint, NO_ACTORS, type FilmOverlay, type Floor, type GhostPath, type Point, type Reference, type ShownActors, type StageCamera, type StageLight, type ViewCamera } from './stage';
 import { COLOR_VALUES, PART_RESOURCES } from './parts.generated';
 import PARTS_LDRAW from './parts/built-in.ldr';
 import { AutoFocus } from './render/autofocus';
@@ -21,12 +23,13 @@ import { PATH_TRACED_PARTS, type Fidelity } from './render/fidelity';
 import { framedShare, frameView, type FramingAim, type Share, type ViewPoint } from './render/framing';
 import { gradeOf, keyDirection } from './render/grade';
 import { fitKeyShadow, keyEdge } from './render/keyShadow';
-import { drawOverlay, isBlank } from './render/overlay';
+import { drawOverlay, drawReference, isBlank } from './render/overlay';
 import { planAim } from './render/plan';
 import { PathTrace } from './render/pathTrace';
 import { applyGlass, applyMetal, applyPlastic, seamMatrix, tintedColor } from './render/plastic';
-import { PictureFiles, PictureStand } from './render/pictures';
+import { pictureCanvas, PictureFiles, PictureStand } from './render/pictures';
 import { PinMarks } from './render/pins';
+import { PoseRig } from './render/poseRig';
 import { SkyBackdrop } from './render/sky';
 import { createStudio, type Studio } from './render/studio';
 
@@ -50,6 +53,14 @@ const UNKNOWN_COLOR = '#A0A5A9';
  *  faces in any other code are drawn in that color */
 const OWN_COLOR = 16;
 const WHITE = new THREE.Color(1, 1, 1);
+/** how many of a part's points its outline is drawn round, how near a point the set
+ *  must stand to hide it (scene units), and how many pixels across a reference
+ *  picture's edges are read at */
+const OUTLINE_POINTS = 240, HIDES_HAIR = 0.05, EDGES_ACROSS = 640;
+/** the color a posed figure's piece is drawn in where it passes into the set */
+const INTO_SET = new THREE.Color(0xe5352b);
+/** what a piece tried for a crossing is made of: never drawn, both its faces a surface */
+const CROSSED = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 /** a frame with nothing over its picture */
 const NO_OVERLAY: FilmOverlay = { fade: 0 };
 /** the parts the pack holds (the catalog's and their pieces'), the only ones a
@@ -171,7 +182,7 @@ export type View = Readonly<{ azimuth: number; elevation: number; }>;
  *  set's placement it draws (an index into the model's placements; none for a line
  *  the model reads as no placement); an actor's moves with each frame of a stage and
  *  never counts toward the build's bounds */
-type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; finish: Finish | undefined/*plastic*/; key: string; drop: string; placement?: number; matrix: THREE.Matrix4; actor?: true; }>;
+type RenderItem = Readonly<{ ldraw: string; geometry: string; color: string/*hex*/; glass: boolean; finish: Finish | undefined/*plastic*/; key: string; drop: string; placement?: number; matrix: THREE.Matrix4; actor?: true; line?: number/*an actor's: its line among the frame's*/; }>;
 type Drop = { mesh: THREE.InstancedMesh; index: number; matrix: THREE.Matrix4; start: number; };
 
 /** how the keys move the camera, each -1, 0 or 1: forward (or back), right (or
@@ -304,6 +315,21 @@ export class Viewer {
   }));
   private readonly ghostOutlineScene = Object.assign(new THREE.Scene(), { userData: { ghosts: 1 } });
   private readonly ghostOutlineCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  /** a reference picture laid over the stage for whoever poses against it, and its
+   *  image as a picture to draw: on the overlay canvas alone, so never in a capture, a
+   *  thumbnail, a storyboard or the path tracer's picture (SEE: showReference) */
+  private reference: Readonly<{ shown: Reference; picture: HTMLCanvasElement; }> | undefined;
+  private referenceAlone = false;
+  /** the reference picture's edges, read once a picture (SEE: referenceEdges) */
+  private edges: Readonly<{ picture: HTMLCanvasElement; edges: Edges; }> | undefined;
+  /** what a figure posed by hand is marked with, the rig that draws it in the scene's
+   *  own stuff, and the lines of the frame shown that pass into the set, drawn red
+   *  (SEE: showPoseMarks) */
+  private poseMarks: PoseMarks | undefined;
+  private readonly poseRig = new PoseRig(line => { const geometry = this.geometries.get(line.ldraw); return geometry && { geometry, matrix: toScene(line.position, line.matrix) }; }, scenePoint);
+  private flagged: ReadonlySet<number> = new Set();
+  /** the images skies, pictures and a reference name, each read once */
+  private readonly files: PictureFiles;
   private model: Model | undefined;
   private staging: Staging | undefined;
   /** whether the person holds the view over the stage (SEE: holdView), and where it
@@ -343,7 +369,7 @@ export class Viewer {
     const environment = new THREE.PMREMGenerator(this.renderer);
     this.room = environment.fromScene(new RoomEnvironment(), 0.04).texture;
     environment.dispose();
-    const files = new PictureFiles(readImage)/*one read of each image, for skies and pictures alike*/;
+    const files = this.files = new PictureFiles(readImage)/*one read of each image, for skies, pictures and a reference alike*/;
     this.backdrop = new SkyBackdrop(this.renderer, files, () => { this.skyChanged(); this.onPartsChanged?.()/*the status says whether its picture was read*/; });
     this.pictures = new PictureStand(files, () => { this.pathTraceStale = true; this.requestFrame(); this.onPartsChanged?.()/*the status counts the pictures not read*/; });
 
@@ -662,7 +688,7 @@ export class Viewer {
     this.pinMarks.show(this.staging ? undefined : model)/*a stage marks none*/;
     const kept = this.staging ? this.setMeshes.get(model) : undefined;
     const setItems = kept ? [] : renderItems(model)/*a set kept is built*/;
-    const actorItems = actors.lines.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));
+    const actorItems = actorItemsOf(actors.lines);
     this.setParts = partCount(model);
     this.drawnParts = this.setParts + actors.parts;
     this.buildGeometries([...setItems, ...actorItems], model, animate);
@@ -724,7 +750,7 @@ export class Viewer {
     for(const [groupKey, partItems] of byPart) {
       const { geometry, glass, finish, color: tint, actor } = partItems[0];
       const mesh = new THREE.InstancedMesh(this.geometries.get(geometry)!, glass ? this.glassFor(tint) : finish ? this.metalFor(finish) : this.material, partItems.length);
-      if(actor) mesh.userData.actor = groupKey/*how a frame finds the mesh to move*/;
+      if(actor) { mesh.userData.actor = groupKey/*how a frame finds the mesh to move*/; mesh.userData.lines = partItems.map(item => item.line)/*the frame's line each instance draws (SEE: lineUnder)*/; }
       else mesh.userData.placements = partItems.map(item => item.placement)/*what each instance draws, as the picture names it (SEE: placementsAt)*/;
       mesh.castShadow = !glass/*light passes through; the path tracer shades it physically*/;
       mesh.receiveShadow = true;
@@ -902,6 +928,161 @@ export class Viewer {
     });
   }
 
+  /** what a point of the page shows first, through the camera drawn now: where it
+   *  stands in the scene, and the line of the frame's actors it is of (an index into
+   *  the lines last shown; none where it shows the set or the baseplate); none off the
+   *  picture or at the sky */
+  public under(clientX: number, clientY: number): Readonly<{ at: Point; line?: number; }> | undefined {
+    const ray = this.rayAt(clientX, clientY);
+    const hit = ray?.intersectObjects([this.parts, this.pictures.group, ...(this.baseplate ? [this.baseplate] : [])], true)[0];
+    if(!hit) return undefined/*off the picture, or the sky*/;
+    const lines = hit.object.userData.lines as ReadonlyArray<number | undefined> | undefined/*an actor's mesh alone carries them*/;
+    const line = ((hit.instanceId === undefined) || !lines) ? undefined : lines[hit.instanceId];
+    return { at: stagePoint(hit.point), ...((line !== undefined) ? { line } : {}) };
+  }
+
+  /** for each segment of the scene, the line of the frame's actors whose surface it
+   *  first crosses, as they are drawn now: none crossing none. The lines `own` names
+   *  (the actor being posed: `count` of them from `from`) are passed through */
+  public crossing(segments: ReadonlyArray<readonly [Point, Point]>, own: Readonly<{ from: number; count: number; }>): ReadonlyArray<number | undefined> {
+    // the other actors' pieces alone, each a mesh of its own where it is drawn: the
+    // posed actor's own pieces, which every segment lies within, are never tried
+    this.parts.updateMatrixWorld();
+    const others: Array<Readonly<{ piece: THREE.Mesh; toOwn: THREE.Matrix4; box: THREE.Box3; }>> = [];
+    for(const mesh of this.parts.children as THREE.InstancedMesh[]) {
+      const lines = mesh.userData.actor ? mesh.userData.lines as ReadonlyArray<number | undefined> | undefined : undefined;
+      lines?.forEach((line, instance) => {
+        if((line === undefined) || ((line >= own.from) && (line < (own.from + own.count)))) return;
+        const piece = new THREE.Mesh(mesh.geometry, CROSSED);
+        mesh.getMatrixAt(instance, piece.matrixWorld);
+        piece.matrixWorld.premultiply(mesh.matrixWorld);
+        piece.matrixAutoUpdate = piece.matrixWorldAutoUpdate = false;
+        piece.userData.line = line;
+        if(!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        others.push({ piece, toOwn: piece.matrixWorld.clone().invert(), box: mesh.geometry.boundingBox! });
+      });
+    }
+    if(others.length < 1) return segments.map(() => undefined)/*no other actor drawn*/;
+    const ray = new THREE.Raycaster(), [own_, reached] = [new THREE.Ray(), new THREE.Vector3()];
+    return segments.map(([from, to]) => {
+      const [start, end] = [scenePoint(from), scenePoint(to)], along = end.clone().sub(start), length = along.length();
+      if(length < 1e-9) return undefined/*no way to cross anything*/;
+      // only the pieces whose own box the segment reaches are tried against their surfaces: a piece's box in its own frame lies close about it, at any turn
+      const near = others.filter(({ toOwn, box }) => {
+        const [a, b] = [start.clone().applyMatrix4(toOwn), end.clone().applyMatrix4(toOwn)], across = b.clone().sub(a), far = across.length();
+        if(box.containsPoint(a) || box.containsPoint(b)) return true;
+        own_.set(a, across.divideScalar(Math.max(far, 1e-12)));
+        return !!own_.intersectBox(box, reached) && (reached.distanceTo(a) <= far);
+      });
+      if(near.length < 1) return undefined;
+      ray.set(start, along.divideScalar(length));
+      [ray.near, ray.far] = [0, length];
+      return ray.intersectObjects(near.map(({ piece }) => piece), false)[0]?.object.userData.line as number | undefined;
+    });
+  }
+
+  /** where the picture shows a point of the scene, on the page (pixels), through the
+   *  camera drawn now: none behind the camera */
+  public sight(point: Point): readonly [number, number] | undefined {
+    this.camera.updateMatrixWorld();
+    const seen = scenePoint(point);
+    if(seen.clone().applyMatrix4(this.camera.matrixWorldInverse).z > -CAMERA_NEAR) return undefined/*behind the camera*/;
+    seen.project(this.camera);
+    const { left, top, width, height } = this.pictureBox();
+    return [left + (((seen.x + 1) / 2) * width), top + (((1 - seen.y) / 2) * height)];
+  }
+
+  /** where a point of the page meets a level of the scene (`height`, plates), through
+   *  the camera drawn now: none off the picture, or where its ray never comes down (or
+   *  up) to that level */
+  public onLevel(clientX: number, clientY: number, height: number): Point | undefined {
+    const met = this.rayAt(clientX, clientY)?.ray.intersectPlane(new THREE.Plane(UP, -scenePoint({ x: 0, z: 0, height }).y), new THREE.Vector3());
+    return met ? stagePoint(met) : undefined;
+  }
+
+  /** where a point of the page meets the upright plane through `through` that faces
+   *  the camera: how high a thing dragged up or down the picture there stands */
+  public onUpright(clientX: number, clientY: number, through: Point): Point | undefined {
+    const facing = this.camera.getWorldDirection(new THREE.Vector3()).setY(0);
+    if(facing.lengthSq() < 1e-9) return undefined/*seen from straight above: no way up the picture*/;
+    const met = this.rayAt(clientX, clientY)?.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(facing.normalize(), scenePoint(through)), new THREE.Vector3());
+    return met ? stagePoint(met) : undefined;
+  }
+
+  /** which way the camera drawn now looks, level with the ground (a unit: studs east
+   *  and north), and how steeply it looks down on it (radians; 0 level, a quarter turn
+   *  from straight above): how a drag up the picture reads as a move away */
+  public heading(): Readonly<{ x: number; z: number; down: number; }> {
+    const along = this.camera.getWorldDirection(new THREE.Vector3()), level = Math.hypot(along.x, along.z);
+    return (level < 1e-9) ? { x: 0, z: 1, down: Math.PI / 2 } : { x: along.x / level, z: -along.z / level, down: Math.atan2(-along.y, level) };
+  }
+
+  /** a built part's box in its own LDraw frame (LDU): none for a part not built */
+  public pieceBox(ldraw: string): Readonly<{ min: readonly [number, number, number]; max: readonly [number, number, number]; }> | undefined {
+    const box = this.geometries.get(ldraw)?.boundingBox;
+    if(!box) return undefined/*not built*/;
+    // the scene's frame is LDraw's turned half round its x (y and z run the other way), a stud a unit
+    return { min: [box.min.x * LDU_PER_STUD, -box.max.y * LDU_PER_STUD, -box.max.z * LDU_PER_STUD], max: [box.max.x * LDU_PER_STUD, -box.min.y * LDU_PER_STUD, -box.min.z * LDU_PER_STUD] };
+  }
+
+  /** some of the points of a line's part, where the line stands it in the scene: what
+   *  its outline in the picture is drawn round; none for a part not built */
+  public outline(line: PartLine): ReadonlyArray<Point> {
+    const points = this.geometries.get(line.ldraw)?.getAttribute('position');
+    if(!points) return []/*not built*/;
+    const placed = toScene(line.position, line.matrix), step = Math.max(1, Math.ceil(points.count / OUTLINE_POINTS));
+    const outline: Point[] = [];
+    for(let at=0; at<points.count; at+=step) outline.push(stagePoint(new THREE.Vector3().fromBufferAttribute(points, at).applyMatrix4(placed)));
+    return outline;
+  }
+
+  /** whether a part of the set, or the baseplate, stands between the camera drawn now
+   *  and a point of the scene: the picture shows the set there, never the point */
+  public setHides(point: Point): boolean {
+    this.camera.updateMatrixWorld();
+    const [eye, to] = [this.camera.getWorldPosition(new THREE.Vector3()), scenePoint(point)];
+    const far = eye.distanceTo(to);
+    const ray = new THREE.Raycaster(eye, to.clone().sub(eye).normalize(), CAMERA_NEAR, far - HIDES_HAIR);
+    return ray.intersectObjects([...this.parts.children.filter(mesh => !mesh.userData.actor), ...(this.baseplate ? [this.baseplate] : [])], true).length > 0;
+  }
+
+  /** the reference picture's edges as it lies over the stage, and where a point of the
+   *  page falls among them (SEE: pose-settle.ts): read once a picture; none with no
+   *  reference laid */
+  public referenceEdges(): Readonly<{ edges: Edges; spot: (clientX: number, clientY: number) => Spot; }> | undefined {
+    const reference = this.reference;
+    if(!reference) return undefined;
+    if(this.edges?.picture !== reference.picture) {
+      const [width, height] = [EDGES_ACROSS, Math.max(1, Math.round(EDGES_ACROSS * (this.canvas.height / Math.max(this.canvas.width, 1))))];
+      const canvas = Object.assign(document.createElement('canvas'), { width, height }), context = canvas.getContext('2d', { willReadFrequently: true })!;
+      drawReference(context, { ...reference.shown, flip: true }, reference.picture, canvas, width, height);
+      this.edges = { picture: reference.picture, edges: edgesOf(context.getImageData(0, 0, width, height).data, width, height) };
+    } /* else -- that picture's, read already */
+    const { edges } = this.edges, box = this.pictureBox();
+    return { edges, spot: (clientX, clientY) => [((clientX - box.left) / Math.max(box.width, 1)) * edges.width, ((clientY - box.top) / Math.max(box.height, 1)) * edges.height] };
+  }
+
+  /** the picture's box on the page: whole within the canvas's box (a stage drawn at a
+   *  film's size) */
+  private pictureBox(): Readonly<{ left: number; top: number; width: number; height: number; }> {
+    const box = this.canvas.getBoundingClientRect();
+    const scale = Math.min(box.width / Math.max(this.canvas.width, 1), box.height / Math.max(this.canvas.height, 1));
+    const [width, height] = [this.canvas.width * scale, this.canvas.height * scale];
+    return { left: box.left + ((box.width - width) / 2), top: box.top + ((box.height - height) / 2), width, height };
+  }
+
+  /** the ray a point of the page looks along, through the camera drawn now: none off
+   *  the picture */
+  private rayAt(clientX: number, clientY: number): THREE.Raycaster | undefined {
+    const { left, top, width, height } = this.pictureBox();
+    const [x, y] = [(clientX - left) / Math.max(width, 1), (clientY - top) / Math.max(height, 1)];
+    if((x < 0) || (x > 1) || (y < 0) || (y > 1)) return undefined/*off the picture*/;
+    this.camera.updateMatrixWorld();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((x * 2) - 1, 1 - (y * 2)), this.camera);
+    return ray;
+  }
+
   // == Stage =====================================================================
   /** whether a stage is shown in place of the build */
   public get isStaged(): boolean { return !!this.staging; }
@@ -1071,6 +1252,67 @@ export class Viewer {
     try { return work(); } finally { this.ghosts.visible = shown; }
   }
 
+  /** lays a reference picture over the stage's picture where it is shown, whole within
+   *  it (SEE: stage.ts Reference), or takes it down (none); answers its image's size
+   *  once it is read and drawn. An image that cannot be read is refused, whatever lay
+   *  there left as it was */
+  public async showReference(reference: Reference | undefined): Promise<Readonly<{ width: number; height: number; }> | undefined> {
+    const picture = reference && ((this.reference?.shown.image === reference.image) ? this.reference.picture : pictureCanvas(await this.files.pixels(reference.image)));
+    this.reference = (reference && picture) ? { shown: reference, picture } : undefined;
+    this.overlayStale = true;
+    this.requestFrame();
+    await this.whenSettled();
+    return picture && { width: picture.width, height: picture.height };
+  }
+
+  /** shows the reference picture alone, as a drawing is flipped to, while the person
+   *  holds a key to glance at it, or as it lies again */
+  public showReferenceAlone(alone: boolean): void {
+    if(alone === this.referenceAlone) return/*as shown*/;
+    this.referenceAlone = alone;
+    this.overlayStale = true;
+    this.requestFrame();
+  }
+
+  /** marks a figure posed by hand (SEE: pose-gesture.ts PoseMarks, render/poseRig.ts):
+   *  its handles and what it holds as objects and light in the scene, drawn over each
+   *  frame shown and never in a capture, and the lines that pass into the set red from
+   *  the next frame shown; none eases them away. While a figure is posed the frame is
+   *  drawn at once, never path traced: every move shows as it is made */
+  public showPoseMarks(marks: PoseMarks | undefined): void {
+    if(!marks && !this.poseMarks) return/*none drawn, none to draw*/;
+    this.poseMarks = marks;
+    this.flagged = new Set(marks?.into ?? []);
+    this.poseRig.show(marks, this.placementShapes(marks?.stopped?.placements ?? []));
+    this.pathTraceStale = true;
+    this.requestFrame();
+  }
+
+  // the shapes the set drawn now draws for some of its placements: each instance of a
+  // set's mesh that draws one of them (SEE: meshesOf, placementsAt)
+  private placementShapes(placements: ReadonlyArray<number>): ReadonlyArray<Readonly<{ geometry: THREE.BufferGeometry; matrix: THREE.Matrix4; }>> {
+    if(placements.length < 1) return [];
+    const shapes: Array<Readonly<{ geometry: THREE.BufferGeometry; matrix: THREE.Matrix4; }>> = [];
+    this.parts.updateMatrixWorld();
+    this.parts.traverse(object => {
+      const drawn = object.userData.placements as ReadonlyArray<number | undefined> | undefined;
+      if(!drawn || !(object instanceof THREE.InstancedMesh)) return/*no mesh of the set's*/;
+      drawn.forEach((placement, instance) => {
+        if((placement === undefined) || !placements.includes(placement)) return;
+        const matrix = new THREE.Matrix4();
+        object.getMatrixAt(instance, matrix);
+        shapes.push({ geometry: object.geometry, matrix: matrix.premultiply(object.matrixWorld) });
+      });
+    });
+    return shapes;
+  }
+
+  /** draws the pose's rig over the frame just drawn: none while the person's aids are
+   *  hidden (a picture made for the film) */
+  private drawRig(): void {
+    if(this.ghosts.visible && this.poseRig.isShown) this.poseRig.render(this.renderer, this.scene, this.camera);
+  }
+
   /** a frame's picture `width` by `height`, its fade and title drawn over it. Its
    *  parts are built first, unseen, and the studio settled on the frame it shows; then
    *  the frame is drawn, copied and the frame shown put back in one task, so the screen
@@ -1231,7 +1473,7 @@ export class Viewer {
    *  when the frame's parts are not the instances standing, or are not all built yet
    *  (drawing them builds them) */
   private moveActors(actors: ReadonlyArray<PartLine>): boolean {
-    const drawn = actors.filter(isDrawable).map(line => ({ ...renderItem(line, lineKey(line)), actor: true as const }));
+    const drawn = actorItemsOf(actors);
     if(drawn.some(item => !this.prints.has(item.ldraw) || !this.geometries.has(item.geometry))) return false;
     const byGroup = new Map<string, RenderItem[]>();
     for(const item of this.itemsOf(drawn)) {
@@ -1245,7 +1487,8 @@ export class Viewer {
     const real = (this.fidelity >= 1);
     for(const [key, items] of byGroup) {
       const mesh = meshes.get(key)!;
-      items.forEach((item, index) => { mesh.setMatrixAt(index, item.matrix); mesh.setColorAt(index, instanceColor(item, real))/*the instance may stand for another actor now*/; });
+      items.forEach((item, index) => { mesh.setMatrixAt(index, item.matrix); mesh.setColorAt(index, ((item.line !== undefined) && this.flagged.has(item.line)) ? INTO_SET : instanceColor(item, real))/*the instance may stand for another actor now*/; });
+      mesh.userData.lines = items.map(item => item.line);
       mesh.instanceMatrix.needsUpdate = true;
       if(mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.computeBoundingSphere();
@@ -1278,12 +1521,14 @@ export class Viewer {
   }
 
   /** draws the frame now, at the look's immediate render (no refining), over the shot
-   *  a transition leaves */
+   *  a transition leaves, with the person's aids while they are shown: a frame put back
+   *  after a thumbnail keeps its ghosts and its pose's rig */
   private renderNow(): void {
     this.drawLeaving();
     this.effects.focus(this.lens());
     this.effects.render();
     this.outlineGhosts();
+    this.drawRig();
   }
 
   /** the shot a transition leaves, drawn apart as its picture before the frame's:
@@ -1326,8 +1571,13 @@ export class Viewer {
     context.clearRect(0, 0, canvas.width, canvas.height);
     const overlay = this.staging?.overlay;
     if(overlay && !isBlank(overlay)) drawOverlay(context, overlay, canvas.width, canvas.height, this.staging?.left?.picture);
+    if(this.reference) drawReference(context, this.referenceAlone ? { ...this.reference.shown, flip: true } : this.reference.shown, this.reference.picture, this.canvas, canvas.width, canvas.height);
     this.overlayStale = false;
   }
+
+  /** whether the reference shows where it differs from the stage's picture: drawn
+   *  again with every frame, from the picture that frame drew */
+  private referenceDiffers(): boolean { return !!this.reference && !this.reference.shown.flip && (this.reference.shown.view === 'difference'); }
 
   // == Internal ==================================================================
   /** the build's bounds with every part in place (a dropping part counts where it
@@ -1564,15 +1814,16 @@ export class Viewer {
     if(this.autoFocused() && this.autoFocus.frame(moving || this.viewMoved)) this.requestFrame()/*a frame more, to find it at rest*/;
     this.viewMoved = false;
     this.effects.focus(this.lens());
+    const rigging = this.poseRig.isShown && this.poseRig.update(now)/*its lights ease, frame by frame*/;
     const refining = this.render(moving);
-    if(this.overlayStale) this.paintOverlay()/*with the picture it lies over*/;
+    if(this.overlayStale || this.referenceDiffers()) this.paintOverlay()/*with the picture it lies over*/;
 
     const waiters = this.frameWaiters;
     this.frameWaiters = [];
     const settled = (this.drops.length < 1) && !this.tween && (this.building.size < 1) && !this.backdrop.loading && !this.pictures.loading && !this.focusing() && (this.tracing()?.settled ?? true);
     if(settled) { waiters.push(...this.settleWaiters); this.settleWaiters = []; }
     for(const resolve of waiters) resolve();
-    if(moving || (this.drops.length > 0) || refining) this.requestFrame();
+    if(moving || (this.drops.length > 0) || refining || rigging) this.requestFrame();
   }
 
   /** one walk step of `seconds`: moves the camera and the point it orbits together,
@@ -1668,14 +1919,14 @@ export class Viewer {
   private tracer(): PathTrace | undefined { return (this.drawnParts <= PATH_TRACED_PARTS) ? this.pathTrace : undefined; }
   /** the path tracer drawing the frame now: none while parts drop or a transition draws
    *  two shots (each drawn at once), so nothing waits on its refining then */
-  private tracing(): PathTrace | undefined { return ((this.drops.length > 0) || this.staging?.leaving) ? undefined : this.tracer(); }
+  private tracing(): PathTrace | undefined { return ((this.drops.length > 0) || this.staging?.leaving || this.poseMarks || this.poseRig.isShown) ? undefined : this.tracer(); }
 
   /** draws the frame at the current stop; true while the path tracer still refines */
   private render(moving: boolean): boolean {
     this.drawLeaving();
     const refocused = this.autoFocus.takeMoved()/*told once, whichever draws the frame*/;
     const tracer = this.tracing();
-    if(!tracer) { this.effects.render(); this.outlineGhosts(); return false; }
+    if(!tracer) { this.effects.render(); this.outlineGhosts(); this.drawRig(); return false; }
 
     if(this.pathTraceStale) {
       const { plate, free } = this.tracedBaseplate();
@@ -1713,6 +1964,10 @@ const renderItem = (line: PartLine, drop: string): RenderItem => ({
   ldraw: line.ldraw, geometry: line.ldraw, ...drawnColor(line.colorCode),
   key: lineKey(line), drop, matrix: toScene(line.position, line.matrix),
 });
+
+/** a frame's actors' lines as items, each knowing its line among them (SEE: lineUnder) */
+const actorItemsOf = (lines: ReadonlyArray<PartLine>): RenderItem[] =>
+  lines.flatMap((line, index) => isDrawable(line) ? [{ ...renderItem(line, lineKey(line)), actor: true as const, line: index }] : []);
 
 /** the color an item's instance is drawn in: glass white (its material carries the
  *  tint), plastic its color, varied a little per part in the real looks */
@@ -1808,6 +2063,8 @@ const sliceVertices = (geometry: THREE.BufferGeometry, start: number, count: num
 const screenPixelRatio = (): number => Math.min(window.devicePixelRatio || 1, 2);
 /** a stage's point in the scene */
 const scenePoint = (point: Point): THREE.Vector3 => new THREE.Vector3(...ldrawPoint(point)).applyMatrix4(LDRAW_TO_SCENE);
+/** a point of the three.js scene in the scene's own units (SEE: scenePoint, its inverse) */
+const stagePoint = ({ x, y, z }: THREE.Vector3): Point => ({ x, z: -z, height: y * (LDU_PER_STUD / LDU_PER_PLATE) });
 /** a box's eight corners */
 const boxCorners = ({ min, max }: THREE.Box3): THREE.Vector3[] => [0, 1, 2, 3, 4, 5, 6, 7].map(corner => new THREE.Vector3((corner & 1) ? max.x : min.x, (corner & 2) ? max.y : min.y, (corner & 4) ? max.z : min.z));
 

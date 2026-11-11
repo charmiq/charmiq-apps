@@ -5,9 +5,10 @@ import { skyFrom } from '../../brick-shared/sky';
 
 import type { Build } from './build';
 import type { PartLine } from './grid';
+import { PoseControl, type PoseElements } from './pose-control';
 import { probe, probeInput, type Probed } from './probe';
 import type { Sheet } from './sheet';
-import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, figurePartsOf, floorOf, followOf, ghostsOf, gripsOf, heldShotsOf, lightOf, marksOf, pathOf, pictureOf, reelHeaderOf, reelPageOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Point, type Refusal, type Rest, type Shot, type Size } from './stage';
+import { boardsOf, bottomsOf, cameraOf, captureOf, castOf, figurePartsOf, floorOf, followOf, ghostsOf, gripsOf, heldShotsOf, isFigure, lightOf, marksOf, pathOf, pictureOf, poseOf, reelHeaderOf, reelPageOf, referenceOf, setsOf, shotLines, shotsOf, shownActors, sizesOf, stagedSetOf, stageFloor, thumbnailOf, viewOf, STAGE_VERSION, type Cast, type Follow, type Leaving, type Marks, type ReelFrame, type ReelHeader, type Point, type Reference, type Refusal, type Rest, type Shot, type Size, type StageCamera, type Turn } from './stage';
 import type { Viewer } from './viewer';
 
 // the studio on stage: another Application (a film) stages a scene and shows it in
@@ -22,6 +23,10 @@ import type { Viewer } from './viewer';
 // whatever waits for the reel it ends. A storyboard shows frames of the reel on the
 // sheet until the film next shows or stages a frame. The build is never written: an
 // edit made while staged reaches the build, and the strip says the build changed.
+// A reference picture lies over the stage for whoever poses against it, through every
+// frame and stage until it is taken down or the build shows again. An actor of a frame
+// is handed to the person to pose by hand on the picture (SEE: pose-control.ts): every
+// move is drawn here, and the film is told the figure's shot once a gesture ends.
 // Full screen, the strip carries the film's controls: play or pause, the frame
 // scrubbed to, the film's time (Space and the arrows besides). The film plays, so a
 // press is asked of it (each ask counted on the state, the latest named) and the
@@ -33,6 +38,16 @@ const LEFT = 'The person went back to the build: stage the scene again to go on.
 const UNSTAGED = 'Nothing is staged: call stage first.';
 const STORYBOARD = 'Your Charm is looking at the film\'s storyboard';
 const BACK_TO_FILM = 'Back to the film';
+/** the keys pressed over the studio that are the film's while an actor is posed: Enter
+ *  (the key written), Escape (the pose left), the arrows left and right (a frame
+ *  stepped) and, with Ctrl or ⌘, z (a change undone; with Shift, done again) */
+const FILM_KEYS: ReadonlyArray<string> = ['Enter', 'Escape', 'ArrowLeft', 'ArrowRight'];
+const UNDO_KEY = 'z';
+/** the keys held over the studio to glance: at the reference alone, and at the drawing
+ *  before the frame posed alone */
+const REFERENCE_KEY = 'r', BEFORE_KEY = 'e';
+/** the key that settles the part last held onto the reference picture */
+const SETTLE_KEY = 's';
 
 // == Types =======================================================================
 /** the strip's elements: the strip, what it says, its way back, and the film's
@@ -58,8 +73,14 @@ export type StageState =
   | Readonly<{ kind: 'staged'; reel?: number; frame?: number; }>
   | Readonly<{ kind: 'left'; }>;
 /** what the person asks of the film from the studio's controls: to play, to pause,
- *  or to show a frame (from 0) */
-export type Ask = Readonly<{ kind: 'play'; } | { kind: 'pause'; } | { kind: 'seek'; frame: number; }>;
+ *  or to show a frame (from 0); and, while an actor is posed by hand (SEE: pose), the
+ *  actor's shot as each gesture leaves it, with its pinned foot (none: null), and each
+ *  key the film takes pressed over the studio */
+export type Ask = Readonly<
+  | { kind: 'play'; } | { kind: 'pause'; } | { kind: 'seek'; frame: number; }
+  | { kind: 'posed'; actor: string; position: Point; turn: Turn; pose?: Shot['pose']; pin: 'leftLeg' | 'rightLeg' | null; }
+  | { kind: 'key'; key: string; shift: boolean; alt: boolean; }
+>;
 /** the screen's state as a film follows it: the stage's, whether the studio holds a
  *  build (a film takes its sets from the one that does), the build's sets by name,
  *  how many times the build has changed since the studio opened (a film's file knows
@@ -107,6 +128,14 @@ export class StageControl {
   private edits = 0;
   /** the actor followed through the film, while one is (SEE: follow) */
   private followed: Follow | undefined;
+  /** the reference picture laid over the stage, while one is (SEE: reference) */
+  private referenced: Reference | undefined;
+  /** the actor posed by hand on the picture, while one is (SEE: pose), the frame it is
+   *  posed in (its set and its camera), and what the person glances at while a key is
+   *  held */
+  private readonly poser: PoseControl;
+  private posedIn: Readonly<{ set: number; camera: StageCamera; }> | undefined;
+  private glancing: 'reference' | 'before' | undefined;
   /** the frame the picture shows, while a stage stands, and each time it changes */
   private drawn: Drawn | undefined;
   private readonly redrawn = new Subject<void>();
@@ -118,12 +147,18 @@ export class StageControl {
   private asked: Ask | undefined;
   private readonly state = new BehaviorSubject<ScreenState>({ kind: 'none', build: false, sets: [], edits: 0, asks: 0 });
 
-  public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build, private readonly sheet: Pick<Sheet, 'show' | 'hide'>) {
+  public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build, private readonly sheet: Pick<Sheet, 'show' | 'hide'>, pose?: PoseElements) {
+    this.poser = new PoseControl(viewer, { draw: shots => this.drawPosed(shots), posed: (shot, pin) => this.ask({ kind: 'posed', actor: shot.name, position: shot.position, turn: shot.turn, ...(shot.pose ? { pose: shot.pose } : {}), pin: pin ?? null }) }, pose);
     elements.view.addEventListener('click', () => this.holdView(!this.viewer.isViewHeld));
     elements.back.addEventListener('click', () => { this.left = true; this.end(); });
     elements.play.addEventListener('click', () => this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' }));
     elements.scrub.addEventListener('input', () => this.ask({ kind: 'seek', frame: elements.scrub.valueAsNumber }));
     studio.addEventListener('keydown', event => this.key(event));
+    studio.addEventListener('keyup', event => this.keyUp(event));
+    // a pose's gestures, taken before the view's own: a press on the figure never turns the view
+    studio.addEventListener('pointerdown', event => this.pointer(event, () => this.poser.pointerDown(event)), true);
+    studio.addEventListener('pointermove', event => this.pointer(event, () => this.poser.pointerMove(event)), true);
+    studio.addEventListener('pointerup', event => this.pointer(event, () => this.poser.pointerUp(event)), true);
   }
 
   // == Stage =====================================================================
@@ -185,6 +220,7 @@ export class StageControl {
     this.wanted = undefined/*a frame of the reel before*/;
     this.left = false;
     this.followed = undefined/*the film follows its actor again once staged*/;
+    this.endPose()/*the film poses its actor again on the stage staged*/;
     [this.shownFrame, this.playing] = [0, false];
     this.viewer.useSky(skied)/*before the first set is shown under it*/;
     this.viewer.showStage(cast.sets.map(set => set.shown)/*each set without the pieces cast*/, stageFloor(area, staged), keep === true);
@@ -235,6 +271,53 @@ export class StageControl {
     return { followed: this.followed?.actor ?? null, ghosts: this.ghost() };
   }
 
+  /** lays a reference picture over the stage for whoever poses against it (SEE:
+   *  stage.ts Reference), answering its image and its size once it is read and drawn;
+   *  none takes it down. It stands through a stage staged again, and goes when the
+   *  build is shown again. A picture that cannot be read is refused, the stage left
+   *  as it was */
+  public async reference(input: unknown): Promise<Readonly<{ reference: string | null; width?: number; height?: number; }>> {
+    const reference = referenceOf(input);
+    if(reference && !this.cast) throw new Error('Nothing is staged to lay a reference picture over: call stage first.');
+    if(!reference) {
+      if(this.referenced) { this.referenced = undefined; await this.viewer.showReference(undefined); }
+      return { reference: null };
+    } /* else -- a picture to lay over the stage */
+    let size: Readonly<{ width: number; height: number; }> | undefined;
+    try { size = await this.viewer.showReference(reference); }
+    catch(error) { throw new Error(`The reference picture could not be read: ${(error as Error).message}`); }
+    this.referenced = reference;
+    return { reference: reference.image, ...size };
+  }
+
+  /** hands an actor of a frame to the person to pose by hand on the picture (SEE:
+   *  pose-control.ts): the frame is shown as a frame call shows it (its set, its actors'
+   *  shots, its camera) and from now a part of that actor dragged turns its joint, its
+   *  hips carry it, its ring turns it and a foot pressed pins it, each gesture drawn
+   *  here and told to the film once it ends (asked: posed), with the keys the film
+   *  takes. Called again it stands the actor as the film says (a change undone, a value
+   *  typed); with no actor, and when the film shows a frame, a scene is staged or the
+   *  build is shown again, the pose ends */
+  public pose(set: unknown, actors: unknown, camera: unknown, input: unknown): Promise<Readonly<{ posing: string | null; }>> {
+    return this.after(async () => {
+      const cast = this.cast;
+      const named = ((typeof input === 'object') && (input !== null) && ((input as Readonly<{ actor?: unknown; }>).actor !== undefined));
+      if(!cast && named) throw new Error('Nothing is staged to pose an actor on: call stage first.');
+      const posed = cast && poseOf(cast, input);
+      if(!cast || !posed) { this.endPose(); return { posing: null }; }
+      const standing = stagedSetOf(cast, set);
+      const shots = shotsOf(cast, actors);
+      if(!shots.some(shot => shot.name === posed.actor)) throw new Error(`pose.actors shows the actor posed: ${posed.actor} is not among them`);
+      this.sheet.hide()/*the stage moves on from a storyboard*/;
+      this.posedIn = { set: standing, camera: cameraOf(camera) };
+      this.drawPosed(shots);
+      this.poser.begin(cast, cast.sets[standing].shown, shots, posed.actor, isFigure(cast, posed.actor), bottomsOf(cast), posed.pin);
+      this.ghost()/*its drawings before, as the pose's own onion skin*/;
+      this.redrawn.next();
+      return { posing: posed.actor };
+    });
+  }
+
   // == Reel ======================================================================
   /** loads a page of the reel's frames at `from`, the count loaded so far; a page
    *  that breaks any frame is refused whole */
@@ -266,6 +349,7 @@ export class StageControl {
 
     return this.after(async () => {
       const cast = this.ensure(loaded);
+      this.endPose()/*the film's frame, in the pose's place*/;
       this.applied++;
       const picture = this.pictureOf(loaded, shot, undefined);
       this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving), true/*through its own camera*/);
@@ -336,6 +420,7 @@ export class StageControl {
       const shots = shotsOf(cast, actors);
       const view = cameraOf(camera);
       const size = captureOf(capture);
+      this.endPose()/*a frame of its own, in the pose's place*/;
       this.applied++/*a reel frame waiting to be drawn is no longer the one shown*/;
       this.viewer.showFrame(shownActors(cast, shots), view, undefined/*no overlay*/, standing, undefined/*no transition*/, !!size/*a capture through its own camera*/);
       this.setDrawn({ set: standing, shots });
@@ -371,6 +456,7 @@ export class StageControl {
     const loaded = this.reel, cast = this.cast;
     if(!loaded || !cast || (loaded.id !== reel)) return/*the reel ended while it waited*/;
     const shot = loaded.frames[frame];
+    this.endPose()/*the film's frame, in the pose's place*/;
     const applied = ++this.applied;
     const picture = this.pictureOf(loaded, shot, undefined);
     this.viewer.showFrame(shownActors(cast, shot.shots), picture.camera, picture.overlay, shot.set, this.leavingShot(cast, picture.leaving));
@@ -385,6 +471,56 @@ export class StageControl {
   private setDrawn(drawn: Drawn | undefined): void {
     this.drawn = drawn;
     this.redrawn.next();
+  }
+
+  // .. Pose ......................................................................
+  /** draws the frame an actor is posed in with its shots as the pose stands them. The
+   *  reel's frame the pose stands on is still told once drawn: the film waits on that
+   *  word for a frame it sought, and hands the actor over meanwhile */
+  private drawPosed(shots: ReadonlyArray<Shot>): void {
+    const cast = this.cast, posed = this.posedIn;
+    if(!cast || !posed) return/*the stage ended*/;
+    this.viewer.showFrame(shownActors(cast, shots), posed.camera, undefined/*no overlay*/, posed.set);
+    this.drawn = { set: posed.set, shots };
+  }
+
+  /** ends the pose under way, and any glance held with it */
+  private endPose(): void {
+    if(this.glancing === 'reference') this.viewer.showReferenceAlone(false);
+    [this.posedIn, this.glancing] = [undefined, undefined];
+    this.poser.end();
+  }
+
+  /** a pointer's event over the studio while an actor is posed: the pose's when it
+   *  takes it (a press on the picture takes the keys with it), else the view's */
+  private pointer(event: PointerEvent, taken: () => boolean): void {
+    const canvas = event.target as HTMLElement | null;
+    if((this.poser.actor === undefined) || this.glancing || (canvas?.tagName !== 'CANVAS')) return/*not posing, or over the studio's controls*/;
+    if((event.type === 'pointerdown') && (typeof canvas.focus === 'function')) { canvas.tabIndex = -1; canvas.focus({ preventScroll: true }); }
+    if(!taken()) return/*the view's*/;
+    if(event.type === 'pointerdown') canvas.setPointerCapture?.(event.pointerId)/*the gesture's until it is let go, wherever it goes*/;
+    event.stopPropagation();
+    event.preventDefault();
+  }
+
+  /** shows what a key held glances at, or lets it back: the reference picture alone,
+   *  or the drawing before the frame posed alone (the reel's last frame before the one
+   *  shown whose shot of the actor differs from that frame's) */
+  private glance(show: 'reference' | 'before' | undefined): void {
+    const cast = this.cast, loaded = this.reel, actor = this.poser.actor, shots = this.drawn?.shots;
+    if((show === this.glancing) || !cast || (actor === undefined)) return/*as shown*/;
+    if(this.glancing === 'reference') this.viewer.showReferenceAlone(false);
+    else if((this.glancing === 'before') && shots && this.posedIn) this.viewer.showFrame(shownActors(cast, shots), this.posedIn.camera, undefined, this.posedIn.set)/*the pose as it stands, again*/;
+    this.glancing = undefined;
+    if(show === 'reference') { this.viewer.showReferenceAlone(true); this.glancing = show; }
+    else if((show === 'before') && loaded && this.posedIn) {
+      const shotAt = (frame: number) => JSON.stringify(loaded.frames[frame]?.shots.find(shot => shot.name === actor) ?? null);
+      let before = this.shownFrame - 1;
+      while((before >= 0) && (shotAt(before) === shotAt(this.shownFrame))) before--;
+      if(before < 0) return/*the first drawing: none before*/;
+      this.viewer.showFrame(shownActors(cast, loaded.frames[before].shots), this.posedIn.camera, undefined, loaded.frames[before].set);
+      this.glancing = show;
+    } /* else -- nothing to glance at */
   }
 
   /** the reel staged that `reel` names, with its cast, or why there is none */
@@ -421,9 +557,11 @@ export class StageControl {
   private end(): void {
     this.sheet.hide();
     this.cast = undefined/*nothing staged*/;
+    this.endPose()/*no actor to pose*/;
     this.reel = undefined;
     this.wanted = undefined;
     this.setDrawn(undefined/*the build*/);
+    if(this.referenced) { this.referenced = undefined; void this.viewer.showReference(undefined)/*the stage's, gone with it*/; }
     this.viewer.unstage();
     this.showHeld();
     this.show(undefined/*no strip*/);
@@ -435,8 +573,11 @@ export class StageControl {
    *  no actor is followed or no reel is loaded); answers how many ghosts */
   private ghost(): number {
     const loaded = this.reel, cast = this.cast, follow = this.followed;
-    if(!loaded || !cast || !follow) { this.viewer.showGhosts([], undefined, { before: 0, after: 0 }); return 0; }
+    if(!loaded || !cast || !follow) { this.viewer.showGhosts([], undefined, { before: 0, after: 0 }); this.poser.showBefore([]); return 0; }
     const ghosts = ghostsOf(loaded.frames, loaded.header.fps, this.shownFrame, follow);
+    // while that actor is posed, its drawings before stand as frosted figures of the pose's own rig; followed no more, or another followed, they are taken down
+    if(this.poser.actor === follow.actor) { this.viewer.showGhosts([], undefined, follow); this.poser.showBefore(ghosts.filter(ghost => ghost.offset < 0).flatMap(({ shot }) => shotLines(cast, [shot]))); return ghosts.length; }
+    this.poser.showBefore([]);
     this.viewer.showGhosts(ghosts.map(({ shot, offset }) => ({ lines: shotLines(cast, [shot]), offset })), pathOf(cast, loaded.frames, loaded.header.fps, this.shownFrame, follow), follow);
     return ghosts.length;
   }
@@ -467,6 +608,19 @@ export class StageControl {
    *  person holds the view: then it lifts the camera), the arrows step a frame (a second
    *  with Shift) */
   private key(event: KeyboardEvent): void {
+    // while an actor is posed: a key held glances, and the film's keys are asked of it
+    if((this.poser.actor !== undefined) && this.reel) {
+      const held = (event.ctrlKey || event.metaKey || event.altKey) ? undefined : (event.key.toLowerCase() === REFERENCE_KEY) ? 'reference' as const : (event.key.toLowerCase() === BEFORE_KEY) ? 'before' as const : undefined;
+      if(held) { this.glance(held); event.preventDefault(); return; }
+      const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
+      if(plain && (event.key.toLowerCase() === SETTLE_KEY)) { this.poser.settle(); event.preventDefault(); return; }
+      if(plain && ((event.key === 'Enter') || (event.key === 'Escape')) && this.poser.answer(event.key === 'Enter')) { event.preventDefault(); return; }/*a settle taken or left: no key of the film's*/
+      if((event.ctrlKey || event.metaKey) ? (event.key.toLowerCase() === UNDO_KEY) : FILM_KEYS.includes(event.key)) {
+        this.ask({ kind: 'key', key: event.key.toLowerCase() === UNDO_KEY ? UNDO_KEY : event.key, shift: event.shiftKey, alt: event.altKey });
+        event.preventDefault();
+        return;
+      } /* else -- not the pose's */
+    } /* else -- not posing: the film's controls, full screen */
     const header = this.reel?.header;
     if(!header || !isFullScreen(this.studio) || event.altKey || event.ctrlKey || event.metaKey) return;
     if(event.key === ' ') { if(this.viewer.isViewHeld) return/*the camera's: up*/; this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' }); }
@@ -475,6 +629,12 @@ export class StageControl {
       this.ask({ kind: 'seek', frame: Math.max(0, Math.min(header.length - 1, this.shownFrame + step)) });
     } else return/*not the film's*/;
     event.preventDefault();
+  }
+
+  /** a key let go over the studio: what it glanced at let back */
+  private keyUp(event: KeyboardEvent): void {
+    const key = event.key.toLowerCase();
+    if(((key === REFERENCE_KEY) && (this.glancing === 'reference')) || ((key === BEFORE_KEY) && (this.glancing === 'before'))) this.glance(undefined);
   }
 
   /** the film's controls as the reel stands: hidden with none, else at its frame */

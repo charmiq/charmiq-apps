@@ -3,7 +3,7 @@ import { BehaviorSubject, Subject, type Observable, type Subscription } from 'rx
 import type { CharmIQAPI } from '../../../shared/charmiq';
 import type { PoseBottoms } from '../../brick-shared/rise';
 import { bodiesThrough, clearanceOf, groundedOn, type Avoided, type Probe } from './clearance';
-import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandAsk, type HandProbe, type HeldItem, type Paint, type Rest, type StageFacts } from './film';
+import { handsOf, planMarksOf, reelFrameOf, sceneTimesOf, stagedSets, type Film, type FilmFrame, type HandAsk, type HandProbe, type HeldItem, type Paint, type Rest, type Shot, type StageFacts } from './film';
 import { groundsOf, surfacesIn, surfacesOf, surfacesProbed, type CellArea, type ExtentProbe, type GroundProbe, type SurfaceProbe } from './ground';
 import { posedSizes, type Size } from './measure';
 import type { FigurePart, Point, Recorded } from './recorder';
@@ -36,7 +36,7 @@ const COMMANDS = 'charmiq.command';
  *  busy studio answering later joins then */
 const PROBE_MILLIS = 3_000/*ms*/;
 /** the stage commands a studio speaks */
-const STAGE_VERSION = 16;
+const STAGE_VERSION = 17;
 /** the frames a reel loads at a time (Brick Studio's MAX_REEL_PAGE) */
 const REEL_PAGE = 240/*frames*/;
 /** how long the main screen has to draw a frame a Charm seeks to */
@@ -46,9 +46,15 @@ const SHOWN_MILLIS = 10_000/*ms*/;
 /** makes a scene's film once staged, with what the stage answered of its cast and the
  *  ground under each actor following it (SEE: film.ts filmOf) */
 export type FilmFor = (facts: StageFacts) => Film;
-/** what the person asks of the film from a studio's controls (SEE: Brick Studio's
+/** what the person asks of the film from a studio's controls, and, while an actor is
+ *  posed by hand on it, the actor's shot as each gesture leaves it with its pinned foot
+ *  (none: null) and each key the film takes pressed there (SEE: Brick Studio's
  *  stage-control.ts Ask) */
-export type Ask = Readonly<{ kind: 'play'; } | { kind: 'pause'; } | { kind: 'seek'; frame: number; }>;
+export type Ask = Readonly<
+  | { kind: 'play'; } | { kind: 'pause'; } | { kind: 'seek'; frame: number; }
+  | { kind: 'posed'; actor: string; position: Point; turn: Readonly<{ yaw: number; pitch: number; roll: number; }>; pose?: Readonly<Partial<Record<string, number>>>; pin: 'leftLeg' | 'rightLeg' | null; }
+  | { kind: 'key'; key: string; shift: boolean; alt: boolean; }
+>;
 /** a studio's state as its stream tells it: its stage's, whether it holds a build, its
  *  build's sets, how many times its build has changed, and how many times the person
  *  asked something of the film from its controls, the latest named */
@@ -65,6 +71,8 @@ export interface StudioCommands {
   follow(args: object): Promise<Readonly<{ followed: string | null; ghosts: number; }>>;
   thumbnail(args: object): Promise<Readonly<{ image: ImageBitmap; }>>;
   storyboard(args: object): Promise<Readonly<{ shown: number; }>>;
+  pose(args: object): Promise<Readonly<{ posing: string | null; }>>;
+  reference(args: object): Promise<Readonly<{ reference: string | null; width?: number; height?: number; }>>;
   getModel(args: object): Promise<Readonly<{ ldraw?: string; nextLine?: number; conflict?: string; }>>;
   setModel(args: object): Promise<unknown>;
   clear(args: object): Promise<unknown>;
@@ -85,18 +93,22 @@ export type StageState = Readonly<
   | { kind: 'none'; }
   | { kind: 'ambiguous'; builds: number; }
   | { kind: 'staging'; loaded?: number; frames?: number; }/*the reel's frames loaded on every screen, once it loads*/
-  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; sizes: Readonly<Record<string, Size>>; grips: Readonly<Record<string, Point>>; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }
+  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; bottoms?: PoseBottoms; sizes: Readonly<Record<string, Size>>; grips: Readonly<Record<string, Point>>; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }
   | { kind: 'left'; }
   | { kind: 'failed'; message: string; }
 >;
 
 /** a frame on a storyboard: the frame and what its caption says */
 export type Board = Readonly<{ frame: number; caption: string; }>;
+/** a reference picture as a studio lays it over its stage: its image, and how it lies
+ *  there (SEE: Brick Studio's stage.ts Reference) */
+export type ReferenceShown = Readonly<{ image: string; opacity: number; view: 'over' | 'difference'; flip: boolean; }>;
 
 /** a film staged: its scene and film, the screens it is on (the main first), each
  *  screen's reel, the main build's changes counted as it staged (SEE: buildEdits) and
- *  the probes of its surfaces, its sets' extents and its hands it staged with */
-type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; edits: number; surfaceProbe: SurfaceProbe; extentProbe: ExtentProbe; handProbe: HandProbe; }>;
+ *  the probes of its surfaces, its sets' extents and its hands it staged with; `cast`,
+ *  the actors the stage cast (one it refused is in no frame shown) */
+type Staged = Readonly<{ scene: Recorded; film: Film; screens: ReadonlyArray<StudioCommands>; reels: ReadonlyArray<number>; cast: ReadonlySet<string>; edits: number; surfaceProbe: SurfaceProbe; extentProbe: ExtentProbe; handProbe: HandProbe; }>;
 
 // == Class =======================================================================
 export class Studios {
@@ -283,8 +295,8 @@ export class Studios {
         await Promise.all(screens.map((screen, index) => screen.loadReel({ reel: reels[index], from, frames: page })));
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
-      this.staged = { scene, film, screens, reels: reels as number[], edits, surfaceProbe, extentProbe, handProbe };
-      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], sizes: posedSizes(answer.sizes ?? {}, facts.figures, facts.bottoms), grips: answer.grips ?? {}, parts, avoided });
+      this.staged = { scene, film, screens, reels: reels as number[], cast, edits, surfaceProbe, extentProbe, handProbe };
+      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], ...(facts.bottoms ? { bottoms: facts.bottoms } : {}), sizes: posedSizes(answer.sizes ?? {}, facts.figures, facts.bottoms), grips: answer.grips ?? {}, parts, avoided });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
     }
@@ -304,7 +316,7 @@ export class Studios {
    *  frame shown live, its keys (the film's seconds) marked (SEE: Brick Studio's
    *  follow); none to follow no one. A studio that cannot follows no one: the ghosts
    *  are the person's aid, never the film's */
-  public follow(follow: Readonly<{ actor: string; keys: ReadonlyArray<number>; }> | undefined): void {
+  public follow(follow: Readonly<{ actor: string; keys: ReadonlyArray<number>; before?: number; after?: number; }> | undefined): void {
     const staged = this.ready();
     if(!staged) return/*nothing staged: the state says why*/;
     for(const screen of staged.screens) screen.follow(follow ?? {}).catch(error => console.warn('stop-motion: a studio follows no one:', error));
@@ -335,6 +347,35 @@ export class Studios {
     const staged = this.ready();
     if(!staged) throw new Error(notStaged(this.state.value));
     return (await staged.screens[0].storyboard({ reel: staged.reels[0], frames, ...((view !== undefined) ? { view } : {}) })).shown;
+  }
+
+  /** hands an actor of a frame to the person to pose by hand on the main screen (SEE:
+   *  pose-view.ts, Brick Studio's pose): the frame's set, camera and actors as the reel
+   *  shows them, with the actor's `shot` in its own's place (or beside them, the frame
+   *  hiding it) and its pinned foot named. The studio draws every move and tells each
+   *  gesture's end as an ask. Nothing is staged or loaded: the film's next frame shows
+   *  the reel again and ends the pose, as no frame does. Refuses while the film is not
+   *  staged */
+  public async pose(frame: FilmFrame | undefined, shot?: Shot, pin?: 'leftLeg' | 'rightLeg'): Promise<void> {
+    const staged = this.ready();
+    if(!staged) throw new Error(notStaged(this.state.value));
+    if(!frame || !shot) { await staged.screens[0].pose({}); return; }
+    // asked once this turn's frame is: a frame of the reel shown after a pose ends it, and
+    // the player tells the frame it moves to before it shows it
+    await Promise.resolve();
+    const shown = castOnly(frame, staged.cast);
+    const actors = shown.actors.some(each => each.name === shot.name) ? shown.actors.map(each => (each.name === shot.name) ? shot : each) : [...shown.actors, shot];
+    await staged.screens[0].pose({ actor: shot.name, ...(pin ? { pin } : {}), ...((frame.set !== undefined) ? { set: frame.set } : {}), actors, camera: frame.camera });
+  }
+
+  /** lays a reference picture over the main screen's stage (SEE: Brick Studio's
+   *  reference), answering its size once it is read and drawn; none takes it down.
+   *  Refuses while the film is not staged, and a picture the studio cannot read */
+  public async reference(reference: ReferenceShown | undefined): Promise<Readonly<{ width: number; height: number; }> | undefined> {
+    const staged = this.ready();
+    if(!staged) throw new Error(notStaged(this.state.value));
+    const { width, height } = await staged.screens[0].reference(reference ?? {});
+    return ((width !== undefined) && (height !== undefined)) ? { width, height } : undefined;
   }
 
   /** the surfaces over every cell of an area of a set, asked of the main screen as

@@ -1,6 +1,6 @@
-import type { SoundCue } from './recorder';
+import type { Key, SoundCue } from './recorder';
 
-// the edits the timeline and the Gait mode make to the scene's code, each one range of it measured on
+// the edits the timeline, the Gait mode and the Pose mode make to the scene's code, each one range of it measured on
 // the whole scene as it was read (SEE: apps/codemirror-editor's editText, refused once
 // the scene has changed since): a sound added is its own line at the scene's end; a
 // sound moved is its time rewritten where its call writes it, on the line the
@@ -11,7 +11,11 @@ import type { SoundCue } from './recorder';
 // written: the scene as edited must play the sounds the scene did, with only that one
 // added or moved. A gait shaped is its call's keys rewritten in place (or its own
 // line at the scene's start, the scene naming none), refused where the scene writes
-// them as anything but `{ ... }`
+// them as anything but `{ ... }`. A key posed is the values given rewritten where its
+// call writes them, its time (often an expression) and every other value as written,
+// or, on a frame holding no key, a held key on its own line after the actor's last;
+// what it keys is checked as a sound's edit is: the scene as edited must hold the keys
+// the scene did, with only that one changed or added
 // ********************************************************************************
 // == Types =======================================================================
 /** one range of the scene's code, `from` to `to` (offsets into `measured`, the whole
@@ -19,6 +23,9 @@ import type { SoundCue } from './recorder';
 export type SceneEdit = Readonly<{ measured: string; from: number; to: number; text: string; }>;
 /** an edit the scene cannot take, and why */
 export type Refusal = Readonly<{ refused: string; }>;
+/** an actor as a key's edit reads it: its name, the line the scene declares it on and
+ *  its keys */
+export type Keyed = Readonly<{ name: string; line?: number; keys: ReadonlyArray<Key>; }>;
 
 // == Edits =======================================================================
 /** the edit that plays a Platform file from `time`: its own line at the scene's end,
@@ -89,6 +96,49 @@ export const writtenGait = (keys: Readonly<Record<string, unknown>>): Readonly<R
 /** whether two gaits' keys say the same: the same keys, the same numbers */
 export const sameGait = (one: Readonly<Record<string, unknown>> | undefined, other: Readonly<Record<string, unknown>> | undefined): boolean => JSON.stringify(sorted(one ?? {})) === JSON.stringify(sorted(other ?? {}));
 
+/** the edit that writes `values` (each by its channel, a pose's joint as `pose.<joint>`)
+ *  into an actor's key. With the `key` a frame holds, only those values are rewritten
+ *  where its call writes them on its line (one the key lacks added), its time and
+ *  every other value as written; refused when its call cannot be told on its line, or
+ *  its values (or its pose, a joint given) are written as anything but `{ ... }` of
+ *  `name: value` pairs. With none, a held key at `time` is its own line after the
+ *  statement of the actor's last key (of its declaration, the actor having none), under
+ *  the name the scene declares the actor by; refused when the scene declares it under
+ *  none */
+export const rekey = (code: string, actor: Keyed, key: Key | undefined, time: number, values: Readonly<Record<string, number>>): SceneEdit | Refusal => {
+  const runs = inert(code);
+  if(key) {
+    const line = lineAt(code, key.line);
+    if(!line) return { refused: 'Its line in the scene is not known' };
+    // each key the line writes: its call's arguments
+    const calls = [...runs.slice(line.start, line.end).matchAll(KEY_CALL)].flatMap(call => { const given = argumentsOf(runs, line.start + call.index + call[0].length - 1); return given ? [given] : []; });
+    if(calls.length < 1) return { refused: `No key is found on line ${key.line}: change it there` };
+    const timed = calls.filter(([at]) => { const written = at ? code.slice(...at) : ''; return NUMBER.test(written) && (Math.abs(Number(written) - key.time) < TIME_EPSILON); });
+    const found = (calls.length === 1) ? calls[0] : (timed.length === 1) ? timed[0] : undefined/*which of them is not told*/;
+    if(!found) return { refused: `Line ${key.line} writes more than one key: change it there` };
+    const given = found[1];
+    if(!given || (runs[given[0]] !== '{') || (closing(runs, given[0]) !== (given[1] - 1))) return { refused: `Its values are not written as { ... } on line ${key.line}: change them there` };
+    const text = valuesRewritten(code, runs, given[0], given[1] - 1, values);
+    if(text === 'values') return { refused: `Its values are not written as name: value pairs on line ${key.line}: change them there` };
+    if(text === 'pose') return { refused: `Its pose is not written as { ... } on line ${key.line}: change it there` };
+    return { measured: code, from: given[0], to: given[1], text: text.written };
+  } /* else -- no key on the frame: one of its own */
+
+  const declared = lineAt(code, actor.line);
+  if(!declared) return { refused: 'Its line in the scene is not known' };
+  const name = [...runs.slice(declared.start, declared.end).matchAll(DECLARED)].find(call => { const [from, to] = call.indices![3]!; return code.slice(declared.start + from, declared.start + to) === actor.name; })?.[1];
+  if(name === undefined) return { refused: `The name the scene declares '${actor.name}' by is not found on line ${actor.line}: add its key there` };
+  // past the statement its last key ends (a call chained over lines, values over lines)
+  const last = lineAt(code, Math.max(...actor.keys.flatMap(each => (each.line !== undefined) ? [each.line] : []), actor.line!/*by contract: its line read above*/))!/*by contract: a line the scene ran*/;
+  const end = statementEnd(runs, last.start);
+  const call = `${name}.at(${timeText(time)}, ${valuesLiteral(values)}, 'hold')`;
+  if(')}]'.includes(runs[end] ?? ' ')) return { measured: code, from: end, to: end, text: `; ${call} ` }/*its block ends on its line*/;
+  const indent = /^[ \t]*/.exec(code.slice(declared.start, declared.end))![0];
+  const ended = /;\s*$/.test(runs.slice(last.start, end)) ? ';' : ''/*as its statement ends*/;
+  const at = Math.min(code.length, end + 1);
+  return { measured: code, from: at, to: at, text: `${(end >= code.length) ? '\n' : ''}${indent}${call}${ended}\n` };
+};
+
 /** whether an edit, or what it plays, refused */
 export const isRefusal = <T extends object>(result: T | Refusal): result is Refusal => 'refused' in result;
 
@@ -117,6 +167,27 @@ export const sameSounds = (one: ReadonlyArray<SoundCue>, other: ReadonlyArray<So
   return (a.length === b.length) && a.every((key, index) => key === b[index]);
 };
 
+// == What an Edit Keys ===========================================================
+/** the keys a scene's `actors` hold once `actor`'s `key` takes `values` (each to the
+ *  thousandth, as written), or, with no key, once it holds a held key of them at `time` */
+export const keysRekeyed = (actors: ReadonlyArray<Keyed>, actor: string, key: Key | undefined, time: number, values: Readonly<Record<string, number>>): ReadonlyArray<Keyed> => {
+  const taken = Object.fromEntries(Object.entries(values).map(([channel, value]) => [channel, thousandth(value)]));
+  return actors.map(each => {
+    if(each.name !== actor) return each;
+    if(!key) return { ...each, keys: [...each.keys, { time: Number(timeText(time)), values: taken, ease: 'hold' as const }] };
+    const at = each.keys.findIndex(held => (held.line === key.line) && (Math.abs(held.time - key.time) < TIME_EPSILON));
+    return { ...each, keys: each.keys.map((held, index) => (index === at) ? { ...held, values: { ...held.values, ...taken } } : held) };
+  });
+};
+
+/** whether two scenes' actors hold the same keys: each actor's times, values and
+ *  eases, in any order, wherever their lines stand */
+export const sameKeys = (one: ReadonlyArray<Keyed>, other: ReadonlyArray<Keyed>): boolean => {
+  const keys = (actors: ReadonlyArray<Keyed>) => actors.map(({ name, keys: held }) => JSON.stringify([name, held.map(({ time, values, ease }) => JSON.stringify([time, sorted(values), ease])).sort()])).sort();
+  const [a, b] = [keys(one), keys(other)];
+  return (a.length === b.length) && a.every((key, index) => key === b[index]);
+};
+
 // == Internal ====================================================================
 // a sound's call in code: `at(` or `sound(`, its time (group 1, up to its comma) and
 // its sound (group 3, a quoted string, its contents blanked: SEE: inert), the places
@@ -127,6 +198,19 @@ const UNTIL = /\buntil\s*:\s*([^,{}()]*?)\s*(?=[,}])/d;
 // a gait's call in code: `gait(` and its name (group 2, a quoted string, its contents
 // blanked: SEE: inert), the places kept (`d`)
 const GAIT_CALL = /\bgait\(\s*(['"])( *)\1/dg;
+// a key's call in code: `.at(`, up to its opening parenthesis
+const KEY_CALL = /\.\s*at\s*\(/g;
+// an actor declared under a name: the name (group 1) and the actor's own (group 3, a
+// quoted string, its contents blanked: SEE: inert), the places kept (`d`)
+const DECLARED = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*actor\s*\(\s*(['"])( *)\2/dg;
+// a value's name before its colon, in a `{ ... }` of `name: value` pairs
+const PAIR_NAME = /^([A-Za-z_$][\w$]*)\s*:\s*/;
+// the values a key's `{ ... }` writes, in the order a key written whole names them, and
+// a pose's joints in theirs
+const KEY_VALUES = ['x', 'z', 'height', 'yaw', 'pitch', 'roll', 'visible'];
+const POSE_JOINTS = ['head', 'hat', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg', 'lean', 'leftWrist', 'rightWrist', 'twist'];
+// a pose's joint as a key's channel names it
+const POSE = 'pose.';
 // a time written as a number
 const NUMBER = /^\d+(?:\.\d+)?$/;
 // a time past a cue's that rounding alone puts there (seconds)
@@ -137,6 +221,13 @@ const LINE_BREAKS = /[\n\r\u2028\u2029]+/g;
 
 // a time as the scene writes it: seconds to the millisecond, no trailing zeros
 const seconds = (time: number): string => String(Number(Math.max(0, time).toFixed(3)));
+
+// a key's time as the scene writes it: the frame's own exactly, since a key stands on a
+// frame only at its time (to the millisecond where that is the same time)
+const timeText = (time: number): string => { const at = Math.max(0, time); return (Number(seconds(at)) === at) ? seconds(at) : String(at); };
+
+// a key's value as the scene writes it: to the thousandth, never -0
+const thousandth = (value: number): number => Number(value.toFixed(3)) || 0;
 
 // text as a single-quoted string literal of the scene's: its quotes, backslashes and
 // line breaks escaped
@@ -195,6 +286,103 @@ const closing = (runs: string, open: number): number | undefined => {
     else if(')}]'.includes(runs[at]) && (--depth === 0)) return at;
   }
   return undefined/*never closed*/;
+};
+
+// a call's arguments in code alone (`runs`), its parenthesis opening at `open`: where
+// each stands, its surrounding space left out; none when the call never closes
+const argumentsOf = (runs: string, open: number): ReadonlyArray<readonly [number, number]> | undefined => {
+  const close = closing(runs, open);
+  return (close === undefined) ? undefined : listed(runs, open + 1, close);
+};
+
+// the pieces between `from` and `to` in code alone that commas part at that depth: where
+// each stands, its surrounding space left out, an empty one (a comma trailing) left out
+const listed = (runs: string, from: number, to: number): ReadonlyArray<readonly [number, number]> => {
+  const pieces: Array<readonly [number, number]> = [];
+  let depth = 0, start = from;
+  const take = (end: number) => {
+    let [first, last] = [start, end];
+    while((first < last) && /\s/.test(runs[first])) first++;
+    while((last > first) && /\s/.test(runs[last - 1])) last--;
+    if(last > first) pieces.push([first, last]);
+  };
+  for(let at=from; at<to; at++) {
+    if('({['.includes(runs[at])) depth++;
+    else if(')}]'.includes(runs[at])) depth--;
+    else if((runs[at] === ',') && (depth === 0)) { take(at); start = at + 1; }
+  }
+  take(to);
+  return pieces;
+};
+
+// the `name: value` pairs a `{ ... }` writes (its braces at `open` and `close`): each
+// name and where its value stands; none when a piece of it is anything else (a spread, a
+// name alone, a name computed or quoted)
+const pairsOf = (runs: string, open: number, close: number): ReadonlyArray<Readonly<{ name: string; value: readonly [number, number]; }>> | undefined => {
+  const pairs = listed(runs, open + 1, close).map(([from, to]) => { const named = PAIR_NAME.exec(runs.slice(from, to)); return named ? { name: named[1], value: [from + named[0].length, to] as const } : undefined; });
+  return pairs.every(pair => pair !== undefined) ? pairs : undefined;
+};
+
+// a key's `{ ... }` (its braces at `open` and `close`) with `values` written into it:
+// each value it names rewritten where it stands, each it lacks added after its last, a
+// pose's joints within its pose's `{ ... }` the same way; 'values' or 'pose' when that
+// is written as anything but `{ ... }` of `name: value` pairs
+const valuesRewritten = (code: string, runs: string, open: number, close: number, values: Readonly<Record<string, number>>): Readonly<{ written: string; }> | 'values' | 'pose' => {
+  const pairs = pairsOf(runs, open, close);
+  if(!pairs) return 'values';
+  const changes: Array<Readonly<{ from: number; to: number; text: string; }>> = [];
+  // writes `given` (name and value, in order) into the pairs of a `{ ... }`
+  const write = (braces: readonly [number, number], within: NonNullable<ReturnType<typeof pairsOf>>, given: ReadonlyArray<readonly [string, string]>) => {
+    const added = given.filter(([name]) => !within.some(pair => pair.name === name)).map(([name, value]) => `${name}: ${value}`);
+    for(const [name, value] of given) { const pair = within.find(each => each.name === name); if(pair) changes.push({ from: pair.value[0], to: pair.value[1], text: value }); }
+    if(added.length < 1) return/*every value named already*/;
+    const last = within[within.length - 1];
+    changes.push(last ? { from: last.value[1], to: last.value[1], text: `, ${added.join(', ')}` } : { from: braces[0] + 1, to: braces[1], text: ` ${added.join(', ')} ` });
+  };
+  const own = ordered(Object.keys(values).filter(channel => !channel.startsWith(POSE)), KEY_VALUES).map(channel => [channel, String(thousandth(values[channel]))] as const);
+  const joints = ordered(Object.keys(values).filter(channel => channel.startsWith(POSE)).map(channel => channel.slice(POSE.length)), POSE_JOINTS).map(joint => [joint, String(thousandth(values[`${POSE}${joint}`]))] as const);
+  const pose = pairs.find(pair => pair.name === 'pose');
+  if((joints.length > 0) && pose) {
+    const posed = ((runs[pose.value[0]] === '{') && (closing(runs, pose.value[0]) === (pose.value[1] - 1))) ? pairsOf(runs, pose.value[0], pose.value[1] - 1) : undefined;
+    if(!posed) return 'pose';
+    write([pose.value[0], pose.value[1] - 1], posed, joints);
+  } /* else -- no joint given, or no pose written: one of its own */
+  write([open, close], pairs, [...own, ...(((joints.length > 0) && !pose) ? [['pose', `{ ${joints.map(([joint, value]) => `${joint}: ${value}`).join(', ')} }`] as const] : [])]);
+  let written = code.slice(open, close + 1);
+  for(const { from, to, text } of [...changes].sort((a, b) => b.from - a.from)) written = written.slice(0, from - open) + text + written.slice(to - open);
+  return { written };
+};
+
+// a key's values written whole as the scene writes them: each in order, a pose's joints
+// in its pose
+const valuesLiteral = (values: Readonly<Record<string, number>>): string => {
+  const own = ordered(Object.keys(values).filter(channel => !channel.startsWith(POSE)), KEY_VALUES).map(channel => `${channel}: ${thousandth(values[channel])}`);
+  const joints = ordered(Object.keys(values).filter(channel => channel.startsWith(POSE)).map(channel => channel.slice(POSE.length)), POSE_JOINTS).map(joint => `${joint}: ${thousandth(values[`${POSE}${joint}`])}`);
+  const all = [...own, ...((joints.length > 0) ? [`pose: { ${joints.join(', ')} }`] : [])];
+  return (all.length < 1) ? '{}' : `{ ${all.join(', ')} }`;
+};
+
+// names in the order `order` lists them, any it does not list after them as given
+const ordered = (names: ReadonlyArray<string>, order: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const place = (name: string) => { const at = order.indexOf(name); return (at < 0) ? order.length : at; };
+  return [...names].sort((a, b) => place(a) - place(b));
+};
+
+// where the statement on the line starting at `from` ends in code alone: the line break
+// it ends at (the code's end, with none), past values written over lines and calls
+// chained onto later lines; or the bracket closing its block, when that ends on its line
+const statementEnd = (runs: string, from: number): number => {
+  let depth = 0, at = from;
+  for(; at<runs.length; at++) {
+    if('({['.includes(runs[at])) depth++;
+    else if(')}]'.includes(runs[at])) { if(depth === 0) break/*its block's end*/; depth--; }
+    else if(LINE_BREAK.test(runs[at]) && (depth === 0)) {
+      let next = at + 1;
+      while(/\s/.test(runs[next] ?? '')) next++;
+      if(runs[next] !== '.') break/*the next line is a statement of its own*/;
+    }
+  }
+  return at;
 };
 
 // the `until` in a call's options: from `after` (past its sound) to the call's closing

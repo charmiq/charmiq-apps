@@ -78,7 +78,7 @@ const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/
 const stage = new StageControl({
   root: element('staged'), note: element('stagedNote'), view: element('stagedView'), back: element('stagedBack'),
   film: element('stagedFilm'), play: element('stagedPlay'), scrub: element('stagedScrub'), time: element('stagedTime'),
-}, studio, viewer, build, sheet);
+}, studio, viewer, build, sheet, { stage: canvas, hint: element('poseHint'), readout: element('poseReadout'), label: element('poseReadoutLabel'), value: element<HTMLInputElement>('poseReadoutValue'), note: element('poseReadoutNote') });
 const commands = new CommandSurface(build, designs, shippedPictures, viewer, lookAround, stage, look);
 const review = new ReviewControl({ root: document.querySelector<SVGSVGElement>('#reviewMarks')!/*by contract*/, shown: document.querySelector<SVGGElement>('#reviewShown')!/*by contract*/, drawn: document.querySelector<SVGGElement>('#reviewDrawn')!/*by contract*/ }, studio, viewer, stage, () => standStill());
 /** why the last ground change was refused, until the build next changes */

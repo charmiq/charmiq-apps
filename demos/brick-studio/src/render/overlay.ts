@@ -1,4 +1,4 @@
-import type { FilmOverlay } from '../stage';
+import type { FilmOverlay, Reference } from '../stage';
 import { drawPlan } from './plan';
 
 // what lies over a film's frame: the shot it leaves in a transition (its picture drawn
@@ -8,7 +8,8 @@ import { drawPlan } from './plan';
 // picture where it is shown and into every capture, so the film is whole wherever it
 // is seen. A title stands over a fade; a card fills the frame in the studio's type, a
 // caption runs along its foot. A frame seen through a plan has its plan's marks in
-// their place (SEE: plan.ts)
+// their place (SEE: plan.ts). And what lies over the stage for the person alone: a
+// reference picture to pose against, drawn where the stage is shown and into no capture
 // ********************************************************************************
 /** the type a card is set in, and a caption */
 const CARD_FONT = 'Inter, \'Helvetica Neue\', Arial, sans-serif';
@@ -75,6 +76,29 @@ export const drawOverlay = (context: CanvasRenderingContext2D | OffscreenCanvasR
     context.fillRect((width - band) / 2, height * 0.84, band, height * 0.09);
     context.fillStyle = PAPER;
     context.fillText(title.text, width / 2, height * 0.885, width * 0.88);
+  }
+  context.restore();
+};
+
+/** draws a reference picture over a stage's picture `width` by `height` at the
+ *  context's origin (SEE: stage.ts Reference): whole within it, at its opacity; alone
+ *  when flipped to; or, as a difference, the stage's picture (`stage`) with the
+ *  reference's taken from it, so wherever the two match goes dark */
+export const drawReference = (context: CanvasRenderingContext2D, { opacity, view, flip }: Reference, picture: HTMLCanvasElement, stage: CanvasImageSource, width: number, height: number): void => {
+  const scale = Math.min(width / picture.width, height / picture.height);
+  const [w, h] = [picture.width * scale, picture.height * scale], [x, y] = [(width - w) / 2, (height - h) / 2];
+  context.save();
+  if(flip) context.drawImage(picture, x, y, w, h);
+  else if(view === 'difference') {
+    context.beginPath();
+    context.rect(x, y, w, h);
+    context.clip();
+    context.drawImage(stage, 0, 0, width, height);
+    context.globalCompositeOperation = 'difference';
+    context.drawImage(picture, x, y, w, h);
+  } else {
+    context.globalAlpha = opacity;
+    context.drawImage(picture, x, y, w, h);
   }
   context.restore();
 };

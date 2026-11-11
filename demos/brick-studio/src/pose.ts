@@ -117,6 +117,16 @@ export const posedPieces = (part: CatalogPart, pose: Pose | undefined, colors?: 
   return [...lines, ...gear];
 };
 
+/** the part of the figure each of `posedPieces`' lines is, in their order, as whoever
+ *  poses it picks one: a hand by its slot, any other piece of a limb by the limb, what
+ *  is left (its hips) so named, then each accessory worn by its slot (a hat, and what a
+ *  hand holds with the hand) */
+export const posedParts = (part: CatalogPart, worn: ReadonlyArray<Slot> = []): string[] => [
+  ...(part.pieces ?? []).map((_, index) =>
+    (['rightHand', 'leftHand'] as const).find(slot => part.slots?.[slot]?.piece === index) ?? LIMBS.find(limb => part.limbs?.[limb].pieces.includes(index)) ?? 'hips'),
+  ...SLOTS_IN_ORDER.filter(slot => worn.includes(slot)),
+];
+
 /** the piece a slot's accessory takes its place from: a hat's head turned by the
  *  pose's `hat` about the head's own vertical through its origin, its stud (SEE:
  *  FRAME_LIMBS); any other slot's piece as posed */

@@ -1,5 +1,6 @@
 import { lightToneOf, type KeyFrom } from '../../brick-shared/light';
 import { hipsOver, poseRise, type BodyBox, type Joint, type PoseBottoms, HIPS } from '../../brick-shared/rise';
+import { isImageName } from '../../brick-shared/shipped';
 import { turnOf as turnOfRotation, twistedYaw } from '../../brick-shared/turn';
 
 import { toGear, toPosing } from './build';
@@ -8,7 +9,7 @@ import { occupiedCells } from './check';
 import { cellsFootprint, compose, copyTransform, footprint, footprintSize, filledCells, getColor, getPart, getShape, gridPosition, ldrawPosition, matrixRotation, partLines, placedLines, rotationMatrix, BASEPLATE_MAX, LDU_PER_PLATE, LDU_PER_STUD, MAX_COORDINATE, type Copy, type FilledCell, type Footprint, type Gear, type PartLine, type Placement, type Rotation, type Transform } from './grid';
 import { drawnLines, parseSets, placedPartCount, sameSetName, withoutParts, type Component, type Model, MAIN_SET } from './model';
 import { HELD_GEOMETRY, POSE_GEOMETRY } from './parts.generated';
-import { bankOf, pieceLines, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS, TWIST } from './pose';
+import { bankOf, pieceLines, posedParts, swingOf, turnOf, type FrameLimb, type Limb, type Pose, FRAME_LIMBS, LIMBS, SLOTS_IN_ORDER, TWIST } from './pose';
 
 // a stage: a scene the studio shows in place of its build while another Application
 // (a film) drives it. Its sets are a build's, each shown as it is: LDraw text's, or
@@ -31,7 +32,7 @@ import { bankOf, pieceLines, swingOf, turnOf, type FrameLimb, type Limb, type Po
 // ********************************************************************************
 // == Constants ===================================================================
 /** the version of the stage commands (describeStage) */
-export const STAGE_VERSION = 16;
+export const STAGE_VERSION = 17;
 /** the widest a frame's lens opens (an f-number); it stops down without end */
 const MIN_APERTURE = 1;
 /** the farthest a frame's lens shifts, up or down (shares of the picture's height) */
@@ -77,6 +78,10 @@ export const MAX_GHOST_SECONDS = 10;
 export const MAX_FOCUS_KEYS = 2_000;
 /** the seconds a focus reaches each way when it names none */
 const DEFAULT_GHOST_SECONDS = 2;
+/** what a figure's own line is called among its parts: its torso */
+const TORSO = 'torso';
+/** how strongly a reference picture shows over the stage when it names no opacity */
+const DEFAULT_REFERENCE_OPACITY = 0.5;
 /** the longest mark label */
 const MAX_LABEL = 40/*characters*/;
 /** the most frames a storyboard shows, and its longest caption */
@@ -202,6 +207,10 @@ type Actor = Readonly<{
    *  frame (studs east, plates up, studs north) */
   grip?: Point;
   lines: (pose: Pose | undefined, rolled: number, face?: string, hands?: Hands) => PartLine[];
+  /** the part of it each of its `lines` is, in their order, holding what a frame's hands
+   *  name: a figure cast as a dressed part (SEE: shotParts). None for what has no parts
+   *  to pick */
+  partsOf?: (hands?: Hands) => string[];
 }>;
 
 /** where a placed actor's piece stands in the set, and a figure's pose there: a shot of
@@ -663,6 +672,8 @@ const partActor = (catalogPart: CatalogPart, standing: Placement): Actor => {
     parts: 1,
     holds: !!catalogPart.slots?.rightHand,
     lines: (pose, rolled, worn, hands) => partLines(shape, holding({ ...standing, ...(pose ? { pose: { ...standing.pose, ...pose } } : {}), ...((worn !== undefined) ? { face: worn } : {}) }, hands), colorCode, origin, rolled),
+    // its own line its torso, then its pieces and what it wears (SEE: grid.ts partLines)
+    ...(catalogPart.limbs ? { partsOf: (hands?: Hands) => { const dressed = holding(standing, hands); return [TORSO, ...posedParts(catalogPart, SLOTS_IN_ORDER.filter(slot => dressed[slot]))]; } } : {}),
   };
 };
 
@@ -813,6 +824,31 @@ export const NO_ACTORS: ShownActors = { lines: [], parts: 0 };
 export const shownActors = (cast: Cast, shots: ReadonlyArray<Shot>): ShownActors =>
   ({ lines: shotLines(cast, shots), parts: shots.reduce((total, shot) => total + cast.actors.get(shot.name)!/*by contract: shotsOf*/.parts, 0) });
 
+/** the part of its actor each line a shot draws is, in `shotLines`' order: a figure's
+ *  torso, head, each arm, hand and leg, its hips, and what it wears and holds with what
+ *  carries it (SEE: pose.ts posedParts); none for a line of an actor with no parts to
+ *  pick */
+export const shotParts = (cast: Cast, shot: Shot): ReadonlyArray<string | undefined> => {
+  const actor = cast.actors.get(shot.name)!/*by contract: shotsOf*/;
+  return actor.partsOf?.(shot.hands) ?? actor.lines(shot.pose, shot.rolled, shot.face, shot.hands).map(() => undefined);
+};
+
+/** the actor a pose call hands to the person to pose by hand, and its pinned foot, or
+ *  none to end posing: an actor the stage casts, and a leg of a figure */
+export const poseOf = (cast: Cast, input: unknown): Readonly<{ actor: string; pin?: 'leftLeg' | 'rightLeg'; }> | undefined => {
+  const { actor, pin } = ((typeof input === 'object') && (input !== null)) ? input as Record<string, unknown> : {};
+  if(actor === undefined) return undefined/*posing ended*/;
+  const named = (typeof actor === 'string') ? cast.actors.get(actor) : undefined;
+  if((typeof actor !== 'string') || !named) throw new Error('pose.actor names an actor the stage casts');
+  if(pin === undefined) return { actor };
+  if(!named.partsOf) throw new Error(`pose.pin is a foot of a figure: ${actor} has none`);
+  if((pin !== 'leftLeg') && (pin !== 'rightLeg')) throw new Error('pose.pin is the leg whose foot is pinned: leftLeg or rightLeg');
+  return { actor, pin };
+};
+
+/** whether a cast actor is a figure, with parts to pose */
+export const isFigure = (cast: Cast, actor: string): boolean => !!cast.actors.get(actor)?.partsOf;
+
 // -- Ghosts ----------------------------------------------------------------------
 /** an actor followed through the film: its ghosts reach `before` and `after` seconds
  *  about the frame shown, and its path marks its keys (the film's seconds) */
@@ -949,6 +985,24 @@ export const viewOf = (input: unknown): string | undefined => {
   if(input === undefined) return undefined/*the main camera*/;
   if(!isName(input)) throw new Error(`view names one of the frames' views (at most ${MAX_NAME} characters)`);
   return input;
+};
+
+/** a reference picture laid over the stage for whoever poses against it: its image (a
+ *  Drive file, or a picture Brick Studio ships, by name), how strongly it shows (0 to
+ *  1), whether it lies over the stage's picture or shows where the two differ, and
+ *  whether it shows alone (flipped to, as a drawing is flipped to under another). The
+ *  person's aid, never the film's: no capture, thumbnail or storyboard shows it */
+export type Reference = Readonly<{ image: string; opacity: number; view: 'over' | 'difference'; flip: boolean; }>;
+
+/** the reference a reference call gives, or none to take it down (no image named) */
+export const referenceOf = (input: unknown): Reference | undefined => {
+  const { image, opacity = DEFAULT_REFERENCE_OPACITY, view = 'over', flip = false } = ((typeof input === 'object') && (input !== null)) ? input as Record<string, unknown> : {};
+  if(image === undefined) return undefined/*taken down*/;
+  if(!isImageName(image)) throw new Error('reference.image is a picture: a charmiq://file/ uri, or a picture Brick Studio ships by name');
+  if(!isFiniteNumber(opacity) || (opacity < 0) || (opacity > 1)) throw new Error('reference.opacity is how strongly the picture shows over the stage, 0 to 1');
+  if((view !== 'over') && (view !== 'difference')) throw new Error('reference.view is over (the picture over the stage) or difference (where the two differ)');
+  if(typeof flip !== 'boolean') throw new Error('reference.flip is whether the picture shows alone: true or false');
+  return { image, opacity, view, flip };
 };
 
 /** a page of frames a loadReel call gives, the first being frame `from`; a frame

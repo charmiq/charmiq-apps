@@ -506,7 +506,9 @@ const pushed = (glide: number[], i: number, value: number) => {
 };
 
 // == Drawing =====================================================================
-const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, parent: Element): HTMLElementTagNameMap[K] => {
+/** an element of a class made in its parent, as a mode builds its own (SEE:
+ *  pose-view.ts) */
+export const element = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, parent: Element): HTMLElementTagNameMap[K] => {
   const made = document.createElement(tag);
   if(className) made.className = className;
   parent.appendChild(made);

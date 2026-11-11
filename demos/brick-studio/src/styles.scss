@@ -67,6 +67,69 @@
 }
 .studio.is-marking .review-marks { pointer-events: auto; cursor: crosshair; touch-action: none; }
 
+// the only words over the picture while a figure is posed on it: the line that says
+// what the hands do, along its top, and the readout beside the part held (its name and
+// its angle, typed into for an exact one, a hair off the point held); each on a dark
+// glass that blurs the picture behind it
+.pose-hint, .pose-readout {
+  position: absolute;
+  z-index: 3;
+  border: 1px solid rgba(255, 253, 242, 0.14);
+  background: rgba(16, 15, 13, 0.46);
+  backdrop-filter: blur(14px) saturate(1.3);
+  color: #FFFDF2;
+  font: 500 11px/1.4 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  &[hidden] { display: none; }
+}
+.pose-hint {
+  top: 22px;
+  left: 50%;
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  margin: 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: rgba(255, 253, 242, 0.86);
+  pointer-events: none;
+
+  // at the picture's foot, over the bar, while a control stands under its place at the top
+  &.is-low { top: auto; bottom: 64px; }
+}
+.pose-readout {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+  // it stands where it is put and keeps its width whatever it reads: every digit as wide as another
+  font-variant-numeric: tabular-nums;
+
+  // the smaller word after the number: the way a figure faces, while the number is the turn swept
+  .pose-readout-note { min-width: 13ch; margin-left: 4px; font-size: 9px; color: rgba(255, 253, 242, 0.62); &[hidden] { display: none; } }
+
+  input {
+    width: 7ch;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px dashed rgba(255, 253, 242, 0.5);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: right;
+    appearance: textfield;
+    &::-webkit-inner-spin-button { appearance: none; }
+    &:focus { outline: none; border-bottom: 1px solid #3FA9F5; }
+  }
+}
+
 // == Bar =========================================================================
 .bar {
   position: absolute;

@@ -88,6 +88,9 @@ export type TimelineHost = Readonly<{
   viewed: (span: Readonly<{ from: number; to: number; }>) => void;
   /** shapes how an actor walks (its walk's band double-clicked: SEE gait-view.ts) */
   gait: (actor: string) => void;
+  /** poses an actor at the frame shown (its lane double-clicked off a walk: SEE
+   *  pose-view.ts) */
+  pose: (actor: string) => void;
   /** follows an actor through the film in the studios, its ghosts and path drawn (its
    *  row's name pressed); none to follow no one */
   followActor: (actor: string | undefined) => void;
@@ -204,10 +207,14 @@ export class Timeline {
     this.scroller.addEventListener('dblclick', event => {
       // the band under the pointer: the press before scrubbed, so the lanes hold the
       // pointer and the event's target is theirs
-      const mark = this.root.ownerDocument.elementsFromPoint(event.clientX, event.clientY).find((under): under is HTMLElement => (under instanceof HTMLElement) && under.classList.contains('band'));
+      const under = this.root.ownerDocument.elementsFromPoint(event.clientX, event.clientY).filter((each): each is HTMLElement => each instanceof HTMLElement);
+      const mark = under.find(each => each.classList.contains('band'));
       const laid = mark && this.laid.find(each => each.bands.includes(mark));
-      if(this.marking || !mark || !laid || !isWalk(laid.row, laid.row.bands[laid.bands.indexOf(mark)])) return/*marking, or not a walk*/;
-      this.host.gait(laid.row.track.name);
+      if(this.marking) return/*marking: a span, never a mode*/;
+      if(mark && laid && isWalk(laid.row, laid.row.bands[laid.bands.indexOf(mark)])) { this.host.gait(laid.row.track.name); return; }
+      // anywhere else on an actor's lane: the actor posed at the frame the press sought
+      const posed = this.laid.find(each => under.includes(each.lane));
+      if(posed && (posed.row.track.kind === 'actor')) this.host.pose(posed.row.track.name);
     });
     this.scroller.addEventListener('pointermove', event => {
       if(this.selecting) { this.select(event); return; }
