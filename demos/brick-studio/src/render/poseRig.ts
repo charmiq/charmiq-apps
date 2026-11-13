@@ -427,6 +427,8 @@ export class PoseRig {
       placed(new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.08, 0.06, 28), head), new THREE.Vector3(0, 0.43, 0)),
       placed(new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.07, 0.17, 28), head), new THREE.Vector3(0, 0.54, 0)),
       placed(new THREE.Mesh(new THREE.SphereGeometry(0.09, 28, 18).scale(1, 0.62, 1), head), new THREE.Vector3(0, 0.63, 0)),
+      // its head again, seen dimmed through whatever stands before it: a foot seen from behind hides its own pin
+      placed(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.11, 28, 18), new THREE.MeshBasicMaterial({ color: 0xe5352b, transparent: true, opacity: THROUGH_HELD, depthTest: false, depthWrite: false })), { renderOrder: 5 }), new THREE.Vector3(0, 0.55, 0)),
     );
     this.rod.add(new THREE.Mesh(new THREE.CylinderGeometry(ROD, ROD, 1, 28, 1, true).translate(0, 0.5, 0), this.rodClear), new THREE.Mesh(new THREE.CylinderGeometry(ROD_FOOT, ROD_FOOT, 0.07, 48).translate(0, 0.035, 0), this.rodClear));
     this.scene.add(this.pool, this.studs, this.ripple, this.ghosts, this.preview, this.ring, this.arc, this.rod, this.pin, this.knob);

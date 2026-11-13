@@ -40,8 +40,8 @@ const STRIDE = 0.25, STRIDE_TURN = 10;
 const CLICK_TURN = 15, CLICK_REACH = 0.3;
 /** a figure's feet, the footprint it stands and clicks on: two studs across, one along */
 export const FEET: Readonly<{ width: number; depth: number; }> = { width: 2, depth: 1 };
-/** how far up a figure carried across the set steps (plates): a brick and a half */
-const STEP_UP = 4.5;
+/** how far up a figure carried across the set steps (plates): two bricks */
+const STEP_UP = 6;
 /** how far within its box a piece's points are tried against the set (LDU): a piece
  *  resting on a surface, or touching a wall, stands clear */
 const WITHIN = 2;
@@ -373,6 +373,25 @@ export const heldShort = (from: Shot, to: Shot, passes: (shot: Shot) => boolean,
       if(passes(halfway)) [low, best] = [half, halfway]; else [high, past] = [half, halfway];
     }
     return { shot: best, past };
+  }
+  return { shot: to };
+};
+
+/** a figure carried from one footing to another (SEE: setDown), held back as a gesture
+ *  is (SEE: heldShort). Between two levels it goes as a hand lifts it: up where it
+ *  stands and then across, or across and then down, never through a step's corner on
+ *  the straight line between. Stopped on the way up, over or down, it stays where it
+ *  stood (never hung in the air); stopped going across on its own level, it stands as
+ *  far as it passed */
+export const carriedShort = (from: Shot, to: Shot, passes: (shot: Shot) => boolean): Readonly<{ shot: Shot; past?: Shot; }> => {
+  const over = Math.max(from.position.height, to.position.height);
+  if(from.position.height === to.position.height) return heldShort(from, to, passes);
+  const raised = (shot: Shot): Shot => ({ ...shot, position: { ...shot.position, height: over } });
+  let at = from;
+  for(const leg of [raised(from), raised(to), to]) {
+    const { shot, past } = heldShort(at, leg, passes);
+    if(past) return { shot: ((at === from) && (shot.position.height === from.position.height)) ? shot/*across its own level*/ : from, past };
+    at = leg;
   }
   return { shot: to };
 };

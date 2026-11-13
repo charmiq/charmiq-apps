@@ -7,8 +7,9 @@ import { contactOf, draftFrom, draftKey, draftOf, filmedOf, keyOn, onionReach, p
 import type { Point } from './recorder';
 import { type ReferenceAt, type ReferenceLook, DEFAULT_LOOK } from './pose-reference';
 
-// the Pose mode: one figure posed at one frame against a reference picture, in the
-// timeline's place. The hands are on the film's picture: the studio is handed the
+// the Pose mode: one figure posed at one frame against a reference picture, in a strip
+// over the timeline, which stays: its rows and keys find the frame posed, and it scrubs
+// and steps as ever. The hands are on the film's picture: the studio is handed the
 // figure where the film stands it at the frame, and the person poses it there by hand
 // (a limb dragged, the figure carried and clicked onto studs, turned by its ring, a
 // foot pinned: SEE Brick Studio's pose). What they pose comes back as the draft, drawn
@@ -36,6 +37,9 @@ const GROUPS: ReadonlyArray<readonly [string, ReadonlyArray<readonly [channel: s
 const PLACE: ReadonlyArray<string> = ['x', 'z', 'height'];
 /** how far a value stands from the film's before it is a draft */
 const DRAFTED = 1e-9;
+/** how many times a pose left is tried to be written before it is given up, and how
+ *  long after one try the next comes (milliseconds) */
+const KEEP_TRIES = 5, KEEP_AGAIN_MILLIS = 400;
 const NO_REFERENCE = 'No reference';
 
 // == Types =======================================================================
@@ -46,8 +50,11 @@ const NO_REFERENCE = 'No reference';
  *  film paused) or stepped to (frames on, back when less than 0), the film shown again,
  *  the onion skin drawn, reference pictures picked from the Drive or removed, how many
  *  frames each picture of a run stands for, and how the reference lies over the stage */
+/** an actor left as posed while its key is written: its draft's values, which the
+ *  picture draws it by until the film is made again with the key in it */
+export type Standing = Readonly<{ actor: string; values: Draft; film: Film | undefined/*the film it was left on: one made since shows the key itself*/; }>;
 export type PoseHost = Readonly<{
-  pose: (actor: string, index: number, values: Draft | undefined, pin?: Leg) => void;
+  pose: (actor: string, index: number, values: Draft | undefined, pin?: Leg, standing?: ReadonlyArray<Standing>) => void;
   write: (actor: string, index: number, values: Draft) => Promise<string | undefined>;
   seek: (index: number) => void; step: (delta: number) => void; close: () => void;
   onion: (skin: Readonly<{ actor: string; before: number; }> | undefined) => void;
@@ -69,7 +76,6 @@ export class PoseView {
   private readonly opacity: HTMLInputElement;
   private readonly viewSelect: HTMLSelectElement;
   private readonly removeButton: HTMLButtonElement;
-  private readonly scrub: HTMLInputElement;
   private readonly numbers = new Map<string, HTMLInputElement>();
   private readonly pinnedNote: HTMLElement;
   private readonly onionButton: HTMLButtonElement;
@@ -79,6 +85,11 @@ export class PoseView {
   private film: Film | undefined/*none yet*/;
   private actor: string | undefined/*no actor in the film*/;
   private shown = 0;
+  private playing = false;
+  /** the drafts left that are still to be written, in the order they were left, and
+   *  whether one is being written */
+  private readonly kept: Array<Readonly<{ actor: string; index: number; key: Draft; }> & { tries: number; }> = [];
+  private keeping = false;
   /** the draft: where its values started at the frame, and as posed since */
   private started: Draft = {};
   private values: Record<string, number> = {};
@@ -89,6 +100,13 @@ export class PoseView {
    *  measures the figure's rise from */
   private pinned: Readonly<{ leg: Leg; at: Point; }> | undefined;
   private bottoms: PoseBottoms | undefined;
+  /** the actors that click onto studs and those that are figures, once the stage has said (SEE: setCast) */
+  private clicks: ReadonlySet<string> | undefined;
+  private figures: ReadonlySet<string> | undefined;
+  /** the draft as it stood when its key was last written into the scene, on the drawing in hand */
+  private writtenAs: Draft | undefined;
+  /** the actors left as posed on the frame shown, their keys still being written */
+  private standing: ReadonlyArray<Standing> = [];
   /** the draft as it stood before each change, to undo, and after each undone, to do
    *  again */
   private undone: Stood[] = [];
@@ -105,7 +123,7 @@ export class PoseView {
     element('span', 'eyebrow', head).textContent = 'Pose of';
     this.actorSelect = element('select', 'pose-actor', head);
     this.actorSelect.setAttribute('aria-label', 'The actor posed');
-    this.actorSelect.addEventListener('change', () => this.choose(this.actorSelect.value));
+    this.actorSelect.addEventListener('change', () => { this.choose(this.actorSelect.value); this.actorSelect.blur()/*chosen: Space pressed next is the pose's, never the chooser opened again*/; });
     this.keyNote = element('span', 'pose-key', head);
     this.pinnedNote = element('span', 'pose-pinned', head);
     this.pinnedNote.setAttribute('role', 'status');
@@ -122,11 +140,6 @@ export class PoseView {
     this.writeButton.textContent = 'Write the key';
     this.writeButton.title = 'Write the pose into the scene as this frame\'s key (Enter)';
     this.writeButton.addEventListener('click', () => void this.write());
-    const back = element('button', 'tag tag--plain', head);
-    back.type = 'button';
-    back.textContent = 'Back to the film';
-    back.title = 'Leave without writing (Escape)';
-    back.addEventListener('click', () => this.host.close());
 
     // the reference pictures: picked from the Drive, the frames each stands for, and
     // how they lie over the stage
@@ -177,12 +190,6 @@ export class PoseView {
         this.numbers.set(channel, number);
       }
     }
-    // the film's frames, scrubbed: the playhead where it is let go
-    this.scrub = element('input', 'pose-scrub', root);
-    Object.assign(this.scrub, { type: 'range', min: '0', max: '0', step: '1', value: '0' });
-    this.scrub.setAttribute('aria-label', 'Frame');
-    this.scrub.addEventListener('input', () => this.host.seek(Number(this.scrub.value)));
-
     // the keys the mode takes, here as over the studio: a field keeps its own
     addEventListener('keydown', event => {
       if(this.root.hidden || !this.film || event.altKey) return;
@@ -201,47 +208,85 @@ export class PoseView {
   /** the film shown: its actors, and the one posed where the frame shown stands it */
   public setFilm(film: Film | undefined): void {
     this.film = film;
+    this.settleStanding();
     const actors = film?.scene.actors ?? [];
     this.actorSelect.replaceChildren(...actors.map(actor => Object.assign(document.createElement('option'), { value: actor.name, textContent: actor.name })));
-    this.actor = actors.some(actor => actor.name === this.actor) ? this.actor : (actors.find(actor => unposed(actor) === undefined) ?? actors[0])?.name;
+    this.actor = actors.some(actor => actor.name === this.actor) ? this.actor : (actors.find(actor => this.refusal(actor) === undefined) ?? actors[0])?.name;
     if(this.actor !== undefined) this.actorSelect.value = this.actor;
-    this.scrub.max = String(Math.max(0, (film?.frames.length ?? 1) - 1));
-    this.shown = Math.min(this.shown, Math.max(0, (film?.frames.length ?? 1) - 1));
-    this.reload();
+    const frames = Math.max(0, (film?.frames.length ?? 1) - 1), posed = this.recorded;
+    // a draft the person changed stands as the film is made again under it (a key written a frame back, the scene edited): only what it is measured against is read anew
+    const stands = !this.root.hidden && this.isChanged && (this.shown <= frames) && !!posed && (this.refusal(posed) === undefined);
+    this.shown = Math.min(this.shown, frames);
+    if(stands) this.remeasure(); else this.reload();
+    void this.writeKept()/*the film made again: the next pose left is written on it*/;
   }
 
   /** the frame shown: the draft starts again from where the film stands the actor on
-   *  it; a draft left unwritten on the frame before is let go, and said so */
+   *  it. A draft changed on the frame before is kept: written as that frame's key as
+   *  the frame is left (stepped, scrubbed or sought from), and said so; the drawing
+   *  after, holding no key, then starts from it */
   public setFrame(frame: FilmFrame | undefined): void {
     const index = frame?.index ?? 0;
-    if(frame && (document.activeElement !== this.scrub)) this.scrub.value = String(index)/*held where the person scrubs*/;
     if(index === this.shown) return/*the frame posed*/;
-    const left = (!this.root.hidden && this.isChanged) ? this.shown : undefined;
+    if(this.playing) { this.shown = index; return/*the film plays on: posed afresh once it stops*/; }
+    const left = this.left();
     this.shown = index;
+    this.standing = []/*another frame: its own drawing*/;
     if(!this.root.hidden) this.reload()/*hidden, the film plays on: posed afresh once shown*/;
-    if(left !== undefined) this.note.textContent = `Frame ${left + 1}'s pose was not written: Enter writes a pose before stepping on`;
+    if(left) this.keep(left);
   }
 
-  /** poses an actor */
+  /** whether the film plays: playing, the figure is let go (a draft changed kept as its
+   *  frame's key first) and the studio shows the film's own frames; stopped, the figure
+   *  is handed back at the frame it stops on */
+  public setPlaying(playing: boolean): void {
+    if(playing === this.playing) return/*as it stands*/;
+    const left = playing ? this.left() : undefined;
+    this.playing = playing;
+    if(this.root.hidden) return/*not posing*/;
+    if(!playing) { this.reload(); return; }
+    if(this.actor !== undefined) this.host.pose(this.actor, this.shown, undefined/*the film's own frames*/);
+    this.tellOnion();
+    if(left) this.keep(left);
+  }
+
+  /** poses an actor: a draft changed on the actor left is kept as its frame's key */
   public choose(actor: string): void {
+    const left = (actor === this.actor) ? undefined : this.left();
+    // the actor left stands as posed beside the one taken up: the film shows it so only once it is made again with the key
+    this.standing = left ? [...this.standing.filter(each => each.actor !== left.actor), { actor: left.actor, values: { ...this.values }, film: this.film }] : this.standing;
+    this.standing = this.standing.filter(each => each.actor !== actor);
     this.actor = actor;
     this.actorSelect.value = actor;
-    this.reload();
+    if(left) this.keep(left);
+    this.reload()/*after the note of the key kept: an actor the mode cannot pose says why*/;
   }
 
-  /** shows or hides the mode; hidden, a draft is let go, the studio's pose ends and the
-   *  film's frame shows again */
+  /** shows or hides the mode; hidden, a draft changed is kept as its frame's key (only
+   *  Escape leaves one behind: SEE key), the studio's pose ends and the film's frame
+   *  shows again */
   public show(on: boolean): void {
-    const posing = !this.root.hidden && (this.actor !== undefined);
+    const posing = !this.root.hidden && (this.actor !== undefined), left = on ? undefined : this.left();
     this.root.hidden = !on;
     if(on) this.reload();
     else if(posing) this.host.pose(this.actor!/*by contract: posing*/, this.shown, undefined/*the film's frame again*/);
     if(!on) this.tellOnion()/*no drawing before drawn on the film*/;
+    if(left) this.keep(left);
   }
 
   /** what the stage measures a figure's rise from, as it stages the film: where a
    *  pinned foot's contact stands is read from it */
   public setBottoms(bottoms: PoseBottoms | undefined): void { this.bottoms = bottoms; }
+
+  /** the actors that click onto studs and those that are figures, as the stage says
+   *  once the film is staged: one that never clicks is posed as it is cast (SEE:
+   *  unposed), and one that is no figure is placed and turned alone, its pose's
+   *  numbers resting */
+  public setCast(clicks: ReadonlySet<string>, figures: ReadonlySet<string>): void {
+    const posed = this.recorded, was = posed && [this.refusal(posed), this.isFigure].join();
+    [this.clicks, this.figures] = [clicks, figures];
+    if(posed && ([this.refusal(posed), this.isFigure].join() !== was)) this.reload()/*posed after all, or not; its pose's numbers with it*/;
+  }
 
   /** hands the actor to the studio again as the draft stands: once the film is staged
    *  again, which ends the studio's pose */
@@ -265,7 +310,7 @@ export class PoseView {
    *  again) */
   public key({ key, shift }: Readonly<{ key: string; shift: boolean; }>): void {
     if(this.root.hidden || !this.film) return/*not posing*/;
-    if(key === 'Escape') this.host.close();
+    if(key === 'Escape') { [this.undone, this.redone] = [[], []]/*the draft left behind: nothing of it kept*/; this.host.close(); }
     else if((key === 'ArrowLeft') || (key === 'ArrowRight')) this.host.step(((key === 'ArrowLeft') ? -1 : 1) * (shift ? secondFrames(this.film.scene.fps) : 1));
     else if(this.writeButton.disabled) return/*nothing posed*/;
     else if(key === 'Enter') void this.write();
@@ -302,19 +347,27 @@ export class PoseView {
   // the actor posed, as the scene records it
   private get recorded() { return this.film?.scene.actors.find(actor => actor.name === this.actor); }
 
+  // whether the actor posed is a figure, as the stage says (taken to be until it does)
+  private get isFigure(): boolean { return (this.actor === undefined) || (this.figures?.has(this.actor) ?? true); }
+
+  // why an actor cannot be posed, none when it can (SEE: unposed): by whether the stage says it clicks onto studs
+  private refusal(actor: Parameters<typeof unposed>[0]): string | undefined { return unposed(actor, this.clicks?.has(actor.name) ?? true); }
+
   // the draft started again from where the film stands the actor at the frame shown,
   // and handed to the studio; an actor the mode cannot pose says why, its values held
   private reload() {
     const film = this.film, actor = this.recorded;
-    const refused = actor ? unposed(actor) : 'No actor to pose: the scene casts none';
+    const refused = actor ? this.refusal(actor) : 'No actor to pose: the scene casts none';
     this.filmed = (film && actor) ? filmedOf(film, actor, this.shown) : {};
     this.started = (film && actor) ? draftOf(film, actor, this.shown) : {};
     this.values = { ...this.started };
-    [this.pinned, this.undone, this.redone] = [undefined, [], []]/*a drawing of its own: nothing pinned, nothing to undo*/;
-    for(const number of this.numbers.values()) number.disabled = refused !== undefined;
+    [this.pinned, this.undone, this.redone, this.writtenAs] = [undefined, [], [], undefined]/*a drawing of its own: nothing pinned, nothing to undo, nothing written*/;
+    for(const [channel, number] of this.numbers) {
+      number.disabled = (refused !== undefined) || (channel.startsWith('pose.') && !this.isFigure)/*a figure's alone*/;
+      if(document.activeElement === number) number.blur()/*a number typed for the actor before: this actor's value shows*/;
+    }
     this.writeButton.disabled = refused !== undefined;
-    const held = (film && actor) ? keyOn(film, actor, this.shown) : undefined;
-    this.keyNote.textContent = !film ? '' : `frame ${this.shown + 1} · ${held ? `its key${(held.line !== undefined) ? ` on line ${held.line}` : ''}` : 'no key yet: one is added'}`;
+    this.showKey();
     if(refused !== undefined) { this.note.textContent = refused; this.note.dataset.state = 'refused'; }
     else if(this.note.dataset.state === 'refused') { this.note.textContent = ''; delete this.note.dataset.state; }
     this.showValues();
@@ -322,11 +375,32 @@ export class PoseView {
     this.tellOnion();
   }
 
+  // the draft as the person changed it, kept while the film is made again under it:
+  // where the film stands the actor now and where the draft would start are read anew,
+  // the draft and what it can undo stand, and the studio is handed it again
+  private remeasure() {
+    const film = this.film, actor = this.recorded;
+    if(!film || !actor) return/*by contract: a draft of an actor the film casts*/;
+    this.filmed = filmedOf(film, actor, this.shown);
+    this.started = draftOf(film, actor, this.shown);
+    this.showKey();
+    this.showValues();
+    this.tell();
+    this.tellOnion();
+  }
+
+  // the frame shown and the key it holds, said
+  private showKey() {
+    const film = this.film, actor = this.recorded;
+    const held = (film && actor) ? keyOn(film, actor, this.shown) : undefined;
+    this.keyNote.textContent = !film ? '' : `frame ${this.shown + 1} · ${held ? `its key${(held.line !== undefined) ? ` on line ${held.line}` : ''}` : 'no key yet: one is added'}`;
+  }
+
   // hands the actor to the studio as the draft stands; an actor the mode cannot pose is
   // handed to no one
   private tell() {
-    if(this.actor === undefined) return/*no actor in the film*/;
-    this.host.pose(this.actor, this.shown, this.writeButton.disabled ? undefined : this.values, this.pinned?.leg);
+    if((this.actor === undefined) || this.playing) return/*no actor in the film, or let go while it plays*/;
+    this.host.pose(this.actor, this.shown, this.writeButton.disabled ? undefined : this.values, this.pinned?.leg, this.standing);
   }
 
   // the draft's values on their numbers, its pinned foot named, and whether it stands
@@ -394,6 +468,46 @@ export class PoseView {
   }
 
   // .. Write .....................................................................
+  // the draft about to be left, when the person changed it and it holds something to
+  // write: its actor, its frame and the key's values
+  private left(): Readonly<{ actor: string; index: number; key: Draft; }> | undefined {
+    const film = this.film, actor = this.recorded;
+    if(this.root.hidden || !film || !actor || this.writeButton.disabled || !this.isChanged) return undefined/*nothing posed*/;
+    const written = this.writtenAs;
+    if(written && POSED.every(channel => written[channel] === this.values[channel])) return undefined/*written as it stands*/;
+    const key = draftKey(film, actor, this.shown, this.values);
+    return (Object.keys(key).length > 0) ? { actor: actor.name, index: this.shown, key } : undefined/*as the scene keys it*/;
+  }
+
+  // a draft left is written as its own frame's key, whatever frame shows by now: one
+  // at a time, in the order they were left
+  private keep(left: NonNullable<ReturnType<PoseView['left']>>) {
+    this.kept.push({ ...left, tries: 0 });
+    this.note.textContent = `Writing frame ${left.index + 1}'s pose into the scene…`;
+    void this.writeKept();
+  }
+
+  // writes the first draft kept. A write refused is tried again (the scene may be mid
+  // way through the write before it: it is tried once the film is made again, and
+  // after a moment), KEEP_TRIES times before it is given up and said
+  private async writeKept() {
+    const next = this.kept[0];
+    if(this.keeping || !next) return/*one at a time, or none left*/;
+    this.keeping = true;
+    const refused = await this.host.write(next.actor, next.index, next.key).catch((failure: unknown) => (failure instanceof Error) ? failure.message : String(failure));
+    this.keeping = false;
+    if(refused === undefined) { this.kept.shift(); this.note.textContent = `Frame ${next.index + 1}'s pose is written into the scene`; this.settleStanding(); }
+    else if(++next.tries >= KEEP_TRIES) { this.kept.shift(); this.note.textContent = `Frame ${next.index + 1}'s pose could not be written: ${refused}`; }
+    /* else -- tried again */
+    if(this.kept.length > 0) setTimeout(() => void this.writeKept(), KEEP_AGAIN_MILLIS);
+  }
+
+  // an actor left as posed stands by its draft until every key left is written and the film is made again with them: from then the film shows it
+  private settleStanding() {
+    if((this.kept.length > 0) || this.keeping) return/*a key still to write*/;
+    this.standing = this.standing.filter(each => each.film === this.film);
+  }
+
   // the draft written into the scene as the frame's key
   private async write() {
     const film = this.film, actor = this.recorded;
@@ -401,7 +515,9 @@ export class PoseView {
     const key = draftKey(film, actor, this.shown, this.values);
     if(Object.keys(key).length < 1) { this.note.textContent = 'Nothing is changed: the frame stands as the scene keys it'; return; }
     this.note.textContent = 'Writing the key into the scene…';
+    const values = { ...this.values };
     const refused = await this.host.write(actor.name, this.shown, key);
+    if(refused === undefined) this.writtenAs = values/*the scene holds it: left as it is, nothing is written again though the film is not made again yet*/;
     this.note.textContent = refused ?? 'Written into the scene';
   }
 

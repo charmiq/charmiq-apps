@@ -4,7 +4,7 @@ import type { PoseBottoms } from '../../brick-shared/rise';
 import type { PartLine } from './grid';
 import type { Model } from './model';
 import { describeIn } from './check';
-import { afloat, against, amongItself, stoppedAmongItself, dialed, forwardOf, heldAt, heldOf, heldShort, into, jointsOf, pulled, reachOf, ringAngleAt, ringAround, ringPoint, setDown, settled, soleAt, stepped, stoppedAgainst, stoppedBy, travelOf, turnedTo, valueOf, withValue, type Crossing, type Held, type Pin, type PoseMarks, type Under, FEET } from './pose-gesture';
+import { afloat, against, amongItself, stoppedAmongItself, carriedShort, dialed,forwardOf, heldAt, heldOf, heldShort, into, jointsOf, pulled, reachOf, ringAngleAt, ringAround, ringPoint, setDown, settled, soleAt, stepped, stoppedAgainst, stoppedBy, travelOf, turnedTo, valueOf, withValue, type Crossing, type Held, type Pin, type PoseMarks, type Under, FEET } from './pose-gesture';
 import { alongOf, bestOf, hullOf, liesOn, type Tried } from './pose-settle';
 import { placing, probing } from './probe';
 import { shotLines, shotParts, type Cast, type Point, type Shot } from './stage';
@@ -65,8 +65,10 @@ const CARRIES: Readonly<Record<string, ReadonlyArray<string>>> = {
 };
 /** the one line over the picture that says what the hands do, for a figure and for
  *  anything else */
-const HINT = 'Drag a part to pose it (Cmd/Ctrl dials it · Shift 15° · Alt 1°) · the hips carry him · the ring turns him · click a foot to pin it · Enter writes';
-const HINT_THING = 'Drag it to carry it · the ring turns it · Enter writes';
+const HINT = 'Drag a part to pose it · the hips carry him · the ring turns him · every control is listed at the left';
+const HINT_THING = 'Drag it to carry it · the ring turns it · every control is listed at the left';
+/** where this browser keeps whether the controls stand open or folded */
+const HELP_KEY = 'brick-studio.pose-help';
 /** what the line says while a gesture holds the pointer: only what matters to it */
 const HINT_HELD = { joint: 'Cmd/Ctrl dials it straight · Shift 15° · Alt 1° · let go to keep it', ring: 'Settles on each quarter turn · Shift 15° · Alt turns freely', carry: 'Clicks onto studs · Alt carries him off them · Shift lifts' } as const;
 /** a part as the readout names it, and what each joint's readout is called */
@@ -83,7 +85,7 @@ export type PoseHost = Readonly<{ draw: (shots: ReadonlyArray<Shot>) => void; po
 /** the readout beside the part held: its box, what it says, the number typed into it
  *  and the smaller word after it (the way a figure faces, while its ring is turned and
  *  the number is the turn swept); and the picture, which shows the hand that takes a part */
-export type PoseElements = Readonly<{ stage: HTMLElement; hint: HTMLElement; readout: HTMLElement; label: HTMLElement; value: HTMLInputElement; note: HTMLElement; }>;
+export type PoseElements = Readonly<{ stage: HTMLElement; hint: HTMLElement; help: HTMLDetailsElement/*the controls, shown while an actor is posed: open or folded as this browser keeps it*/; readout: HTMLElement; label: HTMLElement; value: HTMLInputElement; note: HTMLElement; }>;
 /** a pointer's event as a pose reads it */
 export type PosePointer = Readonly<{ clientX: number; clientY: number; shiftKey: boolean; altKey: boolean; metaKey?: boolean; ctrlKey?: boolean; button?: number; }>;
 
@@ -122,6 +124,8 @@ export class PoseControl {
   private handle: 'ring' | 'knob' | undefined;
   private pointed: readonly [number, number] | undefined;
   private read: Readonly<{ part: string; joint: string; held?: Held; }> | undefined;
+  /** whether a press on any part of the figure carries it (Space held: SEE stage-control.ts) */
+  public carrying = false;
   /** what the readout was last stood for: it stands where it was put until it reads another part, or a part is taken again */
   private stood: string | undefined;
   private clicked: ReadonlyArray<Point> | undefined;
@@ -131,6 +135,8 @@ export class PoseControl {
    *  the lines a settle onto the reference would leave */
   private seated = 0;
   private landed = false;
+  /** the lines the frame last drawn shows red, as the marks named them; none drawn yet for the pose begun */
+  private flags: string | undefined;
   private stopped: Readonly<{ lines: ReadonlyArray<number>; placements: ReadonlyArray<number>; pieces: ReadonlyArray<number>; own: ReadonlyArray<number>; }> | undefined;
   private loose = false;
   private before: ReadonlyArray<PartLine> = [];
@@ -140,6 +146,11 @@ export class PoseControl {
   private pending: PosePointer | undefined;
 
   public constructor(private readonly screen: PoseScreen, private readonly host: PoseHost, private readonly elements?: PoseElements) {
+    // the controls open the first time, then as this browser last left them
+    if(elements) {
+      try { elements.help.open = localStorage.getItem(HELP_KEY) !== 'folded'; } catch { elements.help.open = true/*storage can be absent or refused*/; }
+      elements.help.addEventListener('toggle', () => { try { localStorage.setItem(HELP_KEY, elements.help.open ? 'open' : 'folded'); } catch { /*storage can be absent or refused*/ } });
+    } /* else -- no page to show them on */
     elements?.value.addEventListener('change', () => this.typed());
     elements?.value.addEventListener('keydown', event => { if(event.key === 'Enter') { this.typed(); elements.stage.focus({ preventScroll: true }); } event.stopPropagation()/*a number typed is no key of the pose's*/; });
   }
@@ -167,8 +178,16 @@ export class PoseControl {
       pin: undefined,
     };
     this.session.pin = pin && { leg: pin, at: soleAt(bottoms, shots[index], pin) };
-    [this.gesture, this.pending, this.clicked] = [undefined, undefined, undefined];
-    if(this.elements) { this.elements.hint.textContent = figure ? HINT : HINT_THING; this.elements.hint.hidden = false; }
+    [this.gesture, this.pending, this.clicked, this.flags] = [undefined, undefined, undefined, undefined];
+    if(this.elements) { this.elements.hint.textContent = figure ? HINT : HINT_THING; this.elements.hint.hidden = false; this.elements.help.hidden = false; }
+    this.mark();
+  }
+
+  /** draws the frame as the pose stands it again, its marks with it: once the view is
+   *  let go to the film's camera, which the frame is drawn through */
+  public redraw(): void {
+    if(!this.session) return/*none under way*/;
+    this.draw(this.session);
     this.mark();
   }
 
@@ -179,7 +198,17 @@ export class PoseControl {
     [this.before, this.loose, this.landed, this.suggested, this.handle] = [[], false, false, undefined, undefined];
     this.screen.showPoseMarks(undefined);
     this.showReadout();
-    if(this.elements) { this.elements.stage.style.cursor = ''; delete this.elements.stage.dataset.poseOver; this.elements.hint.hidden = true; }
+    if(this.elements) { this.elements.stage.style.cursor = ''; delete this.elements.stage.dataset.poseOver; this.elements.hint.hidden = true; this.elements.help.hidden = true; }
+  }
+
+  /** lets the pinned foot go, as a click on it does, from wherever the foot is hidden:
+   *  told as posed, no foot pinned. Nothing with none pinned */
+  public unpin(): void {
+    const session = this.session;
+    if(!session?.pin || this.gesture) return/*no foot pinned, or a gesture under way*/;
+    session.pin = undefined;
+    this.host.posed(session.shots[session.index], undefined);
+    this.mark();
   }
 
   // == Pointer ===================================================================
@@ -194,15 +223,26 @@ export class PoseControl {
     this.stood = undefined/*a part taken: the readout stands anew*/;
     const hit = this.screen.under(event.clientX, event.clientY), line = (hit?.line ?? -1) - session.offset;
     const parts = shotParts(session.cast, shot), onFigure = !!hit && (line >= 0) && (line < parts.length);
-    if(this.onRing(about, down, onFigure)) {
+    const grabbed = this.carrying && onFigure/*Space held on him: he is carried, whatever handle lies over him there*/;
+    if(!grabbed && this.onRing(about, down, onFigure)) {
       const angle = this.ringAngle(about, down);
       if(angle !== undefined) { this.gesture = { kind: 'ring', down, moved: false, about, angle, yaw: shot.turn.yaw }; this.mark(); return true; }
     } /* else -- not the ring */
     const knob = this.knob(session, shot);
-    if(knob && this.nearKnob(session, shot, down)) { this.gesture = { kind: 'joint', down, moved: false, held: knob, joints: ['pitch', 'roll'] }; this.mark(); return true; }
+    if(!grabbed && knob && this.nearKnob(session, shot, down)) { this.gesture = { kind: 'joint', down, moved: false, held: knob, joints: ['pitch', 'roll'] }; this.mark(); return true; }
 
-    if(!hit || !onFigure) return false/*off the figure posed*/;
-    const part = parts[line], joints = (session.figure && (part !== undefined)) ? jointsOf(part) : undefined;
+    if(!hit || !onFigure) {
+      // off him, within the ring: the disc of light under him carries him, from wherever he is looked at
+      const within = this.withinRing(about, down), met = within ? this.screen.onLevel(event.clientX, event.clientY, shot.position.height) : undefined;
+      if(!met) return false/*off the figure posed: the view's*/;
+      this.gesture = { kind: 'carry', down, moved: false, grab: met, off: { x: shot.position.x - met.x, z: shot.position.z - met.z }, height: shot.position.height };
+      this.mark();
+      return true;
+    } /* else -- on him */
+    const part = parts[line];
+    // while Space is held any part of him pressed carries him, as his hips do: the way to move him from above. His torso, pressed without it, leans him
+    const carries = this.carrying;
+    const joints = (session.figure && (part !== undefined) && !carries) ? jointsOf(part) : undefined;
     // what the part's joint turns: the part and what it carries, their copy left where they were and the travel drawn at their far end
     const turns = parts.flatMap((each, index) => ((each === part) || ((part !== undefined) && (each !== undefined) && CARRIES[part]?.includes(each))) ? [index] : []);
     const held = heldOf(session.cast, shot, line, hit.at), reach = joints ? reachOf({ cast: session.cast, shot, bottoms: session.bottoms, pin: session.pin }, held, joints[0], turns, ldraw => this.screen.pieceBox(ldraw)) : held;
@@ -285,8 +325,11 @@ export class PoseControl {
     if(!to) return/*nowhere to go: as it stands*/;
     const boxOf = (ldraw: string) => this.screen.pieceBox(ldraw);
     const count = (shot: Shot) => this.passesInto(session, shot).reduce((total, each) => total + each, 0);
-    const standing = count(from);
-    const { shot: next, past } = heldShort(from, to, shot => count(shot) <= standing, keep);
+    const standing = session.figure ? count(from) : 0;
+    // a figure is held back at the last pose that passes no more of it into anything. A thing (a door on its pin, a crate) goes where it is put: a door turns grazing its own jamb, so what it stands in is shown red and never stops it
+    const passes = session.figure ? (shot: Shot) => count(shot) <= standing : () => true;
+    // carried across the set, he goes between two levels as a hand lifts him (up, then across); lifted (Shift), straight up
+    const { shot: next, past } = ((gesture.kind === 'carry') && !event.shiftKey) ? carriedShort(from, to, passes) : heldShort(from, to, passes, keep);
     // what stopped it: its pieces that first pass in just past where it is held, and the set's parts and the other actors' pieces they meet
     const [bySet, byActors] = past ? [stoppedBy(session.cast, past, next, boxOf, session.placing), stoppedAgainst(session.cast, past, next, boxOf, session.crossing)] : [undefined, undefined];
     const byItself = (past && session.figure) ? stoppedAmongItself(session.cast, past, next, boxOf) : [];
@@ -304,7 +347,8 @@ export class PoseControl {
   // by whether it meets more, and never mark a piece as standing inside something)
   private passesInto(session: Session, shot: Shot, itself = true): ReadonlyArray<number> {
     const boxOf = (ldraw: string) => this.screen.pieceBox(ldraw);
-    const [set, actors, own] = [into(session.cast, shot, boxOf, session.inside), against(session.cast, shot, boxOf, session.crossing), (itself && session.figure) ? amongItself(session.cast, shot, boxOf) : undefined];
+    // a thing's place in the set is judged by its box, which a door's swing or a handle fills falsely: only a figure is judged against the set
+    const [set, actors, own] = [session.figure ? into(session.cast, shot, boxOf, session.inside) : shotLines(session.cast, [shot]).map(() => 0), against(session.cast, shot, boxOf, session.crossing), (itself && session.figure) ? amongItself(session.cast, shot, boxOf) : undefined];
     return set.map((count, line) => count + actors[line] + (own?.[line] ?? 0));
   }
 
@@ -396,6 +440,17 @@ export class PoseControl {
     return round.some((spot, index) => (index > 0) && (segmentGap(round[index - 1], spot, x, y) <= (onFigure ? ON_RING : NEAR_HANDLE)));
   }
 
+  // whether a point of the page lies within the ring about a point, as the picture draws it
+  private withinRing(about: Point, [x, y]: readonly [number, number]): boolean {
+    const round = ringAround(about, this.screen.heading()).flatMap(point => { const seen = this.screen.sight(point); return seen ? [seen] : []; });
+    let within = false;
+    for(let at=0, before=round.length - 1; at<round.length; before=at++) {
+      const [a, b] = [round[at], round[before]];
+      if(((a[1] > y) !== (b[1] > y)) && (x < (((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1])) + a[0])) within = !within;
+    }
+    return within;
+  }
+
   // where on the ring about a point a point of the page lies, as the picture draws it
   // (degrees clockwise from north); none while any of it stands behind the camera
   private ringAngle(about: Point, at: readonly [number, number]): number | undefined {
@@ -452,10 +507,13 @@ export class PoseControl {
       ...(this.clicked ? { studs: this.clicked } : {}), seated: this.seated,
       ...((gap !== undefined) ? { rod: { from: { ...shot.position, height: shot.position.height - gap }, to: { ...shot.position, height: shot.position.height + HIPS_UP } } } : {}),
       ...(stopped ? { stopped: { lines: stopped.lines.map(line => lines[line]), placements: stopped.placements, others: stopped.pieces.flatMap(piece => session.drawn[piece] ? [session.drawn[piece].line] : []) } } : {}),
-      inside: lines.filter((_, index) => counts[index] > 0), into: counts.flatMap((count, index) => (count > 0) ? [session.offset + index] : []),
+      inside: lines.filter((_, index) => counts[index] > 0), into: session.figure ? counts.flatMap((count, index) => (count > 0) ? [session.offset + index] : []) : []/*a thing is one piece: red, it would be red whole for a hand through it*/,
       ...(this.settling ? { preview: this.settling } : {}), ...((this.before.length > 0) ? { before: this.before } : {}),
     };
     this.screen.showPoseMarks(marks);
+    // the pieces that pass into something are drawn red by the frame drawn next (SEE: Viewer#showPoseMarks): as they change, the frame is drawn again, so none stays red from the pose or the actor before
+    const flags = (marks.into ?? []).join();
+    if(flags !== this.flags) { this.flags = flags; this.draw(session); }
     this.showReadout();
     // what the line says: what stops him, named, while the set does; else what the hands do
     // what stopped him, in words: another actor by its name, a part of the set by its kind and color, a piece of his own by its name (the one he is not holding)
@@ -511,7 +569,7 @@ export class PoseControl {
   }
 
   // what the line over the picture says: a word about a settle, else what the hands do
-  private say(text: string | undefined): string | undefined {
+  public say(text: string | undefined): string | undefined {
     if(this.elements && this.session) this.elements.hint.textContent = text ?? (this.session.figure ? HINT : HINT_THING);
     return text;
   }

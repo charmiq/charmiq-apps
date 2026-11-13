@@ -78,7 +78,7 @@ const studio = document.querySelector<HTMLDivElement>('.studio')!/*by contract*/
 const stage = new StageControl({
   root: element('staged'), note: element('stagedNote'), view: element('stagedView'), back: element('stagedBack'),
   film: element('stagedFilm'), play: element('stagedPlay'), scrub: element('stagedScrub'), time: element('stagedTime'),
-}, studio, viewer, build, sheet, { stage: canvas, hint: element('poseHint'), readout: element('poseReadout'), label: element('poseReadoutLabel'), value: element<HTMLInputElement>('poseReadoutValue'), note: element('poseReadoutNote') });
+}, studio, viewer, build, sheet, { stage: canvas, hint: element('poseHint'), help: element<HTMLDetailsElement>('poseHelp'), readout: element('poseReadout'), label: element('poseReadoutLabel'), value: element<HTMLInputElement>('poseReadoutValue'), note: element('poseReadoutNote') });
 const commands = new CommandSurface(build, designs, shippedPictures, viewer, lookAround, stage, look);
 const review = new ReviewControl({ root: document.querySelector<SVGSVGElement>('#reviewMarks')!/*by contract*/, shown: document.querySelector<SVGGElement>('#reviewShown')!/*by contract*/, drawn: document.querySelector<SVGGElement>('#reviewDrawn')!/*by contract*/ }, studio, viewer, stage, () => standStill());
 /** why the last ground change was refused, until the build next changes */
@@ -206,6 +206,10 @@ const WALK_KEYS: Readonly<Record<string, readonly [keyof Omit<Walk, 'fast'>, num
   Space: ['up', 1],     KeyC: ['up', -1],
   KeyQ: ['turn', 1],    KeyE: ['turn', -1],
 };
+// while an actor is posed and the camera flies, the walk key each key stands for: W A
+// S D as ever, Q down and E up (a drag turns the view). Space and C are the pose's
+// there (Space carries him, C stands the film's camera) and fly nothing
+const POSE_FLY_KEYS: Readonly<Record<string, string | undefined>> = { KeyW: 'KeyW', KeyS: 'KeyS', KeyD: 'KeyD', KeyA: 'KeyA', KeyQ: 'KeyC', KeyE: 'Space' };
 const held = new Set<string>();
 const walkFromKeys = (fast: boolean): Walk => {
   const walk = { ...STANDING, fast };
@@ -229,9 +233,12 @@ const onWalkKey = (event: KeyboardEvent, down: boolean) => {
   if(down && (event.code === 'KeyI') && !isForOthers(event)) { toggleHelp(); return; }
   if(!(event.code in WALK_KEYS)) { if(event.key === 'Shift') viewer.walk(walkFromKeys(down)); return; }
   if(down && (isForOthers(event) || help.open || review.isMarking)) return/*a stroke is drawn on a picture standing still*/;
+  // while an actor is posed these keys are the pose's (Space carries him, C stands the film's camera) until V gives the camera its flying keys (SEE: POSE_FLY_KEYS); the pointer moves the view either way
+  const code = stage.isPosing ? POSE_FLY_KEYS[event.code] : event.code;
+  if(down && ((code === undefined) || (stage.isPosing && !stage.isFlying))) return;
   event.preventDefault()/*Space neither scrolls nor presses the focused button*/;
-  if(down) held.add(event.code);
-  else held.delete(event.code);
+  if(down && (code !== undefined)) held.add(code);
+  else { held.delete(event.code); if(code !== undefined) held.delete(code); }
   viewer.walk(walkFromKeys(event.shiftKey));
 };
 window.addEventListener('keydown', event => onWalkKey(event, true));

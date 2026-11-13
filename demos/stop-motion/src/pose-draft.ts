@@ -35,11 +35,14 @@ type Keyed = Pick<RecordedActor, 'name' | 'keys'>;
 export type Draft = Readonly<Record<string, number>>;
 
 // == Draft =======================================================================
-/** why the Pose mode cannot pose an actor, or undefined when it can: one not cast
- *  `click: false` stands where its studs put it, and a rider where what it rides does */
-export const unposed = (actor: Pick<RecordedActor, 'name' | 'click' | 'ride'>): string | undefined => {
+/** why the Pose mode cannot pose an actor, or undefined when it can: one that clicks
+ *  onto studs (`clicks`: a figure or a creature, as the stage says; taken to until it
+ *  does) and is not cast `click: false` stands where its studs put it, and a rider
+ *  where what it rides does. An actor that never clicks (a door, a crate) is posed as
+ *  it is cast */
+export const unposed = (actor: Pick<RecordedActor, 'name' | 'click' | 'ride'>, clicks = true): string | undefined => {
   if(actor.ride) return `${actor.name} rides ${actor.ride.parent}: the Pose mode poses an actor standing on its own`;
-  if(actor.click !== false) return `The Pose mode places an actor exactly where its keys say: cast ${actor.name} with click: false, as actor('${actor.name}', { …, click: false })`;
+  if(clicks && (actor.click !== false)) return `The Pose mode places an actor exactly where its keys say: cast ${actor.name} with click: false, as actor('${actor.name}', { …, click: false })`;
   return undefined/*posed where its keys place it*/;
 };
 
@@ -76,15 +79,17 @@ export const onionReach = (film: Film, actor: string, index: number, drawings: n
 
 /** a draft as the studio draws it at frame `index`: the frame's own shot of the actor
  *  (its face and what its hands hold), placed, turned and posed as the draft says, its
- *  keyed twist turning it whole and the ground it follows under it */
-export const draftShot = (film: Film, actor: Keyed, index: number, values: Draft): Shot => {
+ *  keyed twist turning it whole and the ground it follows under it. An actor that is
+ *  no `figure` (a door, a crate) is placed and turned alone: it takes no pose */
+export const draftShot = (film: Film, actor: Keyed, index: number, values: Draft, figure = true): Shot => {
   const frame = film.frames[index], shot = frame?.actors.find(each => each.name === actor.name);
   const twist = (frame !== undefined) ? channelAt(actor.keys, 'pose.twist', frame.time) : undefined;
+  const { pose, ...shown } = shot ?? { name: actor.name, pose: undefined };
   return {
-    ...(shot ?? { name: actor.name }),
+    ...shown,
     position: { x: values.x, z: values.z, height: values.height + (frame?.grounds?.[actor.name] ?? 0) },
     turn: { yaw: twistedYaw(values.yaw, twist), pitch: values.pitch, roll: values.roll },
-    pose: { ...shot?.pose, ...Object.fromEntries(JOINTS.map(joint => [joint, values[`pose.${joint}`]])) },
+    ...(figure ? { pose: { ...pose, ...Object.fromEntries(JOINTS.map(joint => [joint, values[`pose.${joint}`]])) } } : {}),
   };
 };
 

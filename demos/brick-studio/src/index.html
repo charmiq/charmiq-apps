@@ -16,6 +16,35 @@
     <canvas class="stage stage-overlay" id="stageOverlay" aria-hidden="true"></canvas>
     <svg class="review-marks" id="reviewMarks" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true"><g id="reviewShown"></g><g id="reviewDrawn"></g></svg>
     <p class="pose-hint" id="poseHint" hidden></p>
+    <!-- the pose's controls, beside the picture while an actor is posed: shown or folded to its heading (this browser keeps which) -->
+    <details class="pose-help" id="poseHelp" hidden>
+      <summary>Posing controls</summary>
+      <dl>
+        <dt>Drag a part</dt><dd>turns it about its joint</dd>
+        <dt>⌘ / Ctrl + drag</dt><dd>dials it: drag straight</dd>
+        <dt>Shift · Alt + drag</dt><dd>steps of 15° · 1°</dd>
+        <dt>Drag his hips</dt><dd>moves him (Alt off the studs, Shift lifts)</dd>
+        <dt>Space + drag any part</dt><dd>moves him: from above</dd>
+        <dt>Drag the disc at his feet</dt><dd>moves him</dd>
+        <dt>Drag his chest</dt><dd>leans him</dd>
+        <dt>Drag the ring</dt><dd>turns him (Shift 15°, Alt freely)</dd>
+        <dt>Drag the knob</dt><dd>tips him</dd>
+        <dt>Click a foot</dt><dd>pins it: the ring, the knob and his chest then turn, tip and lean him about that foot. Click it again, or P, lets it go</dd>
+        <dt>Drag off him</dt><dd>looks round him (Alt: finely)</dd>
+        <dt>Right-drag · Shift-drag off him</dt><dd>pans the view</dd>
+        <dt>Wheel</dt><dd>zooms</dd>
+        <dt>V (or Move the view)</dt><dd>flies the camera: W A S D move, Q down, E up. V again: the keys pose</dd>
+        <dt>C</dt><dd>the film's camera again</dd>
+        <dt>H · Shift-H</dt><dd>hides the set piece under the pointer · and all over it</dd>
+        <dt>U · Shift-U</dt><dd>shows the last hidden again · every piece</dd>
+        <dt>E · R (held)</dt><dd>the drawing before · the reference alone</dd>
+        <dt>S</dt><dd>settles the last part on the reference</dd>
+        <dt>← →</dt><dd>a frame back · on (the pose kept)</dd>
+        <dt>Enter</dt><dd>writes the key now</dd>
+        <dt>⌘Z · ⇧⌘Z</dt><dd>undo · redo</dd>
+        <dt>Escape</dt><dd>leaves, this frame's changes dropped</dd>
+      </dl>
+    </details>
     <label class="pose-readout" id="poseReadout" hidden><span id="poseReadoutLabel"></span><input id="poseReadoutValue" type="number" step="0.5" inputmode="decimal" aria-label="The angle of the part held, in degrees"><span aria-hidden="true">°</span><span class="pose-readout-note" id="poseReadoutNote" hidden></span></label>
 
     <!-- == Sheet: four sides, a storyboard ================================== -->

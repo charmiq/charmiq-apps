@@ -1126,26 +1126,31 @@
 .gait-playhead { stroke: var(--brick-red); stroke-width: 1.5; opacity: 0.6; }
 
 // == Pose ========================================================================
-// the Pose mode: in place of the timeline, the picture track and the sheet, a strip of
-// what the studio's picture cannot carry while a figure is posed on it by hand: the
-// actor, the key, the reference's controls and a drawer of the exact values, closed
-// until asked for (SEE: pose-view.ts); the bar keeps the transport, Close pose and
-// Export, its film-only tools and the Gait mode's way in hidden
+// the Pose mode: over the timeline and the picture track, which stay (the frame posed
+// is found and left on them, its keys in sight), a strip of what the studio's picture
+// cannot carry while a figure is posed on it by hand: the actor, the key, the
+// reference's controls and a drawer of the exact values, closed until asked for (SEE:
+// pose-view.ts); the sheet gives its width to them, and the bar keeps the transport,
+// Close pose and Export, its film-only tools and the Gait mode's way in hidden
 .motion.is-pose {
-  .timeline, .strip, .sheet, #soundChip, #soundButton, #storyboardButton, #loopButton, #gaitButton { display: none; }
+  .sheet, #soundChip, #soundButton, #storyboardButton, #gaitButton { display: none; }
   .floor { grid-template-columns: minmax(0, 1fr); }
-  .deck { grid-template-rows: auto minmax(0, 1fr); }
+  .deck { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+  .pose { grid-row: 2; }
+  .timeline { grid-row: 3; }
+  .strip { grid-row: 4; }
 }
 .motion.is-gait #poseButton { display: none; }
 
 .pose[hidden] { display: none; }
 .pose {
   min-height: 0;
+  max-height: 46vh/*its drawer open, the timeline keeps its place under it*/;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
   align-content: start;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 12px;
   border: 1px solid var(--edge);
   border-radius: 3px;
   background: var(--lane);
@@ -1193,7 +1198,6 @@
   .eyebrow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 .pose-value { @extend %mono-caps; width: 100%; font-size: 11px; text-align: right; }
-.pose-scrub { width: 100%; accent-color: var(--brick-red); }
 
 // == Narrow ======================================================================
 @media (max-width: 720px) {

@@ -48,6 +48,26 @@ const UNDO_KEY = 'z';
 const REFERENCE_KEY = 'r', BEFORE_KEY = 'e';
 /** the key that settles the part last held onto the reference picture */
 const SETTLE_KEY = 's';
+/** the key that lets the pinned foot go: a foot seen from behind hides its own pin */
+const UNPIN_KEY = 'p';
+/** the key that stands the film's camera again, once the person has looked round the
+ *  figure posed */
+const CAMERA_KEY = 'c';
+/** the key that gives the keys to the camera while an actor is posed, to fly it, and
+ *  back; the keys that fly it, by their place on the keyboard (SEE: main.ts WALK_KEYS);
+ *  and what the line over the picture says while it flies */
+const FLY_KEY = 'v';
+const FLY_KEYS: ReadonlyArray<string> = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE'];
+const FLYING = 'Flying the camera: W A S D move · Q down · E up · drag still poses and looks round · V gives the keys back to posing';
+/** the keys that hide the piece of the set under the pointer while an actor is posed
+ *  (with Shift, with all that stands over it), and show what the last hiding hid again
+ *  (with Shift, every piece): the person's hand reaches where the set stands in the
+ *  way. The film never shows a piece hidden */
+const HIDE_KEY = 'h', SHOW_KEY = 'u';
+/** how far the view turns for a drag with Alt held, of how far it turns without: a fine turn */
+const FINE_TURN = 0.25;
+/** what the line over the picture says once pieces are hidden */
+const hiddenWord = (hidden: number): string => (hidden < 1) ? 'No piece of the set under the pointer to hide' : `${hidden} ${(hidden === 1) ? 'piece' : 'pieces'} of the set hidden while you pose: U shows ${(hidden === 1) ? 'it' : 'them'} again, Shift-U every piece`;
 
 // == Types =======================================================================
 /** the strip's elements: the strip, what it says, its way back, and the film's
@@ -136,6 +156,13 @@ export class StageControl {
   private readonly poser: PoseControl;
   private posedIn: Readonly<{ set: number; camera: StageCamera; }> | undefined;
   private glancing: 'reference' | 'before' | undefined;
+  /** where the pointer last was over the picture while an actor is posed (page pixels) */
+  private pointerAt: readonly [number, number] | undefined;
+  /** whether the keys fly the camera while an actor is posed (SEE: isFlying) */
+  private flying = false;
+  /** a drag of the view under way while an actor is posed: whether it slides the view
+   *  (else turns it), and where the pointer last was */
+  private viewDrag: Readonly<{ slides: boolean; x: number; y: number; }> | undefined;
   /** the frame the picture shows, while a stage stands, and each time it changes */
   private drawn: Drawn | undefined;
   private readonly redrawn = new Subject<void>();
@@ -149,7 +176,8 @@ export class StageControl {
 
   public constructor(private readonly elements: StageElements, private readonly studio: HTMLElement, private readonly viewer: Viewer, private readonly build: Build, private readonly sheet: Pick<Sheet, 'show' | 'hide'>, pose?: PoseElements) {
     this.poser = new PoseControl(viewer, { draw: shots => this.drawPosed(shots), posed: (shot, pin) => this.ask({ kind: 'posed', actor: shot.name, position: shot.position, turn: shot.turn, ...(shot.pose ? { pose: shot.pose } : {}), pin: pin ?? null }) }, pose);
-    elements.view.addEventListener('click', () => this.holdView(!this.viewer.isViewHeld));
+    // Move the view: the view held or let go; while an actor is posed, held so the keys fly the camera too
+    elements.view.addEventListener('click', () => { const held = !this.viewer.isViewHeld; if(this.isPosing && held) this.fly(true); else { this.flying = false; this.holdView(held); if(this.isPosing) this.poser.say(undefined); } });
     elements.back.addEventListener('click', () => { this.left = true; this.end(); });
     elements.play.addEventListener('click', () => this.ask(this.playing ? { kind: 'pause' } : { kind: 'play' }));
     elements.scrub.addEventListener('input', () => this.ask({ kind: 'seek', frame: elements.scrub.valueAsNumber }));
@@ -159,6 +187,9 @@ export class StageControl {
     studio.addEventListener('pointerdown', event => this.pointer(event, () => this.poser.pointerDown(event)), true);
     studio.addEventListener('pointermove', event => this.pointer(event, () => this.poser.pointerMove(event)), true);
     studio.addEventListener('pointerup', event => this.pointer(event, () => this.poser.pointerUp(event)), true);
+    // while the view is held the wheel moves it in and out, and the right button slides it: no menu opens
+    studio.addEventListener('wheel', event => { if(this.viewer.isViewFree && ((event.target as HTMLElement | null)?.tagName === 'CANVAS')) { this.viewer.zoomView(event.deltaY); event.preventDefault(); event.stopPropagation(); } }, { capture: true, passive: false });
+    studio.addEventListener('contextmenu', event => { if((this.isPosing || this.viewer.isViewFree) && ((event.target as HTMLElement | null)?.tagName === 'CANVAS')) event.preventDefault(); }, true);
   }
 
   // == Stage =====================================================================
@@ -304,7 +335,7 @@ export class StageControl {
       const named = ((typeof input === 'object') && (input !== null) && ((input as Readonly<{ actor?: unknown; }>).actor !== undefined));
       if(!cast && named) throw new Error('Nothing is staged to pose an actor on: call stage first.');
       const posed = cast && poseOf(cast, input);
-      if(!cast || !posed) { this.endPose(); return { posing: null }; }
+      if(!cast || !posed) { this.endPose(); this.viewer.showSetPieces()/*the pose handed back: what was hidden to reach him stands again*/; return { posing: null }; }
       const standing = stagedSetOf(cast, set);
       const shots = shotsOf(cast, actors);
       if(!shots.some(shot => shot.name === posed.actor)) throw new Error(`pose.actors shows the actor posed: ${posed.actor} is not among them`);
@@ -484,6 +515,21 @@ export class StageControl {
     this.drawn = { set: posed.set, shots };
   }
 
+  /** whether an actor is handed to the person to pose */
+  public get isPosing(): boolean { return this.poser.actor !== undefined; }
+
+  /** whether, while an actor is posed, the keys fly the camera (W A S D, Q down and E
+   *  up; Space and C stay the pose's): asked for with V or the strip's Move the view, never by a drag that looks round */
+  public get isFlying(): boolean { return this.flying && this.viewer.isViewHeld; }
+
+  // the keys given to the camera or back to the pose, said on the line over the picture
+  private fly(on: boolean): void {
+    this.flying = on;
+    if(on && !this.viewer.isViewHeld) this.holdView(true, this.poser.shot?.position);
+    this.poser.carrying = false;
+    this.poser.say(on ? FLYING : undefined);
+  }
+
   /** ends the pose under way, and any glance held with it */
   private endPose(): void {
     if(this.glancing === 'reference') this.viewer.showReferenceAlone(false);
@@ -492,12 +538,36 @@ export class StageControl {
   }
 
   /** a pointer's event over the studio while an actor is posed: the pose's when it
-   *  takes it (a press on the picture takes the keys with it), else the view's */
+   *  takes it (a press on the picture takes the keys with it), else the view's. A
+   *  press the pose does not take holds the view at once, about the figure posed: the
+   *  person looks round it with no button first (C stands the film's camera again) */
   private pointer(event: PointerEvent, taken: () => boolean): void {
     const canvas = event.target as HTMLElement | null;
-    if((this.poser.actor === undefined) || this.glancing || (canvas?.tagName !== 'CANVAS')) return/*not posing, or over the studio's controls*/;
+    const posing = this.poser.actor !== undefined;
+    // the pose's while an actor is posed; else the view's while the person holds it over a film
+    if((!posing && !this.viewer.isViewFree) || this.glancing || (canvas?.tagName !== 'CANVAS')) return/*neither, or over the studio's controls*/;
+    if(posing) this.pointerAt = [event.clientX, event.clientY]/*where a key pressed next points*/;
+    // the pose's keys follow the pointer: over the picture they are the studio's, whatever held them before (the film's actor chooser, another frame)
+    const page = canvas.ownerDocument as Document | undefined/*none off a page*/;
+    if(posing && page && !page.hasFocus()) { page.defaultView?.focus(); canvas.tabIndex = -1; canvas.focus({ preventScroll: true }); }
     if((event.type === 'pointerdown') && (typeof canvas.focus === 'function')) { canvas.tabIndex = -1; canvas.focus({ preventScroll: true }); }
-    if(!taken()) return/*the view's*/;
+    if(!posing || !taken()) {
+      // the view's: a drag turns it freely (off him, about him), with Alt held a quarter as far; with the right button, or Shift, Ctrl or ⌘ held, it slides
+      if((event.type === 'pointerdown') && ((event.button === 0) || (event.button === 2))) {
+        if(!this.viewer.isViewFree) this.holdView(true, this.poser.shot?.position);
+        this.viewDrag = { slides: (event.button === 2) || event.shiftKey || event.ctrlKey || event.metaKey, x: event.clientX, y: event.clientY };
+        canvas.setPointerCapture?.(event.pointerId);
+      } else if((event.type === 'pointermove') && this.viewDrag) {
+        const [dx, dy] = [event.clientX - this.viewDrag.x, event.clientY - this.viewDrag.y];
+        const gain = event.altKey ? FINE_TURN : 1;
+        if(this.viewDrag.slides) this.viewer.panView(dx, dy); else this.viewer.orbitView(dx * gain, dy * gain);
+        this.viewDrag = { ...this.viewDrag, x: event.clientX, y: event.clientY };
+      } else if(event.type === 'pointerup') this.viewDrag = undefined;
+      else return/*a pointer moved over the picture, holding nothing*/;
+      event.stopPropagation();
+      event.preventDefault();
+      return;
+    }
     if(event.type === 'pointerdown') canvas.setPointerCapture?.(event.pointerId)/*the gesture's until it is let go, wherever it goes*/;
     event.stopPropagation();
     event.preventDefault();
@@ -558,6 +628,7 @@ export class StageControl {
     this.sheet.hide();
     this.cast = undefined/*nothing staged*/;
     this.endPose()/*no actor to pose*/;
+    this.viewer.showSetPieces()/*the build again, whole*/;
     this.reel = undefined;
     this.wanted = undefined;
     this.setDrawn(undefined/*the build*/);
@@ -610,10 +681,19 @@ export class StageControl {
   private key(event: KeyboardEvent): void {
     // while an actor is posed: a key held glances, and the film's keys are asked of it
     if((this.poser.actor !== undefined) && this.reel) {
-      const held = (event.ctrlKey || event.metaKey || event.altKey) ? undefined : (event.key.toLowerCase() === REFERENCE_KEY) ? 'reference' as const : (event.key.toLowerCase() === BEFORE_KEY) ? 'before' as const : undefined;
+      const held = (event.ctrlKey || event.metaKey || event.altKey || (this.isFlying && FLY_KEYS.includes(event.code))/*the camera's while it flies*/) ? undefined : (event.key.toLowerCase() === REFERENCE_KEY) ? 'reference' as const : (event.key.toLowerCase() === BEFORE_KEY) ? 'before' as const : undefined;
       if(held) { this.glance(held); event.preventDefault(); return; }
       const plain = !event.ctrlKey && !event.metaKey && !event.altKey;
+      // V gives the keys to the camera, to fly it, and back to the pose; while it flies, its keys are its own
+      if(plain && (event.key.toLowerCase() === FLY_KEY)) { this.fly(!this.isFlying); event.preventDefault(); return; }
+      if(this.isFlying && FLY_KEYS.includes(event.code)) return/*the camera's (SEE: main.ts onWalkKey)*/;
       if(plain && (event.key.toLowerCase() === SETTLE_KEY)) { this.poser.settle(); event.preventDefault(); return; }
+      if(plain && (event.key.toLowerCase() === UNPIN_KEY)) { this.poser.unpin(); event.preventDefault(); return; }
+      if(plain && (event.key === ' ')) { this.poser.carrying = true/*while held, any part of him pressed carries him*/; event.preventDefault(); return; }
+      if(plain && (event.key.toLowerCase() === CAMERA_KEY)) { if(this.viewer.isViewHeld) { this.flying = false; this.holdView(false); } event.preventDefault(); return; }
+      // a piece of the set in the way: hidden where the pointer is (with Shift, with all that stands over it), and shown again
+      if(plain && (event.key.toLowerCase() === HIDE_KEY)) { if(this.pointerAt) this.poser.say(hiddenWord(this.viewer.hideSetPieceAt(this.pointerAt[0], this.pointerAt[1], event.shiftKey))); event.preventDefault(); return; }
+      if(plain && (event.key.toLowerCase() === SHOW_KEY)) { this.viewer.showSetPieces(!event.shiftKey); this.poser.say(undefined); event.preventDefault(); return; }
       if(plain && ((event.key === 'Enter') || (event.key === 'Escape')) && this.poser.answer(event.key === 'Enter')) { event.preventDefault(); return; }/*a settle taken or left: no key of the film's*/
       if((event.ctrlKey || event.metaKey) ? (event.key.toLowerCase() === UNDO_KEY) : FILM_KEYS.includes(event.key)) {
         this.ask({ kind: 'key', key: event.key.toLowerCase() === UNDO_KEY ? UNDO_KEY : event.key, shift: event.shiftKey, alt: event.altKey });
@@ -634,6 +714,7 @@ export class StageControl {
   /** a key let go over the studio: what it glanced at let back */
   private keyUp(event: KeyboardEvent): void {
     const key = event.key.toLowerCase();
+    if(event.key === ' ') this.poser.carrying = false;
     if(((key === REFERENCE_KEY) && (this.glancing === 'reference')) || ((key === BEFORE_KEY) && (this.glancing === 'before'))) this.glance(undefined);
   }
 
@@ -652,13 +733,18 @@ export class StageControl {
     play.ariaLabel = this.playing ? 'Pause' : 'Play';
   }
 
-  /** holds the view for the person or lets it go (SEE: Viewer.holdView): let go, the
-   *  frame shown stands through its own camera again */
-  private holdView(held: boolean): void {
-    this.viewer.holdView(held);
+  /** holds the view for the person or lets it go (SEE: Viewer.holdView), turning about
+   *  `about` when held with one: let go, the frame shown stands through its own camera
+   *  again */
+  private holdView(held: boolean, about?: Point): void {
+    this.viewer.holdView(held, about);
+    if(!held) this.flying = false/*let go: a view held again is flown only when asked again*/;
     this.showHeld();
     const loaded = this.reel;
-    if(!held && loaded?.frames[this.shownFrame]) this.showWanted(loaded.id, this.shownFrame);
+    if(held) return/*the picture stands as it is*/;
+    // let go: the pose in hand stands through the film's camera, else the film's own frame
+    if(this.poser.actor !== undefined) this.poser.redraw();
+    else if(loaded?.frames[this.shownFrame]) this.showWanted(loaded.id, this.shownFrame);
   }
 
   /** the strip's view button, and the studio, as the viewer holds the view */

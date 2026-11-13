@@ -93,7 +93,7 @@ export type StageState = Readonly<
   | { kind: 'none'; }
   | { kind: 'ambiguous'; builds: number; }
   | { kind: 'staging'; loaded?: number; frames?: number; }/*the reel's frames loaded on every screen, once it loads*/
-  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; bottoms?: PoseBottoms; sizes: Readonly<Record<string, Size>>; grips: Readonly<Record<string, Point>>; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }
+  | { kind: 'staged'; wheeled: ReadonlySet<string>; refused: ReadonlyArray<Readonly<{ name: string; reason: string; }>>; bottoms?: PoseBottoms; clicks: ReadonlySet<string>; figures: ReadonlySet<string>; sizes: Readonly<Record<string, Size>>; grips: Readonly<Record<string, Point>>; parts: ReadonlyArray<PartFinding>; avoided: ReadonlyArray<Avoided>; }
   | { kind: 'left'; }
   | { kind: 'failed'; message: string; }
 >;
@@ -296,7 +296,7 @@ export class Studios {
       }
       if(this.screens !== screens) return this.state.value/*the studios changed meanwhile*/;
       this.staged = { scene, film, screens, reels: reels as number[], cast, edits, surfaceProbe, extentProbe, handProbe };
-      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], ...(facts.bottoms ? { bottoms: facts.bottoms } : {}), sizes: posedSizes(answer.sizes ?? {}, facts.figures, facts.bottoms), grips: answer.grips ?? {}, parts, avoided });
+      this.state.next({ kind: 'staged', wheeled: new Set(answer.wheeled ?? []), refused: answer.refused ?? [], ...(facts.bottoms ? { bottoms: facts.bottoms } : {}), clicks: facts.clicks, figures: facts.figures, sizes: posedSizes(answer.sizes ?? {}, facts.figures, facts.bottoms), grips: answer.grips ?? {}, parts, avoided });
     } catch(error) {
       if(this.screens === screens) this.fail(error);
     }

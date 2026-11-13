@@ -102,6 +102,32 @@
   // at the picture's foot, over the bar, while a control stands under its place at the top
   &.is-low { top: auto; bottom: 64px; }
 }
+// the pose's controls, at the picture's left edge: open, every gesture and key; folded, its heading alone
+.pose-help {
+  position: absolute;
+  z-index: 3;
+  top: 64px;
+  left: 12px;
+  width: 232px;
+  max-height: calc(100% - 140px);
+  overflow: auto;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 253, 242, 0.14);
+  border-radius: 8px;
+  background: rgba(16, 15, 13, 0.62);
+  backdrop-filter: blur(14px) saturate(1.3);
+  color: #FFFDF2;
+  font: 500 10px/1.45 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  &[hidden] { display: none; }
+  &:not([open]) { width: auto; }
+  summary { cursor: pointer; letter-spacing: 0.04em; text-transform: uppercase; }
+  // each control its name, then what it does under it: both read whole at the card's width
+  dl { margin: 6px 0 2px; }
+  dt { color: #FFD24A; margin-top: 5px; }
+  dd { margin: 0; color: rgba(255, 253, 242, 0.86); }
+}
+
 .pose-readout {
   display: flex;
   align-items: baseline;

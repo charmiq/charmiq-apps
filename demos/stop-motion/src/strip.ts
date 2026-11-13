@@ -27,8 +27,10 @@ type Cell = Readonly<{ index: number; seek: number; element: HTMLElement; }>;
 // == Class =======================================================================
 export class Strip {
   private film: Film | undefined;
-  /** each frame's picture, for the film shown */
+  /** each frame's picture, for the film shown, and the frames whose picture is of the
+   *  film before: shown until developed anew */
   private readonly pictures = new Map<number, Picture>();
+  private readonly stale = new Set<number>();
   private cells: Cell[] = [];
   private frame = 0;
   private marked: Cell | undefined;
@@ -72,9 +74,19 @@ export class Strip {
     this.placeBracket();
   }
 
-  /** shows a film's frames; another film than the last starts every cell unexposed */
+  /** shows a film's frames. Made again (a key written, the scene edited), the film
+   *  keeps the pictures of the frames that stand as they stood; a frame that changed
+   *  keeps its old picture too, until it is developed anew: no cell goes blank. A film
+   *  whose cast or look changed develops every cell again, over the old pictures */
   public show(film: Film | undefined): void {
-    if(film !== this.film) this.pictures.clear();
+    const before = this.film;
+    if(film !== before) {
+      const looks = !!before && !!film && (lookOf(before) === lookOf(film));
+      for(const index of [...this.pictures.keys()]) {
+        if(!film || (index >= film.frames.length)) { this.pictures.delete(index); this.stale.delete(index); }
+        else if(!looks || (JSON.stringify(before?.frames[index]) !== JSON.stringify(film.frames[index]))) this.stale.add(index);
+      }
+    } /* else -- the film shown */
     this.film = film;
     this.layout();
   }
@@ -88,7 +100,7 @@ export class Strip {
   }
 
   /** the frames whose cells still want a picture, in the strip's order */
-  public get wanting(): ReadonlyArray<number> { return this.cells.map(cell => cell.index).filter(index => !this.pictures.has(index)); }
+  public get wanting(): ReadonlyArray<number> { return this.cells.map(cell => cell.index).filter(index => !this.pictures.has(index) || this.stale.has(index)); }
 
   /** the developed picture of the frame nearest `index`, when one is */
   public nearest(index: number): Picture | undefined {
@@ -101,6 +113,7 @@ export class Strip {
   public develop(film: Film, index: number, picture: Picture): void {
     if(film !== this.film) return/*a picture of another film*/;
     this.pictures.set(index, picture);
+    this.stale.delete(index);
     for(const cell of this.cells) if(cell.index === index) this.expose(cell.element, picture);
   }
 
@@ -231,3 +244,9 @@ export class Strip {
     element.classList.add('is-exposed');
   }
 }
+
+// == Util ========================================================================
+/** what of a film every frame's picture shares: its scene but for its actors' keys
+ *  (whose every effect a frame carries), each actor as it is cast */
+const lookOf = (film: Film): string =>
+  JSON.stringify({ ...film.scene, actors: film.scene.actors.map(actor => Object.fromEntries(Object.entries(actor).filter(([field]) => field !== 'keys'))) });

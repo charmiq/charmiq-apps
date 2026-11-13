@@ -20,7 +20,7 @@ import { closePairs } from './measure';
 import { Player, type PlayerState } from './player';
 import { draftShot, keyOn, type Draft } from './pose-draft';
 import { lookFrom, lookText, pictureFrom, referenceAt, runFrom, runOf, type ReferenceLook, type ReferencePicture, type ReferenceRun, REFERENCE_LOOK_KEY, REFERENCE_STATE, REFERENCES_STATE } from './pose-reference';
-import { PoseView } from './pose-view';
+import { PoseView, type Standing } from './pose-view';
 import { castAs, type Recorded, type SceneError, type SoundCue } from './recorder';
 import { TimelineSurface } from './review-surface';
 import { addSound, applyEdit, isRefusal, keysRekeyed, regait, rekey, retimeSound, sameGait, sameKeys, sameSounds, soundsAdded, soundsMoved, writtenGait, type Refusal, type SceneEdit } from './scene-edit';
@@ -178,7 +178,7 @@ const strip = new Strip(element('strip'), index => { player.pause(); player.seek
 const surface = new TimelineSurface({ film: () => film, frame: () => player.current.index, timeline, player, shown: index => studios.whenShown(index) });
 const gaitView = new GaitView(element('gait'), { write: (name, keys) => writeGait(name, keys), seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), rewind: index => player.seek(index), loop: span => player.loopSpan(span), close: () => showGait(false) });
 const poseView = new PoseView(element('pose'), {
-  pose: (actor, index, values, pin) => poseOn(actor, index, values, pin), write: (actor, index, values) => writeKey(actor, index, values),
+  pose: (actor, index, values, pin, standing) => poseOn(actor, index, values, pin, standing), write: (actor, index, values) => writeKey(actor, index, values),
   seek: index => { player.pause(); player.seek(index); }, step: delta => player.step(delta), close: () => showPose(false),
   onion: skin => { onionSkin = skin; follow(); },
   pickReference: () => referenceDialog?.open(), removeReference: () => { keepReference(undefined).catch((failure: unknown) => poseView.say(messageOf(failure))); }, every: frames => keepEvery(frames), look: look => keepLook(look),
@@ -376,10 +376,10 @@ const showGait = (on: boolean) => {
 gaitButton.addEventListener('click', () => showGait(gaitButton.getAttribute('aria-pressed') !== 'true'));
 
 // -- Pose ------------------------------------------------------------------------
-/** whether the Pose mode stands in the timeline's place */
+/** whether the Pose mode stands over the timeline */
 const isPosing = () => poseButton.getAttribute('aria-pressed') === 'true';
-/** shows the Pose mode in place of the timeline, the picture track and the sheet, its
- *  reference picture laid over the studio's stage, or the film again, the reference
+/** shows the Pose mode's strip over the timeline and the picture track (the sheet
+ *  gives them its width), its reference picture laid over the studio's stage, or the film again, the reference
  *  taken down: the film is paused while a figure is posed */
 const showPose = (on: boolean) => {
   if(on === isPosing()) return/*as it stands*/;
@@ -396,11 +396,15 @@ poseButton.addEventListener('click', () => showPose(!isPosing()));
  *  its pinned foot named, or, with no values, ends the studio's pose and shows the
  *  film's frame again. While the film is not staged nothing is handed: the mode hands
  *  it again once it is (SEE: PoseView.repose) */
-const poseOn = (name: string, index: number, values: Draft | undefined, pin?: Leg) => {
+const poseOn = (name: string, index: number, values: Draft | undefined, pin?: Leg, standing: ReadonlyArray<Standing> = []) => {
   const actor = film?.scene.actors.find(each => each.name === name), frame = film?.frames[index];
   if(studios.stageState.kind !== 'staged') return/*no stage to pose on*/;
   if(!values || !film || !actor || !frame) { studios.pose(undefined).then(() => player.redraw()).catch((failure: unknown) => poseView.say(messageOf(failure))); return; }
-  studios.pose(frame, draftShot(film, actor, index, values), pin).catch((failure: unknown) => poseView.say(messageOf(failure)));
+  const filming = film, figures = studios.stageState.figures;
+  // an actor left as posed, its key still being written, is drawn as posed beside the one in hand
+  const left = new Map(standing.flatMap(each => { const recorded = filming.scene.actors.find(other => other.name === each.actor); return recorded ? [[each.actor, draftShot(filming, recorded, index, each.values, figures.has(each.actor))] as const] : []; }));
+  const shown = (left.size < 1) ? frame : { ...frame, actors: frame.actors.map(shot => left.get(shot.name) ?? shot) };
+  studios.pose(shown, draftShot(film, actor, index, values, figures.has(name)), pin).catch((failure: unknown) => poseView.say(messageOf(failure)));
 };
 
 // .. Reference ...................................................................
@@ -661,6 +665,8 @@ const showPlayer = (state: PlayerState) => {
 player.state$.subscribe(showPlayer);
 // a studio's controls say whether the film plays: told at once as it starts or stops
 player.state$.pipe(map(state => state.playing), distinctUntilChanged(), skip(1)).subscribe(() => showFrame(player.current.index));
+// the Pose mode lets its figure go while the film plays, and takes it back as it stops
+player.state$.pipe(map(state => state.playing), distinctUntilChanged()).subscribe(playing => poseView.setPlaying(playing));
 // what the person asks from a studio's controls, full screen: the film's own transport
 studios.asked$.subscribe(ask => {
   if(ask.kind === 'play') player.play();
@@ -754,7 +760,7 @@ studios.state$.subscribe((stage: StageState) => {
   showChip();
   showStatus();
   showSheet();
-  if(stage.kind === 'staged') { showTimeline()/*the actors sized*/; void developTrack(); void layReference()/*over the stage staged*/; poseView.setBottoms(stage.bottoms)/*what a pinned foot's contact is read from*/; poseView.repose()/*its figure handed to the stage staged*/; }
+  if(stage.kind === 'staged') { showTimeline()/*the actors sized*/; void developTrack(); void layReference()/*over the stage staged*/; poseView.setBottoms(stage.bottoms)/*what a pinned foot's contact is read from*/; poseView.setCast(stage.clicks, stage.figures)/*which actors the mode asks click: false of, and which take a pose*/; poseView.repose()/*its figure handed to the stage staged*/; }
   else if(stage.kind !== 'staging') referenceLaid = undefined/*a stage ended takes its reference down with it*/;
 });
 studios.studios$.subscribe(() => { showChip(); showStatus(); void director.restage(); })/*new studios: the scene staged again on them*/;

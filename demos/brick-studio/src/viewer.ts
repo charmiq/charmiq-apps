@@ -59,6 +59,12 @@ const WHITE = new THREE.Color(1, 1, 1);
 const OUTLINE_POINTS = 240, HIDES_HAIR = 0.05, EDGES_ACROSS = 640;
 /** the color a posed figure's piece is drawn in where it passes into the set */
 const INTO_SET = new THREE.Color(0xe5352b);
+/** the free view (SEE: Viewer#orbitView): how far it turns for a pixel dragged (radians:
+ *  a drag two hundred pixels long turns it a quarter round, as modeling tools do), how far a wheel's pixel moves it toward its point (a share of its distance),
+ *  and how far over a figure's feet the point it turns about stands (studs: his middle) */
+const FREE_TURN = 0.00785,FREE_ZOOM = 0.0012, FREE_PIVOT_UP = 1.6;
+/** where a piece hidden from the picture stands: shrunk to nothing */
+const NOWHERE = new THREE.Matrix4().makeScale(0, 0, 0);
 /** what a piece tried for a crossing is made of: never drawn, both its faces a surface */
 const CROSSED = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 /** a frame with nothing over its picture */
@@ -346,6 +352,12 @@ export class Viewer {
   /** whether the build reaches past the baseplate (SEE: baseplateArea) */
   private pastBaseplate = false;
   private shownKeys = new Set<string>();
+  /** the set's placements hidden from the picture while an actor is posed (SEE: hideSetPieceAt) */
+  private readonly hiddenPlacements = new Set<number>();
+  /** what each hiding hid, the latest last */
+  private readonly hiddenLately: number[][] = [];
+  /** the point the view turns about while it is held free (SEE: holdView, orbitView) */
+  private freePivot: THREE.Vector3 | undefined;
   private drops: Drop[] = [];
 
   private tween: { from: THREE.Spherical; to: THREE.Spherical; fromTarget: THREE.Vector3; toTarget: THREE.Vector3; start: number; resolve: () => void; } | undefined;
@@ -751,7 +763,7 @@ export class Viewer {
       const { geometry, glass, finish, color: tint, actor } = partItems[0];
       const mesh = new THREE.InstancedMesh(this.geometries.get(geometry)!, glass ? this.glassFor(tint) : finish ? this.metalFor(finish) : this.material, partItems.length);
       if(actor) { mesh.userData.actor = groupKey/*how a frame finds the mesh to move*/; mesh.userData.lines = partItems.map(item => item.line)/*the frame's line each instance draws (SEE: lineUnder)*/; }
-      else mesh.userData.placements = partItems.map(item => item.placement)/*what each instance draws, as the picture names it (SEE: placementsAt)*/;
+      else { mesh.userData.placements = partItems.map(item => item.placement)/*what each instance draws, as the picture names it (SEE: placementsAt)*/; mesh.userData.stands = partItems.map(item => item.matrix)/*where each stands, hidden or not (SEE: hideSetPieceAt)*/; }
       mesh.castShadow = !glass/*light passes through; the path tracer shades it physically*/;
       mesh.receiveShadow = true;
       partItems.forEach((item, index) => {
@@ -766,9 +778,73 @@ export class Viewer {
       });
       mesh.computeBoundingSphere();
       mesh.frustumCulled = false/*instances move during a drop*/;
+      this.standSetPieces(mesh, true);
       meshes.push(mesh);
     }
     return meshes;
+  }
+
+  // == Hidden Set Pieces =========================================================
+  /** hides the piece of the set the page point shows first (an actor before it looked
+   *  past), with every piece of the set standing at or over its foot when `above`:
+   *  the person's aid while an actor is posed, to reach where the set stands in the
+   *  way. A piece hidden is hidden from the picture alone: the set still stops the
+   *  figure there, and a picture made for the film shows it. Answers how many pieces
+   *  it hid */
+  public hideSetPieceAt(clientX: number, clientY: number, above: boolean): number {
+    const ray = this.rayAt(clientX, clientY);
+    const meshes = (this.parts.children as THREE.InstancedMesh[]).filter(mesh => !mesh.userData.actor && mesh.userData.placements);
+    const hit = ray?.intersectObjects(meshes, false)[0];
+    const placement = (hit?.instanceId === undefined) ? undefined : (hit.object.userData.placements as ReadonlyArray<number | undefined>)[hit.instanceId];
+    if(!hit || (placement === undefined)) return 0/*no piece of the set there*/;
+    const stood = new Set(this.hiddenPlacements);
+    this.hiddenPlacements.add(placement);
+    if(above) {
+      // every piece whose foot stands no lower than this piece's: what a hand lifts off with it
+      const footOf = (mesh: THREE.InstancedMesh, instance: number) => new THREE.Box3().copy(mesh.geometry.boundingBox ?? new THREE.Box3().setFromBufferAttribute(mesh.geometry.getAttribute('position') as THREE.BufferAttribute)).applyMatrix4((mesh.userData.stands as ReadonlyArray<THREE.Matrix4>)[instance]).min.y;
+      const foot = footOf(hit.object as THREE.InstancedMesh, hit.instanceId!/*by contract: checked above*/) - 1e-3;
+      for(const mesh of meshes) (mesh.userData.placements as ReadonlyArray<number | undefined>).forEach((each, instance) => { if((each !== undefined) && (footOf(mesh, instance) >= foot)) this.hiddenPlacements.add(each); });
+    } /* else -- that piece alone */
+    for(const mesh of meshes) this.standSetPieces(mesh, true);
+    this.pathTraceStale = true;
+    this.requestFrame();
+    const lately = [...this.hiddenPlacements].filter(each => !stood.has(each));
+    if(lately.length > 0) this.hiddenLately.push(lately);
+    return lately.length;
+  }
+
+  /** shows every piece of the set again; with `last`, only what the latest hiding
+   *  still standing hid (SEE: hideSetPieceAt), the one before it next */
+  public showSetPieces(last = false): void {
+    if(this.hiddenPlacements.size < 1) return/*none hidden*/;
+    if(last) for(const each of this.hiddenLately.pop() ?? []) this.hiddenPlacements.delete(each);
+    else { this.hiddenPlacements.clear(); this.hiddenLately.length = 0; }
+    for(const mesh of this.parts.children as THREE.InstancedMesh[]) this.standSetPieces(mesh, true);
+    this.pathTraceStale = true;
+    this.requestFrame();
+  }
+
+  // stands a set mesh's pieces where they stand, those hidden shrunk to nothing when
+  // `hiding`: a picture made for the film stands them all
+  private standSetPieces(mesh: THREE.InstancedMesh, hiding: boolean): void {
+    const [placements, stands] = [mesh.userData.placements as ReadonlyArray<number | undefined> | undefined, mesh.userData.stands as ReadonlyArray<THREE.Matrix4> | undefined];
+    if(!placements || !stands || (this.hiddenPlacements.size < 1 && !mesh.userData.hid)) return/*no set mesh, or none of it ever hidden*/;
+    let hid = false;
+    placements.forEach((placement, instance) => {
+      const hidden = hiding && (placement !== undefined) && this.hiddenPlacements.has(placement);
+      mesh.setMatrixAt(instance, hidden ? NOWHERE : stands[instance]);
+      hid ||= hidden;
+    });
+    mesh.userData.hid = hid || (this.hiddenPlacements.size > 0);
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // runs `work` with every piece of the set standing: a picture made for the film
+  private allStanding<T>(work: () => T): T {
+    if(this.hiddenPlacements.size < 1) return work();
+    const meshes = this.parts.children as THREE.InstancedMesh[];
+    for(const mesh of meshes) this.standSetPieces(mesh, false);
+    try { return work(); } finally { for(const mesh of meshes) this.standSetPieces(mesh, true); }
   }
 
   // == View ======================================================================
@@ -1090,11 +1166,72 @@ export class Viewer {
   /** holds the view over a stage for the person (`held`): the mouse turns and zooms the
    *  camera, and a live frame poses its actors without moving it; let go, the next
    *  frame's camera stands again. A stage shown afresh, or the build shown again, lets
-   *  it go; a stage that keeps the picture keeps it held */
-  public holdView(held: boolean): void {
+   *  it go; a stage that keeps the picture keeps it held. Held with `about`, the camera
+   *  turns about the point it looks at as far off as `about` stands: where it stands
+   *  and the way it looks are kept, so the picture never jumps as the view is taken */
+  public holdView(held: boolean, about?: Point): void {
     this.viewHeld = held && !!this.staging;
-    this.controls.enabled = !this.staging || this.viewHeld;
+    // held about a point, the view is free (SEE: orbitView): the controls' own turning, which runs on a compass angle and a tilt and jams looking straight down, stands aside
+    // about a figure's middle when one is named; else about what the middle of the picture shows (the point the camera looks at, with nothing there): the picture stands as it was either way
+    const ahead = this.camera.getWorldDirection(new THREE.Vector3());
+    this.freePivot = !this.viewHeld ? undefined
+      : about ? scenePoint(about).setY(scenePoint(about).y + FREE_PIVOT_UP)
+      : (this.firstMet(ahead) ?? this.camera.position.clone().addScaledVector(ahead, Math.max(this.camera.position.distanceTo(this.controls.target), this.controls.minDistance)));
+    this.controls.enabled = (!this.staging || this.viewHeld) && !this.freePivot;
+    if(this.freePivot) this.syncFree();
     if(!this.viewHeld) this.walking = STANDING/*the film's camera stands*/;
+    this.requestFrame();
+  }
+
+  /** whether the view is held free about a point (SEE: holdView with `about`) */
+  public get isViewFree(): boolean { return this.freePivot !== undefined; }
+
+  /** turns the free view about its point by a drag of the page (pixels): across, round
+   *  the upright through the point; up and down, over it about the camera's own level
+   *  axis, as far as it is dragged. It is one rotation of where the camera stands and
+   *  the way it looks, so it has no top or bottom to stop at: dragged over the top it
+   *  goes on, and dragged back it comes back */
+  public orbitView(dx: number, dy: number): void {
+    const pivot = this.freePivot;
+    if(!pivot) return/*not held free*/;
+    const level = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    const turn = new THREE.Quaternion().setFromAxisAngle(UP, -dx * FREE_TURN).multiply(new THREE.Quaternion().setFromAxisAngle(level, -dy * FREE_TURN));
+    this.camera.position.sub(pivot).applyQuaternion(turn).add(pivot);
+    this.camera.quaternion.premultiply(turn).normalize();
+    this.syncFree();
+  }
+
+  /** slides the free view, its point with it, by a drag of the page (pixels): what lies
+   *  at the point's distance follows the pointer */
+  public panView(dx: number, dy: number): void {
+    const pivot = this.freePivot;
+    if(!pivot) return/*not held free*/;
+    const perPixel = (2 * this.camera.position.distanceTo(pivot) * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2)) / Math.max(this.canvas.clientHeight, 1);
+    const move = new THREE.Vector3(-dx * perPixel, dy * perPixel, 0).applyQuaternion(this.camera.quaternion);
+    this.camera.position.add(move);
+    pivot.add(move);
+    this.syncFree();
+  }
+
+  /** moves the free view toward its point or away from it as a wheel turns (its delta,
+   *  pixels): never nearer than the controls' least distance, nor further than their most */
+  public zoomView(delta: number): void {
+    const pivot = this.freePivot;
+    if(!pivot) return/*not held free*/;
+    const from = this.camera.position.clone().sub(pivot), far = clamp(from.length() * Math.exp(delta * FREE_ZOOM), this.controls.minDistance, this.controls.maxDistance);
+    this.camera.position.copy(pivot).add(from.setLength(far));
+    this.syncFree();
+  }
+
+  // the free view as the rest of the viewer reads a camera: its up its own, the point it
+  // looks at ahead of it as far off as its point stands
+  private syncFree(): void {
+    const pivot = this.freePivot;
+    if(!pivot) return;
+    this.camera.up.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    this.camera.updateMatrixWorld();
+    this.controls.target.copy(this.camera.position).addScaledVector(this.camera.getWorldDirection(new THREE.Vector3()), this.camera.position.distanceTo(pivot));
+    this.cameraChanged();
     this.requestFrame();
   }
   /** whether the person holds the view over the stage (SEE: holdView) */
@@ -1103,6 +1240,7 @@ export class Viewer {
   /** the controls moved on (damping, a drag, a zoom), the camera never swinging so far
    *  under its target as to stand below the floor (SEE: limitLookUp); whether it moved */
   private updateControls(): boolean {
+    if(this.freePivot) return false/*the view is held free: the controls stand aside*/;
     this.limitLookUp();
     return this.controls.update();
   }
@@ -1130,7 +1268,7 @@ export class Viewer {
       this.walking = STANDING;
       this.controls.enabled = false/*the stage's camera, never the mouse's*/;
     } /* else -- staged: the camera to put back stays the build's */
-    if(!kept) this.viewHeld = false/*a stage afresh: its frames' camera*/;
+    if(!kept) { this.viewHeld = false/*a stage afresh: its frames' camera*/; this.freePivot = undefined; this.hiddenPlacements.clear()/*and every piece of its sets*/; this.hiddenLately.length = 0; }
     this.controls.enabled = this.viewHeld;
     this.forgetSetMeshes()/*the last stage's*/;
     const standing = kept ? Math.min(kept.standing, sets.length - 1) : 0, actors = kept?.actors ?? NO_ACTORS;
@@ -1249,7 +1387,7 @@ export class Viewer {
   private unghosted<T>(work: () => T): T {
     const shown = this.ghosts.visible;
     this.ghosts.visible = false;
-    try { return work(); } finally { this.ghosts.visible = shown; }
+    try { return this.allStanding(work)/*nor a piece of the set hidden*/; } finally { this.ghosts.visible = shown; }
   }
 
   /** lays a reference picture over the stage's picture where it is shown, whole within
@@ -1346,6 +1484,8 @@ export class Viewer {
     if(!this.staging) throw new Error('nothing is staged');
     const ghosted = this.ghosts.visible;
     this.ghosts.visible = false/*a capture is the film's: no ghost drawn while it settles*/;
+    const sets = this.parts.children as THREE.InstancedMesh[];
+    for(const mesh of sets) this.standSetPieces(mesh, false)/*nor a piece of the set hidden*/;
     try {
       this.drawStageAt(width, height);
       await this.whenSettled();
@@ -1356,6 +1496,7 @@ export class Viewer {
       return await createImageBitmap(picture);
     } finally {
       this.ghosts.visible = ghosted;
+      for(const mesh of this.parts.children as THREE.InstancedMesh[]) this.standSetPieces(mesh, true);
       if(this.heldEye) { this.toEye(this.heldEye); this.heldEye = undefined/*the person's view again*/; }
       this.requestFrame();
     }
@@ -1835,6 +1976,8 @@ export class Viewer {
     if(turn !== 0) {
       const offset = new THREE.Vector3().subVectors(target, camera).applyAxisAngle(UP, turn * TURN_SPEED * seconds);
       target.copy(camera).add(offset);
+      // held free, the camera turns itself (no control turns it to its target), its point swinging round it
+      if(this.freePivot) { this.camera.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(UP, turn * TURN_SPEED * seconds)); this.freePivot.sub(camera).applyAxisAngle(UP, turn * TURN_SPEED * seconds).add(camera); }
     } /* else -- not turning */
 
     const speed = Math.max(camera.distanceTo(target) * WALK_SPEED, WALK_SPEED_MIN) * (fast ? WALK_FAST : 1) * seconds;
@@ -1844,6 +1987,7 @@ export class Viewer {
     move.y = Math.max(move.y, -target.y)/*the point never sinks below the baseplate*/;
     camera.add(move);
     target.add(move);
+    this.freePivot?.add(move);
     this.cameraChanged();
   }
 
