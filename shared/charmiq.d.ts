@@ -596,7 +596,95 @@ export interface PageAPI {
    *  app, several chosen together collapsing to the latest, each once; a later consumer
    *  replaces it */
   launchQueue: Readonly<{ setConsumer(consumer: (params: LaunchParams) => void): void; }>;
+
+  /** the installed app's notifications: asking to turn them on and reading them (each
+   *  device's own decision, asked by the Platform: no scope), and sending one (scope
+   *  `command.notification.material.push.send`) */
+  notifications: NotificationsAPI;
 }
+
+/** whether this device's notifications about the document are on: `blocked` when the
+ *  browser refuses them, `unavailable` where there is no installed app to notify (an
+ *  ordinary tab, a browser without push, a Preview or a published page) or the
+ *  installed app opens another Application of the document */
+export type NotificationState = 'on' | 'off' | 'blocked' | 'unavailable';
+/** a push notification about this document, to those subscribed to it whom the
+ *  audience names, a tap opening this Application */
+export type NotificationSend = Readonly<{
+  /** the User sending it (`self`), the named Users (`users`), or everyone subscribed
+   *  (`subscribers`): an audience only narrows those subscribed, never reaches anyone
+   *  else */
+  audienceType: 'self' | 'users' | 'subscribers';
+  /** the Platform User identifiers, only for `users`: at most 100, each once */
+  userIds?: ReadonlyArray<string>;
+  /** leaves out the device sending it, when it is subscribed */
+  excludeThisDevice?: boolean;
+
+  /** plain text, at most 500 characters: what the notification says */
+  body: string;
+  /** the count every recipient's installed app icon shows; absent, each device's own
+   *  count of what it was sent since it last opened */
+  badge?: number;
+  /** this Application's launch query a tap carries (`key=value&…`, at most 512
+   *  characters and 10 keys; never `mode`, `app`, `view`, `chat` or `thr`), heard
+   *  through `launchQueue` */
+  launch?: string;
+  /** a later send for this Application with the same tag (whoever sends it: this
+   *  Application, a User or an Agent) replaces this one where it is still waiting to
+   *  be sent, for everyone the later one is also for; one already
+   *  handed to a push service is not recalled (letters, digits, `.`, `_`, `:`, `-`; at
+   *  most 64) */
+  replacementTag?: string;
+  /** how long a device may still be sent it, from its acceptance: 60 to 86,400
+   *  seconds (the default and most, a day) */
+  lifetimeSeconds?: number;
+
+  /** the identifier of a send this repeats, the one the Platform made for it (20
+   *  letters or digits): a retry within 48 hours of the original's
+   *  acceptance, after an uncertain failure and with the same parts, is answered with
+   *  that acceptance instead of sending again (absent, the Platform makes one; a
+   *  failure carries it as `submissionId`). A push service retrying a delivery may
+   *  still show a notification twice */
+  submissionId?: string;
+}>;
+/** the Platform's acceptance: the notification is the Platform's to deliver, not yet a
+ *  device's to show */
+export type NotificationAcceptance = Readonly<{
+  /** the identifier that names this send for a retry */
+  submissionId: string;
+  notificationId: string;
+  /** its place among this document's notifications */
+  order: number;
+  acceptMillis: number;
+  expireMillis: number;
+}>;
+/** push notifications about this document. Receiving is each device's own decision for
+ *  its signed-in User: asking needs the installed app and no scope, the Platform asks
+ *  this device with its own question (Allow turns it on, Don't allow keeps it off), and
+ *  the User turns a device off themselves (the Application has no call to turn them off).
+ *  Sending is under `command.notification.material.push.send` and needs only that the
+ *  User may edit the document; its first call asks the User through the Platform's
+ *  consent prompt, and a refusal rejects with a {@link CharmIQError} */
+export interface NotificationsAPI {
+  /** asks the User, on this device, to turn on notifications about this document; where
+   *  they already allowed it here, turns them back on without asking. Call it from a
+   *  tap: the Platform asks first, then the browser, only during a tap (after a Don't
+   *  allow, or the question closed, only a call from the User's own tap asks again).
+   *  Resolves to the resulting state */
+  request(): Promise<NotificationState>;
+  /** whether notifications about this document are on for this device */
+  state(): Promise<NotificationState>;
+  /** sends a push notification about this document as this Application. Resolves once
+   *  the Platform accepts it, never once a device shows it; each device's attempts
+   *  start at most one a minute, in order, which is no promise of when it shows.
+   *  Rejects with a {@link NotificationSendError}, which carries the send's
+   *  `submissionId` for a retry */
+  send(notification: NotificationSend): Promise<NotificationAcceptance>;
+}
+/** a send's refusal: its `code` (`functions/invalid-argument` for a malformed send,
+ *  `functions/failed-precondition` where it cannot be sent from) and the identifier a
+ *  retry repeats */
+export type NotificationSendError = CharmIQError & Readonly<{ submissionId: string; }>;
 
 // --------------------------------------------------------------------------------
 export interface CharmIQAPI {

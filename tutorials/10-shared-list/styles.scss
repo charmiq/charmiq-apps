@@ -1,0 +1,138 @@
+@use 'variables' as *;
+
+// ********************************************************************************
+// the page is the Application's own: its colors reach every edge, in either mode
+:root {
+  color-scheme: light dark;
+  --bg: #{$bg-color};
+  --text: #{$primary-color};
+  --text-secondary: #{$text-secondary};
+  --border: #{$border-color};
+  --field: white;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161614;
+    --text: #f2f2ee;
+    --text-secondary: rgba(242, 242, 238, 0.6);
+    --border: rgba(242, 242, 238, 0.14);
+    --field: #22221f;
+  }
+}
+html, body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.app {
+  font-family: $font-family;
+  padding: $spacing;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    h1 {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+  }
+
+  .add {
+    display: flex;
+    gap: 8px;
+    margin-top: $spacing;
+
+    input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 12px;
+      font: inherit;
+      color: var(--text);
+      background: var(--field);
+      border: 1px solid var(--border);
+      border-radius: $radius;
+
+      &:focus {
+        outline: none;
+        border-color: $accent-color;
+      }
+    }
+  }
+
+  button {
+    padding: 8px 14px;
+    font: inherit;
+    color: white;
+    background: $accent-color;
+    border: none;
+    border-radius: $radius;
+    cursor: pointer;
+
+    &:hover { background: $accent-hover; }
+    &:disabled { opacity: 0.5; cursor: default; }
+  }
+
+  .fresh {
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 999px;
+  }
+
+  .error, .notice {
+    margin: 8px 0 0;
+    font-size: 13px;
+    overflow-wrap: break-word;
+  }
+  .error { color: $accent-hover; }
+  .notice { color: var(--text-secondary); }
+
+  .items {
+    margin: $spacing 0 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+
+      &.done .text {
+        color: var(--text-secondary);
+        text-decoration: line-through;
+      }
+
+      .text, .by {
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .text { flex: 1; }
+      .by {
+        max-width: 30%;
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      button {
+        padding: 4px 10px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        background: none;
+        border: 1px solid var(--border);
+
+        &:hover { color: var(--text); background: none; }
+      }
+    }
+  }
+}
