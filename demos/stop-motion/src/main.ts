@@ -396,10 +396,12 @@ poseButton.addEventListener('click', () => showPose(!isPosing()));
  *  its pinned foot named, or, with no values, ends the studio's pose and shows the
  *  film's frame again. While the film is not staged nothing is handed: the mode hands
  *  it again once it is (SEE: PoseView.repose) */
+let poseAsks = 0/*each ask of the studio's pose: a letting go redraws the film's frame only while no later ask came*/;
 const poseOn = (name: string, index: number, values: Draft | undefined, pin?: Leg, standing: ReadonlyArray<Standing> = []) => {
   const actor = film?.scene.actors.find(each => each.name === name), frame = film?.frames[index];
   if(studios.stageState.kind !== 'staged') return/*no stage to pose on*/;
-  if(!values || !film || !actor || !frame) { studios.pose(undefined).then(() => player.redraw()).catch((failure: unknown) => poseView.say(messageOf(failure))); return; }
+  const asked = ++poseAsks;
+  if(!values || !film || !actor || !frame) { studios.pose(undefined).then(() => { if(asked === poseAsks) player.redraw()/*else -- handed back since: a frame shown now would end that pose*/; }).catch((failure: unknown) => poseView.say(messageOf(failure))); return; }
   const filming = film, figures = studios.stageState.figures;
   // an actor left as posed, its key still being written, is drawn as posed beside the one in hand
   const left = new Map(standing.flatMap(each => { const recorded = filming.scene.actors.find(other => other.name === each.actor); return recorded ? [[each.actor, draftShot(filming, recorded, index, each.values, figures.has(each.actor))] as const] : []; }));

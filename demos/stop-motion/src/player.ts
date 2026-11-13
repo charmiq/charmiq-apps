@@ -104,7 +104,7 @@ export class Player {
     } /* else -- no span looped, or within it */
     const last = film.frames.length - 1;
     if(due > last) {
-      if(!this.state.value.loop) { this.moveTo(last); this.end(); return; }
+      if(!this.state.value.loop) { this.end(last); return; }
       [start, from, due] = [performance.now(), 0, 0];
       this.clock = { start, from };
       this.sound(true)/*looped: the sound from the start again, the last playing out*/;
@@ -120,12 +120,14 @@ export class Player {
     if(film && clock) this.soundtrack?.start(frameTime(clock.from, film.scene.fps), clock.start, carry);
   }
 
-  /** the film's end reached: stopped, the sound started playing out */
-  private end(): void {
+  /** the film's end reached: stopped on its `last` frame in one change, the sound
+   *  started playing out. The stop shows that frame, as a pause does, before the Pose
+   *  mode takes its figure back: a show after it would end the pose */
+  private end(last: number): void {
     clearTimeout(this.wake);
     [this.clock, this.wake] = [undefined/*not playing*/, undefined/*no wake*/];
     this.soundtrack?.finish();
-    this.update({ playing: false });
+    this.update({ index: last, playing: false });
   }
 
   /** the playhead at a frame, shown on the studios when it moved */
