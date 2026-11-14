@@ -6,7 +6,7 @@ import { recordLines } from '/shared/line-records/line-records';
 import type { AppContent, ApplicationUser, NotificationSend, NotificationSendError, NotificationState } from '../../shared/charmiq'/*also activates the window.charmiq global augmentation*/;
 import { adding, editing, jobsIn, JobList, type Job } from './jobs';
 import { People, Together, type SharesStatus } from './People';
-import { byPlace, colorForId, initials, introducing, membersIn, needsIntroduction, peopleOf, readShares, sharesFailureNotice, type Me, type Share } from './people';
+import { byPlace, colorForId, firstName, initials, introducing, membersIn, needsIntroduction, peopleOf, readShares, sharesFailureNotice, type Me, type Share } from './people';
 
 // two people, one document, opened as an app from the Home Screen. The jobs they share
 // are records in the document's app-content (SEE: ./jobs.ts), beside each person's
@@ -24,6 +24,9 @@ const TOP_COLOR = { light: '#f7f7f4', dark: '#161614' };
 
 /** the most a notification says (the Platform's limit) */
 const MAX_BODY_LENGTH = 500;
+/** the most of the writer's first name a notification names, so the job leads the
+ *  lines a lock screen shows */
+const MAX_NAME_LENGTH = 16;
 /** how long a job a notification opened stays highlighted */
 const HIGHLIGHT_MS = 2_400;
 
@@ -33,9 +36,11 @@ type View = 'all' | 'done';
  *  the identifier the Platform gave the first send */
 type Unsent = Readonly<{ job: Job; notification: NotificationSend; submissionId?: string; sending: boolean; }>;
 
-/** what a new job's notification says: shown on a lock screen, so no more than the job */
+/** what a new job's notification says: shown on a lock screen, so no more than the job
+ *  and who added it, by a short first name */
 const bodyOf = (name: string, text: string): string => {
-  const body = `${name} added: ${text}`;
+  const first = firstName(name);
+  const body = `${(first.length > MAX_NAME_LENGTH) ? `${first.slice(0, MAX_NAME_LENGTH - 1)}…` : first} added: ${text}`;
   return (body.length > MAX_BODY_LENGTH) ? `${body.slice(0, MAX_BODY_LENGTH - 1)}…` : body;
 };
 /** whether the person asked the device for less motion */

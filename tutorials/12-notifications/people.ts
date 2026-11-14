@@ -132,6 +132,7 @@ export const byPlace = (meId: string | undefined) => (a: Person, b: Person): num
 
 /** the first word of a name */
 export const firstName = (name: string): string => name.trim().split(/\s+/)[0] || name;
-/** up to two initials of a name */
+/** up to two initials of a name: each word's first letter, so a quote or a mark that
+ *  opens a word is never one */
 export const initials = (name: string): string =>
-  name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase() || '?';
+  name.trim().split(/\s+/).map(word => word.match(/\p{L}/u)?.[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
