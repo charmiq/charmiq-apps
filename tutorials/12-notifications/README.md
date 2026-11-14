@@ -16,7 +16,7 @@ In this document the Application is the Punch List from the last step, and every
 | File | Change |
 |------|--------|
 | [`manifest.json`](charmiq://./manifest.json) | Declares `command.notification.material.push.send` beside `user.read` and `mcp.platform.vfs` |
-| [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`) with a retry, and the job a notification's tap names, through `page.launchQueue` |
+| [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`, one tag with a hold, so a run of jobs arrives as one notification) with a retry, the list shown clearing what still waits (`page.notifications.consumed()`), and the job a notification's tap names, through `page.launchQueue` |
 | [`styles.scss`](charmiq://./styles.scss) | The **Notify me** card, and the job a notification opened, highlighted |
 | [`jobs.ts`](charmiq://./jobs.ts), [`people.ts`](charmiq://./people.ts), [`People.tsx`](charmiq://./People.tsx) | Unchanged |
 | [`index.html`](charmiq://./index.html), [`main.tsx`](charmiq://./main.tsx), [`_variables.scss`](charmiq://./_variables.scss) | Unchanged |
@@ -47,15 +47,32 @@ The state is read again each time you come back to the app.
 ```tsx
 list.change(adding(job)).then(() => announce({ job, notification: {
   audienceType: 'subscribers', excludeThisDevice: true,
-  body: `${me.name} added: ${text}`, launch: `job=${job.id}`,
+  body: bodyOf(me.name, text, run.current.count), launch: `job=${job.id}`,
+  replacementTag: 'new-jobs', holdSeconds: 10,
 }, sending: false }));
 ```
 
 Saving a job's line tells no one by itself. Once the line is saved, the Application sends it: to everyone whose device turned on notifications for this installed app (`subscribers`), leaving out the device that sent it (your other devices still hear it). Sending needs the `command.notification.material.push.send` scope and that you may edit the document; the first send asks you for the scope as any permission does.
 
-**Each job is its own news.** There is no `replacementTag`: a tag is for updates of one thing (a job's progress), where a later send replaces an earlier one still waiting. Two new jobs are two notifications.
+## Ten jobs in a row are one notification
+
+Ana adds ten jobs in a row. Ten notifications would buzz Ben's phone ten times, nine of them about a list he is already looking at. So every new job is sent under one `replacementTag` (`new-jobs`) with a `holdSeconds` of 10:
+
+- **The tag replaces.** A later send with the same tag replaces the one still waiting, and on Ben's device the newer notification takes the older one's place.
+- **The hold batches.** The Platform sends nothing of the tag to Ben's devices until 10 seconds after the first of the run. A job added within those 10 seconds replaces the waiting one and keeps the earlier, sooner end, so a run waits at most one hold (no send ever waits longer than its own). The hold is the Platform's: it holds even after Ana closes the app.
+- **The Application words the batch.** The Platform counts nothing into the message, so the app counts the jobs this device added in the current hold and says so: *Ana added 'Seal the deck' and 2 more*. A tap opens the newest.
+
+A single job arrives 10 seconds after it was added, saying only *Ana added 'Seal the deck'*. Without the tag and hold, each job would arrive on its own within seconds of the last.
 
 **The body shows on a lock screen.** It says who added which job and nothing else: keep anything a passer-by should not read out of it. It is at most 500 characters, so a long job is cut short there; the job itself is not.
+
+## A list seen is news already seen
+
+```tsx
+page.notifications.consumed('new-jobs');
+```
+
+When the list is shown (opened, or come back to), the jobs are in front of Ben: a `new-jobs` notification still waiting is news he has seen. `consumed('new-jobs')` tells the Platform so. What still waits of the tag for Ben is sent to none of his devices, and this device closes the `new-jobs` notifications it still shows. Opening the app alone closes nothing: only the Application knows what was shown.
 
 `send` resolves once the Platform accepts the notification, never once a device shows it.
 
@@ -97,8 +114,10 @@ Two people, each with a phone, each signed in as themselves.
 3. **Share it.** Share the document with the second person as an **Editor**. The Application's files are read with each person's own access, so share the folders holding `12-notifications` and `shared` with them too (Viewer is enough).
 4. **Put it on each Home Screen.** Once, in Document Properties → Home Screen, set the **Icon** to this folder's `icon-512.png` (`icon.svg` is its source). Then on each phone: Document Properties → Home Screen → **Open app** (or the document's address with `?mode=app`), sign in if asked, then **Share → Add to Home Screen** in Safari on an iPhone (iOS 16.4 or later), or **Install app** in Chrome on Android. Open the app from the new icon.
 5. **Tap Notify me on each phone**, and **Allow** both the Platform's question and the browser's.
-6. **Add a job on one phone.** Close the app on the other (or lock it). The notification arrives there, titled with the app's name, saying who added which job. Its icon shows a count.
-7. **Tap it.** The app opens, scrolls to the job and highlights it.
+6. **Add a job on one phone.** Close the app on the other (or lock it). About 10 seconds later the notification arrives there, titled with the app's name, saying who added which job. Its icon shows a count.
+7. **Add three jobs in a row.** One notification arrives, for the newest: *… and 2 more*.
+8. **Tap it.** The app opens, scrolls to the job and highlights it, and closes the other `new-jobs` notifications that phone still shows.
+9. **Add a job, and open the app on the other phone within 10 seconds.** Nothing arrives: the list was seen.
 
 Nothing arrives? Check that **Notify me** is gone on the receiving phone (its state is `on`), that the job was added on the *other* phone (the sending device is left out), and that both opened the same document's app.
 

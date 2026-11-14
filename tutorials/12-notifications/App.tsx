@@ -14,7 +14,10 @@ import { byPlace, colorForId, firstName, initials, introducing, membersIn, needs
 // seen) lives in app-state under their User id. The page the app runs on takes the
 // header's color behind the status bar, the new count on its icon, and a shortcut's
 // view (`?show=done`). Each new job, once saved, is sent as a push notification to
-// everyone else whose device turned them on; a tap on it opens the app at that job
+// everyone else whose device turned them on; a tap on it opens the app at that job. Jobs
+// added in a row arrive as one notification: each is sent under one tag with a hold, so
+// the Platform delivers the newest alone once the hold ends, worded for the run. Once
+// the list is shown, what still waits of them is news already seen
 // ********************************************************************************
 const newId = () => Math.random().toString(36).slice(2, 10);
 /** the shortest wait between two reads of the shares when the list is returned to */
@@ -29,6 +32,10 @@ const MAX_BODY_LENGTH = 500;
 const MAX_NAME_LENGTH = 16;
 /** how long a job a notification opened stays highlighted */
 const HIGHLIGHT_MS = 2_400;
+/** the tag every new job's notification shares, and how long the Platform holds them:
+ *  jobs added within it arrive as the newest one, saying how many came with it */
+const NEW_JOBS_TAG = 'new-jobs';
+const NEW_JOBS_HOLD_SECONDS = 10;
 
 /** what the list shows: every job, or the done ones a shortcut opens */
 type View = 'all' | 'done';
@@ -36,11 +43,11 @@ type View = 'all' | 'done';
  *  the identifier the Platform gave the first send */
 type Unsent = Readonly<{ job: Job; notification: NotificationSend; submissionId?: string; sending: boolean; }>;
 
-/** what a new job's notification says: shown on a lock screen, so no more than the job
- *  and who added it, by a short first name */
-const bodyOf = (name: string, text: string): string => {
+/** what a new job's notification says: shown on a lock screen, so no more than the job,
+ *  who added it (by a short first name) and how many more they added with it */
+const bodyOf = (name: string, text: string, more: number): string => {
   const first = firstName(name);
-  const body = `${(first.length > MAX_NAME_LENGTH) ? `${first.slice(0, MAX_NAME_LENGTH - 1)}…` : first} added: ${text}`;
+  const body = `${(first.length > MAX_NAME_LENGTH) ? `${first.slice(0, MAX_NAME_LENGTH - 1)}…` : first} added '${text}'${(more > 0) ? ` and ${more} more` : ''}`;
   return (body.length > MAX_BODY_LENGTH) ? `${body.slice(0, MAX_BODY_LENGTH - 1)}…` : body;
 };
 /** whether the person asked the device for less motion */
@@ -116,6 +123,17 @@ export const App = () => {
     if((wanted === 'all') || (wanted === 'done')) setView(wanted);
     if(job) { setView('all'); setTarget(job); }
   }), [page]);
+
+  // the list is shown (opened, or come back to): the new jobs' notifications still
+  // waiting are news already seen, on every one of this person's devices
+  const listShown = (content !== undefined) && !readFailed;
+  useEffect(() => {
+    if(!listShown) return/*no list shown yet*/;
+    const consumed = () => { if(document.visibilityState === 'visible') page.notifications.consumed(NEW_JOBS_TAG).catch(failure => console.warn('The new jobs\' notifications could not be cleared', failure)); };
+    consumed();
+    document.addEventListener('visibilitychange', consumed);
+    return () => document.removeEventListener('visibilitychange', consumed);
+  }, [page, listShown]);
 
   // whether this device's notifications are on: read on opening, and again on coming
   // back (they may have been turned off in the device's settings meanwhile). A state
@@ -197,6 +215,10 @@ export const App = () => {
         setUnsent(current => [...current.filter(each => each.job.id !== entry.job.id), failed]);
       });
   };
+  // the jobs this device added within the current hold, counted from the first: the
+  // newest one's notification names how many more came with it (the Platform's hold runs
+  // from its own first send, so the count is this device's best word for the run)
+  const run = useRef<{ endsAt: number; count: number; } | null>(null);
   const add = (e: React.FormEvent) => {
     e.preventDefault();
     const text = draft.trim();
@@ -205,8 +227,12 @@ export const App = () => {
     setError(null);
     const job: Job = { k: 'job', id: newId(), text, by: me.id, name: me.name, done: false, ts: Date.now() };
     list.change(adding(job)).then(
-      // each job is its own news: no replacementTag, so one never replaces another
-      () => announce({ job, notification: { audienceType: 'subscribers', excludeThisDevice: true, body: bodyOf(me.name, text), launch: `job=${job.id}` }, sending: false }),
+      () => {
+        const now = performance.now();
+        run.current = (run.current && (now < run.current.endsAt)) ? { ...run.current, count: run.current.count + 1 } : { endsAt: now + (NEW_JOBS_HOLD_SECONDS * 1000), count: 0 };
+        // the jobs share one tag and a hold: a run of them arrives as the newest alone
+        announce({ job, notification: { audienceType: 'subscribers', excludeThisDevice: true, body: bodyOf(me.name, text, run.current.count), launch: `job=${job.id}`, replacementTag: NEW_JOBS_TAG, holdSeconds: NEW_JOBS_HOLD_SECONDS }, sending: false });
+      },
       () => setError(`"${text}" was not saved. Try again.`));
   };
   // turning notifications on is this device's decision, asked from a tap

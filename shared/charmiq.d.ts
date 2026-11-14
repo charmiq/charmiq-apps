@@ -645,10 +645,19 @@ export type NotificationSend = Readonly<{
   /** for updates of one thing (a job's progress; omit it for independent
    *  notifications): a later send for this Application with the same tag (whoever sends it: this
    *  Application, a User or an Agent) replaces this one where it is still waiting to
-   *  be sent, for everyone the later one is also for; one already
-   *  handed to a push service is not recalled (letters, digits, `.`, `_`, `:`, `-`; at
-   *  most 64) */
+   *  be sent, for everyone the later one is also for, and asks the push service to
+   *  replace one it still holds for an unreachable device; a device shows the newest
+   *  in the older one's place (letters, digits, `.`, `_`, `:`, `-`; at most 64) */
   replacementTag?: string;
+  /** only with `replacementTag`, and shorter than `lifetimeSeconds` (a day by default;
+   *  refused otherwise, with `functions/invalid-argument`): this send waits this many
+   *  seconds (1 to 300) before it reaches a device, or less where an earlier send of the
+   *  tag still waiting ends its hold sooner, so a run of quick sends arrives as its
+   *  newest alone within one hold, and no send waits longer than its own (another
+   *  sender's longer hold never stretches it). Held on the Platform, so it holds after
+   *  this Application closes. Word the newest for the run
+   *  ("Ana added 'eggs' and 3 more"): the Platform counts nothing into it */
+  holdSeconds?: number;
   /** how long a device may still be sent it, from its acceptance: 60 to 86,400
    *  seconds (the default and most, a day) */
   lifetimeSeconds?: number;
@@ -673,7 +682,7 @@ export type NotificationAcceptance = Readonly<{
   expireMillis: number;
 }>;
 /** push notifications about this document. Receiving is each device's own decision for
- *  its signed-in User: asking needs the installed app and no scope, the Platform asks
+ *  its signed-in User: asking (and `consumed`) needs the installed app and no scope, the Platform asks
  *  this device with its own question (Allow turns it on, Don't allow keeps it off), and
  *  the User turns a device off themselves (the Application has no call to turn them off).
  *  Sending is under `command.notification.material.push.send` and needs only that the
@@ -690,11 +699,19 @@ export interface NotificationsAPI {
   state(): Promise<NotificationState>;
   /** sends a push notification about this document as this Application, to the devices
    *  subscribed to its installed app (another Application's are not sent it). Resolves
-   *  once the Platform accepts it, never once a device shows it; each device's attempts
-   *  start at most one a minute, in order, which is no promise of when it shows.
+   *  once the Platform accepts it, never once a device shows it; each device is sent
+   *  its notifications in the order accepted, each as soon as the one before it is
+   *  handed over, which is no promise of when it shows.
    *  Rejects with a {@link NotificationSendError}, which carries the send's
    *  `submissionId` for a retry */
   send(notification: NotificationSend): Promise<NotificationAcceptance>;
+  /** says the User has seen what a `replacementTag` announces (the list it tells of is
+   *  shown): what is still waiting of that tag for the signed-in User is sent to none of
+   *  their devices, and this device closes the notifications of it it still shows.
+   *  Call it once that content is shown, never merely because the app opened: opening
+   *  closes nothing. Needs no scope; only the installed app's page does it (elsewhere it
+   *  does nothing). Resolves once done, and rejects with a {@link CharmIQError} */
+  consumed(replacementTag: string): Promise<void>;
 }
 /** a send's refusal: its `code` (`functions/invalid-argument` for a malformed send,
  *  `functions/failed-precondition` where it cannot be sent from) and the identifier a
