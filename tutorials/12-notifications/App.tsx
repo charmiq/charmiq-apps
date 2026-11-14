@@ -239,6 +239,9 @@ export const App = () => {
           {notifyFailed && <p className="error" role="alert">Notifications could not be turned on. Try again.</p>}
         </section>
       )}
+      {/* this device's state is always said, so a missing Notify me is never a mystery */}
+      {ready && (notify === 'on') && <p className="notify-state">Notifications are on for this device.</p>}
+      {ready && (notify === 'unavailable') && <p className="notify-state">Notifications need this list added to the Home Screen and opened from there, over https.</p>}
       <form className="add" onSubmit={add}>
         <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Add a job" aria-label="New job" disabled={!canChange} />
         <button type="submit" disabled={!canChange || !draft.trim()}>Add</button>

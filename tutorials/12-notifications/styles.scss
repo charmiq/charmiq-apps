@@ -125,6 +125,13 @@ html, body {
     }
     .error { flex-basis: 100%; }
   }
+  // this device's state once there is nothing to offer: on, or not available here
+  .notify-state {
+    margin: 12px 0 0;
+    font-size: 13px;
+    color: $text-secondary;
+    overflow-wrap: break-word;
+  }
 
   // a job's text quoted in a notice: one line at most, clipped between its quotes so
   // the closing quote always shows
