@@ -503,6 +503,19 @@ export type ResourcesAPI = Readonly<{
   list: (prefix: string, options?: Readonly<{ next?: string; }>) => Promise<Readonly<{ names: ReadonlyArray<string>; next?: string; }>>;
 }>;
 
+// == Document ====================================================================
+/** the document an Application is in: an address, never access */
+export type ApplicationDocument = Readonly<{
+  /** the document's type as its `charmiq://` URI and page address name it:
+   *  `workspace`, `note`, `charm`, and so on */
+  type: string;
+  /** the document's Platform id */
+  id: string;
+  /** the document's `charmiq://` URI, as the `vfs` tools take it
+   *  (`charmiq://workspace/{id}` for a Document) */
+  uri: string;
+}>;
+
 // == Signed-In User ==============================================================
 /** an Organization the User belongs to: `individual` is their Personal account,
  *  `organization` a Company */
@@ -629,7 +642,8 @@ export type NotificationSend = Readonly<{
    *  characters and 10 keys; never `mode`, `app`, `view`, `chat` or `thr`), heard
    *  through `launchQueue` */
   launch?: string;
-  /** a later send for this Application with the same tag (whoever sends it: this
+  /** for updates of one thing (a job's progress; omit it for independent
+   *  notifications): a later send for this Application with the same tag (whoever sends it: this
    *  Application, a User or an Agent) replaces this one where it is still waiting to
    *  be sent, for everyone the later one is also for; one already
    *  handed to a push service is not recalled (letters, digits, `.`, `_`, `:`, `-`; at
@@ -674,8 +688,9 @@ export interface NotificationsAPI {
   request(): Promise<NotificationState>;
   /** whether notifications about this document are on for this device */
   state(): Promise<NotificationState>;
-  /** sends a push notification about this document as this Application. Resolves once
-   *  the Platform accepts it, never once a device shows it; each device's attempts
+  /** sends a push notification about this document as this Application, to the devices
+   *  subscribed to its installed app (another Application's are not sent it). Resolves
+   *  once the Platform accepts it, never once a device shows it; each device's attempts
    *  start at most one a minute, in order, which is no promise of when it shows.
    *  Rejects with a {@link NotificationSendError}, which carries the send's
    *  `submissionId` for a retry */
@@ -844,6 +859,18 @@ export interface CharmIQAPI {
    *  window.charmiq.page.setTopColor({ light: '#ffffff', dark: '#1c1c1e' });
    */
   page: PageAPI;
+
+  /** the document the Application is in, or `null` when it is in none (a code run).
+   *  A plain value, there before the Application's first line of script and the same
+   *  for the life of its frame. On a published page it is the publication, never the
+   *  document it was published from. An address, not access: it needs no scope, and
+   *  each read through it needs its own (`mcp.platform.vfs` for the `vfs` tools) and
+   *  the User's own access to the document. A name can change, so none is here:
+   *  `describe_file` reads it
+   *  @example
+   *  const described = await window.charmiq.mcp.callTool('vfs', 'describe_file', { uri: window.charmiq.document.uri, verbose: true });
+   */
+  document: ApplicationDocument | null;
 
   /** the signed-in User using the Application, then each change to who they are,
    *  their Organizations, the active one, their roles or their features. `null`

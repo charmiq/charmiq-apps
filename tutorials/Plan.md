@@ -15,7 +15,7 @@ Manifest IDs follow the convention `ai.charmiq.tutorials.<name>` (e.g. `ai.charm
 | 07 | `app-discovery` | 06 | Two Applications in the same document | `advertise()` / `discover()` |
 | 08 | `oauth` | 07 | Connecting to an external API — Google or GitHub | — |
 | 09 | `mcp` | 08 | Calling an MCP server tool from inside an Application | — |
-| 10 | `shared-list` | 03, 05 | Two people in one document: a record per line, changed by id; who is looking; each person's place under their User id | `user$()`, `shared/line-records`, `shared/app-state-settings` |
+| 10 | `shared-list` | 03, 05 | Two people in one document: a record per line, changed by id; who is looking; who has a seat and who has opened the list; each person's place under their User id | `user$()`, `document`, `mcp.callTool('vfs', 'describe_file')`, `shared/line-records`, `shared/app-state-settings` |
 | 11 | `installed-app` | 10 | The document as a Home Screen app: its top color, the **new** count on its icon, a shortcut that opens a view | `page.setTopColor()`, `page.setAppBadge()`, `page.launchQueue` |
 | 12 | `notifications` | 11 | The other person hears of a new job while the app is closed: turning notifications on from a tap, and a send after each saved job (a save alone notifies no one) | `page.notifications.request()`, `page.notifications.send()` |
 
@@ -94,29 +94,31 @@ Key distinction: `appContent` = collaborative document data (OT). `appState` = p
 
 ---
 
-## 10 `shared-list` (Punch List)
+## 10 `shared-list` (Punch List) (done)
 
 **Concept:** Two people share one Application through one document.
 
 - **Records:** each job is one JSON line of the app-content named `punch-list`, carrying its writer's name; every change is made by id to the list as it stands, through it and guarded by it (`shared/line-records`), and made again on a refusal.
 - **Who:** `user$()` (scope `user.read`) keys the person's place and signs their jobs.
-- **Place:** `byUser.<id>.seen` in app-state through `shared/app-state-settings`, never the whole object; **N new** counts the other person's jobs newer than `seen`, measured by the jobs' own times, never a device clock. Seen changes only on a tap.
+- **Place:** `byUser.<id>.seen` in app-state through `shared/app-state-settings`, never the whole object; **N new** counts the other person's jobs newer than `seen`, measured by the jobs' own times, never a device clock, and nothing before the place is known. Seen changes only on a tap.
+- **People:** each person's `member` line (id, name, picture, a color no one else on the list uses), written on their first open and when the name or picture changes, through the same guarded change as a job, never by someone who only looks; each job marked in its writer's color. Who has a seat comes from the document's shares (`describe_file` with `verbose: true` on `window.charmiq.document.uri`, scope `mcp.platform.vfs`): Owners and Editors work on the list, Commenters and Viewers look in, someone invited who has not opened it is a placeholder with their role. The join states ("It's just you in here", "The person you invited hasn't dropped by yet", "<name> is in with you") and the invite card; an unread or refused shares read is a visible notice, never "nobody else"; no document says it needs one. No live "here now": it would cost a document write per person per minute. People are sorted you first, then opened by name, then invited by name.
 - The list tutorials 11 and 12 install and notify about.
 
 ---
 
-## 11 `installed-app`
+## 11 `installed-app` (done)
 
 **Concept:** The Punch List as a Home Screen app.
 
-- **`App.tsx`** — `page.setTopColor()` continues the header into the status bar; `page.setAppBadge()` puts the **new** count on the icon (a badge needs a tap on a Mac, so it is asked from the **N new** tap); `page.launchQueue` opens a view a shortcut names (`?view=done`).
+- **`App.tsx`** — `page.setTopColor()` continues the header into the status bar; `page.setAppBadge()` puts the **new** count on the icon (a badge needs a tap on a Mac, so it is asked from the **N new** tap); `page.launchQueue` opens a view a shortcut names (`?show=done`, with an **All jobs / Done** switch: `view` is the Platform's own query key, which a shortcut cannot set).
 - **`README.md`** — Document Properties → Home Screen (name, icon, shortcuts), `?mode=app`, Add to Home Screen; the page calls do nothing outside the installed app and need no scope.
 
 ---
 
-## 12 `notifications`
+## 12 `notifications` (done)
 
 **Concept:** The other person hears of a new job while the app is closed.
 
-- **`App.tsx`** — a **Notify me** tap calls `page.notifications.request()` (no scope: the Platform asks this device) and hides itself once `on` or `unavailable`; after a job's line is saved, `page.notifications.send({ audienceType: 'subscribers', excludeThisDevice: true, body, replacementTag, launch })` (scope `command.notification.material.push.send`). The launch query opens that job in the app; it uses the Application's own keys (never `mode`, `app`, `view`, `chat` or `thr`).
-- **`README.md`** — each device decides for itself: the Platform asks this device (Allow turns it on, Don't allow keeps it off), another device asks for itself, and the User turns a device off on Settings → Permissions in a browser that shares the app's storage, or in the device's own notification settings for an app added from an iPhone, iPad or a Mac's Safari, so the app has no off button and needs none; only `send` notifies: a saved line alone notifies no one; a retry after an uncertain failure reuses `error.submissionId`; the body shows on a lock screen. SEE: the public *Developer | The Bridge API* page.
+- **`App.tsx`** — a **Notify me** tap calls `page.notifications.request()` (no scope: the Platform asks this device) and hides itself once `on` or `unavailable`; after a job's line is saved, `page.notifications.send({ audienceType: 'subscribers', excludeThisDevice: true, body, launch })` (no `replacementTag`: each job is its own news) (scope `command.notification.material.push.send`). The launch query opens that job in the app; it uses the Application's own keys (never `mode`, `app`, `view`, `chat` or `thr`).
+- **`App.tsx`** — `blocked` keeps **Notify me** with how to allow notifications in the device's settings; a failed send shows a notice and **Tell them again**, the same send with `error.submissionId`; the launch query (`job=<id>`) scrolls to that job and highlights it.
+- **`README.md`** — each device decides for itself: the Platform asks this device (Allow turns it on, Don't allow keeps it off), another device asks for itself, and the User turns a device off on Settings → Permissions in a browser that shares the app's storage, or in the device's own notification settings for an app added from an iPhone, iPad or a Mac's Safari, so the app has no off button and needs none; only `send` notifies: a saved line alone notifies no one; a retry after an uncertain failure reuses `error.submissionId`; the body shows on a lock screen; *Test it on two phones*: the folder and `shared/` in Drive, a document mounting `charmiq://./12-notifications`, shared with a second User as an Editor, Add to Home Screen and **Notify me** on each phone, a job added on one arriving on the other, its tap opening the job. SEE: the public *Developer | The Bridge API* page.

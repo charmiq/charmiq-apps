@@ -3,9 +3,10 @@ import { isConflict, parseRecord, recordLines, writeLines } from '/shared/line-r
 import type { AppContent, AppContentAPI } from '../../shared/charmiq';
 
 // the Punch List's jobs: one JSON record per line of the app-content named
-// `punch-list`. Every change is made to the list as it stands, through it and guarded by
-// it; when someone changed it first, the same change is made again to the newer list,
-// by the job's id, so a change never lands on another job and never undoes another's
+// `punch-list`, beside each person's member line (SEE: ./people.ts). Every change is
+// made to the list as it stands, through it and guarded by it; when someone changed it
+// first, the same change is made again to the newer list, by the record's id, so a
+// change never lands on another line and never undoes another's
 // ********************************************************************************
 /** the app-content holding the jobs */
 export const NAME = 'punch-list';
@@ -19,7 +20,7 @@ export type Job = Readonly<{ k: 'job'; id: string; text: string; by: string; nam
 export type ListChange = (lines: ReadonlyArray<string>) => ReadonlyArray<string>;
 
 // == Reading =====================================================================
-/** the job a line holds, or null for any other line (kept as written, never shown) */
+/** the job a line holds, or null for any other line (kept as written) */
 export const jobOf = (line: string): Job | null => {
   const record = parseRecord(line);
   return ((record?.k === 'job') && (typeof record.id === 'string')) ? record as Job : null;

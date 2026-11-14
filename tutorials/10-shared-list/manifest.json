@@ -1,8 +1,8 @@
 {
   "id": "ai.charmiq.tutorials.shared-list",
   "name": "Punch List",
-  "description": "A job list two people share through one document: a record per line, each person's own place under their User id, and what is new since they last looked",
-  "requestedScopes": ["user.read"],
+  "description": "A job list two people share through one document: a record per line, who is on the list with you, each person's own place under their User id, and what is new since they last looked",
+  "requestedScopes": ["user.read", "mcp.platform.vfs"],
   "bundle": {
     "entry": {
       "html": "/index.html",

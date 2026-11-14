@@ -94,6 +94,143 @@ html, body {
   .error { color: $accent-hover; }
   .notice { color: var(--text-secondary); }
 
+  // a button that reads as a link inside text
+  button.link {
+    padding: 0;
+    font-size: inherit;
+    font-weight: 600;
+    color: $accent-color;
+    background: none;
+    text-decoration: underline;
+
+    &:hover { color: $accent-hover; background: none; }
+  }
+
+  // -- People --------------------------------------------------------------------
+  .avatar {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    font-weight: 700;
+    color: white;
+    border: 2px solid var(--bg);
+    border-radius: 50%;
+
+    img { width: 100%; height: 100%; object-fit: cover; }
+
+    // someone who only looks: a hollow ring in their color
+    &.looker { background: none; border: 2px dashed; }
+    &.slot {
+      width: 34px;
+      height: 34px;
+      font-size: 18px;
+      color: var(--text-secondary);
+      border: 2px dashed var(--border);
+    }
+  }
+
+  .together {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: $spacing;
+    padding: 12px 14px;
+    background: var(--field);
+    border: 1px solid var(--border);
+    border-radius: $radius;
+
+    .duo {
+      display: flex;
+      flex: none;
+      .avatar + .avatar { margin-left: -10px; }
+    }
+    .words { min-width: 0; }
+    .title, .sub {
+      margin: 0;
+      overflow-wrap: break-word;
+    }
+    .title { font-weight: 600; }
+    .sub {
+      margin-top: 2px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    button.link { margin-top: 4px; font-size: 13px; }
+  }
+
+  .people {
+    margin-top: $spacing * 1.5;
+
+    h2 {
+      margin: $spacing 0 4px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+
+      small {
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+    }
+
+    .rows {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+
+      li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .who {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .name, .status {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .name { font-weight: 600; }
+      .status, .role {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+      .role {
+        flex: none;
+        padding: 2px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        &.looker { border-style: dashed; }
+      }
+    }
+
+    .invite {
+      margin-top: $spacing;
+      padding: 14px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: $radius;
+      overflow-wrap: break-word;
+
+      &.nudge { border: 1.5px dashed $accent-color; }
+      h3 { margin: 0 0 4px; font-size: 15px; }
+      p { margin: 0; color: var(--text-secondary); }
+      ol { margin: 10px 0 12px; padding-left: 20px; }
+      .copied { margin-top: 8px; font-size: 13px; }
+    }
+  }
+
   .items {
     margin: $spacing 0 0;
     padding: 0;
@@ -103,25 +240,43 @@ html, body {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 0;
+      padding: 8px 0 8px 10px;
       border-bottom: 1px solid var(--border);
+      // the job's writer, in their color
+      box-shadow: inset 3px 0 0 var(--writer, transparent);
 
       &.done .text {
         color: var(--text-secondary);
         text-decoration: line-through;
       }
 
-      .text, .by {
+      .text {
+        flex: 1;
         min-width: 0;
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
       }
-      .text { flex: 1; }
       .by {
-        max-width: 30%;
+        flex: none;
         font-size: 13px;
         color: var(--text-secondary);
+
+        // another writer: their initials in their color, so the job's text keeps the width
+        &.initials {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          box-sizing: border-box;
+          min-width: 24px;
+          height: 24px;
+          padding: 0 5px;
+          font-size: 11px;
+          font-weight: 700;
+          color: white;
+          background: var(--writer);
+          border-radius: 999px;
+        }
       }
 
       button {

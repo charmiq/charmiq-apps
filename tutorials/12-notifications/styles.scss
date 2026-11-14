@@ -1,0 +1,360 @@
+@use 'variables' as *;
+
+// ********************************************************************************
+// the page is the Application's own: its colors reach every edge, in either mode
+:root {
+  color-scheme: light dark;
+  --bg: #{$bg-color};
+  --text: #{$primary-color};
+  --text-secondary: #{$text-secondary};
+  --border: #{$border-color};
+  --field: white;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161614;
+    --text: #f2f2ee;
+    --text-secondary: rgba(242, 242, 238, 0.6);
+    --border: rgba(242, 242, 238, 0.14);
+    --field: #22221f;
+  }
+}
+html, body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.app {
+  font-family: $font-family;
+  padding: $spacing;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    h1 {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+  }
+
+  .add {
+    display: flex;
+    gap: 8px;
+    margin-top: $spacing;
+
+    input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 12px;
+      font: inherit;
+      color: var(--text);
+      background: var(--field);
+      border: 1px solid var(--border);
+      border-radius: $radius;
+
+      &:focus {
+        outline: none;
+        border-color: $accent-color;
+      }
+    }
+  }
+
+  button {
+    padding: 8px 14px;
+    font: inherit;
+    color: white;
+    background: $accent-color;
+    border: none;
+    border-radius: $radius;
+    cursor: pointer;
+
+    &:hover { background: $accent-hover; }
+    &:disabled { opacity: 0.5; cursor: default; }
+  }
+
+  .fresh {
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 999px;
+  }
+
+  .error, .notice {
+    margin: 8px 0 0;
+    font-size: 13px;
+    overflow-wrap: break-word;
+  }
+  .error { color: $accent-hover; }
+  .notice { color: var(--text-secondary); }
+
+  // a button that reads as a link inside text
+  button.link {
+    padding: 0;
+    font-size: inherit;
+    font-weight: 600;
+    color: $accent-color;
+    background: none;
+    text-decoration: underline;
+
+    &:hover { color: $accent-hover; background: none; }
+  }
+
+  // the offer to turn notifications on, until this device has them
+  .notify {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    font-size: 14px;
+    border: 1.5px dashed $accent-color;
+    border-radius: $radius;
+
+    > p {
+      flex: 1 1 180px;
+      margin: 0;
+      overflow-wrap: break-word;
+    }
+    .error { flex-basis: 100%; }
+  }
+
+  // a job's text quoted in a notice: one line at most, clipped between its quotes so
+  // the closing quote always shows
+  .clip {
+    display: inline-flex;
+    max-width: 60%;
+    white-space: nowrap;
+    vertical-align: bottom;
+
+    > span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  // what the list shows: every job, or the done ones
+  .views {
+    display: inline-flex;
+    gap: 2px;
+    margin-top: $spacing;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+
+    button {
+      padding: 4px 12px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      background: none;
+      border-radius: 999px;
+
+      &:hover { color: var(--text); background: none; }
+      &.on { color: white; background: $accent-color; }
+    }
+  }
+
+  // -- People --------------------------------------------------------------------
+  .avatar {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    font-weight: 700;
+    color: white;
+    border: 2px solid var(--bg);
+    border-radius: 50%;
+
+    img { width: 100%; height: 100%; object-fit: cover; }
+
+    // someone who only looks: a hollow ring in their color
+    &.looker { background: none; border: 2px dashed; }
+    &.slot {
+      width: 34px;
+      height: 34px;
+      font-size: 18px;
+      color: var(--text-secondary);
+      border: 2px dashed var(--border);
+    }
+  }
+
+  .together {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: $spacing;
+    padding: 12px 14px;
+    background: var(--field);
+    border: 1px solid var(--border);
+    border-radius: $radius;
+
+    .duo {
+      display: flex;
+      flex: none;
+      .avatar + .avatar { margin-left: -10px; }
+    }
+    .words { min-width: 0; }
+    .title, .sub {
+      margin: 0;
+      overflow-wrap: break-word;
+    }
+    .title { font-weight: 600; }
+    .sub {
+      margin-top: 2px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    button.link { margin-top: 4px; font-size: 13px; }
+  }
+
+  .people {
+    margin-top: $spacing * 1.5;
+
+    h2 {
+      margin: $spacing 0 4px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+
+      small {
+        font-weight: 400;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+    }
+
+    .rows {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+
+      li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .who {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-width: 0;
+      }
+      .name, .status {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .name { font-weight: 600; }
+      .status, .role {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+      .role {
+        flex: none;
+        padding: 2px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        &.looker { border-style: dashed; }
+      }
+    }
+
+    .invite {
+      margin-top: $spacing;
+      padding: 14px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: $radius;
+      overflow-wrap: break-word;
+
+      &.nudge { border: 1.5px dashed $accent-color; }
+      h3 { margin: 0 0 4px; font-size: 15px; }
+      p { margin: 0; color: var(--text-secondary); }
+      ol { margin: 10px 0 12px; padding-left: 20px; }
+      .copied { margin-top: 8px; font-size: 13px; }
+    }
+  }
+
+  .items {
+    margin: 8px 0 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0 8px 10px;
+      border-bottom: 1px solid var(--border);
+      // the job's writer, in their color
+      box-shadow: inset 3px 0 0 var(--writer, transparent);
+
+      // the job a notification opened
+      &.flash { animation: flash 2.4s ease-out; }
+      @media (prefers-reduced-motion: reduce) {
+        &.flash { animation: none; background: rgba($accent-color, 0.15); }
+      }
+
+      &.done .text {
+        color: var(--text-secondary);
+        text-decoration: line-through;
+      }
+
+      .text {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .by {
+        flex: none;
+        font-size: 13px;
+        color: var(--text-secondary);
+
+        // another writer: their initials in their color, so the job's text keeps the width
+        &.initials {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          box-sizing: border-box;
+          min-width: 24px;
+          height: 24px;
+          padding: 0 5px;
+          font-size: 11px;
+          font-weight: 700;
+          color: white;
+          background: var(--writer);
+          border-radius: 999px;
+        }
+      }
+
+      button {
+        padding: 4px 10px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        background: none;
+        border: 1px solid var(--border);
+
+        &:hover { color: var(--text); background: none; }
+      }
+    }
+  }
+}
+
+@keyframes flash {
+  from { background: rgba($accent-color, 0.3); }
+  to { background: transparent; }
+}
