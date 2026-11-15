@@ -3,10 +3,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { appStateFailureNotice, AppStateSettings, type AppStateView } from '/shared/app-state-settings/app-state-settings';
 import { recordLines } from '/shared/line-records/line-records';
 
-import type { AppContent, ApplicationUser, NotificationSend, NotificationSendError, NotificationState } from '../../shared/charmiq'/*also activates the window.charmiq global augmentation*/;
+import type { AppContent, ApplicationUser, NotificationSendError, NotificationState } from '../../shared/charmiq'/*also activates the window.charmiq global augmentation*/;
 import { adding, editing, jobsIn, JobList, type Job } from './jobs';
 import { People, Together, type SharesStatus } from './People';
 import { byPlace, colorForId, firstName, initials, introducing, membersIn, needsIntroduction, peopleOf, readShares, sharesFailureNotice, type Me, type Share } from './people';
+import { sendAccepted, sendFailed, sendingAgain, type Unsent, type UnsentNotice } from './unsent';
 
 // two people, one document, opened as an app from the Home Screen. The jobs they share
 // are records in the document's app-content (SEE: ./jobs.ts), beside each person's
@@ -39,9 +40,6 @@ const NEW_JOBS_HOLD_SECONDS = 10;
 
 /** what the list shows: every job, or the done ones a shortcut opens */
 type View = 'all' | 'done';
-/** a saved job whose notification was not accepted: sent again exactly as it was, with
- *  the identifier the Platform gave the first send */
-type Unsent = Readonly<{ job: Job; notification: NotificationSend; submissionId?: string; sending: boolean; }>;
 
 /** what a new job's notification says: shown on a lock screen, so no more than the job,
  *  who added it (by a short first name) and how many more they added with it */
@@ -69,7 +67,7 @@ export const App = () => {
   const [view, setView] = useState<View>('all');
   const [notify, setNotify] = useState<NotificationState | null>(null/*not yet known*/);
   const [notifyFailed, setNotifyFailed] = useState(false);
-  const [unsent, setUnsent] = useState<Unsent[]>([]);
+  const [unsent, setUnsent] = useState<UnsentNotice | null>(null/*every job told of*/);
   const [target, setTarget] = useState<string | null>(null/*no job asked for*/);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -203,17 +201,19 @@ export const App = () => {
     setError(null);
     list.change(change).catch(() => setError(`${what} was not saved. Try again.`));
   };
-  // only a send notifies: the saved line alone tells no one
+  // only a send notifies: the saved line alone tells no one. What goes untold is one
+  // notice for the newest such job (SEE: ./unsent.ts); its retry is that same send again,
+  // under the identifier the Platform gave it, so a send that was in fact accepted is
+  // answered with that acceptance, never sent twice
+  const sends = useRef(0);
   const announce = (entry: Unsent) => {
-    setUnsent(current => current.map(each => (each.job.id === entry.job.id) ? { ...each, sending: true } : each));
     page.notifications.send({ ...entry.notification, ...(entry.submissionId ? { submissionId: entry.submissionId } : {}) }).then(
-      () => setUnsent(current => current.filter(each => each.job.id !== entry.job.id)),
-      (failure: NotificationSendError) => {
-        // the same send again, under the identifier the Platform gave it: a send that was
-        // in fact accepted is answered with that acceptance, never sent twice
-        const failed: Unsent = { ...entry, submissionId: failure?.submissionId ?? entry.submissionId, sending: false };
-        setUnsent(current => [...current.filter(each => each.job.id !== entry.job.id), failed]);
-      });
+      () => setUnsent(current => sendAccepted(current, entry)),
+      (failure: NotificationSendError) => setUnsent(current => sendFailed(current, entry, failure)));
+  };
+  const announceAgain = (notice: UnsentNotice) => {
+    setUnsent(sendingAgain(notice));
+    announce(notice.latest);
   };
   // the jobs this device added within the current hold, counted from the first: the
   // newest one's notification names how many more came with it (the Platform's hold runs
@@ -232,7 +232,7 @@ export const App = () => {
         run.current = (run.current && (now < run.current.endsAt)) ? { ...run.current, count: run.current.count + 1 } : { endsAt: now + (NEW_JOBS_HOLD_SECONDS * 1000), count: 0 };
         // the jobs share one tag and a hold: a run of them arrives as the newest alone, and
         // to no one watching the list as it arrives
-        announce({ job, notification: { audienceType: 'subscribers', excludeThisDevice: true, excludePresent: true, body: bodyOf(me.name, text, run.current.count), launch: `job=${job.id}`, replacementTag: NEW_JOBS_TAG, holdSeconds: NEW_JOBS_HOLD_SECONDS }, sending: false });
+        announce({ job, order: ++sends.current, notification: { audienceType: 'subscribers', excludeThisDevice: true, excludePresent: true, body: bodyOf(me.name, text, run.current.count), launch: `job=${job.id}`, replacementTag: NEW_JOBS_TAG, holdSeconds: NEW_JOBS_HOLD_SECONDS } });
       },
       () => setError(`"${text}" was not saved. Try again.`));
   };
@@ -283,12 +283,15 @@ export const App = () => {
       {looker && <p className="notice">You can look at this list. To add or check off jobs, ask whoever shared it to let you make changes.</p>}
       {introFailed && <p className="error" role="alert">Your name could not be added to the list. <button type="button" className="link" onClick={retryIntroduction}>Try again</button></p>}
       {error && <p className="error" role="alert">{error}</p>}
-      {unsent.map(({ job, sending, ...entry }) => (
-        <p key={job.id} className="error" role="alert">
-          <span className="clip">"<span>{job.text}</span>"</span> was saved, but no one was told about it.{' '}
-          <button type="button" className="link" disabled={sending} onClick={() => announce({ job, sending, ...entry })}>{sending ? 'Telling them…' : 'Tell them again'}</button>
+      {unsent && (
+        <p className="error" role="alert">
+          <span className="clip">"<span>{unsent.latest.job.text}</span>"</span>{(unsent.others > 0) ? ` and ${unsent.others} more were` : ' was'} saved, but no one was told.{' '}
+          {unsent.reason && <>{unsent.reason}{' '}</>}
+          {unsent.retry
+            ? <button type="button" className="link" disabled={unsent.sending} onClick={() => announceAgain(unsent)}>{unsent.sending ? 'Telling them…' : 'Tell them again'}</button>
+            : <button type="button" className="link" onClick={() => setUnsent(null)}>Dismiss</button>}
         </p>
-      ))}
+      )}
       {targetMissing && <p className="notice" role="status">The job that notification was about is not on the list. It may have been removed.</p>}
       {ready && (jobs.length > 0) && (
         <div className="views" role="tablist" aria-label="Show">

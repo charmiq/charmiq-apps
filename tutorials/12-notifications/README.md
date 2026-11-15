@@ -16,7 +16,8 @@ In this document the Application is the Punch List from the last step, and every
 | File | Change |
 |------|--------|
 | [`manifest.json`](charmiq://./manifest.json) | Declares `command.notification.material.push.send` beside `user.read` and `mcp.platform.vfs` |
-| [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`, one tag with a hold, so a run of jobs arrives as one notification, leaving out whoever is watching the list as it arrives) with a retry, the list shown clearing what still waits (`page.notifications.consumed()`), and the job a notification's tap names, through `page.launchQueue` |
+| [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`, one tag with a hold, so a run of jobs arrives as one notification, leaving out whoever is watching the list as it arrives), one line for the jobs no one was told about, the list shown clearing what still waits (`page.notifications.consumed()`), and the job a notification's tap names, through `page.launchQueue` |
+| [`unsent.ts`](charmiq://./unsent.ts) | New: the jobs no one was told about, as one line for the newest, and whether trying again can help |
 | [`styles.scss`](charmiq://./styles.scss) | The **Notify me** card, and the job a notification opened, highlighted |
 | [`jobs.ts`](charmiq://./jobs.ts), [`people.ts`](charmiq://./people.ts), [`People.tsx`](charmiq://./People.tsx) | Unchanged |
 | [`index.html`](charmiq://./index.html), [`main.tsx`](charmiq://./main.tsx), [`_variables.scss`](charmiq://./_variables.scss) | Unchanged |
@@ -82,13 +83,15 @@ When the list is shown (opened, or come back to), the jobs are in front of Ben: 
 
 ## A failed send, sent again
 
-When a send fails, the job is still saved: the Application says the others were not told and offers **Tell them again**.
+When a send fails, the job is still saved: the Application says the others were not told, in one line however many failed: *"Four" and 3 more were saved, but no one was told.* Every job is sent under the same tag, so the newest send stands for the others, and it is the one sent again ([`unsent.ts`](charmiq://./unsent.ts)). Once a newer job is told, the line goes.
 
 ```tsx
-page.notifications.send({ ...entry.notification, submissionId: failure.submissionId });
+page.notifications.send({ ...latest.notification, submissionId: failure.submissionId });
 ```
 
 A failure can be uncertain: the Platform may have accepted the send before the answer was lost. So the retry repeats the same send, every field as it was, with the `submissionId` the failure carried. If the first send was in fact accepted, the Platform answers with that acceptance instead of sending a second notification.
+
+**Tell them again** shows only where trying again can help: a lost answer, a service busy or failing for now, or a sending limit (which also says to wait). A refusal is the same every time (sending from someone who cannot change the list, a send the Platform cannot take), so the line says why and offers **Dismiss** instead.
 
 ## A tap opens that job
 
