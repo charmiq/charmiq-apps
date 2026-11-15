@@ -632,6 +632,11 @@ export type NotificationSend = Readonly<{
   userIds?: ReadonlyArray<string>;
   /** leaves out the device sending it, when it is subscribed */
   excludeThisDevice?: boolean;
+  /** leaves out each recipient watching this Application as it is delivered (a page of
+   *  theirs open at it in App mode, in view): none of their devices is sent it, and it
+   *  counts in no badge. Decided when it is delivered, after any hold; where that cannot be
+   *  told, it is sent */
+  excludePresent?: boolean;
 
   /** plain text, at most 500 characters: what the notification says */
   body: string;

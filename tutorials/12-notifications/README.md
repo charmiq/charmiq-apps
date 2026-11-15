@@ -16,7 +16,7 @@ In this document the Application is the Punch List from the last step, and every
 | File | Change |
 |------|--------|
 | [`manifest.json`](charmiq://./manifest.json) | Declares `command.notification.material.push.send` beside `user.read` and `mcp.platform.vfs` |
-| [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`, one tag with a hold, so a run of jobs arrives as one notification) with a retry, the list shown clearing what still waits (`page.notifications.consumed()`), and the job a notification's tap names, through `page.launchQueue` |
+| [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`, one tag with a hold, so a run of jobs arrives as one notification, leaving out whoever is watching the list as it arrives) with a retry, the list shown clearing what still waits (`page.notifications.consumed()`), and the job a notification's tap names, through `page.launchQueue` |
 | [`styles.scss`](charmiq://./styles.scss) | The **Notify me** card, and the job a notification opened, highlighted |
 | [`jobs.ts`](charmiq://./jobs.ts), [`people.ts`](charmiq://./people.ts), [`People.tsx`](charmiq://./People.tsx) | Unchanged |
 | [`index.html`](charmiq://./index.html), [`main.tsx`](charmiq://./main.tsx), [`_variables.scss`](charmiq://./_variables.scss) | Unchanged |
@@ -46,7 +46,7 @@ The state is read again each time you come back to the app.
 
 ```tsx
 list.change(adding(job)).then(() => announce({ job, notification: {
-  audienceType: 'subscribers', excludeThisDevice: true,
+  audienceType: 'subscribers', excludeThisDevice: true, excludePresent: true,
   body: bodyOf(me.name, text, run.current.count), launch: `job=${job.id}`,
   replacementTag: 'new-jobs', holdSeconds: 10,
 }, sending: false }));
@@ -64,6 +64,8 @@ Ana adds ten jobs in a row. Ten notifications would buzz Ben's phone ten times, 
 
 A single job arrives 10 seconds after it was added, saying only *Ana added 'Seal the deck'*. Without the tag and hold, each job would arrive on its own within seconds of the last.
 
+**Watching is seen.** Ben has the list open, and watches Ana's jobs appear in it. Each send leaves out present recipients (`excludePresent: true`): when the hold ends, the Platform checks whether Ben has this app open at the list, in view. He does, so none of his devices is pushed and his icon counts nothing. Had he put the phone away, or left App mode, or opened another Application, the notification would have reached him. Where the Platform cannot tell, it sends.
+
 **The body shows on a lock screen.** It says who added which job and nothing else: keep anything a passer-by should not read out of it. It is at most 500 characters, so a long job is cut short there; the job itself is not.
 
 ## A list seen is news already seen
@@ -73,6 +75,8 @@ page.notifications.consumed('new-jobs');
 ```
 
 When the list is shown (opened, or come back to), the jobs are in front of Ben: a `new-jobs` notification still waiting is news he has seen. `consumed('new-jobs')` tells the Platform so. What still waits of the tag for Ben is sent to none of his devices, and this device closes the `new-jobs` notifications it still shows. Opening the app alone closes nothing: only the Application knows what was shown.
+
+`consumed` covers what was waiting when the list was shown. A job Ana adds while Ben watches is sent after that, so it is new: `excludePresent` covers it, at delivery.
 
 `send` resolves once the Platform accepts the notification, never once a device shows it.
 
@@ -118,6 +122,7 @@ Two people, each with a phone, each signed in as themselves.
 7. **Add three jobs in a row.** One notification arrives, for the newest: *… and 2 more*.
 8. **Tap it.** The app opens, scrolls to the job and highlights it, and closes the other `new-jobs` notifications that phone still shows.
 9. **Add a job, and open the app on the other phone within 10 seconds.** Nothing arrives: the list was seen.
+10. **Keep the app open on the other phone, in view, and add a job.** Nothing arrives there and its icon counts nothing: Ben watched it appear. Lock that phone, wait a minute, and add another: it arrives.
 
 Nothing arrives? Check that **Notify me** is gone on the receiving phone (its state is `on`), that the job was added on the *other* phone (the sending device is left out), and that both opened the same document's app.
 

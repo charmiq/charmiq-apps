@@ -230,8 +230,9 @@ export const App = () => {
       () => {
         const now = performance.now();
         run.current = (run.current && (now < run.current.endsAt)) ? { ...run.current, count: run.current.count + 1 } : { endsAt: now + (NEW_JOBS_HOLD_SECONDS * 1000), count: 0 };
-        // the jobs share one tag and a hold: a run of them arrives as the newest alone
-        announce({ job, notification: { audienceType: 'subscribers', excludeThisDevice: true, body: bodyOf(me.name, text, run.current.count), launch: `job=${job.id}`, replacementTag: NEW_JOBS_TAG, holdSeconds: NEW_JOBS_HOLD_SECONDS }, sending: false });
+        // the jobs share one tag and a hold: a run of them arrives as the newest alone, and
+        // to no one watching the list as it arrives
+        announce({ job, notification: { audienceType: 'subscribers', excludeThisDevice: true, excludePresent: true, body: bodyOf(me.name, text, run.current.count), launch: `job=${job.id}`, replacementTag: NEW_JOBS_TAG, holdSeconds: NEW_JOBS_HOLD_SECONDS }, sending: false });
       },
       () => setError(`"${text}" was not saved. Try again.`));
   };
