@@ -79,6 +79,8 @@ When the list is shown (opened, or come back to), the jobs are in front of Ben: 
 
 `consumed` covers what was waiting when the list was shown. A job Ana adds while Ben watches is sent after that, so it is new: `excludePresent` covers it, at delivery.
 
+**The badge counts notifications, the message counts jobs.** Ana's three jobs in a row arrive as one notification ("… and 2 more"), and the icon shows 1: the Platform counts what it sent, a tag once. *An exercise for the reader:* make the icon count jobs. A send's `badge` sets the icon's number outright, but one send to every subscriber carries one number, and each person's new jobs differ: send to each person (`audienceType: 'users'`) with their own count, read from their place in app-state, and mind the sending limits in a burst.
+
 **The icon agrees.** The same moment marks the jobs the list shows as seen (Ben's place in app-state), so the **new** count drops to 0 and the icon's badge clears; a job that arrives while he watches is seen as it appears. The Installed App's **N new** tap is gone: here, a list shown is a list seen. Where a badge needs permission (a Mac), the **Notify me** tap is the one that asks for it.
 
 `send` resolves once the Platform accepts the notification, never once a device shows it.
