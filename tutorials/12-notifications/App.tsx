@@ -162,8 +162,20 @@ export const App = () => {
   const shown = (view === 'done') ? jobs.filter(job => job.done) : jobs;
 
   // the new count on the app's icon, whenever it changes. A request made outside a tap
-  // shows only once the person has decided about badges (SEE: markSeen)
+  // shows only once the person has decided about badges (SEE: turnOn)
   useEffect(() => { if(placeKnown) page.setAppBadge(fresh.length); }, [page, placeKnown, fresh.length]);
+
+  // the list shown (opened, come back to, or watched as jobs arrive) is seen: the jobs it
+  // shows are no longer new, so the icon counts nothing, as the new jobs' notifications
+  // still waiting are news already seen (SEE: consumed above)
+  const newestFresh = (fresh.length > 0) ? Math.max(...fresh.map(job => job.ts)) : undefined/*nothing new*/;
+  useEffect(() => {
+    if(!listShown || !me || (newestFresh === undefined)) return/*no list shown, or nothing new in it*/;
+    const markSeen = () => { if(document.visibilityState === 'visible') void settings.change(['byUser', me.id, 'seen'], Math.max(seen, newestFresh)); };
+    markSeen();
+    document.addEventListener('visibilitychange', markSeen);
+    return () => document.removeEventListener('visibilitychange', markSeen);
+  }, [settings, listShown, me, seen, newestFresh]);
 
   // the job a notification opened: scrolled to and highlighted once the list holds it.
   // It stays asked for until then (a list still arriving), or until another launch
@@ -237,20 +249,15 @@ export const App = () => {
       () => setError(`"${text}" was not saved. Try again.`));
   };
   // turning notifications on is this device's decision, asked from a tap
+  // the tap also asks for the icon's count: where a badge needs permission (a Mac), a
+  // request made during a tap is the one that asks
   const turnOn = () => {
     setNotifyFailed(false);
+    page.setAppBadge(fresh.length);
     page.notifications.request().then(setNotify, () => setNotifyFailed(true));
   };
   const toggle = (job: Job) => save(`"${job.text}"`, editing(job.id, current => ({ ...current, done: !current.done })));
   const remove = (job: Job) => save(`Removing "${job.text}"`, editing(job.id, () => null));
-  // seen is a gesture, never a side effect of drawing the list. The tap also clears the
-  // icon's count: where a badge needs permission (a Mac), a request made during a tap
-  // is the one that asks
-  const markSeen = () => {
-    if(!me) return;
-    page.setAppBadge(0);
-    void settings.change(['byUser', me.id, 'seen'], Math.max(seen, ...fresh.map(job => job.ts)));
-  };
 
   // == UI ========================================================================
   const ready = (content !== undefined) && !readFailed && !!me;
@@ -259,7 +266,6 @@ export const App = () => {
     <div className="app">
       <header>
         <h1>Punch List</h1>
-        {fresh.length > 0 && <button type="button" className="fresh" onClick={markSeen}>{fresh.length} new</button>}
       </header>
       {ready && <Together meId={me?.id} looker={looker} people={people} status={sharesStatus} notice={sharesNotice} onRetry={loadShares} />}
       {ready && ((notify === 'off') || (notify === 'blocked')) && (

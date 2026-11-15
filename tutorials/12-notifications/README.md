@@ -16,9 +16,9 @@ In this document the Application is the Punch List from the last step, and every
 | File | Change |
 |------|--------|
 | [`manifest.json`](charmiq://./manifest.json) | Declares `command.notification.material.push.send` beside `user.read` and `mcp.platform.vfs` |
-| [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`, one tag with a hold, so a run of jobs arrives as one notification, leaving out whoever is watching the list as it arrives), one line for the jobs no one was told about, the list shown clearing what still waits (`page.notifications.consumed()`), and the job a notification's tap names, through `page.launchQueue` |
+| [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`, one tag with a hold, so a run of jobs arrives as one notification, leaving out whoever is watching the list as it arrives), one line for the jobs no one was told about, the list shown clearing what still waits (`page.notifications.consumed()`) and marking its jobs seen, which clears the icon's count (no **N new** tap), and the job a notification's tap names, through `page.launchQueue` |
 | [`unsent.ts`](charmiq://./unsent.ts) | New: the jobs no one was told about, as one line for the newest, and whether trying again can help |
-| [`styles.scss`](charmiq://./styles.scss) | The **Notify me** card, and the job a notification opened, highlighted |
+| [`styles.scss`](charmiq://./styles.scss) | The **Notify me** card, and the job a notification opened, highlighted; no **N new** button |
 | [`jobs.ts`](charmiq://./jobs.ts), [`people.ts`](charmiq://./people.ts), [`People.tsx`](charmiq://./People.tsx) | Unchanged |
 | [`index.html`](charmiq://./index.html), [`main.tsx`](charmiq://./main.tsx), [`_variables.scss`](charmiq://./_variables.scss) | Unchanged |
 
@@ -79,6 +79,8 @@ When the list is shown (opened, or come back to), the jobs are in front of Ben: 
 
 `consumed` covers what was waiting when the list was shown. A job Ana adds while Ben watches is sent after that, so it is new: `excludePresent` covers it, at delivery.
 
+**The icon agrees.** The same moment marks the jobs the list shows as seen (Ben's place in app-state), so the **new** count drops to 0 and the icon's badge clears; a job that arrives while he watches is seen as it appears. The Installed App's **N new** tap is gone: here, a list shown is a list seen. Where a badge needs permission (a Mac), the **Notify me** tap is the one that asks for it.
+
 `send` resolves once the Platform accepts the notification, never once a device shows it.
 
 ## A failed send, sent again
@@ -123,7 +125,7 @@ Two people, each with a phone, each signed in as themselves.
 5. **Tap Notify me on each phone**, and **Allow** both the Platform's question and the browser's.
 6. **Add a job on one phone.** Close the app on the other (or lock it). About 10 seconds later the notification arrives there, titled with the app's name, saying who added which job. Its icon shows a count.
 7. **Add three jobs in a row.** One notification arrives, for the newest: *… and 2 more*.
-8. **Tap it.** The app opens, scrolls to the job and highlights it, and closes the other `new-jobs` notifications that phone still shows.
+8. **Tap it.** The app opens, scrolls to the job and highlights it, and closes the other `new-jobs` notifications that phone still shows. Its icon's count clears, and stays clear after you leave.
 9. **Add a job, and open the app on the other phone within 10 seconds.** Nothing arrives: the list was seen.
 10. **Keep the app open on the other phone, in view, and add a job.** Nothing arrives there and its icon counts nothing: Ben watched it appear. Lock that phone, wait a minute, and add another: it arrives.
 
