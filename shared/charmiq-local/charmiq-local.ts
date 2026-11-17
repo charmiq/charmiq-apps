@@ -2,7 +2,7 @@ import { listLocalApplicationResources, readLocalApplicationResource, readLocalA
 import { appContentLayer, type AppContentObservableFactory, type AppContentObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentLayer';
 import { Observable } from 'rxjs';
 
-import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ApplicationUser, ContentChange, OAuthAuth, OAuthAuthDescriptor } from '../charmiq';
+import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ApplicationUser, ContentChange, OAuthAuth, OAuthAuthDescriptor, PageAPI } from '../charmiq';
 
 // the local-dev bridge harness — a stand-in `window.charmiq` so a bridge app can
 // run in a plain browser (opened from a `build-app --harness` build) instead of
@@ -11,13 +11,16 @@ import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnaps
 //
 //   appState / appContent → localStorage (survives reload)
 //   fetch                 → the real window.fetch (fine for CORS-friendly APIs)
-//   resources             → the files `build-app` read for the manifest's declared
-//                           resources and embedded in the page, as text or bytes,
-//                           refused as the Platform refuses them
+//   mcp / generation      → throw a clear "not in the local harness" error
 //   oauth                 → a paste-an-access-token flow (see below), with the
 //                           same listAuth / getValidAuth({connectionKey}) shape
 //                           the app uses against the real bridge
-//   mcp / generation      → throw a clear "not in the local harness" error
+//   page                  → an ordinary tab's: the status bar color, the icon badge
+//                           and the launches do nothing, and notifications are
+//                           unavailable
+//   resources             → the files `build-app` read for the manifest's declared
+//                           resources and embedded in the page, as text or bytes,
+//                           refused as the Platform refuses them
 //   user$                 → a local stand-in User; set `charmiq-local:user` in
 //                           localStorage to another (`null` signs out) and reload
 //                           to try per-User state as someone else
@@ -454,6 +457,23 @@ const makeRegistry = () => {
   };
 };
 
+// == Page ========================================================================
+/** the page as an ordinary browser tab has it, which the harness's is: the status bar
+ *  color, the icon badge and the launches are an installed app's alone and do nothing
+ *  here, and there is no installed app to notify */
+const makePage = (): PageAPI => ({
+  setAppBadge: () => {},
+  clearAppBadge: () => {},
+  setTopColor: () => {},
+  launchQueue: { setConsumer: () => {} },
+  notifications: {
+    request: async () => 'unavailable',
+    state: async () => 'unavailable',
+    send: async notification => { throw Object.assign(new Error('A notification cannot be sent from the local harness'), { code: 'functions/failed-precondition', submissionId: notification.submissionId ?? '' }); },
+    consumed: async () => {},
+  },
+});
+
 // == Unavailable Surfaces ========================================================
 const unavailable = (name: string) => () => { throw new Error(`charmiq.${name} is not available in the local harness`); };
 
@@ -471,6 +491,7 @@ export const installLocalBridge = (): void => {
     oauth: makeOAuth(),
     fetch: (url: string, options?: RequestInit) => fetch(url, options),
     user$: makeUser$(),
+    page: makePage(),
     resources: { text: (name: string) => readLocalApplicationResource(document, name), bytes: (name: string) => readLocalApplicationResourceBytes(document, name), list: (prefix: string) => listLocalApplicationResources(document, prefix) },
 
     advertise: registry.advertise,

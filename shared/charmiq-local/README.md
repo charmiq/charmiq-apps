@@ -35,6 +35,7 @@ npm run film-app -- <path-to-app> --out film --content <app-content-name>=<file>
 | `fetch` | The real `window.fetch` (fine for CORS-friendly APIs like Google's) |
 | `oauth.listAuth` / `getValidAuth` / `revokeAuth` | A paste-an-access-token flow (below), with the same `listAuth` / `getValidAuth({ connectionKey })` shape as the real bridge |
 | `advertise` / `discover` / `exportCommands` | An in-page registry (one page, so siblings see each other) |
+| `page` | An ordinary browser tab's: `setTopColor`, `setAppBadge`, `clearAppBadge` and `launchQueue` do nothing, and `notifications` are `unavailable` (a send is refused) |
 | `mcp`, `generation` | Throw a clear "not available in the local harness" error |
 
 ### OAuth locally
