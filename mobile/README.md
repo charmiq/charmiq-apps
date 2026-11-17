@@ -4,6 +4,7 @@
 
 | Application | What it does |
 |----|----|
+| [Flak Run](charmiq://./flak-run/README.md) | A one-finger shooter with a shared high score list: three levels, each ending in a boss, with every picture drawn in code |
 | [Synth Jukebox](charmiq://./synth-jukebox/README.md) | A music library whose albums are composed and played live on your phone, plus songs Lyria 3 Pro presses from your description |
 | [Tick List](charmiq://./tick-list/README.md) | Lists you tick off, shared live with everyone you share it with |
 
@@ -28,7 +29,16 @@ Share your copy as an **Editor** with each person who should have it; each adds 
 - **Write it inline.** The Application's source lives in the document (`<iframe-app>` → `<app-source>`), so it opens as soon as the page does. An Application with a manifest or folder is fetched and built after the page loads, a wait on every launch.
 - **Keep the data as records, one per line.** The app-content holds one JSON record per line, each with its id; a change rewrites only the lines of the records it changes, through the app-content it was shown, and is applied again to the newer app-content when another writer got there first. A line it does not read is kept as written. Tick List and Synth Jukebox both work this way (the full guide: [Collaborating](https://team.charmiq.ai/docs/application/developer-app-content-and-app-state#collaborating)).
 - **App-state holds settings, and each person's place under their User id.** It is one value for everyone sharing the document: what everyone shares sits at the top (Tick List's Show Completed), and where one person left off sits under `byUser[user.id]` (`charmiq.user$`, `user.read`), restored once for each person who signs in while the app is open. A save rewrites the latest state with your entry in it, so two people saving at once can drop one's latest place; everyone who reads the document can read every entry.
-- **The document is only the Application:** theme `charmiq:none`, a stylesheet that zeroes the page's margin and padding (`:root`, `body`), and `<iframe-app height="100svh" width="100%">`. Copy either `iOS` document's header.
+- **The document is only the Application:** theme `charmiq:none`, a stylesheet that zeroes the page's margin and padding (`:root`, `body`), and `<iframe-app height="100svh" width="100%">`. Copy any `iOS` document's header.
+- **Nothing stays in the browser.** An Application's frame has no storage of its own (`localStorage`, cookies and IndexedDB are refused), so whatever must be there at the next launch goes in the app-content or the app-state. Flak Run keeps one line for each person, their best score, in its app-content.
+- **A game:**
+  - Draw the pictures in code. With no files to fetch, the game is ready when the page is. Flak Run builds each plane from a few polygons (mirrored, shaded and outlined as it opens) and each level's landscape from a seed.
+  - Size the canvas in game pixels, each a whole number of the screen's pixels, and scale it up with `image-rendering: pixelated`: the phone draws a few hundred pixels across, not a few thousand.
+  - Take the finger with pointer events on a page that has `touch-action: none`, and move by how far the finger moved, never to where it is: the plane is not under the finger, and a drag can start anywhere.
+  - Step by the time that passed, capped: phones draw 60 or 120 frames a second, and a frame can be late.
+  - Pause when the page is hidden (`visibilitychange`): the home screen, a call or a lock.
+  - Make the sounds in code too: an oscillator or filtered noise under a falling level is a shot, an explosion or a jingle, with no file to fetch. Start the audio on the finger's release (below), and choose `navigator.audioSession.type = 'ambient'` for effects that play beside the person's own music and honor the silent switch.
+  - Give the status bar the game's color (`charmiq.page.setTopColor`): the Application starts below the status bar, never behind it.
 - **Sound on iOS:**
   - iOS plays audio only when it starts from a tap: create or `resume()` the `AudioContext` inside a `click` or `touchend` handler, never on load, on a timer or after an `await`. Leaving for the background, a lock or a call suspends it; resume it on the next tap.
   - Silent mode mutes Web Audio but not an `<audio>` element. Set `navigator.audioSession.type = 'playback'` to play anyway.

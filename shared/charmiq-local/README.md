@@ -19,12 +19,16 @@ open /tmp/app.html          # or serve /tmp over http://localhost (see below)
 
 `--harness` bundles [`install.ts`](./install.ts) to an IIFE and inlines it ahead of your app, so `window.charmiq` exists before your code runs. Nothing in your app changes — it uses `window.charmiq` exactly as it does in the Platform.
 
+`<path-to-app>` is a folder holding a `manifest.json`, or a document holding an inline Application (`<iframe-app>` → `<app-source>`, such as `mobile/tick-list/iOS.md`). A document's page is its source exactly as the document holds it: the Platform builds no inline source, so neither does the CLI (`--typecheck` and `--debug` take a folder). The harness is found two folders above the app's folder, or above the document's own folder.
+
 To film it instead (screenshots after each command call, with each call's result):
 
 ```sh
 # from platform/packages/cloud-functions
 npm run film-app -- <path-to-app> --out film --content <app-content-name>=<file> --step '<command> {json args}'
 ```
+
+A document's film starts from the app-contents and app-state the document holds, as a copy of the document does; `--content` replaces the app-content of its name and `--state` the app-state.
 
 
 ## What it stands in for
