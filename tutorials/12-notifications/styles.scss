@@ -41,6 +41,15 @@ html, body {
 @keyframes assembling-shimmer {
   to { background-position: -300% 0; }
 }
+// the same, with less motion: a fade where the rows slide and the ticks draw
+@keyframes assembling-row-fade {
+  from { opacity: 0; }
+}
+@keyframes assembling-tick-fade {
+  0%, 22% { opacity: 0; }
+  34%, 82% { opacity: 1; }
+  100% { opacity: 0; }
+}
 
 .app {
   font-family: $font-family;
@@ -167,12 +176,12 @@ html, body {
       animation: assembling-shimmer 1400ms linear infinite;
     }
 
-    // with less motion it stands still: the first two jobs ticked, the rest open
+    // with less motion nothing moves: the rows fade in where they stand, each tick fades
+    // in and out in turn, already drawn, and the lines hold still
     @media (prefers-reduced-motion: reduce) {
-      li, .box, .box path, .line { animation: none; }
-      .box path { stroke-dashoffset: 16; }
-      li:nth-child(-n+2) .box { background: $accent-color; border-color: $accent-color; }
-      li:nth-child(-n+2) .box path { stroke-dashoffset: 0; }
+      li { animation-name: assembling-row-fade; }
+      .box path { stroke-dashoffset: 0; animation-name: assembling-tick-fade; }
+      .line { animation: none; }
     }
   }
   // the waiting screen's word, for a screen reader: the rows say it to the eye
