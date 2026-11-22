@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { appStateFailureNotice, AppStateSettings, type AppStateView } from '/shared/app-state-settings/app-state-settings';
 import { recordLines } from '/shared/line-records/line-records';
 
-import type { AppContent, ApplicationUser, NotificationSendError, NotificationState } from '../../shared/charmiq'/*also activates the window.charmiq global augmentation*/;
+import type { AppContent, ApplicationUser, LaunchState, NotificationSendError, NotificationState } from '../../shared/charmiq'/*also activates the window.charmiq global augmentation*/;
 import { adding, editing, jobsIn, JobList, type Job } from './jobs';
 import { People, Together, type SharesStatus } from './People';
 import { byPlace, colorForId, firstName, initials, introducing, membersIn, needsIntroduction, peopleOf, readShares, sharesFailureNotice, type Me, type Share } from './people';
@@ -18,13 +18,17 @@ import { sendAccepted, sendFailed, sendingAgain, type Unsent, type UnsentNotice 
 // everyone else whose device turned them on; a tap on it opens the app at that job. Jobs
 // added in a row arrive as one notification: each is sent under one tag with a hold, so
 // the Platform delivers the newest alone once the hold ends, worded for the run. Once
-// the list is shown, what still waits of them is news already seen
+// the list is shown, what still waits of them is news already seen. While the installed
+// app opens, the page holds the Application and shows it as it draws itself: index.html's
+// waiting screen, until the page releases it and the list is read
 // ********************************************************************************
 const newId = () => Math.random().toString(36).slice(2, 10);
 /** the shortest wait between two reads of the shares when the list is returned to */
 const SHARES_REREAD_MS = 15_000;
 /** the page behind the Application, in each mode: the header's own color (SEE: ./styles.scss) */
 const TOP_COLOR = { light: '#f7f7f4', dark: '#161614' };
+/** the waiting screen index.html draws from first paint (SEE: ./index.html) */
+const WAITING_ID = 'waiting';
 
 /** the most a notification says (the Platform's limit) */
 const MAX_BODY_LENGTH = 500;
@@ -58,6 +62,7 @@ export const App = () => {
   const [content, setContent] = useState<AppContent | null>();
   const [readFailed, setReadFailed] = useState(false);
   const [user, setUser] = useState<ApplicationUser | null>();
+  const [launch, setLaunch] = useState<LaunchState>('held'/*until the page says*/);
   const [place, setPlace] = useState<AppStateView>({});
   const [placeKnown, setPlaceKnown] = useState(false);
   const [shares, setShares] = useState<Share[] | null>(null);
@@ -74,6 +79,14 @@ export const App = () => {
   const [error, setError] = useState<string | null>(null);
 
   // == Initialization ============================================================
+  // whether the page still holds the Application: while held, a tap reaches nothing and
+  // every bridge call waits, so the waiting screen stands. Everywhere but the installed
+  // app's opening it is `ready` at once
+  useEffect(() => {
+    const subscription = page.launchState$().subscribe(setLaunch);
+    return () => subscription.unsubscribe();
+  }, [page]);
+
   // the list, whoever changed it -- this Application's own changes included
   const list = useMemo(() => new JobList(appContent), [appContent]);
   useEffect(() => list.follow(setContent, () => setReadFailed(true)), [list]);
@@ -122,9 +135,13 @@ export const App = () => {
     if(job) { setView('all'); setTarget(job); }
   }), [page]);
 
+  // the live list replaces the waiting screen once the page released the Application and
+  // the list has been read (or could not be), so no empty list shows on the way. A list
+  // read while held stands behind the waiting screen: it is not yet shown
+  const live = (launch === 'ready') && ((content !== undefined) || readFailed);
   // the list is shown (opened, or come back to): the new jobs' notifications still
   // waiting are news already seen, on every one of this person's devices
-  const listShown = (content !== undefined) && !readFailed;
+  const listShown = live && !readFailed;
   useEffect(() => {
     if(!listShown) return/*no list shown yet*/;
     const consumed = () => { if(document.visibilityState === 'visible') page.notifications.consumed(NEW_JOBS_TAG).catch(failure => console.warn('The new jobs\' notifications could not be cleared', failure)); };
@@ -177,15 +194,16 @@ export const App = () => {
     return () => document.removeEventListener('visibilitychange', markSeen);
   }, [settings, listShown, me, seen, newestFresh]);
 
-  // the job a notification opened: scrolled to and highlighted once the list holds it.
-  // It stays asked for until then (a list still arriving), or until another launch
+  // the job a notification opened: scrolled to and highlighted once the live list holds
+  // it. It stays asked for until then (a launch heard behind the waiting screen, a list
+  // still arriving), or until another launch
   const targetMissing = !!target && (content !== undefined) && !jobs.some(job => job.id === target);
   useEffect(() => {
-    if(!target || !jobs.some(job => job.id === target)) return;
+    if(!live || !target || !jobs.some(job => job.id === target)) return/*not shown yet, or not in the list*/;
     document.querySelector(`[data-job="${CSS.escape(target)}"]`)?.scrollIntoView({ block: 'center', behavior: prefersLessMotion() ? 'auto' : 'smooth' });
     setHighlight(target);
     setTarget(null);
-  }, [target, jobs]);
+  }, [live, target, jobs]);
   useEffect(() => {
     if(!highlight) return;
     const timer = setTimeout(() => setHighlight(null), HIGHLIGHT_MS);
@@ -260,6 +278,11 @@ export const App = () => {
   const remove = (job: Job) => save(`Removing "${job.text}"`, editing(job.id, () => null));
 
   // == UI ========================================================================
+  // the waiting screen goes in the commit that first draws the live list, before the
+  // browser paints it: one frame shows the one, the next the other
+  useLayoutEffect(() => { if(live) document.getElementById(WAITING_ID)?.remove(); }, [live]);
+  if(!live) return null/*the waiting screen stands*/;
+
   const ready = (content !== undefined) && !readFailed && !!me;
   const canChange = ready && !looker;
   return (

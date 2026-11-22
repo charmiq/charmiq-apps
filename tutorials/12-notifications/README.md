@@ -18,9 +18,10 @@ In this document the Application is the Punch List from the last step, and every
 | [`manifest.json`](charmiq://./manifest.json) | Declares `command.notification.material.push.send` beside `user.read` and `mcp.platform.vfs` |
 | [`App.tsx`](charmiq://./App.tsx) | **Notify me** (`page.notifications.request()`), a send after each saved job (`page.notifications.send()`, one tag with a hold, so a run of jobs arrives as one notification, leaving out whoever is watching the list as it arrives), one line for the jobs no one was told about, the list shown clearing what still waits (`page.notifications.consumed()`) and marking its jobs seen, which clears the icon's count (no **N new** tap), and the job a notification's tap names, through `page.launchQueue` |
 | [`unsent.ts`](charmiq://./unsent.ts) | New: the jobs no one was told about, as one line for the newest, and whether trying again can help |
-| [`styles.scss`](charmiq://./styles.scss) | The **Notify me** card, and the job a notification opened, highlighted; no **N new** button |
+| [`styles.scss`](charmiq://./styles.scss) | The **Notify me** card, the job a notification opened, highlighted, and the waiting screen's *Opening…*; no **N new** button |
+| [`manifest.json`](charmiq://./manifest.json), [`index.html`](charmiq://./index.html), [`App.tsx`](charmiq://./App.tsx) | The app draws its own waiting screen while it opens: the manifest declares `"waitingState": "application"`, `index.html`'s markup is the header with *Opening…* in the list's place, and the live list takes its place once `page.launchState$()` says `ready` |
 | [`jobs.ts`](charmiq://./jobs.ts), [`people.ts`](charmiq://./people.ts), [`People.tsx`](charmiq://./People.tsx) | Unchanged |
-| [`index.html`](charmiq://./index.html), [`main.tsx`](charmiq://./main.tsx), [`_variables.scss`](charmiq://./_variables.scss) | Unchanged |
+| [`main.tsx`](charmiq://./main.tsx), [`_variables.scss`](charmiq://./_variables.scss) | Unchanged |
 
 ## Each device decides for itself
 
@@ -110,6 +111,29 @@ The notification's `launch` (`job=<id>`) comes back as the query of the address 
 
 **The launch query is the Application's own.** `mode`, `app`, `view`, `chat` and `thr` are the Platform's, so this one names `job`.
 
+## The app draws its own waiting screen
+
+```json
+"waitingState": "application"
+```
+
+```tsx
+useEffect(() => {
+  const subscription = page.launchState$().subscribe(setLaunch);
+  return () => subscription.unsubscribe();
+}, [page]);
+```
+
+An installed app takes a moment to open: the Platform checks the sign-in and the person's access while the Application's document loads. The Installed App showed its launch screen through that wait, the color and picture set in Home Screen. With `waitingState` declared in `manifest.json`, the Punch List shows itself instead, from the first paint: its header, and *Opening…* where the list will be.
+
+**The markup is the waiting screen.** It shows before any of the Application's scripts runs, so [`index.html`](charmiq://./index.html) draws it as written: the header and *Opening…*, with no field or button that looks as if it works.
+
+**Held means nothing acts.** While the page holds the Application, a tap reaches nothing, and every call it makes through the bridge (a save, a send, the badge) waits, then goes in order once the Application is released, or never, if the launch is refused. So the waiting screen never shows an action as done.
+
+**`launchState$()` says when it is released.** It says `held`, then `ready` once, and ends. By `ready`, taps reach the Application and its waiting calls have gone. The Application then swaps *Opening…* for the list, in a single frame, once the list has been read too, so no empty list shows on the way. A list behind the waiting screen is not yet shown: nothing is marked seen or `consumed` until the live list is, and a job a notification names stays asked for until the live list can scroll to it.
+
+**Where it applies.** A launch whose page the server writes with the Application: from the network, signed in, or from the page the phone kept. A reload says `held` again. The first launch on a phone, and a launch after the Application is built again (its files changed), still show the launch screen, so keep it set (step 4 below): the launch screen covers every wait the waiting screen does not. Everywhere else (this document, a browser tab, a Preview), `launchState$()` says `ready` alone, and *Opening…* shows only until the list is read.
+
 ## Test it on two phones
 
 Two people, each with a phone, each signed in as themselves.
@@ -123,7 +147,7 @@ Two people, each with a phone, each signed in as themselves.
 
    The address is relative to the document's own Folder. Open the document once: the Application asks for its scopes.
 3. **Share it.** Share the document with the second person as an **Editor**. The Application's files are read with each person's own access, so share the folders holding `12-notifications` and `shared` with them too (Viewer is enough).
-4. **Put it on each Home Screen.** Once, in Document Properties → Home Screen, set the **Icon** to this folder's `icon-512.png` (`icon.svg` is its source), and the **Launch screen** to its `launch-screen-1024.png` (`launch-screen.svg` is its source) with the **Launch screen color** `#0e9bb0`: the installed app shows it while it opens. Then on each phone: Document Properties → Home Screen → **Open app** (or the document's address with `/app` on the end), sign in if asked, then **Share → Add to Home Screen** in Safari on an iPhone (iOS 16.4 or later), or **Install app** in Chrome on Android. Open the app from the new icon.
+4. **Put it on each Home Screen.** Once, in Document Properties → Home Screen, set the **Icon** to this folder's `icon-512.png` (`icon.svg` is its source), and the **Launch screen** to its `launch-screen-1024.png` (`launch-screen.svg` is its source) with the **Launch screen color** `#0e9bb0`: the installed app shows it while it opens wherever the Punch List cannot draw its own waiting screen ([The app draws its own waiting screen](#the-app-draws-its-own-waiting-screen)). Then on each phone: Document Properties → Home Screen → **Open app** (or the document's address with `/app` on the end), sign in if asked, then **Share → Add to Home Screen** in Safari on an iPhone (iOS 16.4 or later), or **Install app** in Chrome on Android. Open the app from the new icon.
 5. **Tap Notify me on each phone**, and **Allow** both the Platform's question and the browser's.
 6. **Add a job on one phone.** Close the app on the other (or lock it). About 10 seconds later the notification arrives there, titled with the app's name, saying who added which job. Its icon shows a count.
 7. **Add three jobs in a row.** One notification arrives, for the newest: *… and 2 more*.

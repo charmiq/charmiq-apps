@@ -591,6 +591,8 @@ export type CharmIQError = Error & Readonly<{ code?: string; }>;
 export type PageTopColor = Readonly<{ light: string; dark: string; }>;
 /** a launch of the page: the address it was launched at (`window.launchQueue`'s) */
 export type LaunchParams = Readonly<{ targetURL: string; }>;
+/** whether App mode's page holds the Application from the User (`held`) or released it (`ready`) */
+export type LaunchState = 'held' | 'ready';
 export interface PageAPI {
   /** asks the page to badge the installed app's icon (0 clears it; absent, a mark with
    *  no count), as `navigator.setAppBadge` does. Call it during a tap: where a badge
@@ -609,6 +611,14 @@ export interface PageAPI {
    *  app, several chosen together collapsing to the latest, each once; a later consumer
    *  replaces it */
   launchQueue: Readonly<{ setConsumer(consumer: (params: LaunchParams) => void): void; }>;
+
+  /** whether App mode's page holds the Application: `held` while it shows it and holds
+   *  it (taps reach nothing; every bridge call waits, then goes in order once released,
+   *  or never if the launch is refused), then `ready` once, after the release, and
+   *  complete. Only an Application whose manifest declares `"waitingState":
+   *  "application"` is held; every other hears `ready` alone, at once. A reload hears
+   *  `held` again */
+  launchState$(): Observable<LaunchState>;
 
   /** the installed app's notifications: asking to turn them on and reading them (each
    *  device's own decision, asked by the Platform: no scope), and sending one (scope

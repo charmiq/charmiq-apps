@@ -6,6 +6,14 @@
   <title>Punch List — CharmIQ Tutorial</title>
 </head>
 <body>
+  <!-- the waiting screen, from first paint until the list is live (SEE: App.tsx): the
+       header and Opening… in the list's place, with nothing that looks as if it works -->
+  <div id="waiting" class="app" aria-busy="true">
+    <header>
+      <h1>Punch List</h1>
+    </header>
+    <p class="opening" role="status">Opening…</p>
+  </div>
   <div id="root"></div>
 </body>
 </html>

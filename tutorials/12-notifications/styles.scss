@@ -87,6 +87,12 @@ html, body {
   .error { color: $accent-hover; }
   .notice { color: var(--text-secondary); }
 
+  // the waiting screen's word in the list's place (SEE: ./index.html)
+  .opening {
+    margin: $spacing 0 0;
+    color: var(--text-secondary);
+  }
+
   // a button that reads as a link inside text
   button.link {
     padding: 0;

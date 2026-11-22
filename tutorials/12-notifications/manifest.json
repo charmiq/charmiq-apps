@@ -3,6 +3,7 @@
   "name": "Punch List",
   "description": "The Punch List as a Home Screen app that tells the others about each new job, even while their app is closed",
   "requestedScopes": ["user.read", "mcp.platform.vfs", "command.notification.material.push.send"],
+  "waitingState": "application",
   "bundle": {
     "entry": {
       "html": "/index.html",
