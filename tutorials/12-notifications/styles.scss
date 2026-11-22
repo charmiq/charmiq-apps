@@ -51,16 +51,6 @@ html, body {
   100% { opacity: 0; }
 }
 
-// the fill of a placeholder for what is still being read: the waiting screen's
-// shimmer, still with less motion
-@mixin skeleton {
-  background: linear-gradient(90deg, var(--border) 0%, var(--text-secondary) 50%, var(--border) 100%) 0 0 / 300% 100%;
-  opacity: 0.5;
-  animation: assembling-shimmer 1400ms linear infinite;
-
-  @media (prefers-reduced-motion: reduce) { animation: none; }
-}
-
 .app {
   font-family: $font-family;
   padding: $spacing;
@@ -126,8 +116,8 @@ html, body {
 
   // the waiting screen (SEE: ./index.html): the title at the top and the list assembling
   // itself in the middle of the page, each row sliding in with its crew color, its box
-  // ticking in turn and its line shimmering (SEE: .pending-line). The ticks run in a wave
-  // that repeats for as long as the app opens
+  // ticking in turn and its line shimmering until it does. The ticks run in a wave that
+  // repeats for as long as the app opens
   &#waiting {
     display: flex;
     flex-direction: column;
@@ -177,26 +167,25 @@ html, body {
         animation-delay: calc(500ms + var(--i) * 260ms);
       }
     }
+    .line {
+      width: var(--w);
+      height: 12px;
+      border-radius: 6px;
+      background: linear-gradient(90deg, var(--border) 0%, var(--text-secondary) 50%, var(--border) 100%) 0 0 / 300% 100%;
+      opacity: 0.5;
+      animation: assembling-shimmer 1400ms linear infinite;
+    }
 
     // with less motion nothing moves: the rows fade in where they stand, each tick fades
-    // in and out in turn, already drawn, and the lines hold still (SEE: skeleton)
+    // in and out in turn, already drawn, and the lines hold still
     @media (prefers-reduced-motion: reduce) {
       li { animation-name: assembling-row-fade; }
       .box path { stroke-dashoffset: 0; animation-name: assembling-tick-fade; }
+      .line { animation: none; }
     }
   }
-  // a line of words still being read: the waiting screen's rows, and each section's
-  // place in the live list until what it shows arrives (`--w`: its width)
-  .pending-line {
-    display: block;
-    width: var(--w, 100%);
-    height: 12px;
-    border-radius: 6px;
-    @include skeleton;
-  }
-  // words for a screen reader alone, where a placeholder says them to the eye (the
-  // waiting screen's Opening…, a section still being read)
-  .visually-hidden {
+  // the waiting screen's word, for a screen reader: the rows say it to the eye
+  .opening {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -217,9 +206,9 @@ html, body {
     &:hover { color: $accent-hover; background: none; }
   }
 
-  // this device's notifications hold one slot from the first live frame, the height of the
-  // offer, whenever their state arrives: the offer's outline until it does, then the offer
-  // or a line saying the state, centered in it. Only `blocked`'s longer words grow it
+  // this device's notifications hold one slot, the height of the offer, from the page's
+  // first frame: empty until their state arrives, then the offer, or a line saying the
+  // state centered in it. Only `blocked`'s longer words grow it
   .notify-slot {
     display: flex;
     flex-direction: column;
@@ -244,16 +233,6 @@ html, body {
       overflow-wrap: break-word;
     }
     .error { flex-basis: 100%; }
-
-    // the offer's outline while this device's state is still being read: its words and
-    // its button (SEE: .pending-line)
-    &.pending {
-      border-color: var(--border);
-
-      .words { flex: 1 1 180px; }
-      .pending-line + .pending-line { margin-top: 8px; }
-      .pending-line.button { flex: none; width: 96px; height: 32px; border-radius: $radius; }
-    }
   }
   // this device's state once there is nothing to offer: on, or not available here
   .notify-state {
@@ -322,19 +301,12 @@ html, body {
       color: var(--text-secondary);
       border: 2px dashed var(--border);
     }
-    // whose it is still being read (SEE: .pending-line)
-    &.pending { @include skeleton; }
   }
 
-  // the card holds its height from the first render, its placeholder and its words
-  // alike, so nothing below it moves as it fills: the height of its longer words on a
-  // phone, a title of two lines and three lines beneath it
   .together {
     display: flex;
     align-items: center;
     gap: 12px;
-    box-sizing: border-box;
-    min-height: 112px;
     margin-top: $spacing;
     padding: 12px 14px;
     background: var(--field);
@@ -346,13 +318,7 @@ html, body {
       flex: none;
       .avatar + .avatar { margin-left: -10px; }
     }
-    .words {
-      flex: 1;
-      min-width: 0;
-
-      .pending-line + .pending-line { margin-top: 8px; }
-      .pending-line:first-child { height: 14px; margin-bottom: 12px; }
-    }
+    .words { min-width: 0; }
     .title, .sub {
       margin: 0;
       overflow-wrap: break-word;
@@ -419,10 +385,6 @@ html, body {
         border-radius: 999px;
         &.looker { border-style: dashed; }
       }
-      // a row still being read: a name's line and a shorter status line, the height of
-      // the words they stand for
-      .who .pending-line { margin: 3px 0; }
-      .who .pending-line + .pending-line { height: 10px; }
     }
 
     .invite {
@@ -438,12 +400,6 @@ html, body {
       p { margin: 0; color: var(--text-secondary); }
       ol { margin: 10px 0 12px; padding-left: 20px; }
       .copied { margin-top: 8px; font-size: 13px; }
-
-      // the card's outline while whether it shows, and what it says, is still being read:
-      // its heading, its words, its steps and its button
-      .pending-line + .pending-line { margin-top: 8px; }
-      .pending-line.step { margin-left: 20px; }
-      .pending-line.button { width: 132px; height: 36px; margin-top: 14px; border-radius: $radius; }
     }
   }
 
@@ -484,14 +440,6 @@ html, body {
         font-size: 13px;
         color: var(--text-secondary);
 
-        // the writer's place while who is looking is still being read: "you" or initials,
-        // in a chip the width of initials
-        &.pending {
-          width: 24px;
-          height: 24px;
-          border-radius: 999px;
-          @include skeleton;
-        }
         // another writer: their initials in their color, so the job's text keeps the width
         &.initials {
           display: inline-flex;

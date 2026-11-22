@@ -5,7 +5,7 @@ import { recordLines } from '/shared/line-records/line-records';
 
 import type { AppContent, ApplicationUser, LaunchState, NotificationSendError, NotificationState } from '../../shared/charmiq'/*also activates the window.charmiq global augmentation*/;
 import { adding, editing, jobsIn, JobList, type Job } from './jobs';
-import { People, Together, type MeId, type SharesStatus } from './People';
+import { People, Together, type SharesStatus } from './People';
 import { byPlace, colorForId, firstName, initials, introducing, membersIn, needsIntroduction, peopleOf, readShares, sharesFailureNotice, type Me, type Share } from './people';
 import { sendAccepted, sendFailed, sendingAgain, type Unsent, type UnsentNotice } from './unsent';
 
@@ -20,8 +20,8 @@ import { sendAccepted, sendFailed, sendingAgain, type Unsent, type UnsentNotice 
 // the Platform delivers the newest alone once the hold ends, worded for the run. Once
 // the list is shown, what still waits of them is news already seen. While the installed
 // app opens, the page holds the Application and shows it as it draws itself: index.html's
-// waiting screen, until the page releases it and the list is read. From then each
-// section holds its place, a placeholder standing where what it shows is still being read
+// waiting screen, until the page releases it and what the page shows first is all known.
+// Then the whole page appears at once
 // ********************************************************************************
 const newId = () => Math.random().toString(36).slice(2, 10);
 /** the shortest wait between two reads of the shares when the list is returned to */
@@ -136,10 +136,15 @@ export const App = () => {
     if(job) { setView('all'); setTarget(job); }
   }), [page]);
 
-  // the live list replaces the waiting screen once the page released the Application and
-  // the list has been read (or could not be), so no empty list shows on the way. A list
-  // read while held stands behind the waiting screen: it is not yet shown
-  const live = (launch === 'ready') && ((content !== undefined) || readFailed);
+  // the live page replaces the waiting screen, whole and once, when the page released the
+  // Application and what it first shows is known: the list, who is looking and who has the
+  // document (read or refused), so nothing in it moves as the rest arrives. A list that
+  // could not be read shows its notice at once: nothing else shows beside it. A list read
+  // while held stands behind the waiting screen: it is not yet shown
+  // NOTE: the shares and who is looking each come over the bridge with no deadline and may
+  //       wait on the User's consent; the waiting screen stands until they answer
+  const firstShown = readFailed || ((content !== undefined) && (user !== undefined) && (sharesStatus !== 'reading'));
+  const live = (launch === 'ready') && firstShown;
   // the list is shown (opened, or come back to): the new jobs' notifications still
   // waiting are news already seen, on every one of this person's devices
   const listShown = live && !readFailed;
@@ -167,7 +172,6 @@ export const App = () => {
   const jobs = useMemo(() => jobsIn(content ?? null), [content]);
   const members = useMemo(() => membersIn(lines), [lines]);
   const me = useMemo<Me | null>(() => (user ? { id: user.id, name: user.name || 'Someone', img: user.imageUrl ?? '' } : null), [user]);
-  const meId: MeId = (user === undefined) ? undefined/*not yet known*/ : (user ? user.id : null/*no one signed in*/);
   const people = useMemo(() => peopleOf(shares, members, me).sort(byPlace(me?.id)), [shares, members, me]);
   const colors = useMemo(() => new Map(people.map(person => [person.id, person.color])), [people]);
   // the shares name a Commenter or Viewer: they look at the list and never change it
@@ -280,13 +284,10 @@ export const App = () => {
   const remove = (job: Job) => save(`Removing "${job.text}"`, editing(job.id, () => null));
 
   // == UI ========================================================================
-  // the waiting screen goes in the commit that first draws the live list, before the
-  // browser paints it: one frame shows the one, the next the other. Every section stands
-  // in that first frame, in its place: who is on the list and the people beneath the jobs
-  // as placeholders until who is looking and the shares are known, this device's
-  // notifications as one until their state is, each job's writer as one until who is
-  // looking is. A notice that appears later answers something that happened since: a save
-  // refused, a send untold, a tapped job no longer on the list
+  // the waiting screen goes in the commit that first draws the live page, before the
+  // browser paints it: one frame shows the one, the next the other. This device's
+  // notification state is not waited for (it may wait on the device's push subscription):
+  // its slot holds the offer's height, empty until the state arrives
   useLayoutEffect(() => { if(live) document.getElementById(WAITING_ID)?.remove(); }, [live]);
   if(!live) return null/*the waiting screen stands*/;
 
@@ -297,18 +298,9 @@ export const App = () => {
       <header>
         <h1>Punch List</h1>
       </header>
-      {!readFailed && <Together meId={meId} looker={looker} people={people} status={sharesStatus} notice={sharesNotice} onRetry={loadShares} />}
-      {/* this device's notifications hold one slot from the first frame, whenever their
-          state arrives: the offer's outline until it does, then the offer, or the state
-          said in a line, so a missing Notify me is never a mystery */}
-      {!readFailed && (
+      {ready && <Together meId={me?.id} looker={looker} people={people} status={sharesStatus} notice={sharesNotice} onRetry={loadShares} />}
+      {ready && (
         <div className="notify-slot">
-          {(notify === null) && (
-            <div className="notify pending" aria-hidden="true">
-              <span className="words"><span className="pending-line" style={{ '--w': '86%' } as React.CSSProperties} /><span className="pending-line" style={{ '--w': '58%' } as React.CSSProperties} /></span>
-              <span className="pending-line button" />
-            </div>
-          )}
           {((notify === 'off') || (notify === 'blocked')) && (
             <section className="notify">
               <p>{(notify === 'blocked')
@@ -318,6 +310,7 @@ export const App = () => {
               {notifyFailed && <p className="error" role="alert">Notifications could not be turned on. Try again.</p>}
             </section>
           )}
+          {/* this device's state is always said, so a missing Notify me is never a mystery */}
           {(notify === 'on') && <p className="notify-state">Notifications are on for this device.</p>}
           {(notify === 'unavailable') && <p className="notify-state">Notifications need this list added to the Home Screen and opened from there, over https.</p>}
         </div>
@@ -327,6 +320,8 @@ export const App = () => {
         <button type="submit" disabled={!canChange || !draft.trim()}>Add</button>
       </form>
       {readFailed && <p className="notice" role="alert">The list could not be read. Reload to try again.</p>}
+      {(user === null) && <p className="notice" role="alert">Sign in to work on this list.</p>}
+      {looker && <p className="notice">You can look at this list. To add or check off jobs, ask whoever shared it to let you make changes.</p>}
       {introFailed && <p className="error" role="alert">Your name could not be added to the list. <button type="button" className="link" onClick={retryIntroduction}>Try again</button></p>}
       {error && <p className="error" role="alert">{error}</p>}
       {unsent && (
@@ -339,29 +334,27 @@ export const App = () => {
         </p>
       )}
       {targetMissing && <p className="notice" role="status">The job that notification was about is not on the list. It may have been removed.</p>}
-      {listShown && (jobs.length > 0) && (
+      {ready && (jobs.length > 0) && (
         <div className="views" role="tablist" aria-label="Show">
           <button type="button" role="tab" aria-selected={view === 'all'} className={(view === 'all') ? 'on' : undefined} onClick={() => setView('all')}>All jobs</button>
           <button type="button" role="tab" aria-selected={view === 'done'} className={(view === 'done') ? 'on' : undefined} onClick={() => setView('done')}>Done</button>
         </div>
       )}
-      {listShown && (jobs.length < 1) && <p className="notice">No jobs yet.</p>}
-      {listShown && (jobs.length > 0) && (shown.length < 1) && <p className="notice">No jobs are done yet.</p>}
+      {ready && (jobs.length < 1) && <p className="notice">No jobs yet.</p>}
+      {ready && (jobs.length > 0) && (shown.length < 1) && <p className="notice">No jobs are done yet.</p>}
       <ul className="items">
         {shown.map(job => (
           <li key={job.id} data-job={job.id} className={[job.done && 'done', (highlight === job.id) && 'flash'].filter(Boolean).join(' ') || undefined} style={{ '--writer': colors.get(job.by) ?? colorForId(job.by) } as React.CSSProperties}>
             <input type="checkbox" checked={job.done} onChange={() => toggle(job)} aria-label={`Done: ${job.text}`} disabled={!canChange} />
             <span className="text" title={job.text}>{job.text}</span>
-            {(meId === undefined)
-              ? <span className="by pending" aria-hidden="true" />
-              : (job.by === meId)
-                ? <span className="by">you</span>
-                : <span className="by initials" role="img" title={job.name} aria-label={job.name}>{initials(job.name)}</span>}
+            {(me && (job.by === me.id))
+              ? <span className="by">you</span>
+              : <span className="by initials" role="img" title={job.name} aria-label={job.name}>{initials(job.name)}</span>}
             <button type="button" onClick={() => remove(job)} aria-label={`Remove ${job.text}`} disabled={!canChange}>Remove</button>
           </li>
         ))}
       </ul>
-      {!readFailed && <People meId={meId} looker={looker} people={people} status={sharesStatus} />}
+      {ready && <People meId={me?.id} looker={looker} people={people} status={sharesStatus} />}
     </div>
   );
 };
