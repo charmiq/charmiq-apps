@@ -1,8 +1,8 @@
 import { listLocalApplicationResources, readLocalApplicationResource, readLocalApplicationResourceBytes } from '@charmiq/service-common/application/localResource';
 import { appContentLayer, type AppContentObservableFactory, type AppContentObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentLayer';
-import { Observable } from 'rxjs';
+import { of, Observable } from 'rxjs';
 
-import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ApplicationUser, ContentChange, OAuthAuth, OAuthAuthDescriptor, PageAPI } from '../charmiq';
+import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ApplicationUser, ContentChange, LaunchState, OAuthAuth, OAuthAuthDescriptor, PageAPI } from '../charmiq';
 
 // the local-dev bridge harness — a stand-in `window.charmiq` so a bridge app can
 // run in a plain browser (opened from a `build-app --harness` build) instead of
@@ -460,12 +460,14 @@ const makeRegistry = () => {
 // == Page ========================================================================
 /** the page as an ordinary browser tab has it, which the harness's is: the status bar
  *  color, the icon badge and the launches are an installed app's alone and do nothing
- *  here, and there is no installed app to notify */
+ *  here, nothing holds the Application (it is `ready` at once), and there is no
+ *  installed app to notify */
 const makePage = (): PageAPI => ({
   setAppBadge: () => {},
   clearAppBadge: () => {},
   setTopColor: () => {},
   launchQueue: { setConsumer: () => {} },
+  launchState$: () => of<LaunchState>('ready'/*nothing holds the Application*/),
   notifications: {
     request: async () => 'unavailable',
     state: async () => 'unavailable',
