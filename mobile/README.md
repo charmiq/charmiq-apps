@@ -13,7 +13,7 @@ Each Application's folder holds its README and one document per phone (`iOS`; An
 ## Put One on Your Home Screen
 
 1. **Make it yours.** Use **Copy Document** on the Application's `iOS` document. App mode is offered to a document's Editors, and your copy holds your own data.
-2. **Choose App.** Open your copy, open the view-mode selector and choose **App**. The address gains `?mode=app` and the editor disappears.
+2. **Open the app.** Open your copy, then Document Properties → Home Screen → **Open app**: the document opens at its App address (`/app` on the end), with no editor around it.
 3. **Get it onto the phone.** Already on the phone? Go to step 4. On a desktop, copy the address and open it on the phone, or open the document from Drive on the phone and choose App there.
 4. **Add to Home Screen.** In Safari, tap **Share → Add to Home Screen**. The icon takes the document's name; rename it in that sheet if you like.
 5. **Sign in once.** The first launch asks you to sign in (the home-screen app keeps its own sign-in, apart from Safari's) and then opens the Application. It stays signed in after that, even after you force-quit it.
@@ -22,7 +22,7 @@ To edit the document itself, open it from Drive in a browser: the home-screen ap
 
 ## Share It
 
-Share your copy as an **Editor** with each person who should have it; each adds it to their own home screen. Everyone sees everyone's changes live. App mode is not offered to Commenters or Viewers.
+Share your copy with each person who should have it, as an **Editor** for anyone who changes it (a Viewer opens the app, but nothing they change is kept); each adds it to their own home screen. Everyone sees everyone's changes live.
 
 ## Building Your Own
 

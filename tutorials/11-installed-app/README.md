@@ -32,8 +32,10 @@ A document opens as an app: its first Application (or the one you choose), full-
    ```
 
    The address is relative to the document's own Folder. The app shows one Application, and the page calls below reach only that one: keep it first, or choose it in step 2.
-2. **Document Properties → Home Screen.** Choose the **Application** (or leave **First Application**), a **Name** for the label under the icon, an **Icon** (this folder's `icon-512.png`: the setting takes one square 512×512 PNG; `icon.svg` is its source), and, under **Shortcuts**, one named *Done jobs* that opens with `?show=done`.
-3. **Open it as an app.** **Open app** there (or the view-mode selector's **App**) opens the document at `?mode=app`. App mode is offered to the document's Editors.
+2. **Document Properties → Home Screen.** Choose the **Application** (or leave **First Application**), a **Name** for the label under the icon, an **Icon** (this folder's `icon-512.png`: the setting takes one square 512×512 PNG; `icon.svg` is its source), a **Launch screen** (this folder's `launch-screen-1024.png`: the setting takes a PNG of at most 1024 px a side; `launch-screen.svg` is its source) with the **Launch screen color** `#0e9bb0`, and, under **Shortcuts**, one named *Done jobs* that opens with `?show=done`.
+
+   The installed app shows the launch screen while it opens, until the list can take a tap. Change it later and it shows from the second launch after (the first still opens from the copy the phone kept). Its art is drawn as SVG and exported to PNG, which is how a Charm can draw yours.
+3. **Open it as an app.** **Open app** there opens the document's App address (its address with `/app` on the end); **Copy link** carries it to another device. Anyone who can read the document can open it; only an Editor's changes are kept.
 4. **Add to Home Screen.** On an iPhone, open that address in Safari and use **Share → Add to Home Screen**; on Android, Chrome's **Install app** or **Add to Home screen**; on a Mac, Safari's **File → Add to Dock** or Chrome's install button. **Copy link** in the Home Screen settings carries the address to the phone.
 
 ## The header runs into the status bar
