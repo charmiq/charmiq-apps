@@ -136,7 +136,7 @@ An installed app takes a moment to open: the Platform checks the sign-in and the
 
 **The waiting screen waits as long as they do.** Who is looking and the document's shares come with no deadline, and the first open may ask you for the Application's scopes before either answers; the waiting screen stands until they do.
 
-**Where it applies.** A launch whose page the server writes with the Application: from the network, signed in, or from the page the phone kept. A reload says `held` again. The first launch on a phone, and a launch after the Application is built again (its files changed), still show the launch screen, so keep it set (step 4 below): the launch screen covers every wait the waiting screen does not. Everywhere else (this document, a browser tab, a Preview), `launchState$()` says `ready` alone, and the waiting screen shows only until the list, who is looking and the shares are known.
+**Where it applies.** A launch whose page the server writes with the Application: from the network, signed in, or from the page the phone kept. A reload says `held` again. The first launch on a phone, before it is signed in, still shows the launch screen, so keep it set (step 4 below). One launch never shows both: once the waiting screen is up, the launch screen does not come back, even when the app's files changed and it rebuilds or reloads; where the waiting screen has to go, the plain background shows until the new one draws. Everywhere else (this document, a browser tab, a Preview), `launchState$()` says `ready` alone, and the waiting screen shows only until the list, who is looking and the shares are known.
 
 ## Test it on two phones
 
