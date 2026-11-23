@@ -4,15 +4,16 @@
 
 | Application | What it does |
 |----|----|
+| [After Hours](charmiq://./after-hours/README.md) | A tilt maze on paper that sketches itself in as you roll a glass ornament through it, over several floors, to the star |
 | [Flak Run](charmiq://./flak-run/README.md) | A one-finger shooter with a shared high score list: three levels, each ending in a boss, with every picture drawn in code |
 | [Synth Jukebox](charmiq://./synth-jukebox/README.md) | A music library whose albums are composed and played live on your phone, plus songs Lyria 3 Pro presses from your description |
 | [Tick List](charmiq://./tick-list/README.md) | Lists you tick off, shared live with everyone you share it with |
 
-Each Application's folder holds its README and one document per phone (`iOS`; Android to follow). That document is the Application and nothing else: it fills the screen, so these instructions live here.
+Each Application's folder holds its README, which is the Application's document: the Application comes first in it, at a phone's size, with how to play or use it beneath. Tick List and Synth Jukebox still keep theirs in a separate `iOS` document, which is the Application and nothing else. Opened as an app, the Application fills the screen either way.
 
 ## Put One on Your Home Screen
 
-1. **Make it yours.** Use **Copy Document** on the Application's `iOS` document. App mode is offered to a document's Editors, and your copy holds your own data.
+1. **Make it yours.** Use **Copy Document** on the Application's document (its README, or its `iOS` document where it has one). App mode is offered to a document's Editors, and your copy holds your own data.
 2. **Open the app.** Open your copy, then Document Properties → Home Screen → **Open app**: the document opens at its App address (`/app` on the end), with no editor around it.
 3. **Get it onto the phone.** Already on the phone? Go to step 4. On a desktop, copy the address and open it on the phone, or open the document from Drive on the phone and choose App there.
 4. **Add to Home Screen.** In Safari, tap **Share → Add to Home Screen**. The icon takes the document's name; rename it in that sheet if you like.
@@ -29,7 +30,7 @@ Share your copy with each person who should have it, as an **Editor** for anyone
 - **Write it inline.** The Application's source lives in the document (`<iframe-app>` → `<app-source>`), so it opens as soon as the page does. An Application with a manifest or folder is fetched and built after the page loads, a wait on every launch.
 - **Keep the data as records, one per line.** The app-content holds one JSON record per line, each with its id; a change rewrites only the lines of the records it changes, through the app-content it was shown, and is applied again to the newer app-content when another writer got there first. A line it does not read is kept as written. Tick List and Synth Jukebox both work this way (the full guide: [Collaborating](https://team.charmiq.ai/docs/application/developer-app-content-and-app-state#collaborating)).
 - **App-state holds settings, and each person's place under their User id.** It is one value for everyone sharing the document: what everyone shares sits at the top (Tick List's Show Completed), and where one person left off sits under `byUser[user.id]` (`charmiq.user$`, `user.read`), restored once for each person who signs in while the app is open. A save rewrites the latest state with your entry in it, so two people saving at once can drop one's latest place; everyone who reads the document can read every entry.
-- **The document is only the Application:** theme `charmiq:none`, a stylesheet that zeroes the page's margin and padding (`:root`, `body`), and `<iframe-app height="100svh" width="100%">`. Copy any `iOS` document's header.
+- **The Application comes first in its document**, at a phone's size (`<iframe-app height="874px" width="402px">`, centered), with its instructions beneath it: App shows the document's first Application alone, filling the screen. Copy Flak Run's README.
 - **Nothing stays in the browser.** An Application's frame has no storage of its own (`localStorage`, cookies and IndexedDB are refused), so whatever must be there at the next launch goes in the app-content or the app-state. Flak Run keeps one line for each person, their best score, in its app-content.
 - **A game:**
   - Draw the pictures in code. With no files to fetch, the game is ready when the page is. Flak Run builds each plane from a few polygons (mirrored, shaded and outlined as it opens) and each level's landscape from a seed.
