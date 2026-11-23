@@ -2280,7 +2280,8 @@ const view = (seconds) => {
 let frame = null, drawnAt = 0, owed = 0;
 const tick = (now) => {
   frame = requestAnimationFrame(tick);
-  const seconds = Math.min((now - drawnAt) / 1000, 0.1);
+  // (a frame's own time can stand a moment before the clock read when the loop began)
+  const seconds = clamp((now - drawnAt) / 1000, 0, 0.1);
   drawnAt = now;
   // the race waits while a sheet is open over it
   if((mode === 'race') && racing && scrim.hidden) {

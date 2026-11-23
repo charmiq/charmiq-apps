@@ -28,7 +28,17 @@ To film it instead (screenshots after each command call, with each call's result
 npm run film-app -- <path-to-app> --out film --content <app-content-name>=<file> --step '<command> {json args}'
 ```
 
-A document's film starts from the app-contents and app-state the document holds, as a copy of the document does; `--content` replaces the app-content of its name and `--state` the app-state.
+A document's film starts from the app-contents and app-state the document holds, as a copy of the document does; `--content` replaces the app-content of its name and `--state` the app-state. A step that starts with `@` does what a person does (`@tap`, `@drag`, `@key`, `@type`, `@tilt`, `@wait`), reads the page (`@eval`) or asks for strips of the frames painted while later steps run (`@strip`); `--touch` makes the page a phone's.
+
+To use it instead, on this machine or on a phone:
+
+```sh
+# from platform/packages/cloud-functions
+npm run serve-app -- <path-to-app>              # http://localhost:3444
+npm run serve-app:lan-https -- <path-to-app>    # https://<this machine's LAN address>:3444
+```
+
+Each request builds the app again, so a reload shows the latest save. The page starts from the document's data once and keeps what it writes in that browser; `/?fresh` starts over from the document. Its errors and console warnings are printed by the server, since a phone shows no console.
 
 
 ## What it stands in for
@@ -39,7 +49,7 @@ A document's film starts from the app-contents and app-state the document holds,
 | `fetch` | The real `window.fetch` (fine for CORS-friendly APIs like Google's) |
 | `oauth.listAuth` / `getValidAuth` / `revokeAuth` | A paste-an-access-token flow (below), with the same `listAuth` / `getValidAuth({ connectionKey })` shape as the real bridge |
 | `advertise` / `discover` / `exportCommands` | An in-page registry (one page, so siblings see each other) |
-| `page` | An ordinary browser tab's: `setTopColor`, `setAppBadge`, `clearAppBadge` and `launchQueue` do nothing, and `notifications` are `unavailable` (a send is refused). `setScreenAwake` keeps this page's own screen awake. `motion$` follows the real device, with no consent to ask: the harness's page is no frame, so the browser reports to it directly (on a phone, serve the page over HTTPS) |
+| `page` | An ordinary browser tab's: `setTopColor`, `setAppBadge`, `clearAppBadge` and `launchQueue` do nothing, and `notifications` are `unavailable` (a send is refused). `setScreenAwake` keeps this page's own screen awake. `motion$` follows the real device, with no consent to ask: the harness's page is no frame, so the browser reports to it directly (on a phone, `serve-app:lan-https` serves the page over HTTPS; in a film, `@tilt` sets how the device is held) |
 | `mcp`, `generation` | Throw a clear "not available in the local harness" error |
 
 ### OAuth locally
