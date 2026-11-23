@@ -609,6 +609,12 @@ export interface PageAPI {
   /** asks the page to clear the installed app's icon badge */
   clearAppBadge(): void;
 
+  /** asks the page to keep the device's screen awake (`true`) or to let it sleep as it
+   *  would (`false`): for an Application its User watches or tilts without touching.
+   *  It holds only while the app shows; where the browser cannot, nothing happens.
+   *  A later request replaces an earlier one; nothing is answered */
+  setScreenAwake(awake: boolean): void;
+
   /** asks the page to paint `color` behind the Application, for the document's mode.
    *  A later request replaces an earlier one; nothing is answered */
   setTopColor(color: PageTopColor): void;
@@ -912,6 +918,7 @@ export interface CharmIQAPI {
    *  window.charmiq.page.launchQueue.setConsumer(({ targetURL }) => openTab(new URL(targetURL).searchParams.get('tab')));
    *  window.charmiq.page.motion$().subscribe(({ beta, gamma }) => tilt(beta, gamma));
    *  window.charmiq.page.setAppBadge(2);
+   *  window.charmiq.page.setScreenAwake(true);
    *  window.charmiq.page.setTopColor({ light: '#ffffff', dark: '#1c1c1e' });
    */
   page: PageAPI;

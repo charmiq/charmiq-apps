@@ -40,6 +40,10 @@ Apps embedded by the CharmIQ platform via an app iframe. No `package.json` or `t
 
 - **This repository carries no tests**: it is public. Never add test files, test scripts or test setup here.
 
+## Style
+
+- **The Platform's `documentation/Coding Style.md` governs this repository, and nothing here lints it.** After editing, check by eye what the Platform's lint checks there: above all that each braced, multi-line `if` with no `else` closes with `} /* else -- reason */`.
+
 ## Typecheck
 
 - Every Application is type-checked as the Platform builds it, its libraries typed from esm.sh at the versions its `importMap` pins: `?typecheck=true` on the Application in the Platform, or the Platform's Application CLI, `npm run build-app -- <app folder> --typecheck`. Every reported error is real; an import served without types, or a library declaration that could not be read, is named rather than passed as typed.

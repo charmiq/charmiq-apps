@@ -496,6 +496,37 @@ const makeMotion$ = (): Observable<PageMotionReading> => new Observable<PageMoti
   return () => { ended = true; clearTimeout(timer); window.removeEventListener('deviceorientation', receive); };
 });
 
+/** keeps this page's screen awake while asked, as the Platform's App page does: the
+ *  harness's page is no frame, so the browser's screen wake lock is its own to hold.
+ *  The browser lets the lock go when the page stops showing; it is taken again when it shows */
+const makeSetScreenAwake = (): ((awake: boolean) => void) => {
+  let asked = false, lock: WakeLockSentinel | undefined = undefined/*none held*/;
+  // one lock is taken at a time. What is wanted can change while it is (the app asked
+  // otherwise, the page left and showed again): it is settled once more when the
+  // browser answers, so a lock that arrives no longer wanted is let go
+  let taking = false, changedMeanwhile = false;
+  const settle = async (): Promise<void> => {
+    if(taking) { changedMeanwhile = true; return/*settled again once the browser answers*/; }
+    if(!asked || (document.visibilityState !== 'visible')) { const held = lock; lock = undefined; void held?.release().catch(() => {}); return; }
+    if(lock || !('wakeLock' in navigator)) return/*held, or a browser with none*/;
+
+    taking = true;
+    let taken: WakeLockSentinel | undefined = undefined/*refused*/;
+    try { taken = await navigator.wakeLock.request('screen'); } catch{ /*refused: asked again when the page next shows*/ }
+    taking = false;
+    if(taken) {
+      const held = taken;
+      held.addEventListener('release', () => { if(lock === held) lock = undefined; });
+      lock = held;
+    } /* else -- refused: nothing held */
+    const again = changedMeanwhile || !!taken;
+    changedMeanwhile = false;
+    if(again) await settle();
+  };
+  document.addEventListener('visibilitychange', () => { void settle(); });
+  return awake => { asked = awake; void settle(); };
+};
+
 /** the page as an ordinary browser tab has it, which the harness's is: the status bar
  *  color, the icon badge and the launches are an installed app's alone and do nothing
  *  here, nothing holds the Application (it is `ready` at once), there is no installed
@@ -503,6 +534,7 @@ const makeMotion$ = (): Observable<PageMotionReading> => new Observable<PageMoti
 const makePage = (): PageAPI => ({
   setAppBadge: () => {},
   clearAppBadge: () => {},
+  setScreenAwake: makeSetScreenAwake(),
   setTopColor: () => {},
   launchQueue: { setConsumer: () => {} },
   launchState$: () => of<LaunchState>('ready'/*nothing holds the Application*/),
