@@ -2,7 +2,7 @@ import { listLocalApplicationResources, readLocalApplicationResource, readLocalA
 import { appContentLayer, type AppContentObservableFactory, type AppContentObserver } from '@charmiq/service-common/richtextEditor/proseMirror/node/appContentLayer';
 import { of, Observable } from 'rxjs';
 
-import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ApplicationUser, ContentChange, LaunchState, OAuthAuth, OAuthAuthDescriptor, PageAPI } from '../charmiq';
+import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnapshot, AppContentWrite, ApplicationUser, ContentChange, LaunchState, OAuthAuth, OAuthAuthDescriptor, PageAPI, PageMotionReading } from '../charmiq';
 
 // the local-dev bridge harness — a stand-in `window.charmiq` so a bridge app can
 // run in a plain browser (opened from a `build-app --harness` build) instead of
@@ -17,7 +17,9 @@ import type { AppContentChange, AppContentEdit, AppContentGuard, AppContentSnaps
 //                           the app uses against the real bridge
 //   page                  → an ordinary tab's: the status bar color, the icon badge
 //                           and the launches do nothing, and notifications are
-//                           unavailable
+//                           unavailable. The device's motion is this page's own to
+//                           read (it is no frame), so `motion$` follows the real
+//                           device, with no consent to ask
 //   resources             → the files `build-app` read for the manifest's declared
 //                           resources and embedded in the page, as text or bytes,
 //                           refused as the Platform refuses them
@@ -458,16 +460,53 @@ const makeRegistry = () => {
 };
 
 // == Page ========================================================================
+/** an error carrying the `code` the Platform's refusal would */
+const codedError = (message: string, code: string): Error => Object.assign(new Error(message), { code });
+
+/** how the device is held, read from this page's own browser: the harness's page is no
+ *  frame, so the browser reports to it directly. A device that asks its User first is
+ *  asked within the tap that subscribes, and refuses with the Platform's own codes */
+const makeMotion$ = (): Observable<PageMotionReading> => new Observable<PageMotionReading>(observer => {
+  if(typeof DeviceOrientationEvent === 'undefined') { observer.error(codedError('This device reports no motion.', 'functions/unavailable')); return; }
+
+  let reported = false/*the device has not answered yet*/, ended = false;
+  let timer: ReturnType<typeof setTimeout> | undefined = undefined/*not waiting on the device*/;
+  const refuse = (message: string, code: string) => { if(!ended) observer.error(codedError(message, code)); };
+  /** refuses unless the device reports within `millis` */
+  const expectReport = (millis: number, message: string, code: string) => { timer = setTimeout(() => { if(!reported) refuse(message, code); }, millis); };
+  const receive = ({ alpha, beta, gamma }: DeviceOrientationEvent) => {
+    if((beta === null) || (gamma === null)) return refuse('This device reports no motion.', 'functions/unavailable');
+    reported = true;
+    observer.next({ alpha, beta, gamma });
+  };
+  window.addEventListener('deviceorientation', receive);
+
+  const ask = (DeviceOrientationEvent as unknown as Readonly<{ requestPermission?: () => Promise<'granted' | 'denied'>; }>).requestPermission/*an iPhone's alone*/;
+  if(typeof ask !== 'function') expectReport(1500, 'This device reports no motion.', 'functions/unavailable');
+  else if(!(navigator.userActivation?.isActive ?? true)) expectReport(500, 'This device asks its User before it reports motion, and can only be asked within a tap: subscribe again inside a click handler.', 'functions/failed-precondition');
+  else {
+    ask.call(DeviceOrientationEvent).then(
+      answer => {
+        if(answer !== 'granted') return refuse('This device did not allow motion: its User turned its question down, or had already.', 'functions/cancelled');
+        if(!reported) expectReport(1500, 'This device reports no motion.', 'functions/unavailable');
+      },
+      () => refuse('This device reports no motion.', 'functions/unavailable'));
+  }
+
+  return () => { ended = true; clearTimeout(timer); window.removeEventListener('deviceorientation', receive); };
+});
+
 /** the page as an ordinary browser tab has it, which the harness's is: the status bar
  *  color, the icon badge and the launches are an installed app's alone and do nothing
- *  here, nothing holds the Application (it is `ready` at once), and there is no
- *  installed app to notify */
+ *  here, nothing holds the Application (it is `ready` at once), there is no installed
+ *  app to notify, and the device's motion is the page's own to read */
 const makePage = (): PageAPI => ({
   setAppBadge: () => {},
   clearAppBadge: () => {},
   setTopColor: () => {},
   launchQueue: { setConsumer: () => {} },
   launchState$: () => of<LaunchState>('ready'/*nothing holds the Application*/),
+  motion$: makeMotion$,
   notifications: {
     request: async () => 'unavailable',
     state: async () => 'unavailable',

@@ -593,6 +593,14 @@ export type PageTopColor = Readonly<{ light: string; dark: string; }>;
 export type LaunchParams = Readonly<{ targetURL: string; }>;
 /** whether App mode's page holds the Application from the User (`held`) or released it (`ready`) */
 export type LaunchState = 'held' | 'ready';
+/** how the device is held, as its browser reports it (a `deviceorientation` event's
+ *  angles, in degrees): `beta` its tilt front to back, `gamma` its tilt side to side,
+ *  `alpha` its turn about the line through its screen, `null` where the device reports
+ *  none. `alpha` is measured from wherever the browser chooses, often the way the device
+ *  pointed when it began to report: it is no compass heading */
+export type PageMotionReading = Readonly<{ alpha: number | null; beta: number; gamma: number; }>;
+
+// --------------------------------------------------------------------------------
 export interface PageAPI {
   /** asks the page to badge the installed app's icon (0 clears it; absent, a mark with
    *  no count), as `navigator.setAppBadge` does. Call it during a tap: where a badge
@@ -619,6 +627,20 @@ export interface PageAPI {
    *  "application"` is held; every other hears `ready` alone, at once. A reload hears
    *  `held` again */
   launchState$(): Observable<LaunchState>;
+
+  /** how the device is held and moved (scope `page.motion`): each reading its browser
+   *  reports, at most 60 a second. The page reads the device and asks the User on the
+   *  Application's behalf. It errors with a `code` that says who refused:
+   *  `functions/failed-precondition`, the device asks its User first and can only be
+   *  asked within a tap (subscribe again inside a click handler);
+   *  `functions/permission-denied`, the Platform (the Application does not declare
+   *  `page.motion`, or its User or their Company did not allow it);
+   *  `functions/cancelled`, the device (its User turned its question down);
+   *  `functions/unimplemented`, the page (a published page asks its reader nothing,
+   *  their device included, and the device has not allowed motion there);
+   *  `functions/unauthenticated`, no one is signed in; `functions/unavailable`, the
+   *  device has reported no motion (subscribe again to try once more) */
+  motion$(): Observable<PageMotionReading>;
 
   /** the installed app's notifications: asking to turn them on and reading them (each
    *  device's own decision, asked by the Platform: no scope), and sending one (scope
@@ -884,9 +906,11 @@ export interface CharmIQAPI {
   /** the page the Application is shown on. In App mode, its first Application may set
    *  the color the page paints behind it (an installed phone app's status bar, a
    *  desktop app's title bar), badge the installed app's icon, and hear the page's
-   *  launches, a Home Screen shortcut's included. Elsewhere each does nothing
+   *  launches, a Home Screen shortcut's included. Elsewhere each does nothing. On any
+   *  page, an Application that declares `page.motion` follows how the device is held
    *  @example
    *  window.charmiq.page.launchQueue.setConsumer(({ targetURL }) => openTab(new URL(targetURL).searchParams.get('tab')));
+   *  window.charmiq.page.motion$().subscribe(({ beta, gamma }) => tilt(beta, gamma));
    *  window.charmiq.page.setAppBadge(2);
    *  window.charmiq.page.setTopColor({ light: '#ffffff', dark: '#1c1c1e' });
    */
