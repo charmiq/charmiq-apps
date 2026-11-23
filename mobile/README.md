@@ -5,6 +5,7 @@
 | Application | What it does |
 |----|----|
 | [After Hours](charmiq://./after-hours/README.md) | A tilt maze on paper that sketches itself in as you roll a glass ornament through it, over several floors, to the star |
+| [Card Stock](charmiq://./card-stock/README.md) | A paper race track on a cutting mat: drive a folded-paper car by tipping your phone, build your own tracks with a finger, and chase the best lap of everyone you share it with |
 | [Flak Run](charmiq://./flak-run/README.md) | A one-finger shooter with a shared high score list: three levels, each ending in a boss, with every picture drawn in code |
 | [Synth Jukebox](charmiq://./synth-jukebox/README.md) | A music library whose albums are composed and played live on your phone, plus songs Lyria 3 Pro presses from your description |
 | [Tick List](charmiq://./tick-list/README.md) | Lists you tick off, shared live with everyone you share it with |
