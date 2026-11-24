@@ -2494,3 +2494,5 @@ Everything is kept in the document, so everyone you share it with as an Editor h
 * **The screen stays awake** while you race, since a game steered by tilting is never touched.
 
 * **It needs the network to open.** The table is drawn with three.js, fetched when the Application opens; with no connection it says so and offers to try again.
+
+* **Its icon:** `icon-512.png` (`icon.svg` is its source). Set it in **Document Properties → Home Screen** on your copy, before adding the game to your home screen.

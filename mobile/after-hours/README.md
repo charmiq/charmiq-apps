@@ -1373,3 +1373,5 @@ The levels are text in this document (`levels.txt`, the Application's app-conten
 * **The screen stays awake** while a level is played, since a game steered by tilting is never touched.
 
 * **It loads nothing.** Every wall, the ornament and the star are drawn in code as the Application opens.
+
+* **Its icon:** `icon-512.png` (`icon.svg` is its source). Set it in **Document Properties → Home Screen** on your copy, before adding the game to your home screen.

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#2f6e63"/>
+  <path d="M64 0V512M128 0V512M192 0V512M256 0V512M320 0V512M384 0V512M448 0V512M0 64H512M0 128H512M0 192H512M0 256H512M0 320H512M0 384H512M0 448H512" stroke="#fff" stroke-opacity=".09" stroke-width="2"/>
+  <g transform="rotate(-45 256 256)" fill="none" stroke-linecap="round">
+    <path transform="translate(0 12)" d="M256 256C350 160 466 160 466 256C466 352 350 352 256 256C162 160 46 160 46 256C46 352 162 352 256 256Z" stroke="#12322c" stroke-opacity=".5" stroke-width="76"/>
+    <path d="M256 256C350 160 466 160 466 256C466 352 350 352 256 256C162 160 46 160 46 256C46 352 162 352 256 256Z" stroke="#f8f3e9" stroke-width="76"/>
+    <path d="M256 256C350 160 466 160 466 256C466 352 350 352 256 256C162 160 46 160 46 256C46 352 162 352 256 256Z" stroke="#474a54" stroke-width="56"/>
+    <path d="M256 256C350 160 466 160 466 256C466 352 350 352 256 256C162 160 46 160 46 256C46 352 162 352 256 256Z" stroke="#fdfaf3" stroke-width="5" stroke-dasharray="16 16" stroke-linecap="butt"/>
+    <g stroke-linecap="butt">
+      <path d="M192.24 305.42C213.58 293.59 235.32 277.12 256 256C276.68 234.88 298.42 218.41 319.76 206.58" stroke="#12322c" stroke-opacity=".55" stroke-width="88" transform="translate(0 12)"/>
+      <path d="M192.24 305.42C213.58 293.59 235.32 277.12 256 256C276.68 234.88 298.42 218.41 319.76 206.58" stroke="#ef5b4c" stroke-width="88"/>
+      <path d="M192.24 305.42C213.58 293.59 235.32 277.12 256 256C276.68 234.88 298.42 218.41 319.76 206.58" stroke="#474a54" stroke-width="56"/>
+      <path d="M192.24 305.42C213.58 293.59 235.32 277.12 256 256C276.68 234.88 298.42 218.41 319.76 206.58" stroke="#fdfaf3" stroke-width="5" stroke-dasharray="16 16"/>
+    </g>
+    <g transform="translate(396 184)" stroke="none">
+      <rect x="-26" y="-16" width="52" height="32" rx="9" fill="#f2c14e"/>
+      <rect x="-26" y="-4" width="52" height="8" fill="#fdfaf3"/>
+      <rect x="2" y="-12" width="12" height="24" rx="3" fill="#2c2b33"/>
+    </g>
+  </g>
+</svg>
