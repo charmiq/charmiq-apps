@@ -1,0 +1,360 @@
+{
+  "id": "ai.charmiq.apps.workshop-manager",
+  "name": "Workshop Manager",
+  "description": "Runs a workshop: a student roster, a Folder per student synced from a Template Folder (the first sync copies it, each later one keeps the student's copy in step), and watched files (an FAQ) whose student edits show on the roster",
+  "requestedScopes": [
+    "user.read",
+    "userProfile.search",
+    "mcp.platform.vfs",
+    "command.richtext.copy",
+    "command.richtext.metadata.set",
+    "command.folder.permission.set",
+    "command.folder.delete",
+    "command.folder.name.set"
+  ],
+  "bundle": {
+    "entry": {
+      "html": "/src/index.html",
+      "script": "/src/main.ts",
+      "style": "/src/styles.css"
+    },
+    "format": "esm",
+    "mounts": {
+      "/shared": "../../shared"
+    },
+    "dependencies": {
+      "importMap": {
+        "rxjs": "https://esm.sh/rxjs@7.8.2"
+      }
+    }
+  },
+  "advertise": {
+    "charmiq.command": [
+      {
+        "name": "getRoster",
+        "description": "List the workshop's students, sorted by name: each one's name, email, CharmIQ User, whether they are deleted (deleted students stay listed and can be restored), how many items their folder holds from the template, how many of their copies they have edited (as of the last sync), when they were last synced, and their folder's URL",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "active": {
+              "type": "number",
+              "description": "How many students are not deleted"
+            },
+            "students": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "getConfig",
+        "description": "Return the workshop's configuration: the Template Folder synced to each student, the Classroom Folder the students' folders are made in, the student folder name pattern, the Owners added to each student folder, and whether syncing can run (and why not)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "syncRoster",
+        "description": "Make the roster match a list of people. Each listed person who is not an active student is added (a deleted student is restored); each active student the list does not name is marked deleted (restorable; their folder is untouched). Everyone must have a CharmIQ account: an email with no CharmIQ User is reported and not added. Nothing is synced; call syncAll afterwards to make new students' folders",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "list": {
+              "description": "The people, one per line, each with their email address (\"Jane Doe <jane@example.com>\", \"jane@example.com\" or \"Doe, Jane, jane@example.com\"), or an array of those lines or of { email, name } objects. The name is optional; without one the CharmIQ profile name is used",
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "email"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "required": [
+            "list"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "added": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "restored": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Students marked deleted"
+            },
+            "unchanged": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "noCharmiqUser": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Emails with no CharmIQ account; not added"
+            },
+            "couldNotCheck": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Emails the user search failed for; their students are kept"
+            },
+            "notAnAddress": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Lines naming no email address"
+            }
+          }
+        }
+      },
+      {
+        "name": "addStudent",
+        "description": "Add one student by their email address (a deleted student with that email is restored). They must have a CharmIQ account. Nothing is synced; call syncStudent afterwards",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "The student's CharmIQ email address"
+            },
+            "name": {
+              "type": "string",
+              "description": "The name shown in the roster and used for their folder; defaults to their CharmIQ profile name"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "type": "string",
+              "enum": [
+                "added",
+                "restored",
+                "present"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "removeStudent",
+        "description": "Mark a student deleted. They stay listed and can be restored with addStudent; their folder and copies are untouched",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "student": {
+              "type": "string",
+              "description": "The student's email address or name"
+            }
+          },
+          "required": [
+            "student"
+          ]
+        },
+        "outputSchema": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "renameStudent",
+        "description": "Rename a student. Their folder is renamed too, unless the student has renamed it themselves",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "student": {
+              "type": "string",
+              "description": "The student's email address or current name"
+            },
+            "name": {
+              "type": "string",
+              "description": "The new name"
+            }
+          },
+          "required": [
+            "student",
+            "name"
+          ]
+        },
+        "outputSchema": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "syncStudent",
+        "description": "Sync one student: the first sync copies the Template Folder into a new folder for them; each later one brings their copy in step (additions, moves, updates, removals, and recreating copies the student deleted). A copy the student has edited is never overwritten or deleted here: it is reported under needsDecision, for the person to decide with Sync in the workshop",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "student": {
+              "type": "string",
+              "description": "The student's email address or name"
+            }
+          },
+          "required": [
+            "student"
+          ]
+        },
+        "outputSchema": {
+          "type": "object"
+        }
+      },
+      {
+        "name": "syncAll",
+        "description": "Sync every active student, one at a time, as syncStudent does for one. Edited copies are reported under needsDecision for each student, never overwritten or deleted",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "notCopyable": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Template entries that are not copied (Files and other kinds)"
+            },
+            "students": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "whatChanged",
+        "description": "What one student changed in their folder: copies they edited since the workshop last wrote them, files they made themselves (not from the template), and template copies gone from their folder (deleted or moved out; the next sync recreates them). Reads the student's folder now: one read per folder plus one per synced document",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "student": {
+              "type": "string",
+              "description": "The student's email address or name"
+            }
+          },
+          "required": [
+            "student"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "edited": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "description": "Each with name, url and when it was last updated"
+            },
+            "madeByStudent": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "missing": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Template entries whose copy is gone from the folder"
+            },
+            "reads": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      {
+        "name": "checkWatchedFiles",
+        "description": "Check the files the workshop watches (an FAQ students write in): reads every active student's copy now and answers, per student and file, whether it is new (edited since it was last marked seen in the workshop), seen, deleted, unreadable or not synced yet, with a link to the copy. The teacher chooses the watched files in the workshop's Settings",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "watchedFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "students": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}

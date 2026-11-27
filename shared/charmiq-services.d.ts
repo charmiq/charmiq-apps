@@ -1,3 +1,4 @@
+import type { Observable } from './charmiq';
 import type { CharmIQCommandsMap } from './charmiq-commands';
 
 // shared duck-typed contract for the CharmIQ services that the host injects
@@ -31,6 +32,31 @@ export interface CharmIQAssetService {
 export interface CharmIQCommandService {
   execute<K extends keyof CharmIQCommandsMap>(req: { id: K; args?: CharmIQCommandsMap[K]['args'] }): Promise<CharmIQCommandsMap[K]['return']>;
   execute<T = unknown>(req: { id: string; args?: unknown }): Promise<T>;
+}
+
+// == User Profile ================================================================
+/** a type-ahead search over public User profiles: a Company's Members, or every User
+ *  (a caller wanting one address filters the answer to the exact email) */
+export type TypeaheadProfileFilter = Readonly<{
+  query: string;
+  /** only Members of this Company */
+  organizationId?: string;
+  limit?: number;
+}>;
+/** a public User profile and its User id */
+export type ProfileTuple = Readonly<{
+  id: string;
+  obj?: Readonly<{
+    firstName?: string;
+    lastName?: string;
+    username?: string;
+    email?: string;
+    profileImageUrl?: string;
+  }>;
+}>;
+/** `charmiq.service.user-profile` (scope `userProfile.search`) */
+export interface CharmIQUserProfileService {
+  typeaheadSearchProfiles$(filter: TypeaheadProfileFilter): Observable<readonly ProfileTuple[]>;
 }
 
 // == Generation ==================================================================

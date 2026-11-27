@@ -1,193 +1,69 @@
 # Workshop Manager
 
-Manages the mechanics of running a workshop: a student roster and per-student cloning
-of a Template folder into a Classroom folder, with incremental re-clone (additions
-only) as the Template grows.
+*A student roster, a Folder per student synced from a Template Folder, and the files the teacher watches for students' edits.*
 
-Unlike the other `apps/`, this is currently a single-file Source application with no
-`manifest.json`. The complete app is `src/index.html` and is mounted through a
-`charmiq://` URL.
-
-## Embedding
-
-<iframe-app height="900px" width="100%" src="charmiq://./src/index.html" requested-scopes="%5B%22user.read%22%2C%22userProfile.search%22%2C%22mcp.platform.vfs%22%2C%22command.richtext.copy%22%2C%22command.richtext.metadata.set%22%2C%22command.folder.permission.set%22%2C%22command.folder.delete%22%2C%22command.folder.name.set%22%2C%22command.admin.agent.create%22%5D">
+<iframe-app height="900px" width="100%" src="charmiq://.">
 </iframe-app>
 
-The `requested-scopes` value is the percent-encoded JSON array:
 
-```json
-["user.read", "userProfile.search", "mcp.platform.vfs",
- "command.richtext.copy", "command.richtext.metadata.set",
- "command.folder.permission.set", "command.folder.delete",
- "command.folder.name.set", "command.admin.agent.create"]
-```
+## What This Is
 
-Its app-state holds everything it keeps (folder config, name pattern, Owners, roster, per-student clone mappings); app-state is the Application's own, so it needs no declaration. It advertises `workshop-data` to the workshop tracker on the same page; advertising needs no declaration either.
+The Workshop Manager runs the mechanics of a workshop. A teacher keeps a **Template Folder**
+of the course's documents and a **Classroom Folder** that holds one folder per student. A
+student's first **Sync** copies the Template into a new folder for them; each later Sync keeps
+their copy in step as the Template grows and changes, without ever overwriting a copy the
+student edited unless the teacher says so.
 
-| Scope | Used for |
+A teacher can **watch** up to three Template files (an FAQ where students add their
+questions). When a student edits their copy, it shows on the roster until the teacher marks
+it seen.
+
+The workshop is the folder: `manifest.json` stands at its root, so a document embeds it by
+the folder (`src="charmiq://."` beside it, or the folder's own address from anywhere).
+
+
+## In Practice
+
+**Settings** — The Template and Classroom Folders (paste a folder's link), the student folder
+name (`Workshop — {name}`), the Owners added to each student folder when it is created, and
+the watched files, chosen from the Template.
+
+**Adding students** — *Add student* searches CharmIQ accounts (the active Company's Members, or
+an exact email), then takes the name the workshop shows. Several students can share one
+account (a parent's, for their children); the roster shows each student's name over the
+account they use, and marks a shared one.
+
+**Syncing** — *Sync* on a student, or *Sync All*. A copy the student edited since the workshop
+last wrote it prompts before it is overwritten or deleted, and the destructive choice is typed
+to confirm. "N out of sync" on a row counts those copies, as of the last sync.
+
+**Watched files** — Read when the workshop opens and on *Refresh*, never on a timer: one read
+per student per watched file. A copy shows **new** once the student edits it; *I've seen
+everything* (the row's menu, or the student's sheet) marks it seen. The teacher's own answer
+in a student's FAQ moves it too, so it shows new until it is marked seen again.
+
+**A student's folder** — Copy its link, *Browse* it (a read-only listing, one level at a time,
+each document opening in CharmIQ), or open it. *What changed?* reads one student's folder when
+asked: the copies they edited, the files they made, and the copies gone from it.
+
+**On a phone** — The roster is a list with *Add student* and *Sync All* at the bottom; tap a
+student for everything above, as a sheet.
+
+**With a Charm** — A Charm in the document runs the workshop through the commands below. It
+never overwrites or deletes a copy a student edited: it reports those copies, and *Sync* here
+asks about each. The configuration is set in Settings only.
+
+| Command | What it does |
 |---|---|
-| `user.read` | The signed-in User: the active Company scopes the user search; roles show Import Charms |
-| `userProfile.search` | The user typeahead (add student / add Owner) |
-| `mcp.platform.vfs` | `list_dir` (walk, empty-folder checks), `describe_file` (names, versions, shares, copy liveness), `create_dir`, `move` (admin-move mirroring), `read_file`/`write_file` (edit sync), `delete_file` (removed documents) |
-| `command.richtext.copy` | Copies each template document into the student folder |
-| `command.richtext.metadata.set` | Takes a Charm copy's name back from the platform's "Copy of" copy convention (at copy time and as a sync heal) |
-| `command.folder.permission.set` | One permission pass on each student folder at creation |
-| `command.folder.delete` | Deletes a removed template folder's copy once it is verifiably empty |
-| `command.folder.name.set` | Renames a student's folder when the student is renamed (only if the student has not renamed it themselves) |
-| `command.admin.agent.create` | Import Charms: creates private Agents for a student from their cloned Charm copies (Admin / DefaultAgentAdmin only) |
+| `getRoster` | Lists the students, their status and how many of their copies they have edited |
+| `getConfig` | Shows the Template and Classroom Folders, the folder name pattern and the Owners |
+| `syncRoster` | Makes the roster match a list of people (one email per line): adds, restores and marks deleted |
+| `addStudent` | Adds one student by email |
+| `removeStudent` | Marks a student deleted (restorable; their folder is untouched) |
+| `renameStudent` | Renames a student and, unless they renamed it themselves, their folder |
+| `syncStudent` | Syncs one student |
+| `syncAll` | Syncs every active student |
+| `whatChanged` | Reads what one student changed in their folder |
+| `checkWatchedFiles` | Reads every student's copy of the watched files: new, seen, deleted |
 
-## User search
-
-The user typeahead rides `IUserProfileService.typeaheadSearchProfiles$`
-over the app bridge, with
-a section for the active Company, and an exact-email fall-through.
-Students and Owners are always selected from the search results — a free-typed
-email is never accepted, which is what enforces "must be a Platform User". A
-bridge-denied search reports as unavailable, never as an empty roster.
-
-## Behavior notes
-
-- **Clone** walks the Template (BFS, `list_dir`), creates the student folder under
-  Classroom named by the pattern (`{name}` → student name), then per entry: folders
-  via `create_dir`, documents via a shallow `richtext.copy` with the explicit target
-  `parentFolderId` and `copyToParentFolder: false` (the shallow path's default would
-  land the copy in the template's own folder).
-  Each copy is recorded as `templateUri → { copyId, kind, parentUri, templateVersion,
-  clonedAt }`; entries cloned before `parentUri` was recorded are backfilled from the
-  walk on the next re-clone.
-- **Re-clone is a full sync** implementing the contract below: additions, admin-move
-  mirroring, edit sync (silent on untouched copies, prompted on edited ones),
-  removals, and recreates of student-deleted copies. The summary toast itemizes
-  every kind; kept folders, out-of-reach items, and failures each get their own
-  loud report.
-- **"Copy of" is undone for Charms**: the platform names an explicitly-named
-  source's copy "Copy of <name>" (Charms are always explicitly named; content-named
-  types are unaffected). A fresh Charm copy takes the template's name immediately,
-  and the sync heals any copy still named exactly `Copy of <template's current
-  name>` — an exact match proves the prefix is the convention's, so a student's own
-  rename is never touched.
-- **Comments and Reference Material are never cloned and never synced** — clones
-  are shallow with `preserveContextDependents: false`, and the edit-sync overwrite
-  carries content only. Nothing crosses from the template's comments or RM
-  attachments to a student's copy (RM is per-user, so cloned rows would be the
-  admin's and invisible to students regardless); comments and attachments a
-  student adds to their copy survive every overwrite.
-- **Assets (Files) are explicitly ignored** — a deliberate ruling, not only a
-  platform gap (there is no asset copy-into-folder primitive). Skipped entries are
-  reported by name after each clone.
-- **Permissions**: one `folder.permission.set` on the student folder at creation —
-  shares inherited from the Classroom folder are merged back (the Command replaces
-  the complete map), plus the configured Owners (`owner`) and the student
-  (`editor`). Later manual share edits are never rewritten; changing the Owners set
-  affects future clones only.
-- **Interrupted clones are resumable**: the mapping persists after every failure, so
-  the next re-clone continues where it stopped.
-- **Rename student** (pencil on the row): updates the roster name, and renames the
-  student's folder to the current pattern **only if** its live name still matches
-  what the app last set — a student's own folder rename wins, exactly like their
-  moves. The email/user pairing never changes; unreachable folders defer to the
-  next sync.
-- **Import Charms** (per row; visible only to Admin / `DefaultAgentAdmin` — the
-  role gate is UX, the server enforces regardless): dispatches `admin.agent.create`
-  with the student as `targetUserId` and the ids of **their cloned Charm copies**
-  (the mapping's `charm`-scoped entries), `visibility: 'private'`,
-  `noDuplicate: true` so re-imports are idempotent. The detailed result stamps
-  `agentImportedAt` on each confirmed entry (created and already-exists both count);
-  the button label carries the pending count — "Import Charms (2)" means two cloned
-  Charms have no Agent yet, "Re-import Charms" means none pending — and its tooltip
-  shows imported/total plus the last import date. The ledger records what this app
-  did: a recreated Charm copy (fresh id) correctly shows pending again; a
-  template-removed Charm's Agent survives on the student (deliberately out of
-  scope); the toast reports created vs already-existed from the server's summary.
-- **State** rides app-state (per-embed, in-document): whole-blob last-write-wins with
-  fetch-merge-set writes and an `onChange$` subscription for live refresh of other
-  open copies. Collaborators on the hosting document share the state — do not add
-  students as collaborators on that document.
-- Changing the Template or Classroom folder (or the pattern) after clones exist
-  requires a type-to-confirm warning; the Template change abandons the clone index,
-  so the next re-clone copies the entire new template alongside existing content.
-
-## Advertised data (`workshop-data`)
-
-The app advertises its state to the workshop tracker (same page, app-to-app):
-
-```
-advertise('workshop-data', {
-  getWorkshopData: () => snapshot,   // one-shot
-  data$: () => Observable<snapshot>, // emits current on subscribe + every change
-})
-snapshot = { version: 1,
-             config: { templateFolderId, classroomFolderId },
-             students }              // the persisted roster, mappings included
-```
-
-The snapshot is the persisted state plus nothing — names and tree structure
-resolve live by id on the consumer side. `data$` is BehaviorSubject-backed and
-emits on every persisted write and every foreign write received via app-state.
-`apps/workshop-tracker/mock/roster.html` advertises the same contract with
-fabricated students for tracker development.
-
-## Re-clone sync contract
-
-Re-clone implements the rules below; the mapping (`templateUri → copyId`) is the
-identity spine for all of it, and for the grading views (every student's copy of
-X = the inverse read of the mapping).
-
-- **Identity is the id — never the name, never the path.** Names change freely on
-  both sides; they are not sync keys and are not synced. `copyId` is stable for an
-  item's lifetime: content updates are in-place, never delete-and-recopy. This is
-  what keeps every copy findable wherever students move or rename it.
-- **"Edited" = the copy's version advanced past its baseline.** A fresh copy
-  starts at version zero, so the baseline is implicitly 0; a sync overwrite
-  records the post-write version (`copyVersion`) as the new baseline. Any advance
-  counts: edit-and-revert counts, instructor feedback counts, whoever made it
-  counts.
-- **Additions** place into the mapped parent by id, wherever the student moved it.
-- **Admin moves** relocate the copy by id into the mapped new parent — admin
-  placement wins over student placement.
-- **Admin edits**: unedited copy → overwrite silently; edited copy → prompt
-  (overwrite / leave). Choosing the destructive side of either edited-copy prompt
-  (overwrite, or delete on a removal) is loud and requires typing the word —
-  student work is never one accidental click from destruction; dismissing any
-  prompt resolves as leave. Both prompts show the version facts driving them.
-- **The "N out of sync" badge means "the student edited this copy"** — computed
-  from the copy version the sync last observed (`lastCopyVersion`) against the
-  version the app last wrote (`copyVersion`, absent = 0), independent of any
-  template change. A sync is the scanner: badges reflect the world as of the last
-  sync, and Sync All refreshes the whole roster's counts. A warning icon leads the
-  status line whenever a row has out-of-sync copies; it never shrinks, so a narrow
-  window truncates the text but never hides the signal, and its hover names the
-  count. Truncatable status text carries its full text on hover. Clicking the
-  badge or the icon opens
-  a bounded, scrollable list of those copies (names resolved live by id, never
-  stored) — each a single truncated line that opens the copy in a new tab. This
-  is the first slice of the grading view: every student's edited work, one click
-  from the roster. `templateVersion` always remains the version the copy's
-  content actually came from (clone or last overwrite) — a leave never touches
-  it. A leave records `outOfSync` (the student's row shows a standing "N out of
-  sync" marker) and the prompt returns on **every** sync while the divergence
-  stands; an overwrite clears the marker.
-- **Admin deletes a document**: unedited copy → delete; edited copy → prompt.
-- **Admin deletes a folder**: contents first, per the document rules. The folder
-  itself deletes only when nothing remains. **Student-created files are never
-  deleted** — a folder holding any is kept and reported loudly.
-- **Student deleted their copy** (document or folder): recreate as a fresh copy
-  (new id, mapping updated) — never resurrect. A student cannot drop an assignment.
-- **Out-of-reach copies** (moved where the instructors lack permission): the
-  failing action's permission-denied is caught and reported as such; no proactive
-  reach checks.
-- **Conflicts resolve per student**: cloning runs one student at a time (class
-  size ~30) and prompts within that run. Within a student, reads gather through a
-  bounded pool (8 concurrent — the hard fan-out cap), decisions and their prompts
-  run back-to-back with no I/O between them, and writes apply through the pool
-  behind ordering barriers (folder levels, folders before documents, removals
-  last). **Sync All** runs every active student sequentially over one shared
-  template gather (the walk and template versions are computed once per run).
-- **Mapping fields that carry the contract**: `parentUri` at clone time (existing
-  entries are backfilled from the walk on the next re-clone), the template
-  document's version, and `copyVersion` written only by sync overwrites (absent =
-  baseline 0). Names are deliberately not recorded — they change freely and
-  display resolves them live by id.
-- **Operation order** within a sync: create/recreate folders → folder moves
-  (depth-ordered) → document moves → content updates → additions → document
-  deletions → empty-folder deletions.
+The state, the sync's rules, watched files, the Tracker's data and the permissions are in [How It Works](charmiq://./How%20It%20Works.md).
